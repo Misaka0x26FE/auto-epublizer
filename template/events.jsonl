@@ -1,0 +1,3 @@
+{"ts": "2026-08-31T12:00:00+08:00", "event": "run_initialized", "input_path": "source/the-great-gatsby.epub", "title": "The Great Gatsby", "fmt": "epub", "source_lang": "en", "target_lang": "zh-CN", "chapters": 1}
+{"ts": "2026-08-31T12:10:00+08:00", "event": "analysis_saved", "has_analysis": true}
+{"ts": "2026-08-31T12:20:00+08:00", "event": "batch_translated", "chapter": 0, "start_index": 0, "count": 2}

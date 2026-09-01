@@ -1,0 +1,25 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# uv
+.uv/
+
+# 构建产物
+dist/
+build/
+
+# 本地数据（每本书工作区、成品、术语库）
+output/
+*.epub
+glossary.db
+glossary.db-wal
+glossary.db-shm
+workspace-*/
+
+# 系统
+.DS_Store
+*.tmp

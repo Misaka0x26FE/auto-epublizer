@@ -1,0 +1,43 @@
+{
+  "schema_version": "0.1.0",
+  "slug": "the-great-gatsby-fitzgerald",
+  "meta": {
+    "title": "The Great Gatsby",
+    "title_translated": "了不起的盖茨比",
+    "creator": "F. Scott Fitzgerald",
+    "contributors": [],
+    "translator": null,
+    "language": "en",
+    "target_language": "zh-CN",
+    "publisher": "Charles Scribner's Sons",
+    "date": "1925",
+    "identifier": { "isbn": null, "doi": null, "uri": null },
+    "source": "source/the-great-gatsby.epub",
+    "source_sha256": "（由 init 计算并写入，64 位十六进制，用于绑定源内容身份）",
+    "rights": "public-domain",
+    "description": "二十年代纽约长岛的悲剧爱情故事。",
+    "subjects": ["小说", "美国文学"]
+  },
+  "config": {
+    "engine_profile": "deepseek",
+    "bilingual": false,
+    "polish": true,
+    "review": false,
+    "target_language": "zh-CN"
+  },
+  "units": [
+    { "id": "cover",             "kind": "cover",        "title": "封面",       "status": "built" },
+    { "id": "front-titlepage",   "kind": "titlepage",    "title": "书名页",     "status": "built" },
+    { "id": "front-copyright",   "kind": "copyright",    "title": "版权页",     "status": "built" },
+    { "id": "front-dedication",  "kind": "dedication",   "title": "献词",       "status": "built" },
+    { "id": "front-foreword",    "kind": "foreword",     "title": "他序",       "status": "built" },
+    { "id": "front-preface",     "kind": "preface",      "title": "前言",       "status": "built" },
+    { "id": "front-toc",         "kind": "toc",          "title": "目录",       "status": "built" },
+    { "id": "ch01",              "kind": "chapter",      "title": "Chapter I",  "status": "built" },
+    { "id": "back-afterword",    "kind": "afterword",    "title": "后记",       "status": "built" },
+    { "id": "back-appendix-a",   "kind": "appendix",     "title": "附录 A",     "status": "built" },
+    { "id": "back-notes",        "kind": "notes",        "title": "尾注",       "status": "built" },
+    { "id": "back-bibliography", "kind": "bibliography", "title": "参考文献",   "status": "built" },
+    { "id": "back-index",        "kind": "index",        "title": "索引",       "status": "built" }
+  ]
+}

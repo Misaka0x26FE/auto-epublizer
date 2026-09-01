@@ -1,0 +1,8 @@
+source,target,type,aliases,gender,reading,status,note
+Jay Gatsby,杰伊·盖茨比,person,James Gatz|Jay,male,,confirmed,主人公
+Nick Carraway,尼克·卡拉威,person,,male,,confirmed,叙述者
+Daisy Buchanan,黛西·布坎南,person,,female,,confirmed,
+Tom Buchanan,汤姆·布坎南,person,,male,,confirmed,
+West Egg,西卵,place,,,confirmed,
+East Egg,东卵,place,,,confirmed,
+old sport,老兄,fixed_expr,,,confirmed,盖茨比口头禅
