@@ -1,0 +1,10 @@
+{
+  "totals": {
+    "prompt_tokens": 0,
+    "completion_tokens": 0,
+    "total_tokens": 0
+  },
+  "by_tier": {},
+  "by_stage": {},
+  "cache_hit_rate": 0.0
+}

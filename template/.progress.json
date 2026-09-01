@@ -1,0 +1,12 @@
+{
+  "last_run": "2000-01-01T00:00:00Z",
+  "units": {
+    "ch01": "built"
+  },
+  "translate_position": {
+    "ch01": {
+      "last_seq": 2,
+      "done": true
+    }
+  }
+}

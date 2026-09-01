@@ -1,0 +1,18 @@
+# ── 成品与派生二进制（走 GitHub Releases / git-lfs，不入库）──────────
+output/
+glossary.db
+glossary.db-wal
+glossary.db-shm
+
+# ── 处理源文件产生的页图（体积大、可由源文件重建；文本中间产物如 PDF→HTML 保留入库）──
+structured/raw/*.png
+structured/raw/*.jpg
+structured/raw/*.jpeg
+structured/raw/*.webp
+structured/raw/*.tif
+structured/raw/*.tiff
+
+# ── 系统与临时 ────────────────────────────────────────────────────────
+*.tmp
+.DS_Store
+__pycache__/

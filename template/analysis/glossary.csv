@@ -1,0 +1,8 @@
+source,target,type,aliases,gender,reading,status,note
+Sample Alpha,示例甲,person,Sample alias 1-1|Sample alias 1-2,male,,confirmed,Synthetic example.
+Sample Beta,示例乙,person,,male,,confirmed,Synthetic example.
+Sample Gamma,示例丙,person,,female,,confirmed,Synthetic example.
+Sample Delta,示例丁,person,,male,,confirmed,Synthetic example.
+Sample West,示例西区,place,,,confirmed,,Synthetic example.
+Sample East,示例东区,place,,,confirmed,,Synthetic example.
+sample greeting,老兄,fixed_expr,,,confirmed,示例甲口头禅,Synthetic example.
