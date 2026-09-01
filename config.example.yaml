@@ -1,0 +1,90 @@
+# auto-epublizer 配置示例
+# API Key 只从环境变量读取（llm.api_key_env 指向的变量），禁止写入本文件。
+
+# ── 语言与文体 ───────────────────────────────────────────────
+language:
+  source: auto          # auto=模型检测；或写死 ISO 639-1（en/ja/ru/ko/fr/de/es…）
+  target: zh-CN         # 目标语言，任意可配
+  genre: auto           # auto=分析判定；或显式 novel/academic/paper/poetry/newspaper
+
+# ── LLM ─────────────────────────────────────────────────────
+llm:
+  provider: openai-compatible  # 通用 OpenAI 兼容端点
+  base_url: https://api.deepseek.com
+  api_key_env: DEEPSEEK_API_KEY
+  timeout: 600
+  max_retries: 4        # 统一重试（关闭 SDK 内置重试避免嵌套）
+  tiers:                # 档位：strong/cheap/fast
+    strong:
+      model: deepseek-v4-pro
+      options: { thinking: true }
+    cheap:
+      model: deepseek-v4-flash
+      options: { thinking: true }
+    fast:
+      model: deepseek-v4-flash
+
+# ── 切片 ─────────────────────────────────────────────────────
+segment:
+  max_chars_per_segment: 1200
+  max_chars_per_batch: 1800
+  rolling_context_segments: 6
+
+# ── 管线开关 ────────────────────────────────────────────────
+pipeline:
+  translate: true
+  polish: false
+  review: true
+  book_understanding: true
+  prescan_concurrency: 4
+  bilingual: false
+  bilingual_order: target_first   # target_first | source_first
+  bilingual_preserve_source_style: false
+  annotation_alignment: true
+
+# ── 质量控制（六道关）────────────────────────────────────────
+qc:
+  gates: [g0, g1, g2, g3, g4, g5]
+  length_ratio: { too_short: 0.30, too_long: 3.0 }
+  error_rate_threshold: 0.0001
+  align_retry_limit: 2
+  review:
+    enabled: true
+    concurrency: 4
+    output_retries: 2
+  evidence:
+    enabled: true
+    tier: strong
+    max_rounds: 2
+  arbitration: { enabled: true }
+  fix_loop:
+    enabled: true
+    max_rounds: 2
+    clean_confirmations: 2
+  autofix: false
+  epubcheck:
+    jar: "~/.cache/epubcheck.jar"
+    strict: true
+
+# ── PDF 解析 ────────────────────────────────────────────────
+pdf:
+  backend: auto           # auto | pymupdf | mineru
+  ocr: auto               # auto | rapidocr | vision-llm
+  page_dpi: 300
+  vision_llm_fallback: true
+  mineru_effort: medium
+
+# ── 术语表 ──────────────────────────────────────────────────
+glossary:
+  storage: csv            # csv（默认）| sqlite（可选内部索引）
+  scope: chapter
+
+# ── 路径 ─────────────────────────────────────────────────────
+paths:
+  workspaces_dir: .       # 工作区根目录（每本书一个 <book-slug>/）
+
+# ── 输出 ─────────────────────────────────────────────────────
+output:
+  mono: true
+  bilingual: false
+  about_page: true
