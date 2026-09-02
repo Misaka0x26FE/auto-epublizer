@@ -1,7 +1,7 @@
 """review 服务：G1 逐批审校 → G2 取证 → G3 仲裁/影子修订/盲复审收敛。
 
 产出 ``reviews/review-<ts>/`` 运行目录；正式 translation/glossary/publication.json 只读，
-修订只发生在影子 overlay（shadow_overlay.json）。
+修订只发生在影子 overlay（shadow_overlay.json）。report.json 由 ``qa`` 命令聚合生成。
 """
 
 from __future__ import annotations
@@ -16,7 +16,7 @@ from ..agents.review_agents import ArbiterAgent, EvidenceAgent, FixerAgent
 from ..agents.reviewer import ReviewerAgent
 from ..glossary import Glossary, load_glossary_csv
 from ..translation.align import read_align
-from .convergence import ConvergenceState, advance, summarize
+from .convergence import TERMINATION_CLEAN, ConvergenceState, advance, summarize
 from .models import VERDICT_CONFIRMED, VERDICT_DISMISSED, Issue, Patch
 
 
@@ -40,6 +40,7 @@ class ReviewRun:
         self.fixer = FixerAgent(client)
         self._glossary = Glossary(load_glossary_csv(store.analysis_dir / "glossary.csv"))
         self._book_context = self._load_book_context()
+        self._align_cache = self.collect_align_rows()
 
     def _load_book_context(self) -> str:
         """读取分层理解产物作为 book_context（概览/全局/重点）。"""
@@ -59,7 +60,7 @@ class ReviewRun:
         if unit_p.is_file():
             parts.append(unit_p.read_text(encoding="utf-8"))
         # 段落附近上下文（含目标句的源/译）
-        rows = self.collect_align_rows().get(unit_id, [])
+        rows = self._align_cache.get(unit_id, [])
         window = [r for r in rows if abs(r.get("seq", 0) - seq) <= 2]
         if window:
             parts.append(
@@ -88,7 +89,9 @@ class ReviewRun:
     def run(self, *, clean_confirmations: int = 2, fix_max_rounds: int = 2) -> dict[str, Any]:
         state = ConvergenceState()
         shadow: dict[str, dict[int, str]] = {}  # unit_id -> seq -> tgt
+        total_candidates = 0
         total_confirmed = 0
+        total_patched = 0
         failed_fixes = 0  # fixer 未产生有效改动（after == before）的积压
 
         while True:
@@ -96,7 +99,7 @@ class ReviewRun:
             round_issues: list[Issue] = []
             round_patches: list[Patch] = []
 
-            for unit_id, rows in self.collect_align_rows().items():
+            for unit_id, rows in self._align_cache.items():
                 for batch in _batch(rows):
                     pairs = []
                     for r in batch:
@@ -116,6 +119,8 @@ class ReviewRun:
                         )
                         round_issues.append(issue)
 
+            total_candidates += len(round_issues)
+
             # G2 取证裁决（注入只读证据）
             for issue in round_issues:
                 seq = issue.seq[0] if issue.seq else issue.index
@@ -134,7 +139,7 @@ class ReviewRun:
                 seq = issue.seq[0] if issue.seq else issue.index
                 before = shadow.get(unit_id, {}).get(seq)
                 if before is None:
-                    for r in self.collect_align_rows().get(unit_id, []):
+                    for r in self._align_cache.get(unit_id, []):
                         if r["seq"] == seq:
                             before = r["tgt"]
                             break
@@ -143,6 +148,8 @@ class ReviewRun:
                 after = self.fixer.fix(before, issue.to_dict())
                 if after == before:
                     failed_fixes += 1
+                else:
+                    total_patched += 1
                 shadow.setdefault(unit_id, {})[seq] = after
                 round_patches.append(
                     Patch(
@@ -158,7 +165,7 @@ class ReviewRun:
 
             # 汇总影子
             shadow_rows = []
-            for unit_id, rows in self.collect_align_rows().items():
+            for unit_id, rows in self._align_cache.items():
                 for r in rows:
                     shadow_rows.append(
                         {"seq": r["seq"], "tgt": shadow.get(unit_id, {}).get(r["seq"], r["tgt"])}
@@ -194,6 +201,9 @@ class ReviewRun:
             atomic_write_json(self.dir / "shadow_overlay.json", shadow)
         result_json = {
             "issue_count": total_confirmed,
+            "g1_candidates": total_candidates,
+            "g2_confirmed": total_confirmed,
+            "g3_patched": total_patched,
             "termination": result.termination,
             "rounds": result.rounds,
         }
@@ -202,19 +212,20 @@ class ReviewRun:
             self.dir / "metadata.json",
             {"ts": self.ts, "clean_confirmations": clean_confirmations},
         )
-        self.store.save_qa(
-            {
-                "slug": self.store.load_publication().slug,
-                "g1_issues": total_confirmed,
-                "g3_termination": result.termination,
-                "g3_rounds": result.rounds,
-            }
-        )
         # 本轮用量增量只合并一次（run_id 幂等，重试/续跑不重复计费）
-        self.store.merge_usage(self.client.usage_summary(), run_id=self.ts)
-        for unit in self.store.load_publication().units:
-            if read_align(self.store.unit_align_path(unit.id)):
-                self.store.set_unit_status(unit.id, "reviewed")
+        self.store.merge_usage(self.client.usage_summary(), run_id=f"review-{self.ts}")
+        # 只有通过审校（clean_confirmed）才标 reviewed；未收敛保留 aligned 供人工处置
+        if result.termination == TERMINATION_CLEAN:
+            for unit in self.store.load_publication().units:
+                if read_align(self.store.unit_align_path(unit.id)):
+                    self.store.set_unit_status(unit.id, "reviewed")
+        else:
+            self.store.log_event(
+                "review_unresolved",
+                termination=result.termination,
+                rounds=result.rounds,
+                confirmed=total_confirmed,
+            )
         return result_json
 
 

@@ -16,6 +16,9 @@ def _render_markdown(title: str, segments) -> str:
     lines = [f"# {title}", ""]
     for s in segments:
         if s.kind == "heading":
+            if s.source.strip() == title.strip():
+                # 单元标题已在 # 行呈现，heading segment 不重复写入
+                continue
             lines.append(f"## {s.source}")
             lines.append("")
         else:

@@ -38,16 +38,16 @@ auto-epublizer init <input> [--reference <path...>]
 # 4. 解析（agent 理解：analysis/ 概要/全局/每单元/重点/术语表/人物表；网络检索写 references/web/）
 auto-epublizer analyze
 
-# 5. 翻译（读 analysis/，段落翻译返回句对，写 translation/ + align/ 对照表）
-auto-epublizer translate [--target zh-CN] [--bilingual]
+# 5. 翻译（读 analysis/，段落翻译返回句对，写 translation/ + align/ 对照表；默认跳过已完成单元）
+auto-epublizer translate [--target zh-CN] [--force]
 
-# 6. 审校（只读影子修订，六道关，产出质量报告）
+# 6. 审校（只读影子修订，G1–G3 收敛循环，写 reviews/review-<ts>/）
 auto-epublizer review
 
 # 7. 封装输出
 auto-epublizer build          # 纯译文 / 双语 EPUB → output/
 
-# 8. 质检
+# 8. 质检（G0 静态校验 + G4 审计 + G5 汇总放行 → report.json）
 auto-epublizer qa             # 结构审计 + epubcheck
 auto-epublizer status --json  # 查看进度/状态机
 ```

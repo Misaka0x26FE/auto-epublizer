@@ -136,3 +136,79 @@ def test_generate_report_epubcheck_error() -> None:
     )
     assert result.passed is False
     assert result.g4_epubcheck_errors == 2
+
+
+def test_generate_report_g5_release_fields() -> None:
+    """G5 聚合：g0_flags/g1_candidates/g2_confirmed/error_rate/released 字段齐全。"""
+    from auto_epublizer.qa import EpubcheckResult
+
+    audit = AuditResult(ok=True)
+    review = {
+        "issue_count": 1,
+        "g1_candidates": 3,
+        "g2_confirmed": 1,
+        "g3_patched": 1,
+        "termination": "clean_confirmed",
+        "rounds": 3,
+    }
+    result = generate_report(
+        "book",
+        audit,
+        EpubcheckResult(available=True, ran=True, errors=0, warnings=0),
+        review=review,
+        g0_flags=[{"unit": "ch01", "check": "length", "message": "译文为空", "data": {}}],
+        total_sentences=100,
+    )
+    assert result.g1_candidates == 3
+    assert result.g2_confirmed == 1
+    assert result.g3_patched == 1
+    assert result.g3_termination == "clean_confirmed"
+    assert result.total_sentences == 100
+    assert result.error_rate == 0.01
+    # G0 有告警不放行
+    assert result.released is False
+
+
+def test_generate_report_released_when_clean() -> None:
+    from auto_epublizer.qa import EpubcheckResult
+
+    audit = AuditResult(ok=True)
+    review = {
+        "g1_candidates": 0,
+        "g2_confirmed": 0,
+        "g3_patched": 0,
+        "termination": "clean_confirmed",
+        "rounds": 2,
+    }
+    result = generate_report(
+        "book",
+        audit,
+        EpubcheckResult(available=True, ran=True, errors=0, warnings=0),
+        review=review,
+        g0_flags=[],
+        total_sentences=50,
+    )
+    assert result.released is True
+
+
+def test_generate_report_unconfirmed_blocks_release() -> None:
+    """G2 确认未修订（patched < confirmed）→ 不放行。"""
+    from auto_epublizer.qa import EpubcheckResult
+
+    audit = AuditResult(ok=True)
+    review = {
+        "g1_candidates": 2,
+        "g2_confirmed": 2,
+        "g3_patched": 1,
+        "termination": "unresolved_fixes",
+        "rounds": 3,
+    }
+    result = generate_report(
+        "book",
+        audit,
+        EpubcheckResult(available=True, ran=True, errors=0, warnings=0),
+        review=review,
+        g0_flags=[],
+        total_sentences=50,
+    )
+    assert result.released is False

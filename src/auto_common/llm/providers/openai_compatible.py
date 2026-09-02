@@ -63,22 +63,24 @@ class OpenAICompatibleClient(LLMClient):
             headers["Authorization"] = f"Bearer {self._api_key}"
 
         def _call() -> httpx.Response:
-            return self._client.post(
+            response = self._client.post(
                 f"{self._base_url}/chat/completions",
                 json=payload,
                 headers=headers,
             )
-
-        response = with_retries(
-            _call,
-            max_retries=self._max_retries,
-            provider="openai-compatible",
-            tier=tier,
-            stage=stage,
-            emit=self._emit_event,
-        )
-        try:
+            # 在重试器内校验状态码：429/5xx 等瞬时错误由统一重试模块处理
             response.raise_for_status()
+            return response
+
+        try:
+            response = with_retries(
+                _call,
+                max_retries=self._max_retries,
+                provider="openai-compatible",
+                tier=tier,
+                stage=stage,
+                emit=self._emit_event,
+            )
         except httpx.HTTPStatusError as error:
             self._emit_event(
                 "llm_http_error",

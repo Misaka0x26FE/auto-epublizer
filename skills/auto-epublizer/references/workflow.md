@@ -40,8 +40,8 @@ auto-epublizer init <input> [--reference <path...>] [--target zh-CN] [--workspac
 # 分层理解（analysis/overview|global|units|keypoints + 术语播种 + 语言/体裁检测）
 auto-epublizer analyze [--workspace <dir>]
 
-# 翻译（读 analysis/，写 translation/ + align/ 句级对照表）
-auto-epublizer translate [--target zh-CN] [--bilingual] [--workspace <dir>]
+# 翻译（读 analysis/，写 translation/ + align/ 句级对照表；默认跳过已完成单元，--force 全部重译）
+auto-epublizer translate [--target zh-CN] [--force] [--workspace <dir>]
 
 # 审校（G0–G3，只读影子修订，写 reviews/review-<ts>/ + report.json）
 auto-epublizer review [--workspace <dir>]
@@ -69,8 +69,9 @@ auto-epublizer status --workspace <dir> --json
 #  "units":[{"id":"ch01","kind":"chapter","title":"...","status":"built"}, ...]}
 ```
 
-- 已完成单元（`built`/`reviewed`）可安全跳过；改术语/理解/解析后须覆盖受影响单元重跑后续阶段。
-- 每个 `translate` 批次、`review` 轮次都是断点；中断后同命令续跑。
+- 已完成单元（`translated`+）在 `translate` 时默认跳过（断点续跑不重复计费）；改术语/理解/解析后
+  须 `--force` 覆盖重译，并重跑受影响单元的后续阶段。
+- `translate` 中断后同命令重跑即可从断点续（已完成单元不再调用 LLM）。
 
 ## 故障排查
 

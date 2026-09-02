@@ -57,19 +57,30 @@ def _classify_title(title: str) -> tuple[str, str]:
 
 
 def classify_units(doc: SourceDocument) -> list[ClassifiedUnit]:
-    """把归一化单元归类为四层结构并分配稳定 ID。"""
+    """把归一化单元归类为四层结构并分配稳定 ID。
+
+    同类辅文出现多个时（如 Appendix A/B）自动加序号（back-appendix、back-appendix-2），
+    保证 unit_id 与 rel_path 全局唯一。
+    """
     result: list[ClassifiedUnit] = []
     chapter_no = 0
+    aux_counts: dict[tuple[str, str], int] = {}
     for unit in doc.units:
         region, kind = _classify_title(unit.title)
         if region == _REGION_COVER:
             unit_id, rel_path = "cover", "cover.md"
         elif region == _REGION_FRONT:
-            name = kind if kind != "toc" else "toc"
-            unit_id, rel_path = f"front-{name}", f"frontmatter/{name}.md"
+            aux_counts[(region, kind)] = aux_counts.get((region, kind), 0) + 1
+            n = aux_counts[(region, kind)]
+            suffix = "" if n == 1 else f"-{n}"
+            unit_id = f"front-{kind}{suffix}"
+            rel_path = f"frontmatter/{kind}{suffix}.md"
         elif region == _REGION_BACK:
-            name = kind
-            unit_id, rel_path = f"back-{name}", f"backmatter/{name}.md"
+            aux_counts[(region, kind)] = aux_counts.get((region, kind), 0) + 1
+            n = aux_counts[(region, kind)]
+            suffix = "" if n == 1 else f"-{n}"
+            unit_id = f"back-{kind}{suffix}"
+            rel_path = f"backmatter/{kind}{suffix}.md"
         else:
             chapter_no += 1
             unit_id = f"ch{chapter_no:02d}"

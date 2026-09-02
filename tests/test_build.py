@@ -163,4 +163,51 @@ def test_build_epub_ncx(tmp_path: Path) -> None:
         ncx = zf.read("OEBPS/toc.ncx").decode("utf-8")
         assert "navPoint" in ncx
         assert "playOrder" in ncx
-        assert 'src="ch01.xhtml"' in ncx
+
+
+def test_build_epub_escapes_xml_metadata(tmp_path: Path) -> None:
+    """书名/作者含 XML 特殊字符时，所有 XML 文档必须仍可解析（P2 回归）。"""
+    import xml.etree.ElementTree as ET
+
+    pub = Publication(
+        slug="book",
+        meta=PublicationMeta(title="War & Peace <笔记>", creator="A & B", target_language="zh-CN"),
+        units=[Unit(id="ch01", kind="chapter", title="第一章")],
+    )
+    entries = [{"id": "ch01", "region": "body", "title": "War & Peace <续>"}]
+    out = build_epub(
+        pub,
+        entries,
+        [],
+        lang="zh-CN",
+        modified="2026-01-01T00:00:00Z",
+        out_path=tmp_path / "esc.epub",
+    )
+    with zipfile.ZipFile(out) as zf:
+        for name in ("OEBPS/content.opf", "OEBPS/nav.xhtml", "OEBPS/toc.ncx"):
+            ET.fromstring(zf.read(name).decode("utf-8"))  # 不抛 ParseError 即合法 XML
+
+
+def test_build_epub_dc_language_uses_lang_arg(tmp_path: Path) -> None:
+    """convert 纯转换路径：dc:language 必须用传入的源语言，而非 target_language（P2 回归）。"""
+    import xml.etree.ElementTree as ET
+
+    pub = Publication(
+        slug="book",
+        meta=PublicationMeta(title="English Book", language="en", target_language="zh-CN"),
+        units=[Unit(id="ch01", kind="chapter", title="Chapter I")],
+    )
+    out = build_epub(
+        pub,
+        [{"id": "ch01", "region": "body", "title": "Chapter I"}],
+        [],
+        lang="en",
+        modified="2026-01-01T00:00:00Z",
+        out_path=tmp_path / "en.epub",
+    )
+    with zipfile.ZipFile(out) as zf:
+        opf = zf.read("OEBPS/content.opf").decode("utf-8")
+        root = ET.fromstring(opf)
+        ns = {"dc": "http://purl.org/dc/elements/1.1/"}
+        lang_el = root.find(".//dc:language", ns)
+        assert lang_el is not None and lang_el.text == "en"

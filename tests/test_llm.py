@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import time
 from typing import Any
 
 import pytest
@@ -229,6 +230,54 @@ def test_openai_compatible_options_passthrough() -> None:
 
 def test_fake_validate_credentials() -> None:
     FakeClient().validate_credentials()
+
+
+def test_openai_compatible_retries_http_429(monkeypatch) -> None:
+    """HTTP 429/5xx 必须进入统一重试（raise_for_status 在 with_retries 之内）。"""
+    import httpx
+
+    from auto_common.llm.providers.openai_compatible import OpenAICompatibleClient
+
+    calls = {"n": 0}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls["n"] += 1
+        if calls["n"] < 3:
+            return httpx.Response(429, headers={"retry-after": "0"}, text="rate limited")
+        return httpx.Response(
+            200,
+            json={"choices": [{"message": {"content": "ok"}}], "usage": None},
+        )
+
+    client = OpenAICompatibleClient(
+        base_url="https://example.com", api_key="k", tiers={"strong": {"model": "m"}}
+    )
+    client._client = httpx.Client(transport=httpx.MockTransport(handler))
+    monkeypatch.setattr(time, "sleep", lambda _s: None)
+    assert client.complete([{"role": "user", "content": "hi"}]) == "ok"
+    assert calls["n"] == 3
+
+
+def test_openai_compatible_http_429_exhausted_raises(monkeypatch) -> None:
+    """重试耗尽后抛出含状态码的中文错误。"""
+    import httpx
+    import pytest
+
+    from auto_common.llm.providers.openai_compatible import OpenAICompatibleClient
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(429, headers={"retry-after": "0"}, text="rate limited")
+
+    client = OpenAICompatibleClient(
+        base_url="https://example.com",
+        api_key="k",
+        max_retries=1,
+        tiers={"strong": {"model": "m"}},
+    )
+    client._client = httpx.Client(transport=httpx.MockTransport(handler))
+    monkeypatch.setattr(time, "sleep", lambda _s: None)
+    with pytest.raises(RuntimeError, match="429"):
+        client.complete([{"role": "user", "content": "hi"}])
 
 
 def test_event_sink() -> None:

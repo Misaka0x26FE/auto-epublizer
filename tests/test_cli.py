@@ -30,6 +30,9 @@ def test_init_and_status(tmp_path: Path) -> None:
     _invoke("init", str(src), "--workspace", str(ws))
     result = _invoke("status", "--workspace", str(ws), "--json")
     assert '"slug": "book"' in result.output
+    # P0 回归：init 即完成四层结构拆分（CLI help 与文档承诺）
+    assert (ws / "book" / "structured" / "body" / "ch01.md").is_file()
+    assert '"status": "split"' in result.output
 
 
 def test_convert_end_to_end(tmp_path: Path) -> None:
