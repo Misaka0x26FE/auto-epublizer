@@ -78,5 +78,7 @@ auto-epublizer review ...   # 输出：issue=N 收敛=<termination> 轮次=<roun
 | 差错率 | `confirmed_issues / 总句数 ≤ 1e-4` |
 | epubcheck | 0 error |
 
-> 当前实现说明：G0 纯函数已具备（`auto_translator.review.g0`），但未在 `translate` 后自动触发；
-> 如需 G0 校验请另行调用对应函数。G1–G3 由 `review` 命令驱动；G4 由 `qa` 命令驱动。
+> 当前实现说明：G0 在 `qa` 命令中对全部已对齐单元自动执行（告警进 `report.json.g0_flags`，
+> 有告警则不放行）；G1–G3 由 `review` 命令驱动；G4 由 `qa` 命令驱动；G5 由 `qa` 聚合
+> G0–G4 写 `report.json`（含 `error_rate`/`released` 放行判定）。协议违例（G1 缺
+> `complete:true`、翻译句对数量不符）会整批重试 2 次后报错。

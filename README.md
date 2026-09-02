@@ -421,12 +421,12 @@ source,target,type,aliases,gender,reading,status,note
 
 ```bash
 # ── 完整翻译管线 ─────────────────────────────────────────────
-auto-epublizer init <input> [--reference <path...>]   # 建工作区：source/ + structured/ + publication.json
+auto-epublizer init <input> [--reference <path...>]   # 建工作区：source/ + structured/ 四层拆分 + publication.json
 auto-epublizer analyze                                # 生成 analysis/ + references/web/ 检索
-auto-epublizer translate [--target zh-CN] [--bilingual] [--no-build]
-auto-epublizer review [--autofix]                     # 审校（只读影子修订）
+auto-epublizer translate [--target zh-CN] [--force]   # 默认跳过已完成单元（断点续跑）
+auto-epublizer review                                 # 审校（只读影子修订）
 auto-epublizer build                                  # 封装 EPUB（纯译文 / 双语）
-auto-epublizer qa                                     # 结构审计 + epubcheck
+auto-epublizer qa                                     # 结构审计 + epubcheck + G5 放行判定（report.json）
 
 # ── 仅转换（不翻译）─────────────────────────────────────────
 # convert = init(ingest + structure) + build 的快捷路径，跳过 analyze/translate/review

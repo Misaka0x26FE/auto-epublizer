@@ -58,6 +58,26 @@ def test_classify_toc() -> None:
     assert entries[0].rel_path == "frontmatter/toc.md"
 
 
+def test_classify_duplicate_aux_unit_ids_get_suffix() -> None:
+    """同类辅文出现多个时（如 Appendix A/B），unit_id 与 rel_path 不得冲突（P2 回归）。"""
+    doc = SourceDocument(
+        title="B",
+        units=[
+            _unit("附录 A", [_seg("附录 A 内容")], "appendix"),
+            _unit("附录 B", [_seg("附录 B 内容")], "appendix"),
+            _unit("附录 C", [_seg("附录 C 内容")], "appendix"),
+        ],
+    )
+    entries = classify_units(doc)
+    ids = [e.unit_id for e in entries]
+    paths = [e.rel_path for e in entries]
+    assert len(set(ids)) == 3, ids
+    assert len(set(paths)) == 3, paths
+    assert ids[0] == "back-appendix"
+    assert ids[1] == "back-appendix-2"
+    assert ids[2] == "back-appendix-3"
+
+
 def test_strip_page_numbers() -> None:
     segs = [_seg("正文1"), _seg("  12  "), _seg("正文2"), _seg("- 8 -")]
     out = strip_page_numbers(segs)

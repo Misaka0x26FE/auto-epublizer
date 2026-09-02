@@ -20,9 +20,12 @@ def test_full_pipeline(tmp_path: Path) -> None:
         encoding="utf-8",
     )
 
-    # 1. init + 结构落盘（convert 会顺便 build 源文 EPUB）
+    # 1. init：建工作区 + 四层结构拆分（P0 回归：init 后即有单元与 structured 文件）
     store = orch.init(str(src), workspace_dir=str(tmp_path / "ws"))
-    orch.convert(store)
+    pub = store.load_publication()
+    assert pub.units, "init 后必须有内容单元（四层结构拆分）"
+    assert (store.structured_dir / "body" / "ch01.md").is_file()
+    assert pub.units[0].status == "split"
 
     # 2. analyze：overview / global / unit / seed_terms / characters（novel）
     client = FakeClient()
@@ -64,8 +67,10 @@ def test_full_pipeline(tmp_path: Path) -> None:
         {
             "translations": [
                 ["第一章"],
-                ["在我年轻的时候，父亲给过我一些忠告。"],
-                ["每当你想批评别人时，记住那一点。"],
+                ["在我年轻还稚嫩的时候，我父亲给过我一番忠告。"],
+                [
+                    "每当你想要批评任何人的时候，都要记住，这世上并不是所有人都有你拥有的那些优越条件。"
+                ],
             ]
         }
     )
@@ -86,6 +91,25 @@ def test_full_pipeline(tmp_path: Path) -> None:
     report = orch.qa(store, epub_path=str(epub))
     assert report["g4_audit"] == "pass"
     assert store.load_publication().units[0].status == "built"
+
+    # 6. report.json 聚合 G0–G5（epubcheck jar 缺失时 released=False 属预期）
+    import json
+
+    report_json = json.loads((store.dir / "report.json").read_text(encoding="utf-8"))
+    assert report_json["g3_termination"] == "clean_confirmed"
+    assert report_json["g2_confirmed"] == 0
+    assert report_json["g1_candidates"] == 0
+    assert report_json["g0_flags"] == []
+    assert report_json["total_sentences"] == 3
+    assert report_json["released"] is False  # epubcheck 未运行，不放行
+    assert report_json["error_rate"] == 0.0
+
+    # 7. usage.json 覆盖 analyze/translate/review 三个阶段（各自 run_id 幂等合并）
+    usage = json.loads((store.dir / "usage.json").read_text(encoding="utf-8"))
+    assert "analyze" in "".join(usage.get("merged_runs", []))
+    assert "translate" in "".join(usage.get("merged_runs", []))
+    assert "review" in "".join(usage.get("merged_runs", []))
+    assert usage["totals"]["calls"] > 0
 
     # 译文确实写入了 EPUB（含中文标题）
     import zipfile

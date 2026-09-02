@@ -97,3 +97,58 @@ def test_translate_writes_align(tmp_path: Path) -> None:
 
     tgt = store.translation_dir / "body" / "ch01.md"
     assert tgt.is_file()
+
+
+def test_translate_skips_completed_units(tmp_path: Path) -> None:
+    """已完成单元默认跳过（断点续跑不重复计费）；--force 强制重译。"""
+    store = _make_workspace(tmp_path)
+    client = FakeClient()
+    client.enqueue_json(
+        {
+            "translations": [
+                ["第一章"],
+                ["在我年轻的时候，父亲给过我忠告。"],
+                ["每当你想批评别人时，记住那一点。"],
+            ]
+        }
+    )
+    result = translate(store, client)
+    assert result == {"units": 1, "skipped": 0, "target_lang": "zh-CN"}
+
+    # 重跑：client 无脚本——若再次调用 LLM 会 RuntimeError；跳过则安静通过
+    result2 = translate(store, FakeClient())
+    assert result2 == {"units": 0, "skipped": 1, "target_lang": "zh-CN"}
+
+    # force：全部重译
+    client3 = FakeClient()
+    client3.enqueue_json(
+        {
+            "translations": [
+                ["第一章"],
+                ["在我年轻的时候，父亲给过我忠告。"],
+                ["每当你想批评别人时，记住那一点。"],
+            ]
+        }
+    )
+    result3 = translate(store, client3, force=True)
+    assert result3 == {"units": 1, "skipped": 0, "target_lang": "zh-CN"}
+
+
+def test_translate_count_mismatch_retries_batch(tmp_path: Path) -> None:
+    """translations 数量与输入段数不符时须整批重试，而非静默补空。"""
+    import pytest
+
+    from auto_translator.agents.translator import TranslatorAgent
+
+    client = FakeClient()
+    client.enqueue_json({"translations": [["只有一段。"]]})
+    client.enqueue_json({"translations": [["第一段。"], ["第二段。"]]})
+    agent = TranslatorAgent(client)
+    out = agent.translate_batch(["第一段源文。", "第二段源文。"])
+    assert out == [["第一段。"], ["第二段。"]]
+
+    bad = FakeClient()
+    for _ in range(3):
+        bad.enqueue_json({"translations": [["数量不符。"]]})
+    with pytest.raises(RuntimeError, match="协议违例"):
+        TranslatorAgent(bad).translate_batch(["a.", "b."])

@@ -215,4 +215,10 @@ def analyze(store: RunStore, client: LLMClient, *, tier: str = "cheap") -> dict[
         store.set_unit_status(u["id"], "analyzed")
     store.log_event("analysis_saved", has_analysis=True, units=len(units), lang=lang, genre=genre)
 
+    # 用量账本：一次运行增量只合并一次（run_id 幂等）
+    from datetime import datetime
+
+    run_id = f"analyze-{datetime.now().astimezone().strftime('%Y%m%dT%H%M%S')}"
+    store.merge_usage(client.usage_summary(), run_id=run_id)
+
     return {"language": lang, "genre": genre, "units": len(units), "terms_seeded": len(seeds)}

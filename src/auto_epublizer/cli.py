@@ -137,7 +137,7 @@ def analyze(
 def translate(
     workspace: str | None = typer.Option(None, "--workspace", help="工作区目录"),
     target: str | None = typer.Option(None, "--target", help="目标语言"),
-    bilingual: bool = typer.Option(False, "--bilingual", help="产出双语对照"),
+    force: bool = typer.Option(False, "--force", help="强制重译（默认跳过已完成单元，断点续跑）"),
     config: str | None = typer.Option(None, "--config", help="配置文件路径"),
 ) -> None:
     """翻译（读 analysis/，写 translation/ + align/ 对照表）。"""
@@ -145,11 +145,12 @@ def translate(
     store = _store_from(workspace, cfg)
     client = orch.make_client(cfg)
     try:
-        result = orch.translate(store, client, target_language=target, bilingual=bilingual)
+        result = orch.translate(store, client, target_language=target, force=force)
     except (ValueError, OSError, orch.OrchestrationError) as e:
         raise typer.Exit(f"翻译失败：{e}") from None
+    skipped = f" 跳过={result['skipped']}" if result.get("skipped") else ""
     console.print(
-        f"[green]翻译完成：[/green]单元={result['units']} 目标语言={result['target_lang']}"
+        f"[green]翻译完成：[/green]单元={result['units']}{skipped} 目标语言={result['target_lang']}"
     )
 
 
@@ -195,17 +196,23 @@ def qa(
     epub: str | None = typer.Option(None, "--epub", help="待检 EPUB 路径"),
     config: str | None = typer.Option(None, "--config", help="配置文件路径"),
 ) -> None:
-    """结构审计 + epubcheck（写 report.json）。"""
+    """结构审计 + epubcheck（写 report.json，聚合 G0–G5 放行判定）。"""
     cfg = load_config(config or _CONFIG_PATH)
     store = _store_from(workspace, cfg)
     try:
-        report = orch.qa(store, epub_path=epub)
+        report = orch.qa(store, epub_path=epub, config=cfg)
     except (ValueError, OSError, orch.OrchestrationError) as e:
         raise typer.Exit(f"质检失败：{e}") from None
     console.print(
         f"  G4 审计：{report['g4_audit']}；epubcheck errors：{report['g4_epubcheck_errors']}；"
         f"passed：{report['passed']}"
     )
+    console.print(
+        f"  G0 告警：{len(report['g0_flags'])}；G1 候选：{report['g1_candidates']}；"
+        f"G2 确认：{report['g2_confirmed']}（已修订 {report['g3_patched']}）；"
+        f"差错率：{report['error_rate']}"
+    )
+    console.print(f"  G5 放行：{'是' if report['released'] else '否'}")
 
 
 @app.command()

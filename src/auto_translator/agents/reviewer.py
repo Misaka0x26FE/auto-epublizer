@@ -17,11 +17,14 @@ _REVIEWER_SYSTEM = (
 
 
 class ReviewerAgent:
-    """G1 审校：返回候选 issue 列表（verdict 未定）。"""
+    """G1 审校：返回候选 issue 列表（verdict 未定）；协议违例整批重试。"""
 
-    def __init__(self, client: LLMClient, *, tier: str = "cheap") -> None:
+    def __init__(
+        self, client: LLMClient, *, tier: str = "cheap", max_output_retries: int = 2
+    ) -> None:
         self._client = client
         self._tier = tier
+        self._max_output_retries = max_output_retries
 
     def review_batch(
         self,
@@ -34,15 +37,16 @@ class ReviewerAgent:
             lines.append("术语表：" + "；".join(f"{s}={t}" for s, t in terms))
         for p in pairs:
             lines.append(f"[{p['seq']}] 源：{p['src']}\n    译：{p['tgt']}")
-        result = self._client.complete_json(
-            [
-                {"role": "system", "content": _REVIEWER_SYSTEM},
-                {"role": "user", "content": "\n\n".join(lines)},
-            ],
-            tier=self._tier,
-            stage="review",
+        messages = [
+            {"role": "system", "content": _REVIEWER_SYSTEM},
+            {"role": "user", "content": "\n\n".join(lines)},
+        ]
+        result: Any = None
+        for _ in range(self._max_output_retries + 1):
+            result = self._client.complete_json(messages, tier=self._tier, stage="review")
+            if isinstance(result, dict) and result.get("complete") is True:
+                return [i for i in result.get("issues", []) if isinstance(i, dict)]
+        raise RuntimeError(
+            f"审校输出协议违例（缺 reviewed_segments/complete:true），重试 "
+            f"{self._max_output_retries} 次后放弃"
         )
-        if not isinstance(result, dict) or result.get("complete") is not True:
-            raise RuntimeError("审校协议违例：缺少 reviewed_segments/complete:true")
-        issues = result.get("issues", [])
-        return [i for i in issues if isinstance(i, dict)]

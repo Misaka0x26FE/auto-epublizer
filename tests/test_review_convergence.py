@@ -103,3 +103,31 @@ def test_review_issue_fixed_then_clean(tmp_path: Path) -> None:
     assert result["termination"] == "clean_confirmed"
     assert result["rounds"] == 3
     assert result["issue_count"] == 1
+
+
+def test_review_protocol_violation_retries_batch(tmp_path: Path) -> None:
+    """G1 协议违例（缺 complete:true）须整批重试而非中断整个审校。"""
+    store = _workspace_with_alignment(tmp_path)
+    client = FakeClient()
+    # R1 第一次：违例输出；第二次：合法 clean
+    client.enqueue_json({"issues": [], "reviewed_segments": 2})
+    client.enqueue_json({"issues": [], "reviewed_segments": 2, "complete": True})
+    # R2：clean → clean_confirmed
+    client.enqueue_json({"issues": [], "reviewed_segments": 2, "complete": True})
+
+    result = review(store, client)
+    assert result["termination"] == "clean_confirmed"
+
+
+def test_review_protocol_violation_exhausted_raises(tmp_path: Path) -> None:
+    """连续协议违例耗尽重试次数后，须报明确中文错误。"""
+    import pytest
+
+    store = _workspace_with_alignment(tmp_path)
+    client = FakeClient()
+    client.enqueue_json({"issues": []})
+    client.enqueue_json({"issues": []})
+    client.enqueue_json({"issues": []})
+
+    with pytest.raises(RuntimeError, match="审校"):
+        review(store, client)
