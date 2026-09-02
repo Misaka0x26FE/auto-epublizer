@@ -8,9 +8,9 @@ venv/
 # uv
 .uv/
 
-# 构建产物
+# 构建产物（仅根目录，勿误伤 src/**/build/ 源码包）
 dist/
-build/
+/build/
 
 # 本地数据（每本书工作区、成品、术语库）
 output/
