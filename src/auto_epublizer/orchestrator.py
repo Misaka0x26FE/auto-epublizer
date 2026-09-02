@@ -9,13 +9,14 @@ from . import analysis as analysis_mod
 from . import review as review_mod
 from . import translation as translation_mod
 from .build import build_epub
-from .build.html import render_document, slug_file
+from .build.html import render_bilingual_document, render_document, slug_file
 from .config import Config
 from .ingest import load_document
 from .llm import create_client
 from .llm.base import LLMClient
 from .qa import audit_epub, generate_report, run_epubcheck
 from .structure import rebuild_structure, write_structured
+from .translation.align import read_align
 from .workspace import RunStore, init_workspace
 
 
@@ -121,13 +122,27 @@ def build(store: RunStore, *, bilingual: bool = False, output: str | None = None
     suffix = "-bi" if bilingual else ""
     out_path = Path(output) if output else store.output_dir / f"{pub.slug}{suffix}.epub"
     lang = pub.meta.target_language or "zh-CN"
+    src_lang = pub.meta.language or "und"
     content = []
     for e in entries:
         rel = e.get("rel_path")
-        tgt = store.translation_dir / rel if rel else None
-        src = store.structured_dir / rel if rel else None
-        md_path = tgt if (tgt and tgt.is_file()) else src
-        if not md_path or not md_path.is_file():
+        if not rel:
+            continue
+        if bilingual:
+            rows = read_align(store.unit_align_path(e["id"]))
+            if not rows:
+                continue
+            content.append(
+                (
+                    f"{slug_file(e['id'])}.xhtml",
+                    render_bilingual_document(e["title"], rows, lang_src=src_lang, lang_tgt=lang),
+                )
+            )
+            continue
+        tgt = store.translation_dir / rel
+        src = store.structured_dir / rel
+        md_path = tgt if tgt.is_file() else src
+        if not md_path.is_file():
             continue
         md_text = md_path.read_text(encoding="utf-8")
         content.append(
