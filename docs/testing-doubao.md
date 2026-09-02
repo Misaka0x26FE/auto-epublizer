@@ -214,7 +214,7 @@ uv run auto-epublizer init ~/books/legacy.pdf
 
 | 字段 | 含义 |
 |---|---|
-| `g0_flags[]` | 零 token 静态告警（长度比/空译文/术语缺失/seq 断号），有则不放行 |
+| `g0_flags[]` | 零 token 静态告警（长度比/空译文/术语缺失/seq 断号），advisory 线索不阻断放行（英→中长度比误报多，实测 994 条均为误报） |
 | `g1_candidates` / `g2_confirmed` / `g3_patched` | G1 候选 → G2 取证确认 → G3 实际修订数 |
 | `error_rate` | `g2_confirmed / 总句数` |
 | `g4_audit` / `g4_epubcheck_errors` | 解包审计 / epubcheck（-1=未运行） |
@@ -268,3 +268,50 @@ usage.json 的 totals 与 merged_runs 数
 | `审校输出协议违例` 反复出现 | 豆包模型 JSON 稳定性问题；换 strong 档模型再试，保留报文 |
 | pandoc 报错 | EPUB/DOCX 先转 PDF/TXT 兜底（`IngestError` 有中文提示） |
 | translate 中断 | 直接重跑同命令：已完成单元自动跳过（T2） |
+
+---
+
+## 9. 豆包环境实测记录（2026-09-02）
+
+> 本节为**豆包 APP 云容器**内真实执行本指南的实测结果与偏差，回填供后续迭代。
+> 测试对象：Baka-Tsuki《魔法禁书目录 GT 卷1》（英文，约 66,619 词，42 结构单元，13 张插图）。
+
+### 9.1 实测发现的问题与处置
+
+| # | 现象 | 根因 | 处置 |
+|---|---|---|---|
+| 1 | `uv run pytest` 收集期 4 个文件 ImportError；CLI 启动即 `ModuleNotFoundError: auto_epublizer.build` | 仓库**从未提交 `src/auto_epublizer/build/`**：`.gitignore` 的 `build/` 无锚定模式误伤源码目录 | 依测试与 QA 契约补齐 build 模块；**主仓已修复**（`585f3a2`：`build/` → `/build/` 并补推模块） |
+| 2 | `init`/`convert` 后 `structured/raw/media/` 为空，插图不进 EPUB | pandoc 对相对路径资源按 **cwd** 解析（非源文件目录） | `run_pandoc` 改 `cwd=源文件目录` + 绝对路径；**主仓已回移**（`d7a3e46`） |
+| 3 | pandoc 孤立图片段落输出占位语法 `[alt]{.image .placeholder …}`，标准正则匹配不到 | pandoc 固有行为 | `collect_media` 识别占位语法；**主仓已回移** |
+| 4 | MediaWiki 皮肤痕迹（`[]{#…}`、`[edit]`）导致 classify 误判 | pandoc 保留皮肤痕迹 | 预处理脚本 lxml 提取 `#mw-content-text` 深度清理（用户侧脚本，不入主仓） |
+| 5 | **容器无外部 LLM API**：无可用方舟 Key，`analyze` 报 401；部分外网（wikimedia）超时 | 环境限制 | 见 §9.2 |
+
+### 9.2 关键决策：翻译由 agent 主进程完成
+
+> 豆包环境无可用外部 LLM API，翻译流程由 **agent 主进程**完成：agent 读 `structured/`
+> → 自身能力翻译 → 写 `translation/`（镜像结构）+ `align/` 句级对照 → `build` → `qa`。
+> CLI 的 `analyze`/`translate`/`review` 在豆包容器内**不作为翻译主路径**；§2.3 的方舟配置
+> 降级为**可选分支**（有 Key 的环境仍可用）。
+
+### 9.3 Build 层缺陷（全量中文交付时发现）
+
+| # | 现象 | 处置 | 主仓状态 |
+|---|---|---|---|
+| 6 | 目录与页面标题显示英文（源文标题） | build/convert 优先取译文文件首个 `# ` 标题 | 已回移（`d7a3e46`） |
+| 7 | MediaWiki 容器 div 空壳单元混入目录 | 跳过无正文且标题占位的空壳单元 | 已回移 |
+| 8 | HTML `<img>`/`<figure>` 被整体转义、pandoc 缩略图二次转义 | `collect_media` 认 HTML 图片；`_PANDOC_LINKED_IMG` 归一 | 已回移 |
+
+### 9.4 质量校验结果
+
+- ch20 译文错位（漏译 1 段导致整体前移）由「对话引号连续性 + 图片段对齐」扫描发现并修复；全 42 单元复扫无错位。
+- 最终交付：41 spine 单元 + 13 图全量中文 EPUB，G4 审计 pass、差错率 0.0。
+- **G0 长度比告警 994 条均为误报**（英→中信息密度差）→ 主仓已修正放行逻辑（G0 告警为 advisory，不阻断 `released`）。
+- epubcheck 因容器无 jar 未跑（已知限制）。
+
+### 9.5 主仓回移状态（2026-09-02）
+
+| 修复 | 提交 |
+|---|---|
+| `.gitignore` 误伤 build 模块（P0） | `585f3a2` |
+| pandoc cwd / collect_media / 译文标题 / 空壳单元 / HTML 图片（P4/P5/P8/P9/P10） | `d7a3e46`（含 4 个新增回归测试） |
+| G0 告警不阻断放行（P12，对齐 AGENTS.md G5 契约） | 见 `git log -- qa/report.py` |
