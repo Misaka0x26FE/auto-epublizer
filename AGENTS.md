@@ -1,14 +1,15 @@
-# auto-epublizer 仓库指南（面向 coding agent）
+# auto-epublizer 仓库指南（面向开发/维护本项目的 coding agent）
 
-本文件是 agent 拿到本仓库后的唯一入口契约。按本文件即可完成：环境准备 → 配置 →
-建工作区 → 解析 → 翻译 → 审校 → 封装 → 质检 的完整流程。
+本文件是**维护本仓库代码**的 agent 的入口契约：讲清项目是什么、怎么实现、怎么验证。
 
-> 当前状态：方案设计阶段，源码尚未实现。本文件同时是"必须实现成什么样"的契约；
-> 实现时若子目录出现更具体的 `AGENTS.md`，以更深层文件为准。
+> 若你的任务是**用本 CLI 处理一本书**（翻译/转 EPUB），请改读 `skills/auto-epublizer/`——
+> 那是把设计翻译成「照抄就能干」步骤的可安装指引（见「skills/ 目录」）。
+
+> 本文件同时是"必须实现成什么样"的契约；若子目录出现更具体的 `AGENTS.md`，以更深层文件为准。
 
 ## 项目定位
 
-`auto-epublizer`（Python CLI，包名待定）提供两项能力、一条共用管线：
+`auto-epublizer`（Python CLI，三包 monorepo）提供两项能力、一条共用管线：
 
 1. **翻译**：外语文献 → 任意可配置目标语言。
 2. **转 EPUB**：来源复杂文件（PDF/扫描 PDF/EPUB/DOCX/HTML/TXT/Markdown）→ 标准 EPUB 3。
@@ -16,9 +17,11 @@
 - Python 3.12，包管理用 `uv`。
 - 翻译引擎为 OpenAI 兼容 API（`base_url`/`api_key`/`model` 多 profile）。
 - 工作区为 `publication.json` 权威索引 + 工作区目录（见下），不沿用旧 `split/` 流程。
-- 质量检验五道关，重点参考 wenyi（`trans_novel`）的 Review 体系。
+- 质量检验六道关（G0–G5），重点参考 wenyi（`trans_novel`）的 Review 体系。
 - **只负责交付质量**（准确 / 完整 / 一致 / 规范 / 结构正确 / 可复现），**不做内容的价值观 / 政治 / 思想性判断**。
-- **自包含**：全部智能环节由 CLI 内部调用 LLM API 完成；使用本项目的 agent 只需读文件、跑 shell、写文件，无需 MCP / 子代理。
+- **能力分工**：生成与初筛由 CLI 内部调用 LLM（`agents/` 包）完成；**内容理解、语义判断、
+  质量把关、术语裁决、修复决策**由使用本项目的 agent 用自身能力（读文件、判断、写文件）完成。
+  agent 只需基础能力，无需 MCP / 子代理。
 - **许可**：本项目自身代码采用 **AGPL-3.0**；第三方依赖保留各自许可证，并在 `THIRD_PARTY_LICENSES.md` 登记（AGPL 依赖可直接引入，与项目同许可兼容）。
 
 ## 处理一本著作的标准流程
@@ -38,7 +41,7 @@ auto-epublizer analyze
 # 5. 翻译（读 analysis/，段落翻译返回句对，写 translation/ + align/ 对照表）
 auto-epublizer translate [--target zh-CN] [--bilingual]
 
-# 6. 审校（只读影子修订，五道关，产出质量报告）
+# 6. 审校（只读影子修订，六道关，产出质量报告）
 auto-epublizer review
 
 # 7. 封装输出
@@ -50,6 +53,42 @@ auto-epublizer status --json  # 查看进度/状态机
 ```
 
 仅转换不翻译：`auto-epublizer convert <input> -o output/book.epub`。
+
+## skills/ 目录（面向下游 agent 的可安装指引）
+
+`skills/auto-epublizer/` 是**模块一**：把 `docs/` 里的设计翻译成「下游 agent 照抄就能完成
+一本书」的步骤。它与本文件（`AGENTS.md`）分工如下：
+
+| 文档 | 受众 | 回答的问题 |
+|---|---|---|
+| `AGENTS.md`（本文件） | 开发/维护本项目的 agent | 项目是什么、怎么实现、怎么验证 |
+| `skills/auto-epublizer/` | 使用本 CLI 处理一本书的 agent | 每一步怎么做、怎么判读结果、怎么修 |
+
+`skills/` 结构（纯文档，不写业务逻辑）：
+
+```text
+skills/auto-epublizer/
+├── SKILL.md               # 入口：按工作区状态路由（无 publication.json → 全新流程；有 → 续跑）
+├── manifest.json          # 元数据 + references 清单
+└── references/            # 分主题操作指引（按需只读当前阶段的一份）
+    ├── workflow.md        # 阶段路由 + 命令总览 + status --json 判读 + 故障排查
+    ├── ingest.md          # 文件解析（pandoc / PDF 按页切片 / OCR 兜底）
+    ├── structure.md       # 四层结构归类 + 清洗 + 溯源
+    ├── analysis.md        # 分层理解（overview/global/units/keypoints）+ 术语播种
+    ├── translation.md     # 切片翻译 + 句对齐 + 术语三态闭环
+    ├── review.md          # 六道关 QC 操作指引（G0–G5 何时跑、怎么看报告、怎么修）
+    ├── build.md           # EPUB 封装 + 确定性
+    ├── qa.md              # epubcheck + 解包审计
+    └── style.md           # 文体档案（novel/academic/paper/poetry/newspaper）+ langprofile
+```
+
+- 每个 reference 只覆盖一个阶段，SKILL.md 用「Route Before Acting」路由表让 agent 按当前
+  阶段只读一份，不一次加载全部。
+- 文档以**实际 CLI 能力**为准：未实现项（如 G0 自动接入、封面/脚注、网络检索、视觉 LLM 兜底）
+  显式标注「后续扩展点」，避免 agent 照未实现功能操作。
+- 安装：`scripts/install-skills.sh --target opencode` 复制到 agent 的 skills 目录。
+
+> 维护本仓库时，改了 CLI 命令/工作区契约/QC 行为，须同步更新对应 reference 与 SKILL.md 路由表。
 
 ## 工作区目录契约
 
@@ -92,22 +131,36 @@ auto-epublizer status --json  # 查看进度/状态机
 
 ## 架构边界
 
-依赖方向必须保持：
+三包 monorepo，依赖方向必须保持（`test_architecture_boundaries.py` 固定）：
 
 ```text
-CLI → Orchestrator（薄 façade）→ 领域服务（ingest/structure/analysis/translation/
-      review/build/qa）→ agents / llm / glossary / workspace(RunStore)
+auto_common（基础设施：config/llm/workspace）
+      ▲                        ▲
+auto_translator（翻译引擎：glossary/genre/agents/analysis/translation/review）
+      ▲
+auto_epublizer（转 EPUB + 编排：ingest/structure/build/qa + orchestrator/cli）
 ```
 
+逻辑分层（跨包不变）：
+
+```text
+CLI → Orchestrator（薄 façade）→ 领域服务 → agents / llm / glossary / workspace(RunStore)
+```
+
+- `auto_common` 是叶子，不得依赖 `auto_translator` / `auto_epublizer`。
+- `auto_translator` 只依赖 `auto_common`，不得依赖 `auto_epublizer`。
 - `orchestrator.py` 只装配与路由，不直接调用领域函数，不持有线程池。
 - 下层不得反向导入 orchestrator。
 - `agents/` 是**内部 LLM 调用服务**（翻译/审校/取证/仲裁/修订的提示词封装），不是子代理、也不是 MCP 服务；不得依赖编排、状态机或 RunStore。
 - 并发属于具体领域服务；结果必须按稳定原文序合并，不得让线程完成顺序改变输出。
 - 第三方依赖保留各自许可证并在 `THIRD_PARTY_LICENSES.md` 登记；AGPL 依赖可直接引入（项目自身为 AGPL）。
 
-**自包含约束**：整个管线（解析 → 分析 → 翻译 → 审校 → 封装 → 质检）由 CLI 内部直接调用
-OpenAI 兼容 API 完成。使用本项目的 agent 只需要**读文件、跑 shell 命令、写文件**这三种基础能力，
-**不要求 MCP、子代理或任何特殊工具**。
+**能力分工**：CLI 内部调用 OpenAI 兼容 API 完成**确定性触发的生成与初筛**——分析生成
+（`analysis/`）、术语播种、翻译（`translation/`）、审校报 issue（G1）、取证裁决（G2）、仲裁与
+影子修订（G3）。而**语义判断类工作由 agent 自身完成**：读 `analysis/`/`reviews/`/`report.json`
+理解内容、判读结果；术语冲突终局裁决（`glossary_conflicts.jsonl` → 写回 `glossary.csv`）；
+未收敛情形（`max_rounds`/`no_progress`/`unresolved_fixes`）的处置；源文勘误、复杂结构判断；
+修复与放行决策。agent 只需**读文件、跑 shell、写文件**三种基础能力，**不要求 MCP、子代理或任何特殊工具**。
 
 ## 状态与续跑不变量
 
@@ -118,13 +171,14 @@ OpenAI 兼容 API 完成。使用本项目的 agent 只需要**读文件、跑 s
 - 导出从一致快照读取；审校只能改影子译文，正式 segment 只有显式 Autofix 可改。
 - 用量账本追加式；一次审校增量只合并一次，重试/续跑不得重复计费。
 
-## 质量检验流程（五道关）
+## 质量检验流程（六道关）
 
 1. **零 token 廉价校验**：对照表完整性、句数一致、长度比异常（<0.30 / >3.0 / 空）、标点/术语命中纯函数。
 2. **逐批审校 Agent（cheap）**：missing/added/mistranslation/terminology/pronoun；宁缺毋滥；JSON 协议末尾必须 `reviewed_segments` + `complete:true`，违例整批重试。
 3. **证据取证 Agent Loop（strong）**：候选先取证再裁决，禁止假设未取得的上下文；术语库与影子修订都是待核验材料。
 4. **冲突仲裁 + 影子修订 + 盲复审**：跨块矛盾终局仲裁；Fixer 只在影子 overlay 改；下一轮盲审不传旧说明；连续 clean 确认或 max_rounds 收敛；振荡检测（摘要 SHA-256 循环）。
 5. **EPUB 结构 QA**：epubcheck 零 error + 解包逐项审计（mimetype 首位、manifest/spine/nav 解析、封面、lang、每章一个 h1、脚注双向跳转、无残留）。
+6. **交付验收**：汇总 G0–G4 生成 `report.json`（g0_flags/g1_issues/g2_confirmed/g3_termination/error_rate/released），放行条件为 `g2_confirmed == 0` 或全部已修订、`g4_epubcheck_errors == 0`、`g4_audit == "pass"`。
 
 ## 配置、密钥与 provider
 
