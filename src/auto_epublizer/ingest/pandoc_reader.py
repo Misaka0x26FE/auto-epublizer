@@ -26,9 +26,13 @@ def run_pandoc(
     """调用 pandoc 把文件转为 Markdown 纯文本并返回内容。"""
     if not pandoc_available():
         raise PandocError("未找到 pandoc；请安装 pandoc 或先把文件转为 PDF/TXT/Markdown")
-    cmd = ["pandoc", str(path), "-t", "markdown", "--wrap=none"]
+    # cwd 指向源文件所在目录：pandoc 对相对路径资源按 cwd 解析，否则子目录图片会
+    # 因「Could not fetch resource」被降级为占位（小说插图常见）。
+    abs_path = Path(path).resolve()
+    workdir = abs_path.parent
+    cmd = ["pandoc", str(abs_path), "-t", "markdown", "--wrap=none"]
     if media_dir is not None:
-        media_dir = Path(media_dir)
+        media_dir = Path(media_dir).resolve()
         media_dir.mkdir(parents=True, exist_ok=True)
         cmd.append(f"--extract-media={media_dir}")
     try:
@@ -38,6 +42,7 @@ def run_pandoc(
             text=True,
             encoding="utf-8",
             check=False,
+            cwd=workdir,
         )
     except OSError as e:
         raise PandocError(f"pandoc 执行失败：{e}") from e
