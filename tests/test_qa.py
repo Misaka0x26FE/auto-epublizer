@@ -165,8 +165,8 @@ def test_generate_report_g5_release_fields() -> None:
     assert result.g3_termination == "clean_confirmed"
     assert result.total_sentences == 100
     assert result.error_rate == 0.01
-    # G0 有告警不放行
-    assert result.released is False
+    # G0 告警是 advisory 线索，不阻断放行（豆包实测 P12：英→中长度比误报 994 条）
+    assert result.released is True
 
 
 def test_generate_report_released_when_clean() -> None:

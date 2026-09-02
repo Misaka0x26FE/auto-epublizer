@@ -63,11 +63,11 @@ def generate_report(
     flags = list(g0_flags or [])
     error_rate = (g2_confirmed / total_sentences) if total_sentences else 0.0
 
-    # 放行条件（对齐 AGENTS.md G5）：确认问题为零或全部已修订；epubcheck 零 error；审计通过
+    # 放行条件（对齐 AGENTS.md G5）：确认问题为零或全部已修订；epubcheck 零 error；审计通过。
+    # G0 告警是给 G1 的确定性线索（advisory），不作为放行硬条件——英→中等语言对
+    # 长度比天然偏低，实测会产生大量误报（豆包实测 994 条均为误报）。
     confirmed_resolved = g2_confirmed == 0 or g2_confirmed <= g3_patched
-    released = (
-        confirmed_resolved and epubcheck.ran and epubcheck.errors == 0 and audit.ok and not flags
-    )
+    released = confirmed_resolved and epubcheck.ran and epubcheck.errors == 0 and audit.ok
 
     return QaResult(
         slug=slug,
