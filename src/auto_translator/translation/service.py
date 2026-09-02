@@ -5,10 +5,11 @@ from __future__ import annotations
 import re
 from typing import Any
 
+from auto_common.llm.base import LLMClient
+from auto_common.workspace import RunStore
+
 from ..agents.translator import TranslatorAgent
 from ..glossary import Glossary, load_glossary_csv, terms_in_text
-from ..llm.base import LLMClient
-from ..workspace import RunStore
 from .align import align_rows, write_align
 from .slice import chunk_paragraphs
 

@@ -5,19 +5,20 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from . import analysis as analysis_mod
-from . import review as review_mod
-from . import translation as translation_mod
+from auto_common.config import Config
+from auto_common.llm import create_client
+from auto_common.llm.base import LLMClient
+from auto_common.workspace import RunStore, init_workspace
+from auto_translator import analysis as analysis_mod
+from auto_translator import review as review_mod
+from auto_translator import translation as translation_mod
+from auto_translator.translation.align import read_align
+
 from .build import build_epub
 from .build.html import render_bilingual_document, render_document, slug_file
-from .config import Config
 from .ingest import load_document
-from .llm import create_client
-from .llm.base import LLMClient
 from .qa import audit_epub, generate_report, run_epubcheck
 from .structure import rebuild_structure, write_structured
-from .translation.align import read_align
-from .workspace import RunStore, init_workspace
 
 
 class OrchestrationError(RuntimeError):

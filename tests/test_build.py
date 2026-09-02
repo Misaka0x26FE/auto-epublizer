@@ -5,6 +5,7 @@ from __future__ import annotations
 import zipfile
 from pathlib import Path
 
+from auto_common.workspace import Publication, PublicationMeta, Unit
 from auto_epublizer.build import build_epub
 from auto_epublizer.build.html import (
     markdown_to_xhtml,
@@ -12,7 +13,6 @@ from auto_epublizer.build.html import (
     render_document,
     slug_file,
 )
-from auto_epublizer.workspace import Publication, PublicationMeta, Unit
 
 
 def test_markdown_to_xhtml() -> None:

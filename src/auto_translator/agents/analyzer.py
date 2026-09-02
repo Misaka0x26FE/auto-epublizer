@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from ..llm.base import LLMClient
+from auto_common.llm.base import LLMClient
 
 _OVERVIEW_SYSTEM = (
     "你是资深文学编辑与翻译策划。通读以下原文，用中文写出全书内容概要，"

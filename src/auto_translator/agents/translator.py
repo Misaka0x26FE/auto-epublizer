@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from ..llm.base import LLMClient
+from auto_common.llm.base import LLMClient
 
 _TRANSLATOR_SYSTEM = (
     "你是专业文学/学术译者。将待译正文逐段翻译为目标语言，"

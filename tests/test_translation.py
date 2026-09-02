@@ -4,15 +4,15 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from auto_epublizer.llm.providers.fake import FakeClient
-from auto_epublizer.translation import (
+from auto_common.llm.providers.fake import FakeClient
+from auto_common.workspace import init_workspace
+from auto_translator.translation import (
     align_rows,
     chunk_paragraphs,
     split_paragraph,
     split_sentences,
     translate,
 )
-from auto_epublizer.workspace import init_workspace
 
 
 def test_split_paragraph_short() -> None:

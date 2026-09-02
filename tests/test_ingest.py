@@ -6,6 +6,7 @@ from pathlib import Path
 
 import pytest
 
+from auto_common.workspace import init_workspace
 from auto_epublizer.ingest import (
     KIND_HEADING,
     KIND_TEXT,
@@ -16,7 +17,6 @@ from auto_epublizer.ingest import (
 from auto_epublizer.ingest.ocr import FakeOcrBackend, create_ocr_backend
 from auto_epublizer.ingest.pandoc_reader import parse_markdown_units
 from auto_epublizer.ingest.text_reader import read_text
-from auto_epublizer.workspace import init_workspace
 
 
 def test_read_text_units(tmp_path: Path) -> None:

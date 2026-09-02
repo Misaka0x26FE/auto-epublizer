@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from ..llm.base import LLMClient
+from auto_common.llm.base import LLMClient
 
 _EVIDENCE_SYSTEM = (
     "你是翻译取证员。对候选问题，仅基于给定证据裁定 confirmed（确凿）或 dismissed（驳回），"

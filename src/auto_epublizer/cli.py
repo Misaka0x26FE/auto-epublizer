@@ -8,10 +8,11 @@ from pathlib import Path
 import typer
 from rich.console import Console
 
+from auto_common.config import load_config
+from auto_common.workspace import RunStore
+
 from . import __version__
 from . import orchestrator as orch
-from .config import load_config
-from .workspace import RunStore
 
 app = typer.Typer(help="auto-epublizer：翻译 + 转 EPUB 的 Python CLI")
 console = Console()
