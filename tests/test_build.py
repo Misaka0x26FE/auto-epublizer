@@ -211,3 +211,64 @@ def test_build_epub_dc_language_uses_lang_arg(tmp_path: Path) -> None:
         ns = {"dc": "http://purl.org/dc/elements/1.1/"}
         lang_el = root.find(".//dc:language", ns)
         assert lang_el is not None and lang_el.text == "en"
+
+
+def test_collect_media_rewrites_and_collects(tmp_path: Path) -> None:
+    """图片引用统一改写为 media/<basename> 并收集字节（豆包实测 P5/P10 回归）。"""
+    from auto_epublizer.build import collect_media
+
+    media_root = tmp_path / "raw" / "media"
+    media_root.mkdir(parents=True)
+    (media_root / "x.png").write_bytes(b"PNGDATA")
+
+    md = "前文\n\n![插图](raw/media/x.png)\n\n后文"
+    rewritten, files = collect_media(md, media_root)
+    assert "![插图](media/x.png)" in rewritten
+    assert files == [("media/x.png", b"PNGDATA")]
+
+    # pandoc 孤立图片占位语法 → 标准引用
+    md2 = '[alt]{.image .placeholder original-image-src="raw/media/x.png"}'
+    rewritten2, files2 = collect_media(md2, media_root)
+    assert "![alt](media/x.png)" in rewritten2
+    assert files2 == [("media/x.png", b"PNGDATA")]
+
+    # HTML <img>（含 figure/a 包裹）→ 标准引用
+    md3 = '<figure><a href="x"><img src="raw/media/x.png"/></a></figure>'
+    rewritten3, files3 = collect_media(md3, media_root)
+    assert "![](media/x.png)" in rewritten3
+
+    # 找不到的文件：引用被移除，避免悬空
+    rewritten4, files4 = collect_media("![nope](raw/media/missing.png)", media_root)
+    assert "![" not in rewritten4
+    assert files4 == []
+
+
+def test_markdown_to_xhtml_renders_img_and_blocks_dangerous_urls() -> None:
+    """media/ 图片渲染为 <img>；javascript:/data: 危险 URL 降级（豆包实测 P10 回归）。"""
+    out = markdown_to_xhtml("![插图](media/x.png)\n")
+    assert '<img src="media/x.png" alt="插图"/>' in out
+
+    out2 = markdown_to_xhtml("[点我](javascript:alert(1))\n")
+    assert "<a " not in out2
+    assert "点我" in out2
+
+
+def test_build_epub_embeds_media_files(tmp_path: Path) -> None:
+    """media_files 参数把图片字节写入包内并在 manifest 登记。"""
+    pub = _pub()
+    entries = [{"id": "ch01", "region": "body", "title": "第一章"}]
+    content = [("ch01.xhtml", render_document("第一章", "![图](media/x.png)\n", lang="zh-CN"))]
+    out = build_epub(
+        pub,
+        entries,
+        content,
+        lang="zh-CN",
+        modified="2026-01-01T00:00:00Z",
+        out_path=tmp_path / "m.epub",
+        media_files=[("media/x.png", b"PNGDATA")],
+    )
+    with zipfile.ZipFile(out) as zf:
+        assert zf.read("OEBPS/media/x.png") == b"PNGDATA"
+        opf = zf.read("OEBPS/content.opf").decode("utf-8")
+        assert "media/x.png" in opf
+        assert "image/png" in opf

@@ -1,65 +1,91 @@
-"""把结构化 Markdown 单元转成 XHTML 内容文档。"""
+"""XHTML 渲染：markdown → XHTML 正文、单页文档、双语文档、文件名 slug。
+
+本模块只做**确定性纯函数**渲染：给定 markdown / 对照行，产出完整 XHTML 字符串，
+不做任何网络或文件 IO。图片引用（``![](media/…)``）按传入路径原样保留为
+``<img src>``，由上层（orchestrator）负责把媒体字节收集进 EPUB。
+"""
 
 from __future__ import annotations
 
-import html
 import re
-from pathlib import Path
+from html import escape
 
-_HEADING = re.compile(r"^(#{1,6})\s+(.*)$")
+_HEADING_RE = re.compile(r"^(#{1,6})\s+(.*)$")
+_IMG_RE = re.compile(r"!\[([^\]]*)\]\(([^)]+)\)")
+# pandoc 的「缩略图链接图片」语法：
+#   [[![alt](src){attrs}](href "title"){.mw-file-description}]{typeof="mw:File"}
+# 归一为标准 markdown 图片（src 保留），避免内层 <img> 被外层链接二次转义。
+_PANDOC_LINKED_IMG = re.compile(r"\[\[!\[([^\]]*)\]\(([^)]+)\)[^\]]*\]\([^)]*\)[^\]]*\]\{[^}]*\}")
+_LINK_RE = re.compile(r"\[([^\]]+)\]\(([^)]+)\)")
+_BOLD_RE = re.compile(r"\*\*([^*]+)\*\*")
+_ITALIC_RE = re.compile(r"(?<!\*)\*([^*]+)\*(?!\*)")
+_CODE_RE = re.compile(r"`([^`]+)`")
+_DANGEROUS_URL = re.compile(r"^\s*(?:javascript|data|vbscript):", re.IGNORECASE)
 
 
-def _escape_text(text: str) -> str:
-    return html.escape(text, quote=False)
+def _inline(text: str) -> str:
+    """行内 markdown → XHTML；危险 URL（javascript:/data:）降级为纯文本。"""
+
+    def _img(m: re.Match[str]) -> str:
+        alt, src = m.group(1), m.group(2).strip()
+        if _DANGEROUS_URL.match(src):
+            return ""
+        return f'<img src="{escape(src, quote=True)}" alt="{escape(alt, quote=True)}"/>'
+
+    def _link(m: re.Match[str]) -> str:
+        label, href = m.group(1), m.group(2).strip()
+        if _DANGEROUS_URL.match(href):
+            return escape(label)
+        return f'<a href="{escape(href, quote=True)}">{escape(label)}</a>'
+
+    text = _IMG_RE.sub(_img, text)
+    text = _LINK_RE.sub(_link, text)
+    text = _BOLD_RE.sub(r"<strong>\1</strong>", text)
+    text = _ITALIC_RE.sub(r"<em>\1</em>", text)
+    text = _CODE_RE.sub(r"<code>\1</code>", text)
+    return text
 
 
-def markdown_to_xhtml(md_text: str) -> str:
-    """把 Markdown（标题 + 段落）渲染为 XHTML body 片段。"""
+def markdown_to_xhtml(md: str) -> str:
+    """把 markdown 正文转换为 XHTML 片段（h1–h6 / p，文本统一转义）。"""
+    md = _PANDOC_LINKED_IMG.sub(lambda m: f"![{m.group(1)}]({m.group(2).strip()})", md)
     out: list[str] = []
-    for raw in md_text.splitlines():
-        stripped = raw.rstrip()
-        m = _HEADING.match(stripped)
+    for block in re.split(r"\n\s*\n", md):
+        block = block.strip("\n")
+        if not block.strip():
+            continue
+        lines = block.splitlines()
+        m = _HEADING_RE.match(lines[0])
         if m:
-            level = min(6, len(m.group(1)))
-            out.append(f"<h{level}>{_escape_text(m.group(2).strip())}</h{level}>")
-        elif stripped.strip():
-            out.append(f"<p>{_escape_text(stripped.strip())}</p>")
+            level = min(len(m.group(1)), 6)
+            out.append(f"<h{level}>{_inline(escape(m.group(2)))}</h{level}>")
+            rest = "\n".join(lines[1:]).strip()
+            if rest:
+                out.append(f"<p>{_inline(escape(rest))}</p>")
+        else:
+            out.append(f"<p>{_inline(escape(block))}</p>")
     return "\n".join(out)
 
 
-def render_document(
-    title: str,
-    md_text: str,
-    *,
-    lang: str,
-    epub_type: str = "bodymatter",
-) -> str:
-    """渲染完整 XHTML 内容文档。"""
-    body = markdown_to_xhtml(md_text)
-    return _wrap_xhtml(title, body, lang=lang, epub_type=epub_type)
-
-
-def _wrap_xhtml(
-    title: str,
-    body: str,
-    *,
-    lang: str,
-    epub_type: str = "bodymatter",
-) -> str:
+def _page(title: str, body: str, *, lang: str) -> str:
+    """组装一页完整 XHTML 文档（恰好一个 h1 位于 body 首行由调用方保证）。"""
     return (
         '<?xml version="1.0" encoding="utf-8"?>\n'
-        '<!DOCTYPE html>\n'
-        f'<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="{lang}" lang="{lang}" '
-        f'epub:prefix="epub: http://www.idpf.org/vocab/package/#">\n'
+        f'<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="{escape(lang, quote=True)}" '
+        f'lang="{escape(lang, quote=True)}">\n'
         "<head>\n"
         '<meta charset="utf-8"/>\n'
-        f"<title>{_escape_text(title)}</title>\n"
+        f"<title>{escape(title)}</title>\n"
         "</head>\n"
-        f'<body epub:type="{epub_type}">\n'
-        f"{body}\n"
-        "</body>\n"
+        f"<body>\n{body}\n</body>\n"
         "</html>\n"
     )
+
+
+def render_document(title: str, md_text: str, *, lang: str) -> str:
+    """渲染一页纯译文文档（md_text 为结构化单元 markdown）。"""
+    body = markdown_to_xhtml(md_text)
+    return _page(title, body, lang=lang)
 
 
 def render_bilingual_document(
@@ -70,35 +96,20 @@ def render_bilingual_document(
     lang_tgt: str,
     order: str = "target_first",
 ) -> str:
-    """按句级对照表渲染双语 XHTML（源/译交错，顺序由 order 决定）。"""
-    blocks: list[str] = []
+    """渲染一页双语对照文档：每句源/译段落上下交错，class=src/tgt。"""
+    pairs: list[str] = []
     for r in rows:
-        src = _escape_text(r.get("src", ""))
-        tgt = _escape_text(r.get("tgt", ""))
-        src_p = f'<p class="src" xml:lang="{lang_src}">{src}</p>'
-        tgt_p = f'<p class="tgt" xml:lang="{lang_tgt}">{tgt}</p>'
-        pair = f"{tgt_p}\n{src_p}" if order == "target_first" else f"{src_p}\n{tgt_p}"
-        blocks.append(pair)
-    body = "\n".join(blocks) if blocks else ""
-    return _wrap_xhtml(title, body, lang=lang_tgt)
+        src, tgt = r.get("src", ""), r.get("tgt", "")
+        if order == "target_first":
+            pairs.append(f'<p class="tgt" lang="{escape(lang_tgt, quote=True)}">{escape(tgt)}</p>')
+            pairs.append(f'<p class="src" lang="{escape(lang_src, quote=True)}">{escape(src)}</p>')
+        else:
+            pairs.append(f'<p class="src" lang="{escape(lang_src, quote=True)}">{escape(src)}</p>')
+            pairs.append(f'<p class="tgt" lang="{escape(lang_tgt, quote=True)}">{escape(tgt)}</p>')
+    return _page(title, "\n".join(pairs), lang=lang_tgt)
 
 
 def slug_file(unit_id: str) -> str:
-    """把单元 ID 转为安全文件名（稳定、ASCII）。"""
-    safe = re.sub(r"[^a-zA-Z0-9_-]", "-", unit_id)
-    return safe or "unit"
-
-
-def structured_to_content(
-    structured: Path,
-    unit_id: str,
-    *,
-    lang: str,
-    epub_type: str,
-) -> tuple[str, str]:
-    """读取 structured 单元 md 文件，返回 (filename, xhtml 内容)。"""
-    md_text = structured.read_text(encoding="utf-8")
-    title = Path(structured.stem).name
-    filename = f"{slug_file(unit_id)}.xhtml"
-    xhtml = render_document(title, md_text, lang=lang, epub_type=epub_type)
-    return filename, xhtml
+    """把稳定单元 ID 转成安全的文件名 slug（保留字母数字/连字符/下划线）。"""
+    slug = re.sub(r"[^A-Za-z0-9_-]+", "-", unit_id).strip("-")
+    return slug or "unit"

@@ -92,6 +92,15 @@ def test_full_pipeline(tmp_path: Path) -> None:
     assert report["g4_audit"] == "pass"
     assert store.load_publication().units[0].status == "built"
 
+    # 5b. build 的目录与页面标题取译文标题（豆包实测 P8 回归）
+    import zipfile
+
+    with zipfile.ZipFile(epub) as zf:
+        nav = zf.read("OEBPS/nav.xhtml").decode("utf-8")
+        ch = zf.read("OEBPS/ch01.xhtml").decode("utf-8")
+    assert "第一章" in nav and "Chapter I" not in nav
+    assert "<title>第一章</title>" in ch
+
     # 6. report.json 聚合 G0–G5（epubcheck jar 缺失时 released=False 属预期）
     import json
 
@@ -118,3 +127,18 @@ def test_full_pipeline(tmp_path: Path) -> None:
         body = zf.read("OEBPS/ch01.xhtml").decode("utf-8")
     assert "第一章" in body
     assert "忠告" in body
+
+
+def test_orchestrator_unit_heading_and_skip_empty() -> None:
+    """_unit_heading 提取译文标题；_skip_empty_unit 只剔除空壳单元（豆包 P8/P9 回归）。"""
+    from auto_epublizer.orchestrator import _skip_empty_unit, _unit_heading
+
+    assert _unit_heading("# 第一章 交织的百合\n\n正文") == "第一章 交织的百合"
+    assert _unit_heading("无标题正文") is None
+
+    # 空壳单元：标题为「正文」占位、内容仅容器标记
+    assert _skip_empty_unit("# 正文\n\n:::\n:::\n", "正文") is True
+    # 有正文段落：不跳过
+    assert _skip_empty_unit("# 正文\n\n实际段落。\n", "正文") is False
+    # 真实章节标题页（仅标题、无正文）：保留作目录锚点
+    assert _skip_empty_unit("# 第一章\n", "第一章") is False

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 from typing import Any
 
@@ -14,11 +15,38 @@ from auto_translator import review as review_mod
 from auto_translator import translation as translation_mod
 from auto_translator.translation.align import read_align
 
-from .build import build_epub
+from .build import build_epub, collect_media
 from .build.html import render_bilingual_document, render_document, slug_file
 from .ingest import load_document
 from .qa import audit_epub, generate_report, run_epubcheck
 from .structure import rebuild_structure, write_structured
+
+_HEADING_RE = re.compile(r"^(#{1,6})\s+(.*)$")
+
+
+def _unit_heading(md_text: str) -> str | None:
+    """提取单元 markdown 第一个 ATX 标题（无则返回 None）。"""
+    for line in md_text.splitlines():
+        m = _HEADING_RE.match(line)
+        if m:
+            return m.group(2).strip()
+    return None
+
+
+def _skip_empty_unit(md_text: str, fallback_title: str) -> bool:
+    """判断是否应跳过该单元：无正文段落且标题为占位（空 / 「正文」）。
+
+    有正文段落、或标题为真实章节标题（如「第一章：…」）的单元都保留——
+    后者即使没有正文，也作为目录导航锚点生成一个标题页。
+    只跳过 init 拆分产生的空壳单元（MediaWiki 容器 div：标题为「正文」占位、
+    内容仅容器标记 :::）。
+    """
+    title = (_unit_heading(md_text) or fallback_title or "").strip()
+    for line in md_text.splitlines():
+        s = line.strip()
+        if s and not s.startswith("#") and not s.startswith(":::"):
+            return False  # 有正文段落
+    return title in ("", "正文")
 
 
 class OrchestrationError(RuntimeError):
@@ -96,12 +124,22 @@ def convert(store: RunStore, *, output: str | None = None) -> Path:
     out_path = Path(output) if output else store.output_dir / f"{pub.slug}.epub"
     # convert 不翻译：正文是源语言，EPUB 语言标注须用源语言（未检测时为 und）。
     lang = pub.meta.language or "und"
+    media_root = store.structured_dir / "raw" / "media"
     content = []
+    media: dict[str, bytes] = {}
     for e in entries:
         structured = store.structured_dir / e["rel_path"]
         if not structured.is_file():
             continue
         md_text = structured.read_text(encoding="utf-8")
+        if _skip_empty_unit(md_text, e["title"]):
+            continue
+        heading = _unit_heading(md_text)
+        if heading:
+            e["title"] = heading
+        md_text, unit_media = collect_media(md_text, media_root)
+        for epub_path, data in unit_media:
+            media[epub_path] = data
         content.append(
             (
                 f"{slug_file(e['id'])}.xhtml",
@@ -115,6 +153,7 @@ def convert(store: RunStore, *, output: str | None = None) -> Path:
         lang=lang,
         modified="2026-01-01T00:00:00Z",
         out_path=out_path,
+        media_files=list(media.items()),
     )
     for e in entries:
         store.set_unit_status(e["id"], "built")
@@ -153,7 +192,9 @@ def build(store: RunStore, *, bilingual: bool = False, output: str | None = None
     out_path = Path(output) if output else store.output_dir / f"{pub.slug}{suffix}.epub"
     lang = pub.meta.target_language or "zh-CN"
     src_lang = pub.meta.language or "und"
+    media_root = store.structured_dir / "raw" / "media"
     content = []
+    media: dict[str, bytes] = {}
     for e in entries:
         rel = e.get("rel_path")
         if not rel:
@@ -162,6 +203,9 @@ def build(store: RunStore, *, bilingual: bool = False, output: str | None = None
             rows = read_align(store.unit_align_path(e["id"]))
             if not rows:
                 continue
+            heading = _unit_heading("\n".join(r.get("tgt", "") for r in rows))
+            if heading:
+                e["title"] = heading
             content.append(
                 (
                     f"{slug_file(e['id'])}.xhtml",
@@ -175,6 +219,14 @@ def build(store: RunStore, *, bilingual: bool = False, output: str | None = None
         if not md_path.is_file():
             continue
         md_text = md_path.read_text(encoding="utf-8")
+        if _skip_empty_unit(md_text, e["title"]):
+            continue
+        heading = _unit_heading(md_text)
+        if heading:
+            e["title"] = heading
+        md_text, unit_media = collect_media(md_text, media_root)
+        for epub_path, data in unit_media:
+            media[epub_path] = data
         content.append(
             (f"{slug_file(e['id'])}.xhtml", render_document(e["title"], md_text, lang=lang))
         )
@@ -185,6 +237,7 @@ def build(store: RunStore, *, bilingual: bool = False, output: str | None = None
         lang=lang,
         modified="2026-01-01T00:00:00Z",
         out_path=out_path,
+        media_files=list(media.items()),
     )
     for e in entries:
         store.set_unit_status(e["id"], "built")
