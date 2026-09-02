@@ -1,0 +1,17 @@
+{
+  "suite_version": "0.1.0",
+  "minimum_cli_version": "0.1.0",
+  "skill": "auto-epublizer",
+  "workspace_model": "publication.json",
+  "references": [
+    "workflow",
+    "ingest",
+    "structure",
+    "analysis",
+    "translation",
+    "review",
+    "build",
+    "qa",
+    "style"
+  ]
+}
