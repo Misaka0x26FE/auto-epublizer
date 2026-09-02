@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from auto_common.workspace import Publication, PublicationMeta
 from auto_epublizer.build import build_epub
 from auto_epublizer.build.html import render_document
 from auto_epublizer.qa import (
@@ -12,7 +13,6 @@ from auto_epublizer.qa import (
     generate_report,
     run_epubcheck,
 )
-from auto_epublizer.workspace import Publication, PublicationMeta
 
 
 def _pub() -> Publication:

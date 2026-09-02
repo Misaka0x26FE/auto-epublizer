@@ -7,8 +7,8 @@ from pathlib import Path
 
 import pytest
 
-from auto_epublizer.config import Config
-from auto_epublizer.workspace import (
+from auto_common.config import Config
+from auto_common.workspace import (
     UNIT_STATES,
     InitError,
     Publication,
@@ -21,8 +21,8 @@ from auto_epublizer.workspace import (
     source_sha256,
     update_meta,
 )
-from auto_epublizer.workspace.models import SCHEMA_VERSION, Unit
-from auto_epublizer.workspace.store import SourceIdentityError
+from auto_common.workspace.models import SCHEMA_VERSION, Unit
+from auto_common.workspace.store import SourceIdentityError
 
 
 def test_slugify() -> None:

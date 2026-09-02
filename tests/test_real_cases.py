@@ -14,13 +14,13 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from auto_epublizer.glossary import (
+from auto_translator.glossary import (
     Glossary,
     GlossaryEntry,
     load_legacy_category_csv,
     terminology_hits,
 )
-from auto_epublizer.review import (
+from auto_translator.review import (
     apply_corrections,
     count_heading_levels,
     count_markers,

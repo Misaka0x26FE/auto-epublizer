@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from ..llm.base import LLMClient
+from auto_common.llm.base import LLMClient
 
 _REVIEWER_SYSTEM = (
     "你是严谨的双语审校。对照源句与译句，找出确凿的翻译问题。"

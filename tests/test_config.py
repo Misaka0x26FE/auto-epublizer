@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from auto_epublizer.config import Config, load_config
+from auto_common.config import Config, load_config
 
 
 def test_defaults() -> None:

@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+from auto_common.workspace import Publication, RunStore
+
 from ..ingest.models import SourceDocument
-from ..workspace import Publication, RunStore
 from .classify import classify_units, clean_unit
 
 

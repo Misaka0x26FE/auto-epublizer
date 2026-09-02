@@ -4,11 +4,11 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from auto_epublizer.llm.providers.fake import FakeClient
-from auto_epublizer.review.convergence import ConvergenceState, advance
-from auto_epublizer.review.service import review
-from auto_epublizer.translation import translate
-from auto_epublizer.workspace import init_workspace
+from auto_common.llm.providers.fake import FakeClient
+from auto_common.workspace import init_workspace
+from auto_translator.review.convergence import ConvergenceState, advance
+from auto_translator.review.service import review
+from auto_translator.translation import translate
 
 
 def test_convergence_clean_confirmed() -> None:

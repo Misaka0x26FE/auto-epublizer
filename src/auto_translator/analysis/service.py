@@ -14,6 +14,9 @@ from __future__ import annotations
 
 from typing import Any
 
+from auto_common.llm.base import LLMClient
+from auto_common.workspace import RunStore
+
 from ..agents.analyzer import AnalyzerAgent
 from ..genre.langprofile import get_langprofile
 from ..genre.profiles import get_profile
@@ -24,8 +27,6 @@ from ..glossary import (
     load_glossary_csv,
     save_glossary_csv,
 )
-from ..llm.base import LLMClient
-from ..workspace import RunStore
 from .detect import detect_genre, detect_language
 
 
@@ -207,7 +208,7 @@ def analyze(store: RunStore, client: LLMClient, *, tier: str = "cheap") -> dict[
                     )
 
     # 回填元数据 + 状态
-    from ..workspace import update_meta
+    from auto_common.workspace import update_meta
 
     update_meta(store, language=lang, genre=genre)
     for u in units:

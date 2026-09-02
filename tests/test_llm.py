@@ -6,13 +6,13 @@ from typing import Any
 
 import pytest
 
-from auto_epublizer.config import LLMConfig
-from auto_epublizer.llm import JsonParseError, create_client, parse_json_loose
-from auto_epublizer.llm.base import LLMClient
-from auto_epublizer.llm.providers.fake import FakeClient
-from auto_epublizer.llm.retrying import retry_reason, with_retries
-from auto_epublizer.llm.tiers import resolve_tier
-from auto_epublizer.llm.usage import merge_usage_summaries, usage_delta
+from auto_common.config import LLMConfig
+from auto_common.llm import JsonParseError, create_client, parse_json_loose
+from auto_common.llm.base import LLMClient
+from auto_common.llm.providers.fake import FakeClient
+from auto_common.llm.retrying import retry_reason, with_retries
+from auto_common.llm.tiers import resolve_tier
+from auto_common.llm.usage import merge_usage_summaries, usage_delta
 
 
 def test_fake_client_complete() -> None:
@@ -201,7 +201,7 @@ def test_openai_compatible_options_passthrough() -> None:
 
     import httpx
 
-    from auto_epublizer.llm.providers.openai_compatible import OpenAICompatibleClient
+    from auto_common.llm.providers.openai_compatible import OpenAICompatibleClient
 
     captured: dict[str, Any] = {}
 

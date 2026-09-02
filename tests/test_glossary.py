@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from auto_epublizer.glossary import (
+from auto_translator.glossary import (
     STATUS_CONFIRMED,
     STATUS_CONFLICT,
     STATUS_SEED,

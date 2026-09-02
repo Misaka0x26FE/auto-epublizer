@@ -4,7 +4,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from ..workspace import RunStore
+from auto_common.workspace import RunStore
+
 from .models import SourceDocument
 from .pandoc_reader import PandocError, read_pandoc
 from .pdf_reader import PdfError, read_pdf

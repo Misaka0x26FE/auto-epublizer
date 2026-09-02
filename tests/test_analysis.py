@@ -4,12 +4,12 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from auto_epublizer.analysis import detect_genre, detect_language
-from auto_epublizer.analysis.service import analyze, render_style_md
-from auto_epublizer.genre.langprofile import get_langprofile
-from auto_epublizer.genre.profiles import get_profile
-from auto_epublizer.llm.providers.fake import FakeClient
-from auto_epublizer.workspace import init_workspace
+from auto_common.llm.providers.fake import FakeClient
+from auto_common.workspace import init_workspace
+from auto_translator.analysis import detect_genre, detect_language
+from auto_translator.analysis.service import analyze, render_style_md
+from auto_translator.genre.langprofile import get_langprofile
+from auto_translator.genre.profiles import get_profile
 
 
 def test_detect_language() -> None:

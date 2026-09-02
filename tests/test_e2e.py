@@ -8,8 +8,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from auto_common.llm.providers.fake import FakeClient
 from auto_epublizer import orchestrator as orch
-from auto_epublizer.llm.providers.fake import FakeClient
 
 
 def test_full_pipeline(tmp_path: Path) -> None:

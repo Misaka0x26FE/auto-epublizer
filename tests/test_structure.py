@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from auto_common.workspace import Publication, PublicationMeta, RunStore, init_workspace
 from auto_epublizer.ingest.models import SourceDocument, SourceSegment, SourceUnit
 from auto_epublizer.structure import (
     classify_units,
@@ -12,7 +13,6 @@ from auto_epublizer.structure import (
     strip_page_numbers,
     write_structured,
 )
-from auto_epublizer.workspace import Publication, PublicationMeta, RunStore, init_workspace
 
 
 def _unit(title: str, segments: list[SourceSegment], kind: str = "chapter") -> SourceUnit:

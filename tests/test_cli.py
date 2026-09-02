@@ -6,8 +6,8 @@ from pathlib import Path
 
 from typer.testing import CliRunner
 
+from auto_common.llm.providers.fake import FakeClient
 from auto_epublizer.cli import app
-from auto_epublizer.llm.providers.fake import FakeClient
 
 runner = CliRunner()
 

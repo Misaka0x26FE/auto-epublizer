@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from auto_epublizer.glossary import Glossary, GlossaryEntry
-from auto_epublizer.review import (
+from auto_translator.glossary import Glossary, GlossaryEntry
+from auto_translator.review import (
     check_alignment,
     count_footnote_refs,
     g0_unit_flags,
