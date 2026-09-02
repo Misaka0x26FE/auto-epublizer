@@ -6,7 +6,12 @@ import zipfile
 from pathlib import Path
 
 from auto_epublizer.build import build_epub
-from auto_epublizer.build.html import markdown_to_xhtml, render_document, slug_file
+from auto_epublizer.build.html import (
+    markdown_to_xhtml,
+    render_bilingual_document,
+    render_document,
+    slug_file,
+)
 from auto_epublizer.workspace import Publication, PublicationMeta, Unit
 
 
@@ -31,6 +36,25 @@ def test_render_document() -> None:
 def test_slug_file() -> None:
     assert slug_file("ch01") == "ch01"
     assert slug_file("front-titlepage") == "front-titlepage"
+
+
+def test_render_bilingual_document() -> None:
+    rows = [
+        {"seq": 1, "src": "Hello.", "tgt": "你好。"},
+        {"seq": 2, "src": "World.", "tgt": "世界。"},
+    ]
+    html = render_bilingual_document(
+        "T", rows, lang_src="en", lang_tgt="zh-CN", order="target_first"
+    )
+    assert 'xml:lang="zh-CN"' in html
+    assert 'class="src"' in html
+    assert 'class="tgt"' in html
+    assert html.index("你好。") < html.index("Hello.")
+    # source_first 顺序相反
+    html2 = render_bilingual_document(
+        "T", rows, lang_src="en", lang_tgt="zh-CN", order="source_first"
+    )
+    assert html2.index("Hello.") < html2.index("你好。")
 
 
 def _pub() -> Publication:

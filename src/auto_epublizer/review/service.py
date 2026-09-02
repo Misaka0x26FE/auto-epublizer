@@ -11,6 +11,7 @@ from typing import Any
 
 from ..agents.review_agents import ArbiterAgent, EvidenceAgent, FixerAgent
 from ..agents.reviewer import ReviewerAgent
+from ..glossary import Glossary, load_glossary_csv
 from ..llm.base import LLMClient
 from ..translation.align import read_align
 from ..workspace import RunStore, atomic_write_json
@@ -36,6 +37,35 @@ class ReviewRun:
         self.evidence = EvidenceAgent(client)
         self.arbiter = ArbiterAgent(client)
         self.fixer = FixerAgent(client)
+        self._glossary = Glossary(load_glossary_csv(store.analysis_dir / "glossary.csv"))
+        self._book_context = self._load_book_context()
+
+    def _load_book_context(self) -> str:
+        """读取分层理解产物作为 book_context（概览/全局/重点）。"""
+        parts: list[str] = []
+        for name in ("overview.md", "global.md", "keypoints.md"):
+            p = self.store.analysis_dir / name
+            if p.is_file():
+                parts.append(p.read_text(encoding="utf-8"))
+        return "\n\n".join(parts)
+
+    def _evidence_context(self, unit_id: str, seq: int) -> str:
+        """为取证组装只读证据：book_context + 术语 + 段落附近上下文。"""
+        parts: list[str] = []
+        if self._book_context:
+            parts.append(self._book_context)
+        unit_p = self.store.analysis_dir / "units" / f"{unit_id}.md"
+        if unit_p.is_file():
+            parts.append(unit_p.read_text(encoding="utf-8"))
+        # 段落附近上下文（含目标句的源/译）
+        rows = self.collect_align_rows().get(unit_id, [])
+        window = [r for r in rows if abs(r.get("seq", 0) - seq) <= 2]
+        if window:
+            parts.append(
+                "段落上下文：\n"
+                + "\n".join(f"[{r['seq']}] 源：{r['src']}\n    译：{r['tgt']}" for r in window)
+            )
+        return "\n\n".join(parts)
 
     def _write_round(
         self, n: int, issues: list[Issue], patches: list[Patch], summary: dict[str, Any]
@@ -85,9 +115,11 @@ class ReviewRun:
                         )
                         round_issues.append(issue)
 
-            # G2 取证裁决
+            # G2 取证裁决（注入只读证据）
             for issue in round_issues:
-                verdict = self.evidence.adjudicate(issue.to_dict(), context="")
+                seq = issue.seq[0] if issue.seq else issue.index
+                context = self._evidence_context(issue.chapter, seq)
+                verdict = self.evidence.adjudicate(issue.to_dict(), context=context)
                 if verdict.get("verdict") == VERDICT_CONFIRMED:
                     issue.verdict = VERDICT_CONFIRMED
                     total_confirmed += 1
@@ -177,6 +209,8 @@ class ReviewRun:
                 "g3_rounds": result.rounds,
             }
         )
+        # 本轮用量增量只合并一次（run_id 幂等，重试/续跑不重复计费）
+        self.store.merge_usage(self.client.usage_summary(), run_id=self.ts)
         for unit in self.store.load_publication().units:
             if read_align(self.store.unit_align_path(unit.id)):
                 self.store.set_unit_status(unit.id, "reviewed")

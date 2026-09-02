@@ -94,6 +94,22 @@ def test_load_document_pdf_no_text_raises(tmp_path: Path) -> None:
         load_document(pdf_path)
 
 
+def test_load_document_pdf_ocr_fallback(tmp_path: Path) -> None:
+    import fitz
+
+    from auto_epublizer.ingest.ocr import FakeOcrBackend
+
+    pdf_path = tmp_path / "scan.pdf"
+    pdf = fitz.open()
+    pdf.new_page()  # 无文字层
+    pdf.save(str(pdf_path))
+    pdf.close()
+
+    doc = load_document(pdf_path, ocr_backend=FakeOcrBackend(text="OCR 识别出的正文"))
+    assert doc.fmt == "pdf"
+    assert any("OCR 识别出的正文" in s.source for u in doc.units for s in u.segments)
+
+
 def test_fake_ocr_backend() -> None:
     backend = FakeOcrBackend(text="识别文本")
     assert backend.ocr_image("nope.png") == "识别文本"

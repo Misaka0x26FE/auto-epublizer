@@ -30,8 +30,12 @@ def load_document(
     source_path: str | Path,
     *,
     store: RunStore | None = None,
+    ocr_backend=None,
 ) -> SourceDocument:
-    """按扩展名读取源文件并归一化为 SourceDocument。"""
+    """按扩展名读取源文件并归一化为 SourceDocument。
+
+    ``ocr_backend``：扫描 PDF 无文字层时的 OCR 后端（None 则报错提示走 OCR）。
+    """
     path = Path(source_path)
     ext = path.suffix.lower()
     if ext not in _SUPPORTED:
@@ -45,7 +49,7 @@ def load_document(
         return read_text(str(path))
     if ext == ".pdf":
         try:
-            return read_pdf(path, raw_dir=raw_dir)
+            return read_pdf(path, raw_dir=raw_dir, ocr_backend=ocr_backend)
         except PdfError as e:
             raise IngestError(str(e)) from e
     # 非 PDF 走 pandoc
