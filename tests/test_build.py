@@ -129,7 +129,9 @@ def test_build_epub_frontmatter_landmarks(tmp_path: Path) -> None:
         {"id": "ch01", "region": "body", "title": "第一章"},
         {"id": "back-index", "region": "backmatter", "title": "索引"},
     ]
-    content_files = []
+    content_files = [
+        (f"{e['id']}.xhtml", render_document(e["title"], "正文。\n", lang="zh-CN")) for e in entries
+    ]
     out = build_epub(
         pub,
         entries,
@@ -151,10 +153,11 @@ def test_build_epub_ncx(tmp_path: Path) -> None:
         {"id": "ch01", "region": "body", "title": "第一章"},
         {"id": "ch02", "region": "body", "title": "第二章"},
     ]
+    content = [("ch01.xhtml", render_document("第一章", "正文一。\n", lang="zh-CN"))]
     out = build_epub(
         pub,
         entries,
-        [],
+        content,
         lang="zh-CN",
         modified="2026-01-01T00:00:00Z",
         out_path=tmp_path / "c.epub",
@@ -163,6 +166,9 @@ def test_build_epub_ncx(tmp_path: Path) -> None:
         ncx = zf.read("OEBPS/toc.ncx").decode("utf-8")
         assert "navPoint" in ncx
         assert "playOrder" in ncx
+        # 只引用实际生成的内容文档（ch02 未生成，不得出现在 NCX）
+        assert "ch02.xhtml" not in ncx
+        assert "ch01.xhtml" in ncx
 
 
 def test_build_epub_escapes_xml_metadata(tmp_path: Path) -> None:
@@ -214,7 +220,7 @@ def test_build_epub_dc_language_uses_lang_arg(tmp_path: Path) -> None:
 
 
 def test_collect_media_rewrites_and_collects(tmp_path: Path) -> None:
-    """图片引用统一改写为 media/<basename> 并收集字节（豆包实测 P5/P10 回归）。"""
+    """图片引用统一改写为 media/ 路径并收集字节（豆包实测 P5/P10 回归）。"""
     from auto_epublizer.build import collect_media
 
     media_root = tmp_path / "raw" / "media"
@@ -241,6 +247,31 @@ def test_collect_media_rewrites_and_collects(tmp_path: Path) -> None:
     rewritten4, files4 = collect_media("![nope](raw/media/missing.png)", media_root)
     assert "![" not in rewritten4
     assert files4 == []
+
+
+def test_collect_media_subdir_and_paren_paths(tmp_path: Path) -> None:
+    """子目录同名文件不得错配；含括号文件名不截断（本仓检测回归）。"""
+    from auto_epublizer.build import collect_media
+
+    media_root = tmp_path / "raw" / "media"
+    media_root.mkdir(parents=True)
+    (media_root / "x.png").write_bytes(b"TOP")
+    (media_root / "sub").mkdir()
+    (media_root / "sub" / "x.png").write_bytes(b"SUB")
+    (media_root / "a (1).png").write_bytes(b"PAREN")
+
+    # 1. 子目录引用：包内路径保留 sub/，字节取 sub 下的
+    out, files = collect_media("![x](sub/x.png)", media_root)
+    assert "![x](media/sub/x.png)" in out
+    assert ("media/sub/x.png", b"SUB") in files
+    # 顶层引用不受影响（同名不冲突）
+    out2, files2 = collect_media("![x](x.png)", media_root)
+    assert ("media/x.png", b"TOP") in files2
+
+    # 2. 括号文件名：引用不丢、字节收集到、href 百分号编码
+    out3, files3 = collect_media("![x](a (1).png)", media_root)
+    assert "![](media/a%20%281%29.png)" in out3 or "![x](media/a%20%281%29.png)" in out3
+    assert ("media/a (1).png", b"PAREN") in files3
 
 
 def test_markdown_to_xhtml_renders_img_and_blocks_dangerous_urls() -> None:
@@ -317,3 +348,27 @@ def test_build_epub_embeds_stylesheet(tmp_path: Path) -> None:
         assert "p.imgp" in css  # 图片段样式
         opf = zf.read("OEBPS/content.opf").decode("utf-8")
         assert 'href="style.css"' in opf and "text/css" in opf
+
+
+def test_build_epub_ncx_no_dangling_refs(tmp_path: Path) -> None:
+    """被跳过的空壳单元不得被 NCX/landmarks 引用（豆包实测 P9 引发的悬空引用回归）。"""
+    pub = _pub()
+    # 2 个 entries，但只有 ch01 生成了内容文件（ch02 是被 _skip_empty_unit 跳过的空壳）
+    entries = [
+        {"id": "ch01", "region": "body", "title": "第一章"},
+        {"id": "ch02", "region": "body", "title": "空壳"},
+    ]
+    content = [("ch01.xhtml", render_document("第一章", "正文。\n", lang="zh-CN"))]
+    out = build_epub(
+        pub,
+        entries,
+        content,
+        lang="zh-CN",
+        modified="2026-01-01T00:00:00Z",
+        out_path=tmp_path / "d.epub",
+    )
+    with zipfile.ZipFile(out) as zf:
+        assert "OEBPS/ch02.xhtml" not in zf.namelist()
+        for doc in ("OEBPS/toc.ncx", "OEBPS/landmarks.xhtml", "OEBPS/nav.xhtml"):
+            text = zf.read(doc).decode("utf-8")
+            assert "ch02.xhtml" not in text, f"{doc} 悬空引用 ch02.xhtml"

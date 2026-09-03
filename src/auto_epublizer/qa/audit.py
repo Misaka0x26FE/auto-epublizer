@@ -81,7 +81,7 @@ def audit_epub(path: str | Path) -> AuditResult:
             if full not in names:
                 result.add("error", "E_MANIFEST_HREF", f"manifest href 无法解析：{href}")
 
-        # 4. nav 链接可解析
+        # 4. nav / NCX / landmarks 链接可解析（引用不存在的文件即悬空）
         nav_entries = [n for n in names if n.endswith("nav.xhtml")]
         for nav in nav_entries:
             content = zf.read(nav).decode("utf-8")
@@ -89,6 +89,32 @@ def audit_epub(path: str | Path) -> AuditResult:
                 full = (Path(nav).parent / href).as_posix()
                 if full not in names:
                     result.add("error", "E_NAV_HREF", f"nav 链接无法解析：{href}")
+
+        for ncx in (n for n in names if n.endswith(".ncx")):
+            content = zf.read(ncx).decode("utf-8")
+            for src in re.findall(r'<content src="([^"]+)"', content):
+                full = (Path(ncx).parent / src).as_posix()
+                if full not in names:
+                    result.add("error", "E_NCX_HREF", f"NCX content src 无法解析：{src}")
+
+        for lm in (n for n in names if n.endswith("landmarks.xhtml")):
+            content = zf.read(lm).decode("utf-8")
+            for href in re.findall(r'href="([^"]+\.xhtml)"', content):
+                full = (Path(lm).parent / href).as_posix()
+                if full not in names:
+                    result.add("error", "E_LANDMARKS_HREF", f"landmarks 链接无法解析：{href}")
+
+        # 4b. 内容文档 <img src> 引用必须存在于包内（媒体悬空检测）
+        for name in names:
+            if not name.endswith(".xhtml"):
+                continue
+            content = zf.read(name).decode("utf-8")
+            for src in re.findall(r'<img\b[^>]*?src="([^"]+)"', content):
+                if _HTTPS.match(src):
+                    continue
+                full = (Path(name).parent / src).as_posix()
+                if full not in names:
+                    result.add("error", "E_IMG_SRC", f"img src 无法解析：{name} -> {src}")
 
         # 5. URL 安全：无 javascript:/data: 注入
         for name in names:
