@@ -49,7 +49,7 @@ def init(
 
 
 def structure_entries(store: RunStore) -> list[dict[str, Any]]:
-    """从 publication.units 构建构建期 entries。"""
+    """从 publication.units 构建构建期 entries（含目录层级 level）。"""
     pub = store.load_publication()
     return [
         {
@@ -57,6 +57,7 @@ def structure_entries(store: RunStore) -> list[dict[str, Any]]:
             "kind": u.kind,
             "region": (u.meta or {}).get("region", "body"),
             "title": u.title,
+            "level": int((u.meta or {}).get("level") or 1),
             "rel_path": (u.meta or {}).get("rel_path", ""),
         }
         for u in pub.units
@@ -151,10 +152,17 @@ def _render_and_pack(
     event: str,
     prefer_translation: bool,
 ) -> Path:
-    """构建内核（convert/build 共用）：渲染内容文档 + 收集媒体 + 打包 EPUB。"""
+    """构建内核（convert/build 共用）：渲染内容文档 + 收集媒体 + 打包 EPUB。
+
+    脚注语义化（epub-template-spec §6）：全书共享一个 FootnoteState，
+    ``[^label]`` 引用与定义渲染为标准弹窗注释（noteref/footnote），跨单元全局连续编号。
+    """
+    from .build.html import FootnoteState
+
     out_path = Path(output) if output else store.output_dir / f"{pub.slug}{suffix}.epub"
     src_lang = pub.meta.language or "und"
     media_root = store.structured_dir / "raw" / "media"
+    fn_state = FootnoteState()
     content = []
     media: dict[str, bytes] = {}
     for e in entries:
@@ -193,7 +201,16 @@ def _render_and_pack(
         for epub_path, data in unit_media:
             media[epub_path] = data
         content.append(
-            (f"{slug_file(e['id'])}.xhtml", render_document(e["title"], md_text, lang=lang))
+            (
+                f"{slug_file(e['id'])}.xhtml",
+                render_document(
+                    e["title"],
+                    md_text,
+                    lang=lang,
+                    unit_id=e["id"],
+                    fn_state=fn_state,
+                ),
+            )
         )
     build_epub(
         pub,

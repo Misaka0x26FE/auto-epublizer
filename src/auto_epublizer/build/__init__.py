@@ -36,41 +36,20 @@ _HTML_FIG_IMG = re.compile(
 )
 _HTML_IMG = re.compile(r"<img\b[^>]*?src=\"([^\"]+)\"[^>]*?/?>", re.DOTALL)
 
-# 内置基础样式：正文可读性（行距/段距/两端对齐）、标题居中、图片限宽居中。
+# 内置基础样式：仅功能性规则（epub-template-spec §4 呈现层）——
+# 字体/颜色/字号/行距/正文缩进/对齐一律不设，交由阅读器决定；
+# 有限个性化由主题层（P1 预置主题）提供。图片「只缩不放大居中」是功能性规则必须保留。
 _STYLE_CSS = """\
-body {
-  font-family: Georgia, \"Noto Serif CJK SC\", \"Source Han Serif SC\", serif;
-  line-height: 1.9;
-  margin: 4% 5%;
-}
-h1 {
-  text-align: center;
-  margin: 1.6em 0 1.2em;
-  font-size: 1.45em;
-  line-height: 1.5;
-}
-h2, h3, h4, h5, h6 {
-  text-align: center;
-  margin: 1.4em 0 1em;
-}
-p {
-  margin: 0 0 0.9em 0;
-  text-align: justify;
-  text-indent: 2em; /* 中文正文首行缩进两字 */
+img {
+  max-width: 100%;
+  height: auto;
 }
 p.imgp {
   text-indent: 0;
   text-align: center; /* 图片段居中、不缩进 */
 }
-img {
-  max-width: 100%;
-  height: auto;
-}
-strong {
-  font-weight: bold;
-}
-em {
-  font-style: italic;
+section.footnotes {
+  margin-top: 2em;
 }
 """
 
@@ -163,19 +142,62 @@ def _render_opf(
     return "\n".join(m)
 
 
+def _toc_depths(entries: list[dict[str, Any]]) -> list[int]:
+    """把单元标题层级（entry['level']，缺省 1）归一化为目录嵌套深度。
+
+    规则：首个单元为深度 1；层级递增 → 子级（跳级封顶为父级+1）；层级回落 → 回到
+    最近祖先的下一级。全平级时全部深度为 1（扁平目录）。
+    """
+    depths: list[int] = []
+    stack: list[int] = []
+    for e in entries:
+        lv = int(e.get("level") or 1)
+        while stack and stack[-1] >= lv:
+            stack.pop()
+        depths.append(len(stack) + 1)
+        stack.append(lv)
+    return depths
+
+
+def _toc_tree(entries: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """按嵌套深度把单元清单组织成目录树：[{entry, children: […]}]。"""
+    tree: list[dict[str, Any]] = []
+    stack: list[tuple[int, list[dict[str, Any]]]] = [(0, tree)]
+    for e, d in zip(entries, _toc_depths(entries), strict=False):
+        node: dict[str, Any] = {"entry": e, "children": []}
+        while stack and stack[-1][0] >= d:
+            stack.pop()
+        stack[-1][1].append(node)
+        stack.append((d, node["children"]))
+    return tree
+
+
+def _render_nav_items(nodes: list[dict[str, Any]]) -> str:
+    """递归渲染 nav 嵌套 <li>（含子级 <ol>）。"""
+    lis: list[str] = []
+    for node in nodes:
+        e = node["entry"]
+        href = f"{slug_file(e['id'])}.xhtml"
+        label = escape(e["title"] or e["id"])
+        if node["children"]:
+            lis.append(
+                f'      <li><a href="{href}">{label}</a>\n'
+                f"        <ol>\n{_render_nav_items(node['children'])}\n        </ol>\n"
+                f"      </li>"
+            )
+        else:
+            lis.append(f'      <li><a href="{href}">{label}</a></li>')
+    return "\n".join(lis)
+
+
 def _render_nav(
     pub: Publication,
     entries: list[dict[str, Any]],
     content_entries: list[dict[str, Any]],
     lang: str,
 ) -> str:
-    """渲染 EPUB 3 导航文档（nav.xhtml，epub:type=toc）。"""
-    items = []
-    for e in content_entries:
-        href = f"{slug_file(e['id'])}.xhtml"
-        items.append(
-            f'        <li><a href="{escape(href)}">{escape(e["title"] or e["id"])}</a></li>'
-        )
+    """渲染 EPUB 3 导航文档（nav.xhtml，epub:type=toc），层级按源文标题层级嵌套。"""
+    items = _render_nav_items(_toc_tree(content_entries))
     return (
         '<?xml version="1.0" encoding="utf-8"?>\n'
         f'<html xmlns="{_NS_XHTML}" xmlns:epub="{_NS_EPUB}" '
@@ -188,7 +210,7 @@ def _render_nav(
         f'<nav epub:type="toc" id="toc">\n'
         "  <h1>目录</h1>\n"
         "  <ol>\n"
-        f"{chr(10).join(items)}\n"
+        f"{items}\n"
         "  </ol>\n"
         "</nav>\n"
         "</body>\n"
@@ -196,30 +218,42 @@ def _render_nav(
     )
 
 
+def _render_ncx_points(nodes: list[dict[str, Any]], counter: list[int]) -> str:
+    """递归渲染 NCX 嵌套 <navPoint>（playOrder 按先序遍历连续编号）。"""
+    out: list[str] = []
+    for node in nodes:
+        counter[0] += 1
+        n = counter[0]
+        e = node["entry"]
+        href = f"{slug_file(e['id'])}.xhtml"
+        label = e["title"] or e["id"]
+        head = (
+            f'    <navPoint id="navpoint-{n}" playOrder="{n}">\n'
+            f"      <navLabel><text>{escape(label)}</text></navLabel>\n"
+            f'      <content src="{escape(href)}"/>'
+        )
+        if node["children"]:
+            out.append(f"{head}\n{_render_ncx_points(node['children'], counter)}\n    </navPoint>")
+        else:
+            out.append(f"{head}\n    </navPoint>")
+    return "\n".join(out)
+
+
 def _render_ncx(
     pub: Publication,
     content_entries: list[dict[str, Any]],
 ) -> str:
-    """渲染 NCX（toc.ncx，向后兼容）；只引用实际生成的内容文档，防悬空引用。"""
+    """渲染 NCX（toc.ncx，向后兼容）；层级嵌套，只引用实际生成的内容文档防悬空。"""
     uid = pub.slug
-    points = []
-    for order, e in enumerate(content_entries, start=1):
-        href = f"{slug_file(e['id'])}.xhtml"
-        label = e["title"] or e["id"]
-        points.append(
-            "    <navPoint id="
-            f'"navpoint-{order}" playOrder="{order}">\n'
-            f"      <navLabel><text>{escape(label)}</text></navLabel>\n"
-            f'      <content src="{escape(href)}"/>\n'
-            "    </navPoint>"
-        )
-    body = "\n".join(points)
+    depths = _toc_depths(content_entries)
+    depth = max(depths) if depths else 1
+    body = _render_ncx_points(_toc_tree(content_entries), [0]) or "    <!-- 无目录条目 -->"
     return (
         '<?xml version="1.0" encoding="utf-8"?>\n'
         '<ncx xmlns="http://www.daisy.org/z3986/2005/ncx/" version="2005-1">\n'
         "  <head>\n"
         f'    <meta name="dtb:uid" content="{escape(uid)}"/>\n'
-        '    <meta name="dtb:depth" content="1"/>\n'
+        f'    <meta name="dtb:depth" content="{depth}"/>\n'
         '    <meta name="dtb:totalPageCount" content="0"/>\n'
         '    <meta name="dtb:maxPageNumber" content="0"/>\n'
         "  </head>\n"

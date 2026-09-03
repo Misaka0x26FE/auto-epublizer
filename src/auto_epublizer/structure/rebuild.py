@@ -64,7 +64,11 @@ def _render_markdown(title: str, segments) -> str:
 
 
 def rebuild_structure(doc: SourceDocument, pub: Publication) -> list[dict]:
-    """清洗并归类单元，返回结构化单元清单（region/kind/unit_id/rel_path）。"""
+    """清洗并归类单元，返回结构化单元清单（region/kind/level/unit_id/rel_path）。
+
+    ``level`` 是源文件的标题层级（heading_level，缺省 1），用于 EPUB 目录层级渲染：
+    同级平铺、层级递增嵌套（ch 的 h2 子节嵌套在其下）。
+    """
     classified = classify_units(doc)
     entries: list[dict] = []
     for index, cls in enumerate(classified):
@@ -76,6 +80,7 @@ def rebuild_structure(doc: SourceDocument, pub: Publication) -> list[dict]:
                 "kind": cls.kind,
                 "region": cls.region,
                 "title": cleaned.title,
+                "level": int(cls.unit.meta.get("heading_level") or 1),
                 "rel_path": cls.rel_path,
             }
         )

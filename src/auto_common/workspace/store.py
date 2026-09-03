@@ -216,6 +216,8 @@ class RunStore:
                     meta["rel_path"] = u["rel_path"]
                 if u.get("region"):
                     meta["region"] = u["region"]
+                if u.get("level"):
+                    meta["level"] = int(u["level"])
                 status = prior.status if prior else STATUS_PENDING
                 pub.units.append(
                     Unit(id=u["id"], kind=u["kind"], title=u["title"], status=status, meta=meta)

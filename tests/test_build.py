@@ -328,7 +328,7 @@ def test_build_epub_embeds_media_files(tmp_path: Path) -> None:
 
 
 def test_build_epub_embeds_stylesheet(tmp_path: Path) -> None:
-    """内置 style.css 入包 + manifest 注册（豆包实测 P16 回归）。"""
+    """内置 style.css 入包 + manifest 注册；呈现层只留功能性样式（epub-template-spec §4）。"""
     pub = _pub()
     entries = [{"id": "ch01", "region": "body", "title": "第一章"}]
     content = [("ch01.xhtml", render_document("第一章", "正文。\n", lang="zh-CN"))]
@@ -344,8 +344,11 @@ def test_build_epub_embeds_stylesheet(tmp_path: Path) -> None:
         names = zf.namelist()
         assert "OEBPS/style.css" in names
         css = zf.read("OEBPS/style.css").decode("utf-8")
-        assert "text-indent: 2em" in css  # 中文首行缩进
-        assert "p.imgp" in css  # 图片段样式
+        # 功能性规则保留：图片只缩不放大、图片段居中
+        assert "max-width: 100%" in css and "p.imgp" in css
+        # 呈现层瘦身：字体/颜色/字号/行距/正文缩进/对齐一律不设，交阅读器
+        for banned in ("font-family", "font-size", "color:", "line-height", "text-align: justify"):
+            assert banned not in css, f"非功能性样式残留：{banned}"
         opf = zf.read("OEBPS/content.opf").decode("utf-8")
         assert 'href="style.css"' in opf and "text/css" in opf
 
