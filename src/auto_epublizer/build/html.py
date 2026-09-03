@@ -3,6 +3,11 @@
 本模块只做**确定性纯函数**渲染：给定 markdown / 对照行，产出完整 XHTML 字符串，
 不做任何网络或文件 IO。图片引用（``![](media/…)``）按传入路径原样保留为
 ``<img src>``，由上层（orchestrator）负责把媒体字节收集进 EPUB。
+
+脚注语义化（epub-template-spec §6）：pandoc 脚注语法 ``[^label]`` 引用 →
+``<a epub:type="noteref">``，``[^label]: 文本`` 定义 → 章末
+``<aside epub:type="footnote">``；编号经 ``FootnoteState`` 跨单元全局连续，
+注码/注释双向跳转。呈现样式不设（字体/颜色/字号交阅读器）。
 """
 
 from __future__ import annotations
@@ -21,11 +26,92 @@ _BOLD_RE = re.compile(r"\*\*([^*]+)\*\*")
 _ITALIC_RE = re.compile(r"(?<!\*)\*([^*]+)\*(?!\*)")
 _CODE_RE = re.compile(r"`([^`]+)`")
 _DANGEROUS_URL = re.compile(r"^\s*(?:javascript|data|vbscript):", re.IGNORECASE)
+# pandoc 脚注：行内引用 [^label]；定义块 [^label]: 文本（可带缩进续行）
+_FN_REF = re.compile(r"\[\^([^\]\s]+)\]")
+_FN_DEF = re.compile(r"^\[\^([^\]\s]+)\]:\s*(.*)$")
 # pandoc 从 MediaWiki 转出时的排版残留标记：
 # - 容器 div：`:::`、`::: gallerytext`、`::: {.thumb …}`、`-   ::: {…}`
 # - 纯反斜杠装饰行：`\`
 _CONTAINER_LINE = re.compile(r"^\s*-*\s*:+\s*(?:\{[^}]*\}|[a-zA-Z][a-zA-Z ]*)?\s*$")
 _SLASH_LINE = re.compile(r"^\s*\\\s*$")
+
+
+class FootnoteState:
+    """跨单元全局脚注编号器（构建期共享；按文中首次出现顺序连续编号）。"""
+
+    def __init__(self) -> None:
+        self._numbers: dict[tuple[str, str], int] = {}
+        self._next = 0
+
+    def number(self, unit_id: str, label: str) -> int:
+        """取（或分配）某单元某标签的全局序号。"""
+        key = (unit_id, label)
+        if key not in self._numbers:
+            self._next += 1
+            self._numbers[key] = self._next
+        return self._numbers[key]
+
+    def has(self, unit_id: str, label: str) -> bool:
+        return (unit_id, label) in self._numbers
+
+
+def _split_footnote_defs(md: str) -> tuple[str, dict[str, str]]:
+    """摘出脚注定义块，返回 (去掉定义的正文, {label: 定义文本})。
+
+    定义 = 匹配 ``[^label]: 文本`` 的行 + 随后非空续行（直到空行/下一定义/正文）。
+    """
+    defs: dict[str, str] = {}
+    body_lines: list[str] = []
+    current: str | None = None
+    for line in md.splitlines():
+        m = _FN_DEF.match(line)
+        if m:
+            current = m.group(1)
+            defs[current] = m.group(2).strip()
+            continue
+        if current is not None:
+            label = current
+            if line.strip() and not line.startswith("#"):
+                defs[label] = f"{defs[label]} {line.strip()}".strip()
+                continue
+            current = None
+            if not line.strip():
+                continue  # 定义块后的空行不进正文
+        body_lines.append(line)
+    return "\n".join(body_lines), defs
+
+
+def _substitute_noterefs(
+    xhtml: str, unit_id: str, defs: dict[str, str], fn_state: FootnoteState | None
+) -> str:
+    """把 XHTML 里的字面 ``[^label]`` 替换为 noteref 锚点（无定义则保留字面）。"""
+    if "^" not in xhtml:
+        return xhtml
+
+    def _sub(m: re.Match[str]) -> str:
+        label = m.group(1)
+        if label not in defs or fn_state is None:
+            return m.group(0)
+        n = fn_state.number(unit_id, label)
+        return (
+            f'<sup class="noteref"><a epub:type="noteref" id="ref-{n}" href="#fn-{n}">{n}</a></sup>'
+        )
+
+    return _FN_REF.sub(_sub, xhtml)
+
+
+def _render_footnote_section(items: list[tuple[int, str]]) -> str:
+    """渲染章末脚注区：``[(全局序号, 定义文本)]`` → aside（epub:type=footnote，带回链）。"""
+    asides: list[str] = []
+    for n, text in items:
+        body = _inline(escape(text))
+        asides.append(
+            f'<aside epub:type="footnote" id="fn-{n}" role="doc-footnote">'
+            f'<p>{body} <a epub:type="backlink" href="#ref-{n}">↩</a></p></aside>'
+        )
+    return (
+        '<section class="footnotes" epub:type="footnotes">\n' + "\n".join(asides) + "\n</section>"
+    )
 
 
 def _clean_pandoc_markers(md: str) -> str:
@@ -71,10 +157,28 @@ def _inline(text: str) -> str:
     return text
 
 
-def markdown_to_xhtml(md: str) -> str:
-    """把 markdown 正文转换为 XHTML 片段（h1–h6 / p，文本统一转义）。"""
+def markdown_to_xhtml(md: str, *, unit_id: str = "", fn_state: FootnoteState | None = None) -> str:
+    """把 markdown 正文转换为 XHTML 片段（h1–h6 / p，文本统一转义）。
+
+    ``unit_id`` + ``fn_state`` 提供时启用脚注语义化：``[^label]`` → noteref、
+    定义块 → 章末 aside，全局序号跨单元连续。
+    """
     md = _clean_pandoc_markers(md)
     md = _PANDOC_LINKED_IMG.sub(lambda m: f"![{m.group(1)}]({m.group(2).strip()})", md)
+    md, fn_defs = _split_footnote_defs(md)
+    fn_items: list[tuple[int, str]] = []
+    if fn_state is not None and fn_defs:
+        # 全局编号：先按正文引用出现顺序，再按定义顺序补漏（未被引用的定义也入列）
+        seen: set[str] = set()
+        for m in _FN_REF.finditer(md):
+            label = m.group(1)
+            if label in fn_defs and label not in seen:
+                seen.add(label)
+                fn_items.append((fn_state.number(unit_id, label), fn_defs[label]))
+        for label, text in fn_defs.items():
+            if label not in seen:
+                fn_items.append((fn_state.number(unit_id, label), text))
+        fn_items.sort(key=lambda t: t[0])
     out: list[str] = []
     for block in re.split(r"\n\s*\n", md):
         block = block.strip("\n")
@@ -94,6 +198,11 @@ def markdown_to_xhtml(md: str) -> str:
                 # 图片段落：不加首行缩进、居中（class=imgp 由 style.css 控制）
                 rendered = rendered.replace("<p>", '<p class="imgp">', 1)
             out.append(rendered)
+    if fn_state is not None and fn_defs:
+        body = "\n".join(out)
+        body = _substitute_noterefs(body, unit_id, fn_defs, fn_state)
+        body += "\n" + _render_footnote_section(fn_items)
+        return body
     return "\n".join(out)
 
 
@@ -101,7 +210,9 @@ def _page(title: str, body: str, *, lang: str) -> str:
     """组装一页完整 XHTML 文档（恰好一个 h1 位于 body 首行由调用方保证）。"""
     return (
         '<?xml version="1.0" encoding="utf-8"?>\n'
-        f'<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="{escape(lang, quote=True)}" '
+        '<html xmlns="http://www.w3.org/1999/xhtml" '
+        'xmlns:epub="http://www.idpf.org/2007/ops" '
+        f'xml:lang="{escape(lang, quote=True)}" '
         f'lang="{escape(lang, quote=True)}">\n'
         "<head>\n"
         '<meta charset="utf-8"/>\n'
@@ -113,9 +224,19 @@ def _page(title: str, body: str, *, lang: str) -> str:
     )
 
 
-def render_document(title: str, md_text: str, *, lang: str) -> str:
-    """渲染一页纯译文文档（md_text 为结构化单元 markdown）。"""
-    body = markdown_to_xhtml(md_text)
+def render_document(
+    title: str,
+    md_text: str,
+    *,
+    lang: str,
+    unit_id: str = "",
+    fn_state: FootnoteState | None = None,
+) -> str:
+    """渲染一页纯译文文档（md_text 为结构化单元 markdown）。
+
+    ``unit_id`` + ``fn_state`` 提供时启用脚注语义化（epub-template-spec §6）。
+    """
+    body = markdown_to_xhtml(md_text, unit_id=unit_id, fn_state=fn_state)
     return _page(title, body, lang=lang)
 
 
