@@ -130,15 +130,15 @@ def test_full_pipeline(tmp_path: Path) -> None:
 
 
 def test_orchestrator_unit_heading_and_skip_empty() -> None:
-    """_unit_heading 提取译文标题；_skip_empty_unit 只剔除空壳单元（豆包 P8/P9 回归）。"""
-    from auto_epublizer.orchestrator import _skip_empty_unit, _unit_heading
+    """unit_heading 提取译文标题；skip_empty_unit 只剔除空壳单元（豆包 P8/P9 回归）。"""
+    from auto_epublizer.structure import skip_empty_unit, unit_heading
 
-    assert _unit_heading("# 第一章 交织的百合\n\n正文") == "第一章 交织的百合"
-    assert _unit_heading("无标题正文") is None
+    assert unit_heading("# 第一章 交织的百合\n\n正文") == "第一章 交织的百合"
+    assert unit_heading("无标题正文") is None
 
     # 空壳单元：标题为「正文」占位、内容仅容器标记
-    assert _skip_empty_unit("# 正文\n\n:::\n:::\n", "正文") is True
+    assert skip_empty_unit("# 正文\n\n:::\n:::\n", "正文") is True
     # 有正文段落：不跳过
-    assert _skip_empty_unit("# 正文\n\n实际段落。\n", "正文") is False
+    assert skip_empty_unit("# 正文\n\n实际段落。\n", "正文") is False
     # 真实章节标题页（仅标题、无正文）：保留作目录锚点
-    assert _skip_empty_unit("# 第一章\n", "第一章") is False
+    assert skip_empty_unit("# 第一章\n", "第一章") is False

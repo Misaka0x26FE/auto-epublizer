@@ -38,15 +38,26 @@ def _parse_blocks(md_text: str) -> tuple[str, list[str]]:
 
 
 def _read_analysis(store: RunStore, unit_id: str) -> str:
-    """读取分层理解上下文（概览/全局/单元理解），缺省静默跳过。"""
+    """读取分层理解上下文（概览/全局/单元理解），缺省静默跳过。
+
+    来源优先级：analysis/（analyze 或 agent 直写）→ preprocessing/（agent 预处理产物）。
+    """
     parts: list[str] = []
     for name in ("overview.md", "global.md", "keypoints.md"):
         p = store.analysis_dir / name
         if p.is_file():
             parts.append(p.read_text(encoding="utf-8"))
+    if not parts:
+        pre_global = store.preprocessing_dir / "global.md"
+        if pre_global.is_file():
+            parts.append(pre_global.read_text(encoding="utf-8"))
     unit_p = store.analysis_dir / "units" / f"{unit_id}.md"
     if unit_p.is_file():
         parts.append(unit_p.read_text(encoding="utf-8"))
+    else:
+        pre_unit = store.preprocessing_dir / "units" / f"{unit_id}.md"
+        if pre_unit.is_file():
+            parts.append(pre_unit.read_text(encoding="utf-8"))
     return "\n\n".join(parts)
 
 

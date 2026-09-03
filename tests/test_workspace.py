@@ -255,3 +255,11 @@ def test_publication_units_persisted(tmp_path: Path) -> None:
     assert len(pub.units) == 1
     raw = json.loads(store.publication_path.read_text(encoding="utf-8"))
     assert raw["schema_version"] == SCHEMA_VERSION
+
+
+def test_skeleton_includes_preprocessing(tmp_path: Path) -> None:
+    """工作区骨架包含 preprocessing/（预处理事实层目录）。"""
+    store = RunStore(tmp_path / "ws")
+    store.ensure_skeleton()
+    assert (tmp_path / "ws" / "preprocessing").is_dir()
+    assert store.preprocessing_dir == tmp_path / "ws" / "preprocessing"

@@ -2,10 +2,46 @@
 
 from __future__ import annotations
 
+import re
+
 from auto_common.workspace import Publication, RunStore
 
 from ..ingest.models import SourceDocument
 from .classify import classify_units, clean_unit
+
+_HEADING_RE = re.compile(r"^(#{1,6})\s+(.*)$")
+
+
+def unit_heading(md_text: str) -> str | None:
+    """提取单元 markdown 第一个 ATX 标题（无则返回 None）。"""
+    for line in md_text.splitlines():
+        m = _HEADING_RE.match(line)
+        if m:
+            return m.group(2).strip()
+    return None
+
+
+def skip_empty_unit(md_text: str, fallback_title: str) -> bool:
+    """判断是否应跳过该单元：无正文段落且标题为占位（空 / 「正文」）。
+
+    有正文段落、或标题为真实章节标题（如「第一章：…」）的单元都保留——
+    后者即使没有正文，也作为目录导航锚点生成一个标题页。
+    只跳过 init 拆分产生的空壳单元（MediaWiki 容器 div：标题为「正文」占位、
+    内容仅容器标记 :::）。
+    """
+    title = (unit_heading(md_text) or fallback_title or "").strip()
+    for line in md_text.splitlines():
+        s = line.strip()
+        if s and not s.startswith("#") and not s.startswith(":::"):
+            return False  # 有正文段落
+    return title in ("", "正文")
+
+
+def count_empty_units(md_texts: list[str], fallback_titles: list[str]) -> int:
+    """统计空壳单元数量（体检用；确定性纯函数）。"""
+    return sum(
+        1 for md, t in zip(md_texts, fallback_titles, strict=False) if skip_empty_unit(md, t)
+    )
 
 
 class StructureError(RuntimeError):

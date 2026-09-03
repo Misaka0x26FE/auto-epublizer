@@ -226,6 +226,50 @@ def qa(
 
 
 @app.command()
+def preprocess(
+    input: str | None = typer.Argument(
+        None, help="源文件路径（新书：init + facts；省略则刷新已有工作区的 facts）"
+    ),
+    reference: list[str] | None = typer.Option(None, "--reference", help="参考材料（可多次）"),
+    target: str | None = typer.Option(None, "--target", help="目标语言（ISO 639-1）"),
+    workspace: str | None = typer.Option(None, "--workspace", help="工作区根目录"),
+    config: str | None = typer.Option(None, "--config", help="配置文件路径"),
+) -> None:
+    """预处理事实收集（零 token）：嗅探/元数据/TOC/体检/规模 → preprocessing/facts.*。
+
+    产出 facts.md 内含 agent 待办清单：方案决策（plan.md）、全局理解（global.md）、
+    章节理解（units/）、术语预提取（terms.csv）、风险标注（risks.md）、汇总（report.md）。
+    """
+    cfg = load_config(config or _CONFIG_PATH)
+    try:
+        if input:
+            store = orch.init(
+                input,
+                config=cfg,
+                target_language=target,
+                references=reference,
+                workspace_dir=workspace or cfg.paths.workspaces_dir,
+            )
+        else:
+            store = _store_from(workspace, cfg)
+        result = orch.preprocess(store, config=cfg)
+    except (ValueError, OSError, orch.OrchestrationError) as e:
+        raise typer.Exit(f"预处理失败：{e}") from None
+    facts = result["facts"]
+    src = facts["source"]
+    console.print(f"[green]预处理事实已生成：[/green]{result['facts_md']}")
+    console.print(
+        f"  类型={src.get('kind')} 单元={facts['structure']['totals']['units']} "
+        f"词={facts['structure']['totals']['words']} 句={facts['structure']['totals']['sentences']}"
+    )
+    for s in facts["suggestions"]:
+        console.print(f"  [yellow]提示：{s}[/yellow]")
+    console.print(
+        "  [dim]下一步：按 facts.md 的 agent 待办依次撰写 plan/global/units/terms/risks/report[/dim]"
+    )
+
+
+@app.command()
 def doctor(
     json_output: bool = typer.Option(False, "--json", help="输出 JSON 能力报告"),
     ping: bool = typer.Option(False, "--ping", help="实际请求 LLM 端点验证连通性（有超时风险）"),

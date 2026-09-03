@@ -115,6 +115,10 @@ class RunStore:
         return self.dir / "reviews"
 
     @property
+    def preprocessing_dir(self) -> Path:
+        return self.dir / "preprocessing"
+
+    @property
     def output_dir(self) -> Path:
         return self.dir / "output"
 
@@ -333,6 +337,7 @@ class RunStore:
             "references/user",
             "references/web",
             "reviews",
+            "preprocessing",
             "output",
         ):
             (self.dir / sub).mkdir(parents=True, exist_ok=True)
