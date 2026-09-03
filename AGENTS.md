@@ -22,6 +22,11 @@
 - **能力分工**：生成与初筛由 CLI 内部调用 LLM（`agents/` 包）完成；**内容理解、语义判断、
   质量把关、术语裁决、修复决策**由使用本项目的 agent 用自身能力（读文件、判断、写文件）完成。
   agent 只需基础能力，无需 MCP / 子代理。
+  完整判据（「同样输入必须得到同样输出 → Python，需理解/权衡/判断 → agent」）见
+  [docs/agent-vs-code.md](docs/agent-vs-code.md)。
+- **产物规范**：EPUB 形态规范（无样式模板 / 有限主题 / 标准弹窗注释）见
+  [docs/epub-template-spec.md](docs/epub-template-spec.md)；后处理验收与实现计划
+  （内容溯源 / 媒体 / 目录层级）见 [docs/postprocessing-spec.md](docs/postprocessing-spec.md)。
 - **许可**：本项目自身代码采用 **AGPL-3.0**；第三方依赖保留各自许可证，并在 `THIRD_PARTY_LICENSES.md` 登记（AGPL 依赖可直接引入，与项目同许可兼容）。
 
 ## 处理一本著作的标准流程
