@@ -15,19 +15,26 @@ class OcrBackend(Protocol):
 
 
 class RapidOcrBackend:
-    """RapidOCR 离线 OCR（可选 extra：rapidocr-onnxruntime）。"""
+    """RapidOCR 离线 OCR（可选 extra：rapidocr-onnxruntime）；引擎懒加载。"""
 
     def __init__(self) -> None:
         try:
-            from rapidocr_onnxruntime import RapidOCR
+            import rapidocr_onnxruntime  # noqa: F401
         except ImportError as e:  # pragma: no cover
             raise RuntimeError(
                 "未安装 rapidocr-onnxruntime；请安装 [ocr] extra 或配置视觉 LLM 兜底"
             ) from e
-        self._engine = RapidOCR()
+        self._engine = None
+
+    def _get_engine(self):
+        if self._engine is None:
+            from rapidocr_onnxruntime import RapidOCR
+
+            self._engine = RapidOCR()
+        return self._engine
 
     def ocr_image(self, image_path: str) -> str:
-        result, _ = self._engine(str(image_path))
+        result, _ = self._get_engine()(str(image_path))
         if not result:
             return ""
         return "\n".join(item[1] for item in result)

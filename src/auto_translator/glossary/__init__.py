@@ -8,8 +8,10 @@ from .csv_io import (
     load_glossary_csv,
     load_legacy_category_csv,
     normalize,
+    read_conflicts_jsonl,
     row_to_entry,
     save_glossary_csv,
+    write_conflicts_jsonl,
 )
 from .models import (
     GENDERS,
@@ -40,8 +42,10 @@ __all__ = [
     "load_glossary_csv",
     "load_legacy_category_csv",
     "normalize",
+    "read_conflicts_jsonl",
     "row_to_entry",
     "save_glossary_csv",
     "terminology_hits",
     "terms_in_text",
+    "write_conflicts_jsonl",
 ]

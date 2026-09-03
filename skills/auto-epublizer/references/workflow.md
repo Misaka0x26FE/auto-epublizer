@@ -4,12 +4,16 @@
 
 工作区是 `<workspaces_dir>/<book-slug>/`，权威索引是 `publication.json`。
 
+**开工前**：`auto-epublizer doctor --json` 自检环境（pandoc/pymupdf/OCR/epubcheck/LLM Key），
+并自报 multimodal（能否看图）——按 `references/ingest.md` 的能力-路由决策表选 ingest 路由。
+
 ```text
 无 publication.json               -> 全新流程：先 init
-有 publication.json              -> 续跑：status --json 看单元状态机
+有 publication.json              -> 续跑：status --json 看单元状态机（含产物-状态对账 stale 提示）
   单元 status 全 built           -> 已完成，跳过对应阶段
-  有 structured/ 无 analysis/    -> 从 analyze 续跑
-  有 analysis/ 无 translation/   -> 从 translate 续跑
+  有 structured/ 无 analysis/    -> 从 analyze 续跑（无 LLM Key 时 agent 自写 analysis/）
+  有 analysis/ 无 translation/   -> 从 translate 续跑（路径 A）或 agent 手写（路径 B）
+  有 translation/ 但 status 未推进（stale） -> 运行 import 登记
   有 translation/ 无 reviews/    -> 从 review 续跑
   有 output/*.epub               -> 已封装，qa 或重新 build
 ```
@@ -17,12 +21,14 @@
 ## 标准阶段
 
 ```text
-init  （建工作区 + 归一化 + 四层结构拆分）
-  -> analyze   （分层理解 + 术语播种 + 语言/体裁检测）
-  -> translate （切片翻译 + 句级对齐 align/）
-  -> review    （QC G0–G3，影子修订收敛）
+doctor（能力自检：工具链 + LLM 可用性 + 自报 multimodal）
+  -> init      （建工作区 + 归一化 + 四层结构拆分）
+  -> analyze   （分层理解 + 术语播种；无 LLM Key 时确定性降级，产物由 agent 补写）
+  -> 翻译      （路径 A：translate；路径 B：agent 手写后 import 登记）
+  -> g0        （静态校验，advisory）
+  -> review    （QC G1–G3，影子修订收敛；无 LLM 时 agent 自行审校）
   -> build     （EPUB 封装 -> output/）
-  -> qa        （epubcheck + 解包审计 -> report.json）
+  -> qa        （epubcheck + 解包审计 + G5 放行 -> report.json）
 ```
 
 仅转换不翻译（跳过 analyze/translate/review）：
@@ -34,28 +40,38 @@ convert <input>   -> 归一化 + 结构 + EPUB + QA
 ## 命令总览
 
 ```bash
+# 能力自检（开工前必做；multimodal 由 agent 自报补填）
+auto-epublizer doctor [--json] [--ping]
+
 # 建工作区并解析（source/ -> structured/ 四层结构；--reference 导入参考材料）
 auto-epublizer init <input> [--reference <path...>] [--target zh-CN] [--workspace <dir>]
 
-# 分层理解（analysis/overview|global|units|keypoints + 术语播种 + 语言/体裁检测）
+# 分层理解（LLM Key 可用时生成 overview/global/units/术语播种；无 Key 时确定性降级，
+# analysis/*.md 与术语表由 agent 撰写）
 auto-epublizer analyze [--workspace <dir>]
 
-# 翻译（读 analysis/，写 translation/ + align/ 句级对照表；默认跳过已完成单元，--force 全部重译）
+# 路径 A：CLI 内部翻译（读 analysis/，写 translation/ + align/）
 auto-epublizer translate [--target zh-CN] [--force] [--workspace <dir>]
 
-# 审校（G0–G3，只读影子修订，写 reviews/review-<ts>/ + report.json）
+# 路径 B：agent 手写翻译后的登记入口（G0 结构校验 + 状态推进 + 术语冲突外置）
+auto-epublizer import [--unit <id>] [--terms <csv>] [--workspace <dir>]
+
+# G0 零 token 静态校验（翻译/导入后立即跑，advisory 不阻断）
+auto-epublizer g0 [--unit <id>] [--workspace <dir>]
+
+# 审校（G1–G3，只读影子修订，写 reviews/review-<ts>/ + report.json）
 auto-epublizer review [--workspace <dir>]
 
 # 封装（译文缺省回退源文；--bilingual 产出 -bi.epub）
 auto-epublizer build [--bilingual] [-o <out.epub>] [--workspace <dir>]
 
-# 质检（epubcheck 零 error + 解包审计）
+# 质检（epubcheck 零 error + 解包审计 + G5 放行判定）
 auto-epublizer qa [--epub <path>] [--workspace <dir>]
 
 # 仅转换不翻译
 auto-epublizer convert <input> [-o <out.epub>] [--workspace <dir>]
 
-# 进度 / 状态机
+# 进度 / 状态机 / 产物-状态对账
 auto-epublizer status [--workspace <dir>] [--json]
 ```
 
@@ -66,12 +82,15 @@ auto-epublizer status [--workspace <dir>] [--json]
 ```bash
 auto-epublizer status --workspace <dir> --json
 # {"slug":"book","title":"...","target_language":"zh-CN","units_total":N,
-#  "units":[{"id":"ch01","kind":"chapter","title":"...","status":"built"}, ...]}
+#  "units":[{"id":"ch01","kind":"chapter","title":"...","status":"built",
+#            "has_translation":true,"has_align":true}, ...],
+#  "stale":[{"id":"ch02","status":"split","reason":"translation_present_not_imported"}]}
 ```
 
-- 已完成单元（`translated`+）在 `translate` 时默认跳过（断点续跑不重复计费）；改术语/理解/解析后
-  须 `--force` 覆盖重译，并重跑受影响单元的后续阶段。
-- `translate` 中断后同命令重跑即可从断点续（已完成单元不再调用 LLM）。
+- `stale`：agent 手写了 translation/align 但尚未 `import` 登记——状态机与产物脱节的信号。
+- 已完成单元（`translated`+）在 translate 时默认跳过；改术语/理解/解析后须 `--force` 覆盖重译。
+- 路径 B（agent 手写）：写完产物必须跑 `import`，状态才会推进；`import` 会校验
+  seq 连续性/空译文（阻断）与长度比/术语命中（告警）。
 
 ## 故障排查
 
@@ -80,6 +99,9 @@ auto-epublizer status --workspace <dir> --json
 | `工作区尚未初始化` | 先 `init`；或 `--workspace` 指向错误的目录 |
 | `输入文件内容与工作区不一致` | 源文件被替换；用原始源文件或重新 `init` |
 | `成品不存在：...请先 build/convert` | `qa` 前先 `build` |
-| `epubcheck errors: -1` | 未装 epubcheck jar（`~/.cache/epubcheck.jar`）；G4 审计仍可跑 |
-| `缺少 API Key` | 设置环境变量（见 `config.example.yaml` 的 `llm.api_key_env`） |
-| 单元状态停在中间态 | `status --json` 定位，从对应阶段续跑 |
+| `epubcheck errors: -1` | 未装 epubcheck jar（`~/.cache/epubcheck.jar`）；G4 审计仍可跑，`released_reason=epubcheck_not_run` |
+| `缺少 API Key` | 无 Key 是合法形态：analyze 降级 + agent 手写翻译 + `import` 登记；或有 Key 环境设置环境变量 |
+| `导入失败`（import 阻断） | 按 `--unit` 输出的错误清单修 align（断号/空译文/缺文件）后重试 |
+| `pandoc` 缺失 | `doctor` 已提示；装 pandoc 或先把文件转为 PDF/TXT/MD |
+| 扫描 PDF 处理不了 | 按 `doctor` + multimodal 自报走路由：装 `[ocr]` extra → 离线 OCR；或视觉 LLM 兜底 |
+| 单元状态停在中间态 / stale | `status --json` 定位，从对应阶段续跑（手写产物跑 `import`） |

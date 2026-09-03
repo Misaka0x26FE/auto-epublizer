@@ -122,8 +122,25 @@ def _unit_texts(store: RunStore) -> list[dict[str, Any]]:
     return out
 
 
-def analyze(store: RunStore, client: LLMClient, *, tier: str = "cheap") -> dict[str, Any]:
-    """执行分层理解并落盘；返回摘要。"""
+def _llm_available(client: LLMClient | None) -> bool:
+    """LLM 可用性：client 存在且凭证校验通过；否则走确定性降级。"""
+    if client is None:
+        return False
+    try:
+        client.validate_credentials()
+    except (ValueError, RuntimeError):
+        return False
+    return True
+
+
+def analyze(store: RunStore, client: LLMClient | None, *, tier: str = "cheap") -> dict[str, Any]:
+    """执行分层理解并落盘；返回摘要。
+
+    确定性 scaffold（零 token，总是跑）：语言/体裁启发式检测回填 meta、style.md 渲染、
+    单元标 analyzed。LLM 增强（overview/global/units/keypoints/术语播种/人物表）仅在
+    client 可用时执行——无 API Key 的环境（如豆包云容器）analyze 不再报错，
+    analysis/*.md 与术语表由 agent 自身能力撰写后经 import 登记语义。
+    """
     pub = store.load_publication()
     units = _unit_texts(store)
     full_text = "\n\n".join(u["text"] for u in units)
@@ -132,80 +149,84 @@ def analyze(store: RunStore, client: LLMClient, *, tier: str = "cheap") -> dict[
     genre = pub.meta.genre or detect_genre(full_text)
     profile = get_profile(genre)
 
-    agent = AnalyzerAgent(client, tier=tier)
+    use_llm = _llm_available(client)
+    agent = AnalyzerAgent(client, tier=tier) if use_llm and client else None
 
-    # style.md
+    # style.md（确定性，总是写）
     store.analysis_dir.mkdir(parents=True, exist_ok=True)
     (store.analysis_dir / "style.md").write_text(
         render_style_md(genre, detect="auto" if not pub.meta.genre else "explicit", lang=lang),
         encoding="utf-8",
     )
 
-    # overview / global / keypoints
-    overview = agent.overview(full_text[:6000])
-    global_md = agent.global_understanding(full_text[:6000])
-    (store.analysis_dir / "overview.md").write_text(
-        f"# 内容概要（overview.md）\n\n{overview}\n", encoding="utf-8"
-    )
-    (store.analysis_dir / "global.md").write_text(
-        f"# 全局理解（global.md）\n\n{global_md}\n", encoding="utf-8"
-    )
-
-    # 每单元理解
-    units_dir = store.analysis_dir / "units"
-    units_dir.mkdir(parents=True, exist_ok=True)
-    keypoints: list[str] = []
-    for u in units:
-        md = agent.unit_understanding(u["title"], u["text"][:4000], global_md[:1200])
-        safe = u["id"].replace("/", "-")
-        (units_dir / f"{safe}.md").write_text(
-            f"# {u['title']} 单元理解\n\n{md}\n", encoding="utf-8"
+    terms_seeded = 0
+    if agent is not None and use_llm:
+        # overview / global / keypoints
+        overview = agent.overview(full_text[:6000])
+        global_md = agent.global_understanding(full_text[:6000])
+        (store.analysis_dir / "overview.md").write_text(
+            f"# 内容概要（overview.md）\n\n{overview}\n", encoding="utf-8"
         )
-        keypoints.append(f"- {u['title']}：{md.strip().splitlines()[0] if md.strip() else ''}")
-    (store.analysis_dir / "keypoints.md").write_text(
-        "# 重点内容（keypoints.md）\n\n" + "\n".join(keypoints) + "\n", encoding="utf-8"
-    )
+        (store.analysis_dir / "global.md").write_text(
+            f"# 全局理解（global.md）\n\n{global_md}\n", encoding="utf-8"
+        )
 
-    # 术语播种 + 人物表
-    glossary_path = store.analysis_dir / "glossary.csv"
-    existing = Glossary(load_glossary_csv(glossary_path))
-    seeds = agent.seed_terms(full_text[:8000], profile.term_types)
-    _seed_glossary(seeds, term_types=profile.term_types, existing=existing)
-    save_glossary_csv(glossary_path, existing.entries())
+        # 每单元理解
+        units_dir = store.analysis_dir / "units"
+        units_dir.mkdir(parents=True, exist_ok=True)
+        keypoints: list[str] = []
+        for u in units:
+            md = agent.unit_understanding(u["title"], u["text"][:4000], global_md[:1200])
+            safe = u["id"].replace("/", "-")
+            (units_dir / f"{safe}.md").write_text(
+                f"# {u['title']} 单元理解\n\n{md}\n", encoding="utf-8"
+            )
+            keypoints.append(f"- {u['title']}：{md.strip().splitlines()[0] if md.strip() else ''}")
+        (store.analysis_dir / "keypoints.md").write_text(
+            "# 重点内容（keypoints.md）\n\n" + "\n".join(keypoints) + "\n", encoding="utf-8"
+        )
 
-    if profile.needs_characters:
-        characters = agent.characters(full_text[:8000])
-        if characters:
-            import csv
+        # 术语播种 + 人物表
+        glossary_path = store.analysis_dir / "glossary.csv"
+        existing = Glossary(load_glossary_csv(glossary_path))
+        seeds = agent.seed_terms(full_text[:8000], profile.term_types)
+        _seed_glossary(seeds, term_types=profile.term_types, existing=existing)
+        save_glossary_csv(glossary_path, existing.entries())
+        terms_seeded = len(seeds)
 
-            with open(
-                store.analysis_dir / "characters.csv", "w", encoding="utf-8", newline=""
-            ) as f:
-                w = csv.DictWriter(
-                    f,
-                    fieldnames=[
-                        "source",
-                        "target",
-                        "aliases",
-                        "gender",
-                        "role",
-                        "first_chapter",
-                        "note",
-                    ],
-                )
-                w.writeheader()
-                for c in characters:
-                    w.writerow(
-                        {
-                            "source": c.get("source", ""),
-                            "target": c.get("target", ""),
-                            "aliases": "",
-                            "gender": c.get("gender", ""),
-                            "role": c.get("role", ""),
-                            "first_chapter": "",
-                            "note": c.get("note", ""),
-                        }
+        if profile.needs_characters:
+            characters = agent.characters(full_text[:8000])
+            if characters:
+                import csv
+
+                with open(
+                    store.analysis_dir / "characters.csv", "w", encoding="utf-8", newline=""
+                ) as f:
+                    w = csv.DictWriter(
+                        f,
+                        fieldnames=[
+                            "source",
+                            "target",
+                            "aliases",
+                            "gender",
+                            "role",
+                            "first_chapter",
+                            "note",
+                        ],
                     )
+                    w.writeheader()
+                    for c in characters:
+                        w.writerow(
+                            {
+                                "source": c.get("source", ""),
+                                "target": c.get("target", ""),
+                                "aliases": "",
+                                "gender": c.get("gender", ""),
+                                "role": c.get("role", ""),
+                                "first_chapter": "",
+                                "note": c.get("note", ""),
+                            }
+                        )
 
     # 回填元数据 + 状态
     from auto_common.workspace import update_meta
@@ -213,12 +234,26 @@ def analyze(store: RunStore, client: LLMClient, *, tier: str = "cheap") -> dict[
     update_meta(store, language=lang, genre=genre)
     for u in units:
         store.set_unit_status(u["id"], "analyzed")
-    store.log_event("analysis_saved", has_analysis=True, units=len(units), lang=lang, genre=genre)
+    store.log_event(
+        "analysis_saved",
+        has_analysis=True,
+        units=len(units),
+        lang=lang,
+        genre=genre,
+        llm_enhanced=use_llm,
+    )
 
     # 用量账本：一次运行增量只合并一次（run_id 幂等）
-    from datetime import datetime
+    if use_llm and client is not None:
+        from datetime import datetime
 
-    run_id = f"analyze-{datetime.now().astimezone().strftime('%Y%m%dT%H%M%S')}"
-    store.merge_usage(client.usage_summary(), run_id=run_id)
+        run_id = f"analyze-{datetime.now().astimezone().strftime('%Y%m%dT%H%M%S')}"
+        store.merge_usage(client.usage_summary(), run_id=run_id)
 
-    return {"language": lang, "genre": genre, "units": len(units), "terms_seeded": len(seeds)}
+    return {
+        "language": lang,
+        "genre": genre,
+        "units": len(units),
+        "terms_seeded": terms_seeded,
+        "llm_enhanced": use_llm,
+    }

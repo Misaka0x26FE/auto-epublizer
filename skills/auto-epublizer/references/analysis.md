@@ -2,6 +2,11 @@
 
 `analyze` 命令产出 agent 对全书的理解，作为翻译与审校的上下文输入。
 
+**LLM 可选**：有 API Key 时 `analyze` 生成 overview/global/units/keypoints 并播种术语；
+**无 Key 时自动确定性降级**——仅做语言/体裁启发式检测（回填 `publication.json`）+ 写
+`style.md`，其余 `analysis/*.md` 与 `glossary.csv` 由 agent 用自身能力撰写（内容契约不变），
+翻译产物经 `import` 登记。
+
 ## 产出（`analysis/`）
 
 ```text

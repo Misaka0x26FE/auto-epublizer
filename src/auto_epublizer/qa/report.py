@@ -28,6 +28,9 @@ class QaResult:
     total_sentences: int = 0
     error_rate: float = 0.0
     released: bool = False
+    released_reason: str = (
+        ""  # ok | epubcheck_not_run | epubcheck_errors | audit_failed | unresolved_confirmed
+    )
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -68,6 +71,16 @@ def generate_report(
     # 长度比天然偏低，实测会产生大量误报（豆包实测 994 条均为误报）。
     confirmed_resolved = g2_confirmed == 0 or g2_confirmed <= g3_patched
     released = confirmed_resolved and epubcheck.ran and epubcheck.errors == 0 and audit.ok
+    if released:
+        reason = "ok"
+    elif not confirmed_resolved:
+        reason = "unresolved_confirmed"
+    elif not audit.ok:
+        reason = "audit_failed"
+    elif not epubcheck.ran:
+        reason = "epubcheck_not_run"
+    else:
+        reason = "epubcheck_errors"
 
     return QaResult(
         slug=slug,
@@ -98,4 +111,5 @@ def generate_report(
         total_sentences=total_sentences,
         error_rate=round(error_rate, 6),
         released=released,
+        released_reason=reason,
     )
