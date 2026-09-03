@@ -15,12 +15,13 @@ from datetime import datetime
 from html import escape
 from pathlib import Path
 from typing import Any
+from urllib.parse import quote
 
 from auto_common.workspace import Publication
 
 from .html import slug_file
 
-_IMG_REF = re.compile(r"!\[([^\]]*)\]\(([^)]+)\)")
+_IMG_REF = re.compile(r"!\[([^\]]*)\]\(([^()]*(?:\([^()]*\)[^()]*)*)\)")
 # pandoc 对「段落内仅一张图片」输出占位语法（小说插图常见形态）：
 #   [alt]{.image .placeholder original-image-src="media/x.png" original-image-title="..."}
 _PANDOC_PLACEHOLDER = re.compile(
@@ -197,12 +198,12 @@ def _render_nav(
 
 def _render_ncx(
     pub: Publication,
-    entries: list[dict[str, Any]],
+    content_entries: list[dict[str, Any]],
 ) -> str:
-    """渲染 NCX（toc.ncx，向后兼容）；navPoint + playOrder 扁平目录（覆盖全部条目）。"""
+    """渲染 NCX（toc.ncx，向后兼容）；只引用实际生成的内容文档，防悬空引用。"""
     uid = pub.slug
     points = []
-    for order, e in enumerate(entries, start=1):
+    for order, e in enumerate(content_entries, start=1):
         href = f"{slug_file(e['id'])}.xhtml"
         label = e["title"] or e["id"]
         points.append(
@@ -231,13 +232,12 @@ def _render_ncx(
 
 
 def _render_landmarks(
-    entries: list[dict[str, Any]],
+    content_entries: list[dict[str, Any]],
     lang: str,
 ) -> str:
     """渲染 landmarks（frontmatter / bodymatter / backmatter 地标）。
 
-    为每个出现的 region 无条件生成一条地标（不依赖内容文件是否已生成），
-    确保 frontmatter/bodymatter/backmatter 三类地标始终可用。
+    只引用实际生成的内容文档（防悬空）；每类 region 取首个可用条目。
     """
     landmarks: list[tuple[str, str, str]] = []
     labels = {
@@ -246,7 +246,7 @@ def _render_landmarks(
         "backmatter": "附录",
     }
     for region in ("frontmatter", "bodymatter", "backmatter"):
-        for e in entries:
+        for e in content_entries:
             raw = e.get("region")
             if raw == "body":
                 raw = "bodymatter"
@@ -281,37 +281,50 @@ def _render_landmarks(
 
 
 def collect_media(md_text: str, media_root: str | Path) -> tuple[str, list[tuple[str, bytes]]]:
-    """改写 md 中图片引用为 EPUB 内路径（``media/<basename>``）并收集媒体字节。
+    """改写 md 中图片引用为 EPUB 内路径（``media/…``）并收集媒体字节。
 
     ``media_root`` 为源媒体目录（pandoc 抽取的 ``structured/raw/media``）。
-    引用优先按原路径匹配，其次按 basename 兜底；找不到的文件对应引用被移除，
-    避免 EPUB 出现悬空图片引用。
+    引用优先按原相对路径解析（保留子目录，避免同名不同目录错配），
+    其次按 basename 兜底；找不到的文件对应引用被移除，避免悬空图片引用。
+    文件名含括号等特殊字符时 URL 引用按需百分号编码。
     """
-    media_root = Path(media_root)
+    media_root = Path(media_root).resolve()
     seen: dict[str, bytes] = {}
 
+    def _resolve(rel: str) -> tuple[str, bytes] | None:
+        """按候选顺序解析媒体文件，返回 (media_root 相对路径, 字节)。
+
+        候选：原相对路径 → 去掉与 media_root 尾部重复的前缀（raw/media/x.png
+        当 media_root 为 …/raw/media 时 → x.png）→ basename 兜底。
+        """
+        candidates = [rel]
+        parts = Path(rel).parts
+        root_parts = media_root.parts
+        # 去掉与 media_root 尾部重复的前缀段
+        for k in range(1, len(parts)):
+            if list(parts[:k]) == list(root_parts[-k:]):
+                candidates.append(str(Path(*parts[k:])))
+                break
+        candidates.append(Path(rel).name)
+        for cand in candidates:
+            p = media_root / cand
+            try:
+                if p.is_file():
+                    return p.relative_to(media_root).as_posix(), p.read_bytes()
+            except OSError:
+                continue
+        return None
+
     def _collect(alt: str, src: str) -> str:
-        src = src.strip()
-        name = Path(src).name
-        epub_path = f"media/{name}"
-        if epub_path not in seen:
-            data: bytes | None = None
-            for cand in (
-                media_root / src,
-                media_root / name,
-                media_root / src.lstrip("/"),
-            ):
-                try:
-                    if cand.is_file():
-                        data = cand.read_bytes()
-                        break
-                except OSError:
-                    continue
-            if data is not None:
-                seen[epub_path] = data
-        if epub_path in seen:
-            return f"![{alt}]({epub_path})"
-        return ""
+        rel = src.strip().lstrip("/")
+        resolved = _resolve(rel)
+        if resolved is None:
+            return ""
+        inner, data = resolved
+        epub_path = f"media/{inner}"
+        seen.setdefault(epub_path, data)
+        href = quote(inner)
+        return f"![{alt}](media/{href})"
 
     def _sub(m: re.Match[str]) -> str:
         return _collect(m.group(1), m.group(2))
@@ -367,12 +380,14 @@ def build_epub(
         for epub_path, _data in media_files:
             ext = Path(epub_path).suffix.lower()
             media_type = _MEDIA_TYPES.get(ext, "application/octet-stream")
-            items.append((epub_path, epub_path, media_type, None))
+            # href 与 XHTML 内引用一致（URL 编码特殊字符）
+            href = quote(epub_path)
+            items.append((epub_path, href, media_type, None))
 
     opf = _render_opf(pub, lang, modified, items, spine_ids)
     nav = _render_nav(pub, entries, content_entries, lang)
-    ncx = _render_ncx(pub, entries)
-    landmarks = _render_landmarks(entries, lang)
+    ncx = _render_ncx(pub, content_entries)
+    landmarks = _render_landmarks(content_entries, lang)
     container = (
         '<?xml version="1.0" encoding="utf-8"?>\n'
         '<container version="1.0" '
