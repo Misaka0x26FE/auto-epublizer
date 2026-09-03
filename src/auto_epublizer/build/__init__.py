@@ -35,6 +35,44 @@ _HTML_FIG_IMG = re.compile(
 )
 _HTML_IMG = re.compile(r"<img\b[^>]*?src=\"([^\"]+)\"[^>]*?/?>", re.DOTALL)
 
+# 内置基础样式：正文可读性（行距/段距/两端对齐）、标题居中、图片限宽居中。
+_STYLE_CSS = """\
+body {
+  font-family: Georgia, \"Noto Serif CJK SC\", \"Source Han Serif SC\", serif;
+  line-height: 1.9;
+  margin: 4% 5%;
+}
+h1 {
+  text-align: center;
+  margin: 1.6em 0 1.2em;
+  font-size: 1.45em;
+  line-height: 1.5;
+}
+h2, h3, h4, h5, h6 {
+  text-align: center;
+  margin: 1.4em 0 1em;
+}
+p {
+  margin: 0 0 0.9em 0;
+  text-align: justify;
+  text-indent: 2em; /* 中文正文首行缩进两字 */
+}
+p.imgp {
+  text-indent: 0;
+  text-align: center; /* 图片段居中、不缩进 */
+}
+img {
+  max-width: 100%;
+  height: auto;
+}
+strong {
+  font-weight: bold;
+}
+em {
+  font-style: italic;
+}
+"""
+
 _NS_XHTML = "http://www.w3.org/1999/xhtml"
 _NS_EPUB = "http://www.idpf.org/2007/ops"
 _NS_OPF = "http://www.idpf.org/2007/opf"
@@ -321,6 +359,7 @@ def build_epub(
         ("nav", "nav.xhtml", "application/xhtml+xml", "nav"),
         ("ncx", "toc.ncx", "application/x-dtbncx+xml", None),
         ("landmarks", "landmarks.xhtml", "application/xhtml+xml", None),
+        ("style", "style.css", "text/css", None),
     ]
     for fn in spine_ids:
         items.append((fn, fn, "application/xhtml+xml", None))
@@ -354,6 +393,7 @@ def build_epub(
         zf.writestr(_zi("OEBPS/nav.xhtml", ts, deflated), nav.encode("utf-8"))
         zf.writestr(_zi("OEBPS/toc.ncx", ts, deflated), ncx.encode("utf-8"))
         zf.writestr(_zi("OEBPS/landmarks.xhtml", ts, deflated), landmarks.encode("utf-8"))
+        zf.writestr(_zi("OEBPS/style.css", ts, deflated), _STYLE_CSS.encode("utf-8"))
         for fn, xhtml in content_files:
             zf.writestr(_zi(f"OEBPS/{fn}", ts, deflated), xhtml.encode("utf-8"))
         if media_files:

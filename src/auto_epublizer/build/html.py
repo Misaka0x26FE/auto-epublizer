@@ -21,6 +21,27 @@ _BOLD_RE = re.compile(r"\*\*([^*]+)\*\*")
 _ITALIC_RE = re.compile(r"(?<!\*)\*([^*]+)\*(?!\*)")
 _CODE_RE = re.compile(r"`([^`]+)`")
 _DANGEROUS_URL = re.compile(r"^\s*(?:javascript|data|vbscript):", re.IGNORECASE)
+# pandoc 从 MediaWiki 转出时的排版残留标记：
+# - 容器 div：`:::`、`::: gallerytext`、`::: {.thumb …}`、`-   ::: {…}`
+# - 纯反斜杠装饰行：`\`
+_CONTAINER_LINE = re.compile(r"^\s*-*\s*:+\s*(?:\{[^}]*\}|[a-zA-Z][a-zA-Z ]*)?\s*$")
+_SLASH_LINE = re.compile(r"^\s*\\\s*$")
+
+
+def _clean_pandoc_markers(md: str) -> str:
+    """清理 pandoc 转出时的排版残留（确定性纯函数）：
+    - 删除容器 div 标记行（:::/::: gallerytext/::: {.thumb …}/- ::: {…}）
+    - 删除纯反斜杠装饰行（\\）
+    - MediaWiki 引用标记（\\> / \\>\\>）→「——」（贴合中文小说场景提示排版）
+    """
+    cleaned = []
+    for line in md.splitlines():
+        s = line.strip()
+        if _CONTAINER_LINE.match(s) or _SLASH_LINE.match(s):
+            continue
+        line = line.replace("\\>\\>", "——").replace("\\>", "——")
+        cleaned.append(line)
+    return "\n".join(cleaned)
 
 
 def _inline(text: str) -> str:
@@ -30,7 +51,11 @@ def _inline(text: str) -> str:
         alt, src = m.group(1), m.group(2).strip()
         if _DANGEROUS_URL.match(src):
             return ""
-        return f'<img src="{escape(src, quote=True)}" alt="{escape(alt, quote=True)}"/>'
+        # 限宽防溢出：max-width 100%，高度自适应，块级居中
+        return (
+            f'<img src="{escape(src, quote=True)}" alt="{escape(alt, quote=True)}" '
+            'style="max-width:100%;height:auto;display:block;margin:1em auto;"/>'
+        )
 
     def _link(m: re.Match[str]) -> str:
         label, href = m.group(1), m.group(2).strip()
@@ -48,6 +73,7 @@ def _inline(text: str) -> str:
 
 def markdown_to_xhtml(md: str) -> str:
     """把 markdown 正文转换为 XHTML 片段（h1–h6 / p，文本统一转义）。"""
+    md = _clean_pandoc_markers(md)
     md = _PANDOC_LINKED_IMG.sub(lambda m: f"![{m.group(1)}]({m.group(2).strip()})", md)
     out: list[str] = []
     for block in re.split(r"\n\s*\n", md):
@@ -63,7 +89,11 @@ def markdown_to_xhtml(md: str) -> str:
             if rest:
                 out.append(f"<p>{_inline(escape(rest))}</p>")
         else:
-            out.append(f"<p>{_inline(escape(block))}</p>")
+            rendered = f"<p>{_inline(escape(block))}</p>"
+            if "<img" in rendered:
+                # 图片段落：不加首行缩进、居中（class=imgp 由 style.css 控制）
+                rendered = rendered.replace("<p>", '<p class="imgp">', 1)
+            out.append(rendered)
     return "\n".join(out)
 
 
@@ -75,6 +105,7 @@ def _page(title: str, body: str, *, lang: str) -> str:
         f'lang="{escape(lang, quote=True)}">\n'
         "<head>\n"
         '<meta charset="utf-8"/>\n'
+        '<link rel="stylesheet" type="text/css" href="style.css"/>\n'
         f"<title>{escape(title)}</title>\n"
         "</head>\n"
         f"<body>\n{body}\n</body>\n"

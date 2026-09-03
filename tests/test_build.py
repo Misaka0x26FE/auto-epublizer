@@ -244,13 +244,35 @@ def test_collect_media_rewrites_and_collects(tmp_path: Path) -> None:
 
 
 def test_markdown_to_xhtml_renders_img_and_blocks_dangerous_urls() -> None:
-    """media/ 图片渲染为 <img>；javascript:/data: 危险 URL 降级（豆包实测 P10 回归）。"""
+    """media/ 图片渲染为 <img>（限宽 + imgp 居中段）；危险 URL 降级（豆包实测 P10/P15 回归）。"""
     out = markdown_to_xhtml("![插图](media/x.png)\n")
-    assert '<img src="media/x.png" alt="插图"/>' in out
+    assert '<img src="media/x.png" alt="插图"' in out
+    assert "max-width:100%" in out  # 限宽防溢出
+    assert '<p class="imgp">' in out  # 图片段居中、不缩进
 
     out2 = markdown_to_xhtml("[点我](javascript:alert(1))\n")
     assert "<a " not in out2
     assert "点我" in out2
+
+
+def test_markdown_to_xhtml_cleans_pandoc_markers() -> None:
+    """清理 pandoc/MediaWiki 排版残留（豆包实测 P13/P14 回归）。"""
+    md = "::: {.thumb}\n\n插图说明文字。\n\n::: gallerytext\n\n:::\n\n\\\n"
+    out = markdown_to_xhtml(md)
+    assert "::" not in out
+    assert "插图说明文字。" in out
+    assert "\\" not in out
+
+    # MediaWiki 引用标记 \>> / \> → ——（中文小说场景提示排版）
+    out2 = markdown_to_xhtml("\\>\\> 三天后，伦敦。\n")
+    assert "——" in out2
+    assert "&gt;" not in out2
+
+
+def test_render_document_links_stylesheet() -> None:
+    """内容文档引用内置 style.css（豆包实测 P16 回归）。"""
+    out = render_document("T", "正文。", lang="zh-CN")
+    assert '<link rel="stylesheet" type="text/css" href="style.css"/>' in out
 
 
 def test_build_epub_embeds_media_files(tmp_path: Path) -> None:
@@ -272,3 +294,26 @@ def test_build_epub_embeds_media_files(tmp_path: Path) -> None:
         opf = zf.read("OEBPS/content.opf").decode("utf-8")
         assert "media/x.png" in opf
         assert "image/png" in opf
+
+
+def test_build_epub_embeds_stylesheet(tmp_path: Path) -> None:
+    """内置 style.css 入包 + manifest 注册（豆包实测 P16 回归）。"""
+    pub = _pub()
+    entries = [{"id": "ch01", "region": "body", "title": "第一章"}]
+    content = [("ch01.xhtml", render_document("第一章", "正文。\n", lang="zh-CN"))]
+    out = build_epub(
+        pub,
+        entries,
+        content,
+        lang="zh-CN",
+        modified="2026-01-01T00:00:00Z",
+        out_path=tmp_path / "s.epub",
+    )
+    with zipfile.ZipFile(out) as zf:
+        names = zf.namelist()
+        assert "OEBPS/style.css" in names
+        css = zf.read("OEBPS/style.css").decode("utf-8")
+        assert "text-indent: 2em" in css  # 中文首行缩进
+        assert "p.imgp" in css  # 图片段样式
+        opf = zf.read("OEBPS/content.opf").decode("utf-8")
+        assert 'href="style.css"' in opf and "text/css" in opf
