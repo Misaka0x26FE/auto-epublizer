@@ -27,6 +27,9 @@
 ## 处理一本著作的标准流程
 
 ```bash
+# 0. 能力自检（agent 开工前必做：判断自身能力边界 + 环境工具链）
+auto-epublizer doctor [--ping]   # 工具链/依赖/LLM 探测；multimodal 由 agent 自报补填
+
 # 1. 安装
 uv sync
 
@@ -35,13 +38,19 @@ uv sync
 # 3. 建工作区并解析（源文件放入 source/，四层结构拆入 structured/；可选 --reference 导入参考材料）
 auto-epublizer init <input> [--reference <path...>]
 
-# 4. 解析（agent 理解：analysis/ 概要/全局/每单元/重点/术语表/人物表；网络检索写 references/web/）
+# 4. 解析（LLM 可用时：概要/全局/每单元/重点/术语播种；无 Key 时确定性降级，
+#    analysis/*.md 与术语表由 agent 自身能力撰写）
 auto-epublizer analyze
 
-# 5. 翻译（读 analysis/，段落翻译返回句对，写 translation/ + align/ 对照表；默认跳过已完成单元）
+# 5. 翻译——两条等价路径，产物同构：
+#    路径 A（有 LLM Key）：CLI 内部翻译
 auto-epublizer translate [--target zh-CN] [--force]
+#    路径 B（agent 手写）：agent 读 structured/ 自己翻译，写 translation/ + align/，
+#    然后「import」登记：G0 校验 + 状态推进 + 术语冲突外置
+auto-epublizer import [--unit <id>] [--terms <csv>]
+auto-epublizer g0                # 翻译/导入后立即静态校验（advisory，不必等到 qa）
 
-# 6. 审校（只读影子修订，G1–G3 收敛循环，写 reviews/review-<ts>/）
+# 6. 审校（只读影子修订，G1–G3 收敛循环，写 reviews/review-<ts>/；无 LLM 时由 agent 自行审校）
 auto-epublizer review
 
 # 7. 封装输出
@@ -49,10 +58,14 @@ auto-epublizer build          # 纯译文 / 双语 EPUB → output/
 
 # 8. 质检（G0 静态校验 + G4 审计 + G5 汇总放行 → report.json）
 auto-epublizer qa             # 结构审计 + epubcheck
-auto-epublizer status --json  # 查看进度/状态机
+auto-epublizer status --json  # 查看进度/状态机/产物-状态对账
 ```
 
 仅转换不翻译：`auto-epublizer convert <input> -o output/book.epub`。
+
+**两条路径的分工不变式**：无论译文来自 CLI 内部 LLM 还是 agent 手写，都汇入同一套
+G0 校验、状态机、术语闭环、构建与质检。`publication.json` 状态只经 CLI 命令推进，
+agent 不手工编辑。
 
 ## skills/ 目录（面向下游 agent 的可安装指引）
 
@@ -157,10 +170,18 @@ CLI → Orchestrator（薄 façade）→ 领域服务 → agents / llm / glossar
 
 **能力分工**：CLI 内部调用 OpenAI 兼容 API 完成**确定性触发的生成与初筛**——分析生成
 （`analysis/`）、术语播种、翻译（`translation/`）、审校报 issue（G1）、取证裁决（G2）、仲裁与
-影子修订（G3）。而**语义判断类工作由 agent 自身完成**：读 `analysis/`/`reviews/`/`report.json`
-理解内容、判读结果；术语冲突终局裁决（`glossary_conflicts.jsonl` → 写回 `glossary.csv`）；
-未收敛情形（`max_rounds`/`no_progress`/`unresolved_fixes`）的处置；源文勘误、复杂结构判断；
-修复与放行决策。agent 只需**读文件、跑 shell、写文件**三种基础能力，**不要求 MCP、子代理或任何特殊工具**。
+影子修订（G3）。**LLM 是可选加速器而非硬依赖**：无 API Key 的环境（如豆包云容器），
+`analyze` 自动确定性降级（启发式检测 + style.md），翻译由 agent 用自身能力手写
+`translation/`+`align/` 后经 `import` 命令登记——两条路径汇入同一套 G0 校验、状态机、
+术语闭环、构建与质检。而**语义判断类工作由 agent 自身完成**：读 `analysis/`/`reviews/`/
+`report.json` 理解内容、判读结果；术语冲突终局裁决（`glossary_conflicts.jsonl` → 写回
+`glossary.csv`）；未收敛情形（`max_rounds`/`no_progress`/`unresolved_fixes`）的处置；
+源文勘误、复杂结构判断；修复与放行决策。agent 只需**读文件、跑 shell、写文件**三种
+基础能力，**不要求 MCP、子代理或任何特殊工具**。
+
+**能力自检先行**：agent 开工前先跑 `auto-epublizer doctor` 判断环境工具链（pandoc/pymupdf/
+OCR/epubcheck/LLM Key），并**自报 multimodal**（能否看图，CLI 无法探测）——据此按
+skills 的能力-路由决策表选择 ingest 路由（pandoc / 按页切片 / 离线 OCR / 视觉 LLM 兜底）。
 
 ## 状态与续跑不变量
 

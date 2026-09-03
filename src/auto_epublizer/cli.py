@@ -105,13 +105,17 @@ def status(
     data = orch.status(store)
     if json_output:
         console.print(json.dumps(data, ensure_ascii=False, indent=2))
-    else:
-        console.print(f"工作区：{store.dir}")
-        console.print(f"  书名：{data['title']}（{data['slug']}）")
-        console.print(f"  目标语言：{data['target_language']}")
-        console.print(f"  单元数：{data['units_total']}")
-        for u in data["units"]:
-            console.print(f"    {u['id']:24s} {u['kind']:10s} {u['status']}")
+        return
+    console.print(f"工作区：{store.dir}")
+    console.print(f"  书名：{data['title']}（{data['slug']}）")
+    console.print(f"  目标语言：{data['target_language']}")
+    console.print(f"  单元数：{data['units_total']}")
+    for u in data["units"]:
+        console.print(f"    {u['id']:24s} {u['kind']:10s} {u['status']}")
+    if data.get("stale"):
+        console.print("  [yellow]⚠ 有产物未登记（translation/align 存在但状态未推进）：[/yellow]")
+        for s in data["stale"]:
+            console.print(f"    {s['id']}（当前 {s['status']}）→ 运行 auto-epublizer import 登记")
 
 
 @app.command()
@@ -119,7 +123,7 @@ def analyze(
     workspace: str | None = typer.Option(None, "--workspace", help="工作区目录"),
     config: str | None = typer.Option(None, "--config", help="配置文件路径"),
 ) -> None:
-    """分层理解 + 术语播种 + 语言/体裁检测（写 analysis/）。"""
+    """分层理解 + 术语播种 + 语言/体裁检测（写 analysis/）。无 LLM Key 时走确定性降级。"""
     cfg = load_config(config or _CONFIG_PATH)
     store = _store_from(workspace, cfg)
     client = orch.make_client(cfg)
@@ -127,10 +131,16 @@ def analyze(
         result = orch.analyze(store, client)
     except (ValueError, OSError, orch.OrchestrationError) as e:
         raise typer.Exit(f"分析失败：{e}") from None
+    mode = "LLM 增强" if result.get("llm_enhanced") else "确定性降级（无 LLM Key）"
     console.print(
         f"[green]分析完成：[/green]语言={result['language']} 体裁={result['genre']} "
-        f"单元={result['units']} 术语播种={result['terms_seeded']}"
+        f"单元={result['units']} 术语播种={result['terms_seeded']}（{mode}）"
     )
+    if not result.get("llm_enhanced"):
+        console.print(
+            "[dim]analysis/ 概要与术语表可由 agent 自身能力撰写，"
+            "翻译产物经 auto-epublizer import 登记[/dim]"
+        )
 
 
 @app.command()
@@ -213,6 +223,92 @@ def qa(
         f"差错率：{report['error_rate']}"
     )
     console.print(f"  G5 放行：{'是' if report['released'] else '否'}")
+
+
+@app.command()
+def doctor(
+    json_output: bool = typer.Option(False, "--json", help="输出 JSON 能力报告"),
+    ping: bool = typer.Option(False, "--ping", help="实际请求 LLM 端点验证连通性（有超时风险）"),
+    config: str | None = typer.Option(None, "--config", help="配置文件路径"),
+) -> None:
+    """环境与能力自检：工具链 / Python 依赖 / LLM 可用性（纯只读）。"""
+    from .doctor import capabilities_summary, collect_capabilities
+
+    cfg = load_config(config or _CONFIG_PATH)
+    caps = collect_capabilities(cfg, ping=ping)
+    if json_output:
+        console.print_json(json.dumps(capabilities_summary(caps), ensure_ascii=False))
+        return
+    ok_mark = "[green]✓[/green]"
+    miss_mark = "[red]✗[/red]"
+    for c in caps:
+        mark = ok_mark if c.available else miss_mark
+        console.print(f"  {mark} {c.name:18s} {c.detail or ('可用' if c.available else '缺失')}")
+        if not c.available:
+            if c.impact:
+                console.print(f"      影响：{c.impact}")
+            if c.hint:
+                console.print(f"      应对：{c.hint}")
+    console.print(
+        "  [dim]multimodal（能否看图）需 agent 自行判定：能看图 → 扫描 PDF 可用视觉 LLM 兜底[/dim]"
+    )
+
+
+@app.command("import")
+def import_cmd(
+    unit: str | None = typer.Option(None, "--unit", help="只导入指定单元（缺省全部）"),
+    terms: str | None = typer.Option(
+        None, "--terms", help="导入 agent 提取的新术语提案（CSV，含 source/target/type 列）"
+    ),
+    workspace: str | None = typer.Option(None, "--workspace", help="工作区目录"),
+    config: str | None = typer.Option(None, "--config", help="配置文件路径"),
+) -> None:
+    """登记 agent 手写的 translation/ + align/（校验 + 推进状态 + 术语冲突外置）。"""
+    cfg = load_config(config or _CONFIG_PATH)
+    store = _store_from(workspace, cfg)
+    try:
+        result = orch.import_translations(store, unit_id=unit, terms_path=terms)
+    except (ValueError, OSError, orch.OrchestrationError) as e:
+        raise typer.Exit(f"导入失败：{e}") from None
+    for item in result["failed"]:
+        console.print(f"[red]✗ {item['unit']}[/red]")
+        for err in item["errors"]:
+            console.print(f"    {err}")
+    for w in result["warnings"][:20]:
+        console.print(f"[yellow]⚠ {w['unit']} {w['check']}：{w['message']}[/yellow]")
+    if len(result["warnings"]) > 20:
+        console.print(f"  … 共 {len(result['warnings'])} 条告警")
+    for sid in result["skipped"]:
+        console.print(f"[dim]- {sid}：无 rel_path，跳过[/dim]")
+    if result["conflicts_open"]:
+        console.print(
+            f"[yellow]术语冲突 {result['conflicts_open']} 条已外置到 "
+            f"analysis/glossary_conflicts.jsonl，请裁决后写回 glossary.csv[/yellow]"
+        )
+    console.print(
+        f"[green]导入完成：[/green]单元={len(result['imported'])} "
+        f"失败={len(result['failed'])} 告警={len(result['warnings'])}"
+    )
+
+
+@app.command()
+def g0(
+    unit: str | None = typer.Option(None, "--unit", help="只校验指定单元（缺省全部）"),
+    workspace: str | None = typer.Option(None, "--workspace", help="工作区目录"),
+    config: str | None = typer.Option(None, "--config", help="配置文件路径"),
+) -> None:
+    """G0 零 token 静态校验（翻译/导入后立即跑，不必等到 qa）。"""
+    cfg = load_config(config or _CONFIG_PATH)
+    store = _store_from(workspace, cfg)
+    try:
+        result = orch.g0_check(store, unit_id=unit)
+    except (ValueError, OSError, orch.OrchestrationError) as e:
+        raise typer.Exit(f"G0 校验失败：{e}") from None
+    for f in result["flags"]:
+        console.print(f"[yellow]⚠ {f['unit']} {f['check']}：{f['message']}[/yellow]")
+    console.print(
+        f"G0 完成：校验 {len(result['checked_units'])} 单元，告警 {len(result['flags'])} 条"
+    )
 
 
 @app.command()

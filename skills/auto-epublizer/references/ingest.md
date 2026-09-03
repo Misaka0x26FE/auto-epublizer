@@ -3,7 +3,24 @@
 `init` / `convert` 阶段把源文件归一化为 `Document → Unit → Segment` 结构，落 `structured/`，
 中间产物落 `structured/raw/`。
 
-## 格式路由
+## 能力自检与路由（开工前先看这里）
+
+先跑 `auto-epublizer doctor --json` 拿到环境能力，再结合 **agent 自报 multimodal**
+（能否看图，CLI 探测不到）按此表选路由：
+
+| 输入 | 条件 | 路由 |
+|---|---|---|
+| TXT / MD | — | 直接读（`read_text`） |
+| EPUB / DOCX / HTML | `pandoc` ✓ | pandoc → Markdown + 抽媒体 |
+| EPUB / DOCX / HTML | `pandoc` ✗ | 请用户先转 PDF/TXT/MD |
+| PDF 文字层 | `pymupdf` ✓ | 按页切片抽文字层 |
+| PDF 扫描件 | `rapidocr` ✓（`uv sync --extra ocr`） | `init` 自动启用离线 OCR（`pdf.ocr: auto`） |
+| PDF 扫描件 | 无 OCR，但 multimodal=true 且 LLM 可用 | 视觉 LLM 兜底：页转图 → 多模态模型（只转需要的页） |
+| PDF 扫描件 | 三者皆无 | 明确告知无法处理；请用户手工 OCR 或换源 |
+
+`pdf.ocr: off` 可在 config 关闭自动 OCR；`pdf.ocr: <其他值>` 视为强制要求（不可用时报错）。
+
+## 格式路由（doctor 探测通过后）
 
 | 格式 | 处理 |
 |---|---|
@@ -34,6 +51,7 @@ structured/raw/
 ## 注意事项
 
 - `source/` 原样，绝不改动；源内容身份以 `publication.json.meta.source_sha256` 绑定。
-- OCR 是可选 extra（`uv sync --extra ocr`）；未装时扫描 PDF 会报错提示走 OCR 路径。
-- 难页降级到多模态 LLM（页面转图）为后续扩展点，当前未实现。
-- 常见错误：`不支持的格式`（换扩展名）、`该 PDF 没有可抽取的文字层`（扫描件，装 OCR 或转图）。
+- OCR 引擎懒加载：文字层 PDF 不付模型加载成本；`init` 遇扫描页自动调 RapidOCR。
+- 难页降级到多模态 LLM（页面转图）为后续扩展点；multimodal=true 时 agent 可自行渲染难页用视觉模型处理，
+  结果按页写回 `structured/raw/page-NNN.json`（`ocr:true`）。
+- 常见错误：`不支持的格式`（换扩展名）、`该 PDF 没有可抽取的文字层`（扫描件，装 OCR extra 或用视觉兜底）。

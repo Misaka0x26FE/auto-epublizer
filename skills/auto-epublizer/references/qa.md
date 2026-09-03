@@ -45,8 +45,12 @@ auto-epublizer qa [--epub <path>] [--workspace <dir>]
 - `g4_audit == "pass"`（解包审计零 error）
 - 审校 `g2_confirmed == 0` 或全部已修订
 
+`released` 为 False 时看 `released_reason` 判定原因：
+`unresolved_confirmed`（G2 确认未修订）/ `audit_failed` / `epubcheck_not_run`（jar 缺失，
+装 jar 重跑）/ `epubcheck_errors`。G0 告警（`g0_flags`）是 advisory 线索，不阻断放行。
+
 ## 排查
 
-- `epubcheck errors: -1` → 未装 jar；装 `~/.cache/epubcheck.jar` 后重跑。
+- `epubcheck errors: -1` → 未装 jar；按 `doctor` 提示下载放到 `~/.cache/epubcheck.jar` 后重跑。
 - `成品不存在` → 先 `build` 或 `convert`。
 - 审计发现 `W_H1_COUNT` → 内容文档标题层级问题（每章应恰一个 h1）。

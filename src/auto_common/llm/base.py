@@ -41,6 +41,10 @@ class LLMClient(ABC):
     def usage_summary(self) -> dict[str, Any]:
         return self.usage.summary()
 
+    def validate_credentials(self) -> None:
+        """校验凭证可用性；不可用时应抛 ValueError（无 Key 等用户可预期错误）。"""
+        return None
+
     @abstractmethod
     def complete(
         self,

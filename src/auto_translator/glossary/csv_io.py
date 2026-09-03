@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import csv
 import io
+import json
 import unicodedata
 from pathlib import Path
 
@@ -102,6 +103,41 @@ def save_glossary_csv(path: str | Path, entries: list[GlossaryEntry]) -> None:
     for entry in entries:
         writer.writerow(entry_to_row(entry))
     p.write_text(buf.getvalue(), encoding="utf-8")
+
+
+def write_conflicts_jsonl(path: str | Path, conflicts: list[GlossaryConflict]) -> int:
+    """把术语冲突外置到 glossary_conflicts.jsonl（追加式）；返回写入条数。"""
+    if not conflicts:
+        return 0
+    p = Path(path)
+    p.parent.mkdir(parents=True, exist_ok=True)
+    with open(p, "a", encoding="utf-8") as f:
+        for c in conflicts:
+            f.write(json.dumps(c.as_jsonl(), ensure_ascii=False, sort_keys=True) + "\n")
+    return len(conflicts)
+
+
+def read_conflicts_jsonl(path: str | Path) -> list[dict]:
+    """读取冲突记录（去重按 source+proposed_target，保留首次出现顺序）。"""
+    p = Path(path)
+    if not p.is_file():
+        return []
+    seen: set[tuple[str, str]] = set()
+    out: list[dict] = []
+    for line in p.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            row = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        key = (str(row.get("source", "")), str(row.get("proposed_target", "")))
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(row)
+    return out
 
 
 # 旧真实案例的类别列 → 标准 type 映射

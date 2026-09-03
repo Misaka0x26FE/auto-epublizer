@@ -1,7 +1,15 @@
 # Translation（切片翻译 + 句对齐 + 术语闭环）
 
-`translate` 命令读 `analysis/`，把 `structured/` 的每个单元切片翻译，写 `translation/`（镜像
-structured 树）+ `align/` 句级对照表。
+翻译有两条等价路径，产物同构（`translation/` 镜像 structured 树 + `align/` 句级对照表），
+汇入同一套 G0 校验、状态机与构建：
+
+- **路径 A（CLI 内部 LLM）**：`translate` 命令，读 `analysis/` 自动翻译。
+- **路径 B（agent 手写，无 LLM Key 环境）**：agent 读 `structured/<rel_path>.md`，
+  用自身能力逐段翻译，写 `translation/<rel_path>.md`（镜像结构）+
+  `translation/align/<unit-id>.jsonl`（`{seq, src, tgt, note}`），然后**必须**跑
+  `auto-epublizer import` 登记——G0 结构校验（seq 断号/空译文阻断）+ 状态推进
+  （translated→aligned）+ 术语冲突外置。未 import 前单元状态停在 `analyzed`，
+  `status --json` 会报 stale。
 
 ## 产出
 
@@ -51,22 +59,26 @@ translation/
 ## 术语三态闭环
 
 ```text
-种子(seed) ── analyze 播种 + references/user 导入
+种子(seed) ── analyze 播种（LLM）/ agent 撰写 glossary.csv + references/user 导入
     │
 注入(inject) ── 每批按 terms_in_text 过滤注入（确认态译法必须遵守）
     │
-提案(propose) ── 翻译后抽取新术语/称呼变体，追加到 glossary_conflicts.jsonl
+登记(import/translate) ── 术语冲突检测，同 source 异 target 记冲突
     │
-裁决(resolve) ── 单线程合并：同 source 异 target 记冲突，裁决后写回 glossary.csv
+外置(record) ── 冲突追加到 analysis/glossary_conflicts.jsonl（import 自动完成）
+    │
+裁决(resolve) ── agent 读冲突文件终局裁决，写回 glossary.csv（权威）
 ```
 
 - 冲突不自动覆盖已确认译法，保留候选待裁决（对应"译名统一 + 约定俗成"）。
+- `import --terms <csv>` 可批量导入 agent 提取的新术语提案（三态自动判定：新 source→seed，
+  与 confirmed 异译→conflict）。
 - 称谓/敬称/口癖/固定表达（source-only 类型）只按完整 source 精确匹配。
 
 ## 状态机与续跑
 
-单元：`split → analyzed → translated → aligned → reviewed → built`。`translate` 把已翻译单元置为
-`aligned`；已完成单元可安全跳过。
+单元：`split → analyzed → translated → aligned → reviewed → built`。路径 A 的 `translate` 与
+路径 B 的 `import` 都把完成单元置为 `aligned`；已完成单元可安全跳过（translate）/重复 import 无害。
 
 ## 双语
 

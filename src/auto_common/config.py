@@ -32,6 +32,7 @@ class LLMConfig(BaseModel):
     api_key_env: str = "DEEPSEEK_API_KEY"
     timeout: float = 600.0
     max_retries: int = 4
+    vision_model: str | None = None  # 多模态模型（扫描 PDF 视觉兜底用；None=未配置）
     tiers: dict[str, TierConfig] = Field(
         default_factory=lambda: {
             "strong": TierConfig(model="deepseek-v4-pro", options={"thinking": True}),
