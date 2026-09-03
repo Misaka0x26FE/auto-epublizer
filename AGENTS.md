@@ -35,19 +35,22 @@ uv sync
 
 # 2. 配置（API Key 只从环境变量读取，见「配置与密钥」）
 
-# 3. 建工作区并解析（源文件放入 source/，四层结构拆入 structured/；可选 --reference 导入参考材料）
-auto-epublizer init <input> [--reference <path...>]
+# 3. 预处理（零 token 事实收集 + agent 理解）：
+auto-epublizer preprocess <input>   # 新书：init + 嗅探/元数据/TOC/体检/规模 → preprocessing/facts.*
+#    agent 读 facts.md，按待办清单撰写：plan.md（方案决策）/ global.md（全局理解）/
+#    units/<id>.md（章节理解）/ terms.csv（术语预提取）/ risks.md（风险）/ report.md（汇总）
+auto-epublizer preprocess           # 已有工作区：幂等刷新 facts
 
 # 4. 解析（LLM 可用时：概要/全局/每单元/重点/术语播种；无 Key 时确定性降级，
-#    analysis/*.md 与术语表由 agent 自身能力撰写）
+#    analysis/*.md 与术语表由 agent 自身能力撰写；上下文也可来自 preprocessing/）
 auto-epublizer analyze
 
 # 5. 翻译——两条等价路径，产物同构：
 #    路径 A（有 LLM Key）：CLI 内部翻译
 auto-epublizer translate [--target zh-CN] [--force]
 #    路径 B（agent 手写）：agent 读 structured/ 自己翻译，写 translation/ + align/，
-#    然后「import」登记：G0 校验 + 状态推进 + 术语冲突外置
-auto-epublizer import [--unit <id>] [--terms <csv>]
+#    然后「import」登记：G0 校验 + 状态推进 + 术语冲突外置（terms.csv 可经 --terms 导入）
+auto-epublizer import [--unit <id>] [--terms preprocessing/terms.csv]
 auto-epublizer g0                # 翻译/导入后立即静态校验（advisory，不必等到 qa）
 
 # 6. 审校（只读影子修订，G1–G3 收敛循环，写 reviews/review-<ts>/；无 LLM 时由 agent 自行审校）
@@ -85,6 +88,7 @@ skills/auto-epublizer/
 ├── manifest.json          # 元数据 + references 清单
 └── references/            # 分主题操作指引（按需只读当前阶段的一份）
     ├── workflow.md        # 阶段路由 + 命令总览 + status --json 判读 + 故障排查
+    ├── preprocessing.md   # 预处理：读 facts → agent 撰写 plan/global/units/terms/risks/report
     ├── ingest.md          # 文件解析（pandoc / PDF 按页切片 / OCR 兜底）
     ├── structure.md       # 四层结构归类 + 清洗 + 溯源
     ├── analysis.md        # 分层理解（overview/global/units/keypoints）+ 术语播种
@@ -108,14 +112,15 @@ skills/auto-epublizer/
 ```text
 <book-slug>/
 ├── source/           ① 待处理文件（原样，绝不改动）
+├── output/           ② 成品 EPUB（<title>.<lang>.epub / <title>.<lang>-bi.epub）
 ├── structured/       ③ 按出版物四层结构拆分的源文（frontmatter/body/backmatter/media）
 │                     + raw/（处理源文件的中间产物：OCR 页图、PDF→HTML，持久化供审查）
-├── analysis/         ④ agent 理解：overview.md、global.md、units/<id>.md、
-│                       keypoints.md、glossary.csv、characters.csv、glossary_conflicts.jsonl
+├── analysis/         ④ 分层理解（analyze 产物：overview/global/units/keypoints/glossary 等）
 ├── translation/      ⑤ 译文（镜像 structured 树）+ align/<unit-id>.jsonl 句级对照表
-├── references/       ⑦ 参考：user/（用户上传）+ web/（agent 网络检索）+ index.jsonl
 ├── reviews/          ⑥ 审校运行记录 review-<ts>/（每轮 issues/patches/summary/usage）
-├── output/           ② 成品 EPUB（<title>.<lang>.epub / <title>.<lang>-bi.epub）
+├── references/       ⑦ 参考：user/（用户上传）+ web/（agent 网络检索）+ index.jsonl
+├── preprocessing/    ⑧ 预处理层：facts.json/facts.md（CLI 零 token 事实）+
+│                       agent 撰写的 plan/global/units/terms/risks/report
 ├── publication.json  权威索引（DC 元数据 + 内容树 + 状态机 + 配置快照）
 ├── .progress.json    断点续跑（可丢弃）
 ├── glossary.db       术语库内部索引（可选，SQLite）
@@ -127,9 +132,15 @@ skills/auto-epublizer/
 （`reviewed`=通过审校，`built`=已封装；`convert` 路径跳过 analyze/translate/review，直接 split → built）。
 
 目录生命周期：`source/`、`references/user/` 不可动；`structured/`（含 `raw/` 中间产物）
-持久化保存供审查，可由源文件重建；`analysis/`、`translation/`、`reviews/`、`output/`
-是智能产物；`.progress.json`、`events.jsonl`、`usage.json` 是追加式账本/断点；
+持久化保存供审查，可由源文件重建；`preprocessing/facts.*` 由 CLI 幂等生成，其余
+`preprocessing/` 产物、`analysis/`、`translation/`、`reviews/`、`output/` 是智能产物；
+`.progress.json`、`events.jsonl`、`usage.json` 是追加式账本/断点；
 `publication.json`、`glossary.db` 是权威真相。
+
+**预处理分工**：`preprocess` 命令只产出零 token 事实（嗅探/元数据/TOC/体检/规模）；
+**方案决策与分层理解是 agent 任务**——读 facts.md 与 docs 决策表写 `plan.md`，
+用自身能力完成全局理解/章节理解/术语预提取/风险标注。理解上下文的读取优先级：
+`analysis/`（analyze 或 agent 直写）→ `preprocessing/`（agent 预处理产物）。
 
 术语表三态：`种子 → 候选 → 冲突 → 确认`。`analysis/glossary.csv` 是权威（人类/agent 可读），
 冲突外置到 `glossary_conflicts.jsonl`；翻译 worker 只读快照 + 追加提案，由单线程合并器裁决后写回 CSV。

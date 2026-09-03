@@ -5,8 +5,10 @@
 
 ## 能力自检与路由（开工前先看这里）
 
-先跑 `auto-epublizer doctor --json` 拿到环境能力，再结合 **agent 自报 multimodal**
-（能否看图，CLI 探测不到）按此表选路由：
+先跑 `auto-epublizer preprocess <input>`（新书）拿 `preprocessing/facts.md`——其中已含
+源文件嗅探结果（类型/DRM/文字层/扫描件判定/乱码率）、doctor 能力快照与确定性路由提示；
+再结合 **agent 自报 multimodal**（能否看图，CLI 探测不到）按此表定方案（写入
+`preprocessing/plan.md`）：
 
 | 输入 | 条件 | 路由 |
 |---|---|---|

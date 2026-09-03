@@ -35,14 +35,16 @@ translation/
 `system` 放文体指引 + 语言指引 + 标点规则；`user` 按"风格/概览 → 章梗概 → 重点 → 术语子集 →
 前文译文 → 待译正文"排列，越靠前越稳定。
 
-| 层次 | 来源 |
+| 层次 | 来源（`analysis/` 缺失时回退 `preprocessing/`） |
 |---|---|
-| 全书概览 | `analysis/overview.md` |
-| 风格/全局 | `analysis/global.md` |
-| 章梗概 | `analysis/units/<id>.md` |
+| 全书概览 | `analysis/overview.md` 或 `preprocessing/global.md` |
+| 风格/全局 | `analysis/global.md` 或 `preprocessing/global.md` |
+| 章梗概 | `analysis/units/<id>.md` 或 `preprocessing/units/<id>.md` |
 | 重点 | `analysis/keypoints.md` |
 | 术语子集 | `glossary.csv` 中本批正文实际出现的（`terms_in_text` 过滤） |
 | 前文译文 | 上一批 `align/` 的 `tgt` |
+
+两者共存时 `analysis/` 优先（LLM 路径产物）；纯 agent 预处理路径用 `preprocessing/`。
 
 ## 句级对齐
 

@@ -81,7 +81,7 @@ auto-epublizer review ...   # 输出：issue=N 收敛=<termination> 轮次=<roun
 > 当前实现说明：G0 可独立运行——`auto-epublizer g0` 在翻译/导入后立即校验（advisory，
 > 不阻断放行——英→中长度比天然偏低会大量误报）；`qa` 时也会对全部已对齐单元聚合 G0
 > 进 `report.json.g0_flags`。G1–G3 由 `review` 命令驱动（无 LLM Key 环境由 agent 自行
-> 审校：读 align/ 找漏译/误译/术语违例，直接修 translation/ 后重新 import）；G4 由
-> `qa` 命令驱动；G5 由 `qa` 聚合 G0–G4 写 `report.json`（含 `error_rate`/`released`/
-> `released_reason`）。协议违例（G1 缺 `complete:true`、翻译句对数量不符）会整批
-> 重试 2 次后报错。
+> 审校：读 align/ 找漏译/误译/术语违例，直接修 translation/ 后重新 import；全局理解
+> 上下文在 analysis/ 缺失时回退 preprocessing/global.md）；G4 由 `qa` 命令驱动；G5 由
+> `qa` 聚合 G0–G4 写 `report.json`（含 `error_rate`/`released`/`released_reason`）。
+> 协议违例（G1 缺 `complete:true`、翻译句对数量不符）会整批重试 2 次后报错。

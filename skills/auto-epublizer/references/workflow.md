@@ -8,10 +8,11 @@
 并自报 multimodal（能否看图）——按 `references/ingest.md` 的能力-路由决策表选 ingest 路由。
 
 ```text
-无 publication.json               -> 全新流程：先 init
-有 publication.json              -> 续跑：status --json 看单元状态机（含产物-状态对账 stale 提示）
+无 publication.json               -> 全新流程：先 preprocess <input>（= init + 事实收集）
+有 publication.json              -> 续跑：status --json 看状态机与对账（stale / preprocessing）
+  preprocessing_complete=false   -> 按 facts.md 待办完成 agent 理解产物（plan/global/...）
   单元 status 全 built           -> 已完成，跳过对应阶段
-  有 structured/ 无 analysis/    -> 从 analyze 续跑（无 LLM Key 时 agent 自写 analysis/）
+  有 structured/ 无 analysis/ 且无 preprocessing/global.md -> analyze（可省）或 agent 写 global.md
   有 analysis/ 无 translation/   -> 从 translate 续跑（路径 A）或 agent 手写（路径 B）
   有 translation/ 但 status 未推进（stale） -> 运行 import 登记
   有 translation/ 无 reviews/    -> 从 review 续跑
@@ -22,8 +23,9 @@
 
 ```text
 doctor（能力自检：工具链 + LLM 可用性 + 自报 multimodal）
-  -> init      （建工作区 + 归一化 + 四层结构拆分）
-  -> analyze   （分层理解 + 术语播种；无 LLM Key 时确定性降级，产物由 agent 补写）
+  -> preprocess （CLI：嗅探/元数据/TOC/体检/规模 -> preprocessing/facts.*，零 token）
+  -> agent 理解 （读 facts.md 撰写 plan/global/units/terms/risks/report）
+  -> analyze    （可选：LLM 增强分层理解 -> analysis/；无 Key 时省略）
   -> 翻译      （路径 A：translate；路径 B：agent 手写后 import 登记）
   -> g0        （静态校验，advisory）
   -> review    （QC G1–G3，影子修订收敛；无 LLM 时 agent 自行审校）
@@ -43,11 +45,13 @@ convert <input>   -> 归一化 + 结构 + EPUB + QA
 # 能力自检（开工前必做；multimodal 由 agent 自报补填）
 auto-epublizer doctor [--json] [--ping]
 
-# 建工作区并解析（source/ -> structured/ 四层结构；--reference 导入参考材料）
-auto-epublizer init <input> [--reference <path...>] [--target zh-CN] [--workspace <dir>]
+# 预处理（新书：init + 零 token 事实收集 → preprocessing/facts.*；已有工作区：幂等刷新）
+auto-epublizer preprocess <input> [--reference <path...>] [--target zh-CN] [--workspace <dir>]
+# （agent 读 facts.md 撰写 plan/global/units/terms/risks/report，见 references/preprocessing.md）
+# init <input> 等价于 preprocess 的建工作区子集（不产 facts；仍可用于仅需拆解的场景）
 
-# 分层理解（LLM Key 可用时生成 overview/global/units/术语播种；无 Key 时确定性降级，
-# analysis/*.md 与术语表由 agent 撰写）
+
+# 分层理解（LLM Key 可用时生成 overview/global/units/术语播种 -> analysis/；无 Key 可省略）
 auto-epublizer analyze [--workspace <dir>]
 
 # 路径 A：CLI 内部翻译（读 analysis/，写 translation/ + align/）
@@ -84,10 +88,12 @@ auto-epublizer status --workspace <dir> --json
 # {"slug":"book","title":"...","target_language":"zh-CN","units_total":N,
 #  "units":[{"id":"ch01","kind":"chapter","title":"...","status":"built",
 #            "has_translation":true,"has_align":true}, ...],
-#  "stale":[{"id":"ch02","status":"split","reason":"translation_present_not_imported"}]}
+#  "has_preprocessing":true,"preprocessing_complete":false,
+#  "stale":[{"id":"preprocessing","status":"facts_written","reason":"preprocessing_plan_missing"}]}
 ```
 
-- `stale`：agent 手写了 translation/align 但尚未 `import` 登记——状态机与产物脱节的信号。
+- `stale`：agent 手写了 translation/align 但尚未 `import` 登记，或预处理 facts 已产但
+  理解产物（plan/global）未完成——状态机与产物脱节的信号。
 - 已完成单元（`translated`+）在 translate 时默认跳过；改术语/理解/解析后须 `--force` 覆盖重译。
 - 路径 B（agent 手写）：写完产物必须跑 `import`，状态才会推进；`import` 会校验
   seq 连续性/空译文（阻断）与长度比/术语命中（告警）。

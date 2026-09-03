@@ -43,12 +43,19 @@ class ReviewRun:
         self._align_cache = self.collect_align_rows()
 
     def _load_book_context(self) -> str:
-        """读取分层理解产物作为 book_context（概览/全局/重点）。"""
+        """读取分层理解产物作为 book_context（概览/全局/重点）。
+
+        来源优先级：analysis/ → preprocessing/（agent 预处理产物）。
+        """
         parts: list[str] = []
         for name in ("overview.md", "global.md", "keypoints.md"):
             p = self.store.analysis_dir / name
             if p.is_file():
                 parts.append(p.read_text(encoding="utf-8"))
+        if not parts:
+            pre_global = self.store.preprocessing_dir / "global.md"
+            if pre_global.is_file():
+                parts.append(pre_global.read_text(encoding="utf-8"))
         return "\n\n".join(parts)
 
     def _evidence_context(self, unit_id: str, seq: int) -> str:

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import re
 from pathlib import Path
 from typing import Any
 
@@ -19,34 +18,7 @@ from .build import build_epub, collect_media
 from .build.html import render_bilingual_document, render_document, slug_file
 from .ingest import load_document
 from .qa import audit_epub, generate_report, run_epubcheck
-from .structure import rebuild_structure, write_structured
-
-_HEADING_RE = re.compile(r"^(#{1,6})\s+(.*)$")
-
-
-def _unit_heading(md_text: str) -> str | None:
-    """提取单元 markdown 第一个 ATX 标题（无则返回 None）。"""
-    for line in md_text.splitlines():
-        m = _HEADING_RE.match(line)
-        if m:
-            return m.group(2).strip()
-    return None
-
-
-def _skip_empty_unit(md_text: str, fallback_title: str) -> bool:
-    """判断是否应跳过该单元：无正文段落且标题为占位（空 / 「正文」）。
-
-    有正文段落、或标题为真实章节标题（如「第一章：…」）的单元都保留——
-    后者即使没有正文，也作为目录导航锚点生成一个标题页。
-    只跳过 init 拆分产生的空壳单元（MediaWiki 容器 div：标题为「正文」占位、
-    内容仅容器标记 :::）。
-    """
-    title = (_unit_heading(md_text) or fallback_title or "").strip()
-    for line in md_text.splitlines():
-        s = line.strip()
-        if s and not s.startswith("#") and not s.startswith(":::"):
-            return False  # 有正文段落
-    return title in ("", "正文")
+from .structure import rebuild_structure, skip_empty_unit, unit_heading, write_structured
 
 
 class OrchestrationError(RuntimeError):
@@ -193,7 +165,7 @@ def _render_and_pack(
             rows = read_align(store.unit_align_path(e["id"]))
             if not rows:
                 continue
-            heading = _unit_heading("\n".join(r.get("tgt", "") for r in rows))
+            heading = unit_heading("\n".join(r.get("tgt", "") for r in rows))
             if heading:
                 e["title"] = heading
             content.append(
@@ -212,9 +184,9 @@ def _render_and_pack(
         if not md_path.is_file():
             continue
         md_text = md_path.read_text(encoding="utf-8")
-        if _skip_empty_unit(md_text, e["title"]):
+        if skip_empty_unit(md_text, e["title"]):
             continue
-        heading = _unit_heading(md_text)
+        heading = unit_heading(md_text)
         if heading:
             e["title"] = heading
         md_text, unit_media = collect_media(md_text, media_root)
@@ -236,6 +208,26 @@ def _render_and_pack(
         store.set_unit_status(e["id"], "built")
     store.log_event(event, slug=pub.slug, output=str(out_path))
     return out_path
+
+
+def preprocess(store: RunStore, *, config: Config | None = None) -> dict[str, Any]:
+    """预处理事实收集（确定性、零 token）：嗅探/元数据/TOC/体检/规模 → preprocessing/facts.*。
+
+    预处理是 agent 任务：本函数只产出事实与 agent 待办清单；方案决策与分层理解由
+    agent 写 preprocessing/{plan,global,units,terms,risks,report}。带 input 的新书走
+    init（含 OCR 路由）后调用本函数；已有工作区可幂等刷新 facts。
+    """
+    from .preprocess import collect_facts, write_facts
+
+    cfg = config or Config()
+    facts = collect_facts(store, cfg)
+    json_path, md_path = write_facts(store, facts)
+    store.log_event(
+        "preprocess_facts_written",
+        kind=facts["source"].get("kind"),
+        units=facts["structure"]["totals"]["units"],
+    )
+    return {"facts": facts, "facts_json": str(json_path), "facts_md": str(md_path)}
 
 
 def analyze(store: RunStore, client: LLMClient, *, tier: str = "cheap") -> dict[str, Any]:
@@ -475,12 +467,25 @@ def status(store: RunStore, *, as_json: bool = False) -> dict[str, Any]:
             stale.append(
                 {"id": u.id, "status": u.status, "reason": "translation_present_not_imported"}
             )
+    # 预处理对账：facts 已生成但 agent 理解产物未完成
+    has_preprocessing = (store.preprocessing_dir / "facts.json").is_file()
+    preprocessing_complete = has_preprocessing and (store.preprocessing_dir / "global.md").is_file()
+    if has_preprocessing and not preprocessing_complete:
+        stale.append(
+            {
+                "id": "preprocessing",
+                "status": "facts_written",
+                "reason": "preprocessing_plan_missing",
+            }
+        )
     data = {
         "slug": pub.slug,
         "title": pub.meta.title,
         "target_language": pub.meta.target_language,
         "units_total": len(pub.units),
         "units": units_out,
+        "has_preprocessing": has_preprocessing,
+        "preprocessing_complete": preprocessing_complete,
         "stale": stale,
     }
     return data

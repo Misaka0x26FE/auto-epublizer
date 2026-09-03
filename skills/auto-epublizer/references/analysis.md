@@ -4,8 +4,9 @@
 
 **LLM 可选**：有 API Key 时 `analyze` 生成 overview/global/units/keypoints 并播种术语；
 **无 Key 时自动确定性降级**——仅做语言/体裁启发式检测（回填 `publication.json`）+ 写
-`style.md`，其余 `analysis/*.md` 与 `glossary.csv` 由 agent 用自身能力撰写（内容契约不变），
-翻译产物经 `import` 登记。
+`style.md`，其余理解产物走 agent 预处理路径：`preprocess` 产 facts 后由 agent 撰写
+`preprocessing/{plan,global,units,terms,risks,report}`（见 `references/preprocessing.md`）。
+translate/review 的上下文读取优先级：`analysis/` → `preprocessing/`。
 
 ## 产出（`analysis/`）
 

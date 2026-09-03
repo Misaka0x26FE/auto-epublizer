@@ -28,6 +28,7 @@ agent 只需基础能力，无需 MCP/子代理。
 | 场景 | 读 |
 |---|---|
 | 全新任务 / 状态路由 / 多阶段请求 / 命令总览 | `references/workflow.md` |
+| 预处理：读 facts → 撰写 plan/global/units/terms/risks/report | `references/preprocessing.md` |
 | 文件解析：PDF / 扫描 PDF / EPUB / DOCX / HTML / TXT / MD / OCR | `references/ingest.md` |
 | 四层结构归类、清洗、页眉页脚/页码剔除、溯源 | `references/structure.md` |
 | 分层理解、术语播种、语言/体裁检测 | `references/analysis.md` |
@@ -59,11 +60,12 @@ agent 只需基础能力，无需 MCP/子代理。
 
 ```bash
 auto-epublizer doctor --json                              # 能力自检（开工前；multimodal 自报）
-auto-epublizer init <input> [--reference <path...>]       # 建工作区 + 解析
-auto-epublizer analyze                                    # 分层理解 + 术语播种（无 Key 时降级）
+auto-epublizer preprocess <input>                         # 预处理：init + 零 token 事实 → preprocessing/facts.*
+#   agent 读 facts.md，撰写 plan/global/units/terms/risks/report（见 references/preprocessing.md）
+auto-epublizer analyze                                    # 分层理解 + 术语播种（无 Key 时降级，可省略）
 auto-epublizer translate [--target zh-CN] [--force]       # 路径 A：CLI 内部翻译
 #   路径 B：agent 读 structured/ 手写 translation/ + align/，然后：
-auto-epublizer import [--unit <id>] [--terms <csv>]       # 登记手写产物（校验+状态+术语冲突外置）
+auto-epublizer import [--unit <id>] [--terms preprocessing/terms.csv]  # 登记手写产物
 auto-epublizer g0                                         # 静态校验（advisory）
 auto-epublizer review                                     # 审校（G1–G3，无 LLM 时 agent 自行审校）
 auto-epublizer build [--bilingual]                        # 封装 EPUB → output/

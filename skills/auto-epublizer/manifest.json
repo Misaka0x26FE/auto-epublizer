@@ -5,6 +5,7 @@
   "workspace_model": "publication.json",
   "references": [
     "workflow",
+    "preprocessing",
     "ingest",
     "structure",
     "analysis",
