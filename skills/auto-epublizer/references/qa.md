@@ -25,6 +25,9 @@ auto-epublizer qa [--epub <path>] [--workspace <dir>]
 | spine idref 未在 manifest | `E_SPINE_REF` |
 | manifest href 无法解析 | `E_MANIFEST_HREF` |
 | nav 链接无法解析 | `E_NAV_HREF` |
+| NCX content src 无法解析（悬空引用） | `E_NCX_HREF` |
+| landmarks 链接无法解析（悬空引用） | `E_LANDMARKS_HREF` |
+| 内容文档 img src 无法解析（媒体悬空） | `E_IMG_SRC` |
 | javascript:/data: URL 注入 | `E_UNSAFE_URL` |
 | 内容文档缺 lang / h1 数量不为 1 | `W_NO_LANG` / `W_H1_COUNT`（告警） |
 
