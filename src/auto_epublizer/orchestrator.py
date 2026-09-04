@@ -120,7 +120,7 @@ def ensure_structure(store: RunStore) -> list[dict[str, Any]]:
     return prepare_structure(store)
 
 
-def convert(store: RunStore, *, output: str | None = None) -> Path:
+def convert(store: RunStore, *, output: str | None = None, theme: str | None = None) -> Path:
     """仅转换：ingest + structure + build（源语言正文）。"""
     entries = ensure_structure(store)
     if not entries:
@@ -138,6 +138,7 @@ def convert(store: RunStore, *, output: str | None = None) -> Path:
         bilingual=False,
         event="convert_built",
         prefer_translation=False,
+        theme=theme or Config().output.theme,
     )
 
 
@@ -152,11 +153,14 @@ def _render_and_pack(
     bilingual: bool,
     event: str,
     prefer_translation: bool,
+    theme: str = "standard",
 ) -> Path:
     """构建内核（convert/build 共用）：渲染内容文档 + 收集媒体 + 打包 EPUB。
 
     脚注语义化（epub-template-spec §6）：全书共享一个 FootnoteState，
     ``[^label]`` 引用与定义渲染为标准弹窗注释（noteref/footnote），跨单元全局连续编号。
+    主题层（epub-template-spec §5）：``theme`` 选择预置排版主题。
+    封面：cover 单元的首个图片 → ``cover-image`` 属性 + spine ``linear="no"``。
     """
     from .build.html import FootnoteState
 
@@ -166,6 +170,7 @@ def _render_and_pack(
     fn_state = FootnoteState()
     content = []
     media: dict[str, bytes] = {}
+    cover_media: str | None = None
     for e in entries:
         rel = e.get("rel_path")
         if not rel:
@@ -201,6 +206,8 @@ def _render_and_pack(
         md_text, unit_media = collect_media(md_text, media_root)
         for epub_path, data in unit_media:
             media[epub_path] = data
+        if e.get("kind") == "cover" and unit_media and cover_media is None:
+            cover_media = unit_media[0][0]
         content.append(
             (
                 f"{slug_file(e['id'])}.xhtml",
@@ -221,6 +228,8 @@ def _render_and_pack(
         modified="2026-01-01T00:00:00Z",
         out_path=out_path,
         media_files=list(media.items()),
+        theme=theme,
+        cover_media=cover_media,
     )
     for e in entries:
         store.set_unit_status(e["id"], "built")
@@ -269,7 +278,9 @@ def review(store: RunStore, client: LLMClient) -> dict[str, Any]:
     return review_mod.review(store, client)
 
 
-def build(store: RunStore, *, bilingual: bool = False, output: str | None = None) -> Path:
+def build(
+    store: RunStore, *, bilingual: bool = False, output: str | None = None, theme: str | None = None
+) -> Path:
     """从译文（缺省回退源文）构建 EPUB；双语时输出 -bi.epub。"""
     pub = store.load_publication()
     entries = structure_entries(store)
@@ -286,6 +297,7 @@ def build(store: RunStore, *, bilingual: bool = False, output: str | None = None
         bilingual=bilingual,
         event="built",
         prefer_translation=True,
+        theme=theme or Config().output.theme,
     )
 
 

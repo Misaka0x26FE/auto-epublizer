@@ -136,6 +136,18 @@ def _nav_depths(zf: zipfile.ZipFile) -> list[int]:
     return depths
 
 
+def _opf_has_cover(zf: zipfile.ZipFile) -> bool:
+    """OPF 是否声明了 cover-image 属性（封面对账用）。"""
+    try:
+        container = zf.read("META-INF/container.xml").decode("utf-8")
+        m = re.search(r'full-path="([^"]+)"', container)
+        if not m:
+            return False
+        return 'properties="cover-image"' in zf.read(m.group(1)).decode("utf-8")
+    except KeyError:
+        return False
+
+
 def audit_provenance(
     store: Any,
     entries: list[dict[str, Any]],
@@ -180,6 +192,7 @@ def audit_provenance(
     with zf:
         spine = _spine_docs(zf)
         nav_depths = _nav_depths(zf)
+        opf_has_cover = _opf_has_cover(zf)
 
     spine_docs = [Path(unquote(h)).name for h in spine]
     expected_names = [f"{slug_file(e['id'])}.xhtml" for e in expected]
@@ -203,6 +216,14 @@ def audit_provenance(
         )
     if not result.units_order_ok and not result.units_unexpected:
         result.add("error", "E_UNIT_ORDER", "spine 顺序与单元清单不一致")
+
+    # 封面对账（epub-template-spec §3）：存在封面单元但未声明 cover-image → 提示
+    if any(e.get("kind") == "cover" for e in expected) and not opf_has_cover:
+        result.add(
+            "warning",
+            "W_NO_COVER",
+            "存在封面单元但 EPUB 未声明 cover-image（封面源图缺失或未识别）",
+        )
 
     # ── 媒体溯源：源文图片 vs 译文图片（数量 + 相对顺序） ─────────────────
     for e in expected:

@@ -72,6 +72,7 @@ def convert(
     input: str | None = typer.Argument(None, help="源文件路径（省略则在工作区内转换）"),
     output: str | None = typer.Option(None, "-o", "--output", help="输出 EPUB 路径"),
     workspace: str | None = typer.Option(None, "--workspace", help="工作区目录"),
+    theme: str | None = typer.Option(None, "--theme", help="排版主题（standard/compact/spacious）"),
     config: str | None = typer.Option(None, "--config", help="配置文件路径"),
 ) -> None:
     """仅转换（不翻译）：归一化 + 结构 + EPUB + QA。"""
@@ -83,7 +84,7 @@ def convert(
             )
         else:
             store = _store_from(workspace, cfg)
-        out = orch.convert(store, output=output)
+        out = orch.convert(store, output=output, theme=theme or cfg.output.theme)
         console.print(f"[green]EPUB 已生成：[/green]{out}")
         report = orch.qa(store, epub_path=str(out))
         console.print(
@@ -188,13 +189,14 @@ def build(
     workspace: str | None = typer.Option(None, "--workspace", help="工作区目录"),
     output: str | None = typer.Option(None, "-o", "--output", help="输出 EPUB 路径"),
     bilingual: bool = typer.Option(False, "--bilingual", help="产出双语 EPUB"),
+    theme: str | None = typer.Option(None, "--theme", help="排版主题（standard/compact/spacious）"),
     config: str | None = typer.Option(None, "--config", help="配置文件路径"),
 ) -> None:
     """从译文（缺省回退源文）封装 EPUB。"""
     cfg = load_config(config or _CONFIG_PATH)
     store = _store_from(workspace, cfg)
     try:
-        out = orch.build(store, bilingual=bilingual, output=output)
+        out = orch.build(store, bilingual=bilingual, output=output, theme=theme or cfg.output.theme)
     except (ValueError, OSError, orch.OrchestrationError) as e:
         raise typer.Exit(f"封装失败：{e}") from None
     console.print(f"[green]EPUB 已生成：[/green]{out}")

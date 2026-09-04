@@ -42,5 +42,12 @@ DC 元数据来自 `publication.json.meta`：`dc:title`、`dc:creator`、`dc:lan
 
 ## 说明
 
-封面（`properties="cover-image"`）、脚注/尾注双向跳转、NCX 嵌套层级、原图优先+补充层为后续
-扩展点，当前未实现。
+- **主题**（`--theme` / `config.output.theme`）：`standard`（serif+1.7 行距+缩进+两端对齐+标题居中，
+  默认）/ `compact`（sans-serif+1.4+无缩进）/ `spacious`（serif+2.0）。只控排版微调，
+  无具体字体名/颜色/字号（audit 会拦：`E_THEME_FONT`/`E_THEME_COLOR`）。
+- **封面**：cover 单元的首个图片自动成为 `cover-image`（`<meta name="cover">` +
+  spine `linear="no"`）；无封面源图时 audit 提示 `W_NO_COVER`（provenance）。
+- **脚注**：`[^label]` → 标准弹窗注释（noteref/footnote），全书跨章全局连续编号 + 双向跳转。
+- **目录层级**：源文标题层级（`level`）→ nav 嵌套 `<ol>` + NCX 嵌套 navPoint（`dtb:depth`）。
+- **图片**：只缩不放大居中；独立图段（alt 非空）→ `figure+figcaption` 图注。
+- 原图优先+补充层为后续扩展点。

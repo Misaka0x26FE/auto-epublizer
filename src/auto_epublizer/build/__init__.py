@@ -37,8 +37,8 @@ _HTML_FIG_IMG = re.compile(
 _HTML_IMG = re.compile(r"<img\b[^>]*?src=\"([^\"]+)\"[^>]*?/?>", re.DOTALL)
 
 # 内置基础样式：仅功能性规则（epub-template-spec §4 呈现层）——
-# 字体/颜色/字号/行距/正文缩进/对齐一律不设，交由阅读器决定；
-# 有限个性化由主题层（P1 预置主题）提供。图片「只缩不放大居中」是功能性规则必须保留。
+# 字体/颜色/字号一律不设，交由阅读器决定；行距/缩进/对齐等排版微调由主题层提供。
+# 图片「只缩不放大居中」是功能性规则必须保留。
 _STYLE_CSS = """\
 img {
   max-width: 100%;
@@ -48,10 +48,42 @@ p.imgp {
   text-indent: 0;
   text-align: center; /* 图片段居中、不缩进 */
 }
+figure.imgfig {
+  margin: 1em 0;
+  text-align: center; /* 图注段落 */
+}
 section.footnotes {
   margin-top: 2em;
 }
 """
+
+# 主题层（epub-template-spec §5）：预置三套极简主题，只控排版微调——
+# 字族仅用泛化族名（serif/sans-serif，阅读器映射到自己的字体），无颜色无字号。
+_THEMES: dict[str, str] = {
+    "standard": (
+        "body {\n  font-family: serif;\n  line-height: 1.7;\n}\n"
+        "p {\n  text-indent: 2em;\n  text-align: justify;\n  margin: 0 0 0.6em 0;\n}\n"
+        "h1, h2, h3, h4, h5, h6 {\n  text-align: center;\n}\n"
+    ),
+    "compact": (
+        "body {\n  font-family: sans-serif;\n  line-height: 1.4;\n}\n"
+        "p {\n  margin: 0 0 0.8em 0;\n}\n"
+    ),
+    "spacious": (
+        "body {\n  font-family: serif;\n  line-height: 2.0;\n}\n"
+        "p {\n  text-indent: 2em;\n  text-align: justify;\n  margin: 0 0 1em 0;\n}\n"
+        "h1, h2, h3, h4, h5, h6 {\n  text-align: center;\n}\n"
+    ),
+}
+
+
+def theme_css(theme: str) -> str:
+    """取主题层 CSS；未知主题报错（可选值随错误信息给出）。"""
+    try:
+        return _THEMES[theme]
+    except KeyError:
+        raise ValueError(f"未知主题：{theme}（可选：{'/'.join(_THEMES)}）") from None
+
 
 _NS_XHTML = "http://www.w3.org/1999/xhtml"
 _NS_EPUB = "http://www.idpf.org/2007/ops"
@@ -103,11 +135,19 @@ def _render_opf(
     modified: str,
     items: list[tuple[str, str, str, str | None]],
     spine_ids: list[str],
+    *,
+    cover_item_id: str | None = None,
+    cover_docs: set[str] | None = None,
 ) -> str:
-    """渲染 content.opf：manifest / spine / DC 元数据 / dcterms:modified。"""
+    """渲染 content.opf：manifest / spine / DC 元数据 / dcterms:modified / 封面 meta。
+
+    ``cover_item_id`` 非空时输出 ``<meta name="cover" content="…">``；
+    ``cover_docs`` 中的内容文档 spine 标 ``linear="no"``（封面不进阅读顺序）。
+    """
     ident = pub.meta.identifier
     uid = ident.isbn or ident.uri or ident.doi or pub.slug
     meta = pub.meta
+    cover_docs = cover_docs or set()
     m = [
         '<?xml version="1.0" encoding="utf-8"?>',
         f'<package xmlns="{_NS_OPF}" version="3.0" unique-identifier="pub-id">',
@@ -125,6 +165,8 @@ def _render_opf(
     if meta.rights:
         m.append(f"    <dc:rights>{escape(meta.rights)}</dc:rights>")
     m.append(f'    <meta property="dcterms:modified">{escape(modified)}</meta>')
+    if cover_item_id:
+        m.append(f'    <meta name="cover" content="{escape(cover_item_id)}"/>')
     m.append("  </metadata>")
     m.append("  <manifest>")
     for item_id, href, media_type, props in items:
@@ -136,7 +178,8 @@ def _render_opf(
     m.append("  </manifest>")
     m.append("  <spine>")
     for rid in spine_ids:
-        m.append(f'    <itemref idref="{escape(rid)}"/>')
+        linear = ' linear="no"' if rid in cover_docs else ""
+        m.append(f'    <itemref idref="{escape(rid)}"{linear}/>')
     m.append("  </spine>")
     m.append("</package>")
     return "\n".join(m)
@@ -393,19 +436,33 @@ def build_epub(
     modified: str,
     out_path: str | Path,
     media_files: list[tuple[str, bytes]] | None = None,
+    theme: str = "standard",
+    cover_media: str | None = None,
 ) -> Path:
     """把内容文档 + 媒体资源封装为确定性标准 EPUB 3，返回输出路径。
 
-    ``entries``：构建期单元清单（id/kind/region/title）。
+    ``entries``：构建期单元清单（id/kind/region/title/level）。
     ``content_files``：``(文件名.xhtml, XHTML 字符串)``，按 spine 顺序。
     ``media_files``：可选 ``(EPUB 内相对 OEBPS/ 路径, 字节)``，如 ``("media/p001.jpg", …)``。
+    ``theme``：主题层名称（standard/compact/spacious，epub-template-spec §5）。
+    ``cover_media``：封面媒体 EPUB 内路径（如 "media/cover.png"）→ manifest
+    ``properties="cover-image"`` + ``<meta name="cover">``；cover 单元内容文档
+    spine 标 ``linear="no"``（不进正文阅读顺序）。
     """
     out_path = Path(out_path)
     out_path.parent.mkdir(parents=True, exist_ok=True)
     ts = _parse_modified(modified)
+    css = _STYLE_CSS + theme_css(theme)
 
     content_entries = _content_entries(entries, content_files)
     spine_ids = [fn for fn, _ in content_files]
+    # cover 单元内容文档 → linear="no"
+    cover_docs = {
+        f"{slug_file(e['id'])}.xhtml"
+        for e in entries
+        if e.get("kind") == "cover"
+        and f"{slug_file(e['id'])}.xhtml" in {fn for fn, _ in content_files}
+    }
 
     items: list[tuple[str, str, str, str | None]] = [
         ("nav", "nav.xhtml", "application/xhtml+xml", "nav"),
@@ -415,15 +472,22 @@ def build_epub(
     ]
     for fn in spine_ids:
         items.append((fn, fn, "application/xhtml+xml", None))
+    cover_item_id: str | None = None
     if media_files:
         for epub_path, _data in media_files:
             ext = Path(epub_path).suffix.lower()
             media_type = _MEDIA_TYPES.get(ext, "application/octet-stream")
             # href 与 XHTML 内引用一致（URL 编码特殊字符）
             href = quote(epub_path)
-            items.append((epub_path, href, media_type, None))
+            item_id = epub_path
+            props = "cover-image" if cover_media and epub_path == cover_media else None
+            if props:
+                cover_item_id = item_id
+            items.append((item_id, href, media_type, props))
 
-    opf = _render_opf(pub, lang, modified, items, spine_ids)
+    opf = _render_opf(
+        pub, lang, modified, items, spine_ids, cover_item_id=cover_item_id, cover_docs=cover_docs
+    )
     nav = _render_nav(pub, entries, content_entries, lang)
     ncx = _render_ncx(pub, content_entries)
     landmarks = _render_landmarks(content_entries, lang)
@@ -447,7 +511,7 @@ def build_epub(
         zf.writestr(_zi("OEBPS/nav.xhtml", ts, deflated), nav.encode("utf-8"))
         zf.writestr(_zi("OEBPS/toc.ncx", ts, deflated), ncx.encode("utf-8"))
         zf.writestr(_zi("OEBPS/landmarks.xhtml", ts, deflated), landmarks.encode("utf-8"))
-        zf.writestr(_zi("OEBPS/style.css", ts, deflated), _STYLE_CSS.encode("utf-8"))
+        zf.writestr(_zi("OEBPS/style.css", ts, deflated), css.encode("utf-8"))
         for fn, xhtml in content_files:
             zf.writestr(_zi(f"OEBPS/{fn}", ts, deflated), xhtml.encode("utf-8"))
         if media_files:

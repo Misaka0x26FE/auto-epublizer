@@ -5,8 +5,10 @@ from __future__ import annotations
 import zipfile
 from pathlib import Path
 
+import pytest
+
 from auto_common.workspace import Publication, PublicationMeta, Unit
-from auto_epublizer.build import build_epub
+from auto_epublizer.build import build_epub, theme_css
 from auto_epublizer.build.html import (
     FootnoteState,
     markdown_to_xhtml,
@@ -276,11 +278,15 @@ def test_collect_media_subdir_and_paren_paths(tmp_path: Path) -> None:
 
 
 def test_markdown_to_xhtml_renders_img_and_blocks_dangerous_urls() -> None:
-    """media/ 图片渲染为 <img>（限宽 + imgp 居中段）；危险 URL 降级（豆包实测 P10/P15 回归）。"""
+    """media/ 图片渲染为 <img>（限宽）；独立图段 alt 非空 → figure+figcaption（P1）。"""
     out = markdown_to_xhtml("![插图](media/x.png)\n")
     assert '<img src="media/x.png" alt="插图"' in out
     assert "max-width:100%" in out  # 限宽防溢出
-    assert '<p class="imgp">' in out  # 图片段居中、不缩进
+    assert '<figure class="imgfig">' in out and "<figcaption>插图</figcaption>" in out
+
+    # alt 为空的独立图段：回退 p.imgp（无图注可渲染）
+    out_empty_alt = markdown_to_xhtml("![](media/x.png)\n")
+    assert '<p class="imgp">' in out_empty_alt and "<figcaption>" not in out_empty_alt
 
     out2 = markdown_to_xhtml("[点我](javascript:alert(1))\n")
     assert "<a " not in out2
@@ -347,11 +353,69 @@ def test_build_epub_embeds_stylesheet(tmp_path: Path) -> None:
         css = zf.read("OEBPS/style.css").decode("utf-8")
         # 功能性规则保留：图片只缩不放大、图片段居中
         assert "max-width: 100%" in css and "p.imgp" in css
-        # 呈现层瘦身：字体/颜色/字号/行距/正文缩进/对齐一律不设，交阅读器
-        for banned in ("font-family", "font-size", "color:", "line-height", "text-align: justify"):
+        # 呈现层 + 主题层边界：泛化族名允许；具体字体名/字号/颜色禁止（阅读器领地）
+        assert "font-family: serif" in css  # 默认 standard 主题
+        for banned in ("Georgia", "Noto Serif", "font-size", "color:"):
             assert banned not in css, f"非功能性样式残留：{banned}"
         opf = zf.read("OEBPS/content.opf").decode("utf-8")
         assert 'href="style.css"' in opf and "text/css" in opf
+
+
+def test_theme_css_variants(tmp_path: Path) -> None:
+    """主题机制：三套预置主题只控排版微调；未知主题报错（epub-template-spec §5）。"""
+    pub = _pub()
+    entries = [{"id": "ch01", "region": "body", "title": "第一章"}]
+    content = [("ch01.xhtml", render_document("第一章", "正文。\n", lang="zh-CN"))]
+    css_by_theme = {}
+    for theme in ("standard", "compact", "spacious"):
+        out = build_epub(
+            pub,
+            entries,
+            content,
+            lang="zh-CN",
+            modified="2026-01-01T00:00:00Z",
+            out_path=tmp_path / f"{theme}.epub",
+            theme=theme,
+        )
+        with zipfile.ZipFile(out) as zf:
+            css_by_theme[theme] = zf.read("OEBPS/style.css").decode("utf-8")
+    assert "line-height: 1.7" in css_by_theme["standard"]
+    assert "font-family: sans-serif" in css_by_theme["compact"]
+    assert "line-height: 2.0" in css_by_theme["spacious"]
+    # 主题不引入具体字体名/颜色/字号
+    for css in css_by_theme.values():
+        assert "font-size" not in css and "color:" not in css and '"' not in css
+    with pytest.raises(ValueError, match="未知主题"):
+        theme_css("nope")
+
+
+def test_cover_image_and_linear_no(tmp_path: Path) -> None:
+    """封面：cover-image 属性 + <meta name=cover> + cover 单元 spine linear=no。"""
+    pub = _pub()
+    entries = [
+        {"id": "cover", "kind": "cover", "region": "cover", "title": "封面"},
+        {"id": "ch01", "kind": "chapter", "region": "body", "title": "第一章"},
+    ]
+    content = [
+        ("cover.xhtml", render_document("封面", "![封面](media/cover.png)\n", lang="zh-CN")),
+        ("ch01.xhtml", render_document("第一章", "正文。", lang="zh-CN")),
+    ]
+    out = build_epub(
+        pub,
+        entries,
+        content,
+        lang="zh-CN",
+        modified="2026-01-01T00:00:00Z",
+        out_path=tmp_path / "c.epub",
+        media_files=[("media/cover.png", b"PNGDATA")],
+        cover_media="media/cover.png",
+    )
+    with zipfile.ZipFile(out) as zf:
+        opf = zf.read("OEBPS/content.opf").decode("utf-8")
+    assert 'properties="cover-image"' in opf
+    assert '<meta name="cover" content="media/cover.png"/>' in opf
+    assert '<itemref idref="cover.xhtml" linear="no"/>' in opf
+    assert '<itemref idref="ch01.xhtml"/>' in opf
 
 
 def test_build_epub_ncx_no_dangling_refs(tmp_path: Path) -> None:

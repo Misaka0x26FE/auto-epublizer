@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import zipfile
 from pathlib import Path
 
 from auto_common.workspace import Publication, PublicationMeta
@@ -212,3 +213,69 @@ def test_generate_report_unconfirmed_blocks_release() -> None:
         total_sentences=50,
     )
     assert result.released is False
+
+
+def test_audit_media_warnings(tmp_path: Path) -> None:
+    """媒体审计：缺 alt / 超宽图 / webp 兼容性告警（P1）；audit 不含主题违规。"""
+    import struct
+    import zlib
+
+    def make_png(w: int, h: int) -> bytes:
+        def chunk(t: bytes, d: bytes) -> bytes:
+            c = t + d
+            return struct.pack(">I", len(d)) + c + struct.pack(">I", zlib.crc32(c) & 0xFFFFFFFF)
+
+        ihdr = struct.pack(">IIBBBBB", w, h, 8, 2, 0, 0, 0)
+        raw = b"".join(b"\x00" + b"\x80\x80\x80" * w for _ in range(h))
+        return (
+            b"\x89PNG\r\n\x1a\n"
+            + chunk(b"IHDR", ihdr)
+            + chunk(b"IDAT", zlib.compress(raw))
+            + chunk(b"IEND", b"")
+        )
+
+    pub = _pub()
+    entries = [{"id": "ch01", "region": "body", "title": "第一章"}]
+    md = (
+        "# 第一章\n\n![宽图](media/wide.png)\n\n"
+        "![](media/noalt.png)\n\n"
+        "![兼容](media/pic.webp)\n\n"
+        "![正常](media/ok.png)\n"
+    )
+    content = [("ch01.xhtml", render_document("第一章", md, lang="zh-CN"))]
+    out = build_epub(
+        pub,
+        entries,
+        content,
+        lang="zh-CN",
+        modified="2026-01-01T00:00:00Z",
+        out_path=tmp_path / "m.epub",
+        media_files=[
+            ("media/wide.png", make_png(5001, 100)),
+            ("media/noalt.png", make_png(20, 20)),
+            ("media/pic.webp", b"WEBPDATA"),
+            ("media/ok.png", make_png(20, 20)),
+        ],
+    )
+    result = audit_epub(out)
+    codes = {f.code for f in result.findings}
+    assert "W_IMG_LARGE" in codes  # 5001px 宽
+    assert "W_IMG_NO_ALT" in codes  # 空 alt 的 img 无 alt 属性？——空 alt 仍有 alt=
+    assert "W_IMG_FORMAT" in codes  # webp
+    assert result.ok
+
+
+def test_audit_theme_violations(tmp_path: Path) -> None:
+    """主题校验：style.css 含具体字体名/字号/颜色 → E_THEME_*（自定义 zip 注入）。"""
+    out = _make_epub(tmp_path)
+    bad_css = b"body { font-family: Georgia; font-size: 12pt; color: red; }"
+    out2 = out.with_name("bad.epub")
+    with zipfile.ZipFile(out) as zin, zipfile.ZipFile(out2, "w") as zout:
+        for item in zin.infolist():
+            data = bad_css if item.filename == "OEBPS/style.css" else zin.read(item.filename)
+            zout.writestr(item, data)
+    result = audit_epub(out2)
+    codes = {f.code for f in result.findings}
+    assert "E_THEME_FONT" in codes  # 具体字体名 + 字号
+    assert "E_THEME_COLOR" in codes
+    assert not result.ok

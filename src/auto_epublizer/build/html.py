@@ -130,18 +130,22 @@ def _clean_pandoc_markers(md: str) -> str:
     return "\n".join(cleaned)
 
 
+def _render_img(alt: str, src: str) -> str:
+    """行内图片 → <img>：限宽防溢出、块级居中（功能性样式）；危险 URL 降级为空。"""
+    src = src.strip()
+    if _DANGEROUS_URL.match(src):
+        return ""
+    return (
+        f'<img src="{escape(src, quote=True)}" alt="{escape(alt, quote=True)}" '
+        'style="max-width:100%;height:auto;display:block;margin:1em auto;"/>'
+    )
+
+
 def _inline(text: str) -> str:
     """行内 markdown → XHTML；危险 URL（javascript:/data:）降级为纯文本。"""
 
     def _img(m: re.Match[str]) -> str:
-        alt, src = m.group(1), m.group(2).strip()
-        if _DANGEROUS_URL.match(src):
-            return ""
-        # 限宽防溢出：max-width 100%，高度自适应，块级居中
-        return (
-            f'<img src="{escape(src, quote=True)}" alt="{escape(alt, quote=True)}" '
-            'style="max-width:100%;height:auto;display:block;margin:1em auto;"/>'
-        )
+        return _render_img(m.group(1), m.group(2))
 
     def _link(m: re.Match[str]) -> str:
         label, href = m.group(1), m.group(2).strip()
@@ -157,8 +161,12 @@ def _inline(text: str) -> str:
     return text
 
 
+# 图注段落：整段仅一张图且 alt 非空 → figure + figcaption（postprocessing-spec P1）
+_IMG_ONLY_BLOCK = re.compile(r"^!\[([^\]]+)\]\(([^)]+)\)\s*$")
+
+
 def markdown_to_xhtml(md: str, *, unit_id: str = "", fn_state: FootnoteState | None = None) -> str:
-    """把 markdown 正文转换为 XHTML 片段（h1–h6 / p，文本统一转义）。
+    """把 markdown 正文转换为 XHTML 片段（h1–h6 / p / figure，文本统一转义）。
 
     ``unit_id`` + ``fn_state`` 提供时启用脚注语义化：``[^label]`` → noteref、
     定义块 → 章末 aside，全局序号跨单元连续。
@@ -183,6 +191,14 @@ def markdown_to_xhtml(md: str, *, unit_id: str = "", fn_state: FootnoteState | N
     for block in re.split(r"\n\s*\n", md):
         block = block.strip("\n")
         if not block.strip():
+            continue
+        m_img = _IMG_ONLY_BLOCK.match(block.strip())
+        if m_img:
+            # 图注段落：figure + figcaption（alt 即图注）
+            out.append(
+                f'<figure class="imgfig">{_render_img(m_img.group(1), m_img.group(2))}'
+                f"<figcaption>{escape(m_img.group(1))}</figcaption></figure>"
+            )
             continue
         lines = block.splitlines()
         m = _HEADING_RE.match(lines[0])

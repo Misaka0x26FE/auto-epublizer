@@ -133,6 +133,7 @@ class OutputConfig(BaseModel):
     mono: bool = True
     bilingual: bool = False
     about_page: bool = True
+    theme: str = "standard"  # standard | compact | spacious（epub-template-spec §5）
 
 
 class Config(BaseModel):
