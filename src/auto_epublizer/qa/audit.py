@@ -29,6 +29,41 @@ class AuditResult:
             self.ok = False
 
 
+def _image_size(data: bytes, ext: str) -> tuple[int, int] | None:
+    """解析 png/jpg/gif/bmp 的像素尺寸（其余格式或解析失败返回 None）。"""
+    try:
+        if ext == ".png" and len(data) >= 24 and data[:8] == b"\x89PNG\r\n\x1a\n":
+            return int.from_bytes(data[16:20], "big"), int.from_bytes(data[20:24], "big")
+        if ext == ".gif" and len(data) >= 10 and data[:3] == b"GIF":
+            return int.from_bytes(data[6:8], "little"), int.from_bytes(data[8:10], "little")
+        if ext == ".bmp" and len(data) >= 26 and data[:2] == b"BM":
+            return (
+                abs(int.from_bytes(data[18:22], "little")),
+                abs(int.from_bytes(data[22:26], "little")),
+            )
+        if ext in (".jpg", ".jpeg") and data[:2] == b"\xff\xd8":
+            i = 2
+            while i + 9 < len(data):
+                if data[i] != 0xFF:
+                    i += 1
+                    continue
+                marker = data[i + 1]
+                if marker in (0xC0, 0xC1, 0xC2, 0xC3):  # SOF：含宽高
+                    h = int.from_bytes(data[i + 5 : i + 7], "big")
+                    w = int.from_bytes(data[i + 7 : i + 9], "big")
+                    return w, h
+                if marker in (0xD8, 0xD9) or 0xD0 <= marker <= 0xD7:  # 无长度段
+                    i += 2
+                    continue
+                seg_len = int.from_bytes(data[i + 2 : i + 4], "big")
+                if seg_len < 2:
+                    return None
+                i += 2 + seg_len
+        return None
+    except IndexError:
+        return None
+
+
 def audit_epub(path: str | Path) -> AuditResult:
     """解包 EPUB 并逐项审计结构。"""
     result = AuditResult(ok=True)
@@ -124,6 +159,53 @@ def audit_epub(path: str | Path) -> AuditResult:
             if re.search(r'href="\s*(javascript|data):', content, re.IGNORECASE):
                 result.add("error", "E_UNSAFE_URL", f"发现危险 URL 注入：{name}")
 
+        # 5b. 主题层校验（epub-template-spec §5）：禁具体字体名/颜色/字号，
+        # serif/sans-serif 等泛化族名允许（阅读器映射到自己的字体）。
+        if "OEBPS/style.css" in names:
+            css = re.sub(
+                r"/\*.*?\*/", "", zf.read("OEBPS/style.css").decode("utf-8"), flags=re.DOTALL
+            )
+            if re.search(r"font-family\s*:[^;}]*[\"']", css):
+                result.add(
+                    "error",
+                    "E_THEME_FONT",
+                    "style.css 含具体字体名（只允许 serif/sans-serif 泛化族名）",
+                )
+            if re.search(r"\bfont-size\s*:", css):
+                result.add("error", "E_THEME_FONT", "style.css 设置了字号（应由阅读器决定）")
+            if re.search(r"(?<![-\w])color\s*:", css):
+                result.add("error", "E_THEME_COLOR", "style.css 设置了颜色（应由阅读器处理）")
+
+        # 5c. 媒体审计（postprocessing-spec P1）：alt 空值/缺失、格式兼容、超大/超宽超高
+        for name in names:
+            if not name.endswith(".xhtml"):
+                continue
+            content = zf.read(name).decode("utf-8")
+            for tag in re.findall(r"<img\b[^>]*?/?>", content):
+                malt = re.search(r'\balt="([^"]*)"', tag)
+                if malt is None or not malt.group(1).strip():
+                    result.add("warning", "W_IMG_NO_ALT", f"img alt 为空或缺失：{name}")
+                msrc = re.search(r'src="([^"]+)"', tag)
+                if not msrc:
+                    continue
+                src = msrc.group(1)
+                if _HTTPS.match(src):
+                    continue
+                full = (Path(name).parent / src).as_posix()
+                if full not in names:
+                    continue  # 悬空已由 E_IMG_SRC 覆盖
+                ext = Path(src).suffix.lower()
+                if ext in (".avif", ".webp"):
+                    result.add("warning", "W_IMG_FORMAT", f"图片格式阅读器兼容性差（{ext}）：{src}")
+                size = _image_size(zf.read(full), ext)
+                if size:
+                    w, h = size
+                    if w > 4000:
+                        result.add("warning", "W_IMG_LARGE", f"图片宽度过大（{w}px）：{src}")
+                    ratio = max(w, h) / max(min(w, h), 1)
+                    if ratio > 5:
+                        result.add("warning", "W_IMG_RATIO", f"超宽/超高图（{w}x{h}）：{src}")
+
         # 6. 内容文档 lang 正确、恰好一个 h1
         for name in names:
             if not name.endswith(".xhtml") or name.endswith(("nav.xhtml", "landmarks.xhtml")):
@@ -134,5 +216,21 @@ def audit_epub(path: str | Path) -> AuditResult:
             h1s = re.findall(r"<h1\b", content, re.IGNORECASE)
             if len(h1s) != 1:
                 result.add("warning", "W_H1_COUNT", f"内容文档 h1 数量不为 1：{name}")
+
+        # 7. 封面 meta 一致性（epub-template-spec §3）：properties 与 <meta name="cover"> 互证
+        has_cover_prop = 'properties="cover-image"' in opf
+        cover_meta = re.search(r'<meta name="cover" content="([^"]+)"', opf)
+        if has_cover_prop and not cover_meta:
+            result.add(
+                "error", "E_COVER_META", 'manifest 声明 cover-image 但缺 <meta name="cover">'
+            )
+        elif cover_meta and not has_cover_prop:
+            result.add(
+                "error",
+                "E_COVER_META",
+                '<meta name="cover"> 指向的条目未声明 properties="cover-image"',
+            )
+        elif cover_meta and cover_meta.group(1) not in manifest_ids:
+            result.add("error", "E_COVER_META", f"cover meta 指向未知条目：{cover_meta.group(1)}")
 
     return result

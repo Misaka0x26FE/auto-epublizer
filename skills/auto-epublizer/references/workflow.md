@@ -66,14 +66,14 @@ auto-epublizer g0 [--unit <id>] [--workspace <dir>]
 # 审校（G1–G3，只读影子修订，写 reviews/review-<ts>/ + report.json）
 auto-epublizer review [--workspace <dir>]
 
-# 封装（译文缺省回退源文；--bilingual 产出 -bi.epub）
-auto-epublizer build [--bilingual] [-o <out.epub>] [--workspace <dir>]
+# 封装（译文缺省回退源文；--bilingual 产出 -bi.epub；--theme 选排版主题）
+auto-epublizer build [--bilingual] [--theme standard|compact|spacious] [-o <out.epub>] [--workspace <dir>]
 
-# 质检（epubcheck 零 error + 解包审计 + G5 放行判定）
+# 质检（epubcheck 零 error + 解包审计 + 溯源审计 + G5 放行判定）
 auto-epublizer qa [--epub <path>] [--workspace <dir>]
 
 # 仅转换不翻译
-auto-epublizer convert <input> [-o <out.epub>] [--workspace <dir>]
+auto-epublizer convert <input> [--theme standard|compact|spacious] [-o <out.epub>] [--workspace <dir>]
 
 # 进度 / 状态机 / 产物-状态对账
 auto-epublizer status [--workspace <dir>] [--json]

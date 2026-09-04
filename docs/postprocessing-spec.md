@@ -107,13 +107,16 @@
 7. ✅ **脚注语义化**：`noteref`/`footnote` + 全局序号 + 双向跳转（`FootnoteState`）
 8. ✅ **样式瘦身**：`_STYLE_CSS` 去字体/颜色/字号/行距/缩进/对齐（回归测试锁定）
 
-### P1 — 媒体位置 / 样式 / 主题
+### P1 — 媒体位置 / 样式 / 主题（✅ 已完成 2026-09-04）
 
-- 尺寸策略显式化 + 超宽/超高/大图审计（`W_IMG_LARGE`/`W_IMG_RATIO`）
-- 图注 `<figcaption>` + alt 空值告警（`W_IMG_NO_ALT`）
-- 封面 `cover-image` + `linear="no"`
-- 主题机制：预置三套极简主题 + `--theme` + `output.theme`（epub-template-spec §5）
-- 格式兼容告警（`.avif`/`.webp`）
+- ✅ 主题机制：预置三套极简主题（`standard`/`compact`/`spacious`）+ `--theme` +
+  `config.output.theme`（epub-template-spec §5）；audit 拦截具体字体名/字号/颜色
+  （`E_THEME_FONT`/`E_THEME_COLOR`）
+- ✅ 封面 `cover-image`（`<meta name="cover">` + spine `linear="no"`）+ `W_NO_COVER` 对账
+- ✅ 媒体审计：超宽/超高/大图（`W_IMG_RATIO`/`W_IMG_LARGE`）、alt 空值（`W_IMG_NO_ALT`）、
+  格式兼容（`.webp`/`.avif` → `W_IMG_FORMAT`）
+- ✅ 图注 `<figcaption>`：独立图段（alt 非空）→ `figure+figcaption`
+- 尺寸策略「只缩不放大」：已在 P0 样式瘦身时作为功能性规则锁定（回归测试）
 
 ### P2 — 补充项
 

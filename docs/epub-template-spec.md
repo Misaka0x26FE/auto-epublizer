@@ -35,8 +35,8 @@
 | 每文档 `xml:lang` + 恰好一个 `h1` | ✅ | 全文档一致 |
 | 标题层级 h1–h6 语义 + 无跳级 | ⬜ P2 | 不得 h1→h3 跳级 |
 | **脚注语义化** | ✅ | `noteref`/`footnote` + 全局序号 + 双向跳转（§6，已落地） |
-| 封面 `cover-image` | ⬜ P1 | `properties="cover-image"` + `<meta name="cover">` |
-| 封面/目录页 `linear="no"` | ⬜ P1 | 不进正文阅读顺序 |
+| 封面 `cover-image` | ✅ | `properties="cover-image"` + `<meta name="cover">` + spine `linear="no"` |
+| 封面/目录页 `linear="no"` | ✅ | cover 单元内容文档不进正文阅读顺序 |
 | 目录锚点 | ✅ | 单元级嵌套（源文标题已切分为单元，h1–h6 锚点随层级实现覆盖） |
 | 语义标签 | ⬜ P2 | 引用 `blockquote`、诗歌 `verse`、列表 `ul/ol` 保留语义 |
 | 双语版 src/tgt 各自 `lang` | ✅ | 每段标注源/目标语言 |
@@ -78,17 +78,18 @@
 | 标题呈现 | 居中（默认）/ 左对齐 |
 | 脚注方式 | 弹窗（默认，标准）/ 章末列表（老阅读器降级） |
 
-### 5.2 预置主题
+### 5.2 预置主题（✅ 已实现 2026-09-04）
 
 不开放任意 CSS。预置三套极简主题，`--theme` / `config.output.theme` 选择：
 
 ```text
-standard  → serif + normal 行距 + 缩进 + 两端对齐 + 标题居中（默认）
-compact   → sans-serif + 1.4 行距 + 无缩进 + 左对齐（信息密集场景）
-spacious  → serif + 2.0 行距 + 缩进 + 两端对齐（阅读舒适场景）
+standard  → serif + 1.7 行距 + 缩进 + 两端对齐 + 标题居中（默认）
+compact   → sans-serif + 1.4 行距 + 无缩进 + 左对齐
+spacious  → serif + 2.0 行距 + 缩进 + 两端对齐
 ```
 
-每套主题仅派生「排版微调」几个 CSS 属性，不引入字体名、颜色、字号。
+每套主题仅派生「排版微调」几个 CSS 属性，不引入字体名、颜色、字号；
+audit 拦截违规（`E_THEME_FONT`：具体字体名/字号；`E_THEME_COLOR`：颜色）。
 
 ## 6. 注释标准化（标准弹窗 + 全局序号）
 
@@ -112,15 +113,15 @@ output:
   bilingual: false
 ```
 
-### 7.2 实现影响清单
+### 7.2 实现影响清单（✅ 1–4、6 已落地；5 部分落地）
 
-1. `build/__init__.py`：`_STYLE_CSS` 瘦身为功能性样式 + 主题变体表；`build_epub` 接受 `theme`。
-2. `build/html.py`：`render_document` 只产出语义 XHTML，CSS 从模板/主题注入（解耦）。
-3. 脚注语义化：新增「注码 → `noteref`/`footnote`」渲染 + 全局编号器（跨章状态）。
-4. 封面 `cover-image`：新增封面处理（源图来自 `preprocessing` 识别的封面或用户提供）。
-5. `linear="no"`、目录锚点 `id`、语义标签保留：随目录层级实现一并落地。
-6. `qa/audit.py` 新增校验：主题 CSS 不含字体/颜色/字号（`E_THEME_FONT` 等）、脚注双向可跳、
-   封面 `cover-image` 存在。
+1. ✅ `build/__init__.py`：`_STYLE_CSS` 瘦身为功能性样式 + `_THEMES` 主题表；`build_epub` 接受 `theme`/`cover_media`。
+2. ✅ `build/html.py`：`render_document` 只产出语义 XHTML，CSS 从模板/主题注入（解耦）。
+3. ✅ 脚注语义化：`FootnoteState` 全局编号器 + noteref/footnote 渲染。
+4. ✅ 封面 `cover-image`：cover 单元首个图片自动识别 + `<meta name="cover">` + `linear="no"`。
+5. ⬜ 目录锚点 `id`（单元级嵌套已覆盖）、语义标签保留：P2。
+6. ✅ `qa/audit.py`：`E_THEME_FONT`（具体字体名/字号）/`E_THEME_COLOR`/`E_COVER_META`；
+   溯源审计 `W_NO_COVER`（qa/provenance.py）。
 
 ## 8. 后续实现清单（按优先级）
 
@@ -129,10 +130,10 @@ output:
 | P0 ✅ | 脚注语义化（弹窗 + 全局序号 + 双向跳转） | 结构层 |
 | P0 ✅ | 目录层级（嵌套 nav/NCX + `dtb:depth`，level 链路补全） | 结构层 |
 | P0 ✅ | `_STYLE_CSS` 瘦身（去字体/颜色/字号，回归测试锁定） | 呈现层 |
-| P1 | 主题机制（预置三套 + `--theme` + `output.theme`） | 主题层 |
-| P1 | 封面 `cover-image` + `linear="no"` | 结构层 |
+| P1 ✅ | 主题机制（预置三套 + `--theme` + `output.theme` + audit 校验） | 主题层 |
+| P1 ✅ | 封面 `cover-image` + `linear="no"` + `W_NO_COVER` 对账 | 结构层 |
 | P2 | 语义标签保留（blockquote/verse/ul/ol） | 结构层 |
-| P2 | audit 主题/脚注/封面校验 | 结构层 |
+| P2 | audit 补强（标题跳级/残留/元数据完备） | 结构层 |
 
-> P0 三项已于 2026-09-04 落地（详见 `docs/postprocessing-spec.md` §4）；主题机制、
-> 封面为 P1；语义标签、校验补强为 P2。
+> P0/P1 已于 2026-09-04 落地（详见 `docs/postprocessing-spec.md` §4）；语义标签与
+> audit 补强为 P2。
