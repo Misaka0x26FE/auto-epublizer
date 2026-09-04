@@ -119,15 +119,23 @@ structured/raw/inserts/
   （首行表头 + 分隔行），`markdown` 字段保存自包含 md；
 - **含图/公式表格**：表格 bbox 与 image block 相交（或单元格含公式特征）→ 区域渲染
   `page.get_pixmap(clip=table.bbox)` → `media/pNNN-tblNN.png`，method=`table`（crop 语义）。
+- **误检守卫（真书 dogfooding 实证）**：
+  - bbox 面积 ≥ `TABLE_MAX_AREA_RATIO`(0.5)×页面积 → 放弃（runoob 式教程的边框代码盒
+    会被粘连成跨半页的假表格，吞掉正文/插图）；
+  - md 路径单格长度 > `MAX_TABLE_CELL_CHARS`(300) → 放弃（整页正文被吸进一格）；
+  - 放弃后内容回归普通 text 块，正文无损，仅失去表格结构化。
 - 跨页表格：pymupdf 表格对象按页切分，本规范不跨页合并（后续扩展点，`pdf-parsing.md` §2.1）。
 
 ## 5. 公式检测与标记
 
 确定性检测（任一命中即标 `type=formula`）：
 
-1. **符号特征**：文本短（≤200 字）且含 ≥2 个数学符号（`∫∑√∂∓±×÷≠≤≥∞∈∀∃∇·…` 或希腊字母）；
+1. **符号特征**：文本短（≤200 字）且含 ≥2 个数学符号（`∫∑√∂∓±×÷≠≤≥∞∈∀∃∇⋅∗` 或希腊字母；
+   **不含 `·` 间隔号与 `…` 省略号**——中文高频标点，计入会误判正文，dogfooding 实证）；
 2. **字体特征**：span 字体名含 `Math` / `CMMI` / `CMSY` / `CMEX` / `Symbol` 等数学字体
-   （**`CMR` 除外**——它是 TeX 正文默认字体，计入会使纯 TeX 排版的书全篇误判）；
+   （**`CMR` 除外**——它是 TeX 正文默认字体，计入会使纯 TeX 排版的书全篇误判），
+   且**数学字体字符占比 ≥ `MATH_FONT_RATIO`(0.5)**——TeX 书的引号/尖括号常用 CMSY
+   渲染，单看「出现过」会把整段正文误判（On Lisp 实测 80+ 误报 → 2）；
 3. **独立行特征**：单独成块的居中短文本（≤120 字、句末无标点），且含 ≥1 个数学符号。
 
 处理：
@@ -148,9 +156,10 @@ structured/raw/inserts/
 
 ## 7. 配置与常量
 
-- 本规范实现不新增 config 段；阈值作为 `ingest/images.py` 模块常量
+- 本规范实现不新增 config 段；阈值作为 `ingest/images.py` / `ingest/tables.py` 模块常量
   （`FULL_PAGE_AREA_RATIO=0.70`、`TEXT_COVERAGE_MAX=0.15`、`MIN_IMAGE_SIZE=32`、
-  `MAX_IMAGE_DIM=1800`、`RENDER_DPI=150`、`BACKGROUND_AREA_RATIO=0.85`）。
+  `MAX_IMAGE_DIM=1800`、`RENDER_DPI=150`、`BACKGROUND_AREA_RATIO=0.85`、
+  `MAX_TABLE_CELL_CHARS=300`、`TABLE_MAX_AREA_RATIO=0.5`）。
 - agent 在 `plan.md` 覆盖阈值 = 直接以自身能力处理（不传 CLI 参数）。
 
 ## 8. 图片优化
