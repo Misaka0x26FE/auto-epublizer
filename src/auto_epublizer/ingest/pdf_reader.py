@@ -16,11 +16,19 @@ from pathlib import Path
 
 import fitz  # pymupdf
 
-from .images import extract_embedded_images
-from .inserts import InsertRecord, write_inserts
+from .formula import is_formula_block, is_math_font
+from .images import (
+    FULL_PAGE_AREA_RATIO,
+    TEXT_COVERAGE_MAX,
+    extract_embedded_images,
+    large_image_rects,
+    render_full_page,
+)
+from .inserts import InsertRecord, InsertSource, next_insert_id, write_inserts
 from .models import KIND_HEADING, KIND_TEXT, SourceDocument, SourceSegment, SourceUnit
 from .ocr import OcrBackend
 from .reading_order import sort_reading_order
+from .tables import extract_tables
 
 
 class PdfError(RuntimeError):
@@ -190,18 +198,22 @@ def aggregate_pdf_chapters(
 
 
 def _page_blocks(page: fitz.Page) -> list[dict]:
-    """抽取一页的版面块（text/image），保留 bbox 与字体信息。"""
+    """抽取一页的版面块（text），保留 bbox、字体与数学字体标记。"""
     blocks: list[dict] = []
     for block in page.get_text("dict", flags=fitz.TEXTFLAGS_TEXT)["blocks"]:
         if block.get("type") != 0:
             continue
         lines: list[str] = []
         max_size = 0.0
+        math_font: str | None = None
         for line in block.get("lines", []):
             line_size = 0.0
             for span in line.get("spans", []):
                 size = float(span.get("size", 0) or 0)
                 line_size = max(line_size, size)
+                font = span.get("font") or ""
+                if math_font is None and is_math_font(font):
+                    math_font = font
             text = "".join(span.get("text", "") for span in line.get("spans", []))
             if text.strip():
                 lines.append(text)
@@ -209,15 +221,103 @@ def _page_blocks(page: fitz.Page) -> list[dict]:
         text = "\n".join(lines)
         if not text.strip():
             continue
-        blocks.append(
-            {
-                "type": "text",
-                "bbox": block.get("bbox"),
-                "text": text,
-                "font_size": max_size,
-            }
-        )
+        entry: dict = {
+            "type": "text",
+            "bbox": block.get("bbox"),
+            "text": text,
+            "font_size": max_size,
+        }
+        if math_font is not None:
+            entry["math_font"] = math_font
+        blocks.append(entry)
     return blocks
+
+
+def _block_area(block: dict) -> float:
+    bbox = block.get("bbox")
+    if not bbox or len(bbox) != 4:
+        return 0.0
+    return max(0.0, float(bbox[2]) - float(bbox[0])) * max(0.0, float(bbox[3]) - float(bbox[1]))
+
+
+def _center_inside(bbox: list[float] | None, boxes: list[list[float]]) -> bool:
+    if not bbox or len(bbox) != 4:
+        return False
+    cx = (float(bbox[0]) + float(bbox[2])) / 2
+    cy = (float(bbox[1]) + float(bbox[3])) / 2
+    return any(b[0] <= cx <= b[2] and b[1] <= cy <= b[3] for b in boxes)
+
+
+def _page_extras(
+    doc: fitz.Document,
+    page: fitz.Page,
+    text_blocks: list[dict],
+    *,
+    records: list[InsertRecord],
+    media_dir,
+) -> list[dict]:
+    """P1 内容提取路由（docs/pdf-content-spec.md §3-§5）：整页图版 → 公式 → 表格 → 内嵌图。
+
+    返回按阅读顺序合并的页面 blocks（含原 text_blocks，公式块原位转换）。
+    """
+    page_area = abs(page.rect) or 1.0
+    text_chars = sum(len(b.get("text", "")) for b in text_blocks)
+    text_cov = sum(_block_area(b) for b in text_blocks) / page_area
+    img_rects = large_image_rects(page)
+    img_cov = sum(r.width * r.height for r in img_rects) / page_area
+
+    # 1) 整页图版：图占满页 + 文字极少（字数守卫保护带文字层的扫描页）
+    if img_cov >= FULL_PAGE_AREA_RATIO and text_cov < TEXT_COVERAGE_MAX and text_chars < 200:
+        return [render_full_page(page, records=records, media_dir=media_dir)]
+
+    # 2) 公式检测：text 块原位转 formula（md 呈现 $$…$$），记录待 agent 手写 LaTeX
+    formula_bboxes: list[list[float]] = []
+    for b in text_blocks:
+        if is_formula_block(b, page_width=page.rect.width, chapter_re=_CHAPTER_KEYWORD):
+            b["type"] = "formula"
+            iid = next_insert_id(records, page.number + 1, "formula")
+            b["text"] = f"$${b['text']}$$"
+            b["insert_id"] = iid
+            records.append(
+                InsertRecord(
+                    id=iid,
+                    type="formula",
+                    source=InsertSource(
+                        page=page.number + 1,
+                        bbox=b.get("bbox"),
+                        method="formula",
+                    ),
+                )
+            )
+            if b.get("bbox"):
+                formula_bboxes.append(list(b["bbox"]))
+
+    # 3) 表格双路径：纯文字 → md；含图/公式 → 区域裁剪图
+    table_blocks = extract_tables(
+        page,
+        records=records,
+        media_dir=media_dir,
+        image_bboxes=[list(r) for r in img_rects],
+        formula_bboxes=formula_bboxes,
+    )
+    table_bboxes = [b["bbox"] for b in table_blocks]
+
+    # 4) 内嵌图：跳过扫描背景（文字多时）与已被表格覆盖的图
+    img_blocks = extract_embedded_images(
+        doc,
+        page,
+        records=records,
+        media_dir=media_dir,
+        skip_backgrounds=text_chars >= 200,
+        skip_bboxes=table_bboxes,
+    )
+
+    # 5) 表格接管其区域内的文字/公式块（避免内容重复呈现）
+    content = text_blocks
+    if table_bboxes:
+        content = [b for b in content if not _center_inside(b.get("bbox"), table_bboxes)]
+
+    return sort_reading_order([*content, *table_blocks, *img_blocks])
 
 
 def _ocr_page(page: fitz.Page, backend: OcrBackend, *, dpi: int, tmp_dir: str) -> list[dict]:
@@ -247,7 +347,7 @@ def read_pdf(
     units: list[SourceUnit] = []
     segments: list[SourceSegment] = []
     records: list[InsertRecord] = []
-    total_blocks = 0
+    text_blocks_total = 0
     page_count = doc.page_count
     toc = doc.get_toc(simple=True)
     raw_path: Path | None = Path(raw_dir) if raw_dir is not None else None
@@ -258,15 +358,35 @@ def read_pdf(
         for page_no in range(page_count):
             page = doc[page_no]
             blocks = _page_blocks(page)
+            ocr_used = False
             if not blocks and ocr_backend is not None:
                 blocks = _ocr_page(page, ocr_backend, dpi=page_dpi, tmp_dir=tmp_dir or "")
+                ocr_used = True
             if raw_path is not None:
-                raw_path.mkdir(parents=True, exist_ok=True)
-                img_blocks = extract_embedded_images(
-                    doc, page, records=records, media_dir=raw_path / "media"
-                )
-                blocks = sort_reading_order([*blocks, *img_blocks])
-            total_blocks += len(blocks)
+                media_dir = raw_path / "media"
+                if ocr_used:
+                    # OCR 页属于扫描域：不做整页路由/表格/公式；扫描背景图跳过
+                    blocks = sort_reading_order(
+                        [
+                            *blocks,
+                            *extract_embedded_images(
+                                doc,
+                                page,
+                                records=records,
+                                media_dir=media_dir,
+                                skip_backgrounds=True,
+                            ),
+                        ]
+                    )
+                else:
+                    blocks = _page_extras(
+                        doc,
+                        page,
+                        blocks,
+                        records=records,
+                        media_dir=media_dir,
+                    )
+            text_blocks_total += sum(1 for b in blocks if b.get("type") == "text")
             if raw_path is not None:
                 (raw_path / f"page-{page_no + 1:03d}.json").write_text(
                     json.dumps(
@@ -305,7 +425,7 @@ def read_pdf(
 
             shutil.rmtree(tmp_dir, ignore_errors=True)
 
-    if total_blocks == 0:
+    if text_blocks_total == 0 and not records:
         raise PdfError("该 PDF 没有可抽取的文字层；若是扫描件请走 OCR 路径")
     if raw_path is not None and records:
         write_inserts(raw_path, records)
