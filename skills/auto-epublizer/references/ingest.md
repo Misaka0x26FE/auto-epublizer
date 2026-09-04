@@ -53,11 +53,13 @@ MinerU 外部 API → 询问用户。facts.md 的「路由提示」给出确定�
 ```text
 structured/raw/
 ├── page-001.json ...   # PDF 逐页切片（文字层/OCR；blocks 含 text/image/table/formula）
-├── inserts/            # 插图/表格/公式描述文件（<id>.json）+ index.jsonl
+├── inserts/            # 插图/表格/公式描述文件（<id>.json 为权威）+ index.jsonl（快照）
 └── media/              # pandoc 抽取的图片 + PDF 提取的插图/裁剪图
 ```
 
-`raw/` 持久化供审查，可由源文件重建。
+`raw/` 持久化供审查，可由源文件重建。inserts 的 `index.jsonl` 只是 ingest 时的汇总
+快照；**读取与审计一律以 `<id>.json` 单文件为准**——agent 补语义（content_desc/latex）
+只需编辑对应单文件，见 `references/translation.md`「inserts 补全」。
 
 ## 注意事项
 

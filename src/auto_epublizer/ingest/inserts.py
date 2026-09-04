@@ -1,8 +1,8 @@
 """插入内容（插图/表格/公式）描述文件：structured/raw/inserts/。
 
-每个插入内容一份 ``<id>.json``（CLI 生成确定性字段，agent 补语义字段）+
-``index.jsonl`` 汇总索引（按 id 排序）。schema 与溯源规范见
-docs/pdf-content-spec.md §2。
+每个插入内容一份 ``<id>.json``（CLI 生成确定性字段，agent 补语义字段）——这是
+**权威读取源**；``index.jsonl`` 只是 ingest 时的汇总快照（可从单文件重建）。
+schema 与溯源规范见 docs/pdf-content-spec.md §2。
 """
 
 from __future__ import annotations
@@ -63,17 +63,18 @@ def write_inserts(raw_dir: Path, records: list[InsertRecord]) -> None:
 
 
 def read_inserts(raw_dir: Path) -> list[InsertRecord]:
-    """读取 index.jsonl（缺目录/文件返回空表；坏行跳过）。"""
-    idx = Path(raw_dir) / "inserts" / "index.jsonl"
-    if not idx.is_file():
+    """读取插入内容记录：以 ``<id>.json`` 单文件为权威（按 id 排序）。
+
+    ``index.jsonl`` 只是 ingest 时的汇总快照，**不作为读取源**——agent 补语义
+    （content_desc/latex）只编辑单个 ``<id>.json``，审计即时反映。坏文件跳过。
+    """
+    inserts_dir = Path(raw_dir) / "inserts"
+    if not inserts_dir.is_dir():
         return []
     out: list[InsertRecord] = []
-    for line in idx.read_text(encoding="utf-8").splitlines():
-        line = line.strip()
-        if not line:
-            continue
+    for path in sorted(inserts_dir.glob("*.json")):
         try:
-            out.append(InsertRecord.model_validate_json(line))
-        except ValueError:
+            out.append(InsertRecord.model_validate_json(path.read_text(encoding="utf-8")))
+        except (OSError, ValueError):
             continue
-    return out
+    return sorted(out, key=lambda r: r.id)

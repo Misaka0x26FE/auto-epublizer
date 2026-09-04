@@ -156,7 +156,7 @@ def _opf_has_cover(zf: zipfile.ZipFile) -> bool:
 
 
 def _audit_inserts(result: ProvenanceResult, structured_dir: Path) -> None:
-    """插入内容溯源审计（raw/inserts/index.jsonl 存在时；pdf-content-spec §9）。
+    """插入内容溯源审计（raw/inserts/<id>.json 存在时；pdf-content-spec §9）。
 
     error：文件缺失 / source 非法（页号非正整数、bbox 非 4 个有限数）；
     warning：agent 未补 content_desc / formula 未手写 latex。
