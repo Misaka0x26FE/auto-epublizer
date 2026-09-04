@@ -25,6 +25,17 @@ def test_formula_text_symbol_feature() -> None:
     assert not is_formula_text("× " * 120)  # 超长不命中（>200 字）
 
 
+def test_formula_text_chinese_punctuation_not_math() -> None:
+    """中文高频标点（间隔号/省略号）不是数学符号（真书 dogfooding 回归）。"""
+    # 人名间隔号：两处 `·` 曾被计为数学符号导致正文误判公式
+    assert not is_formula_text(
+        "C 语言是一种通用的高级语言，最初是由丹尼斯·里奇在贝尔实验室为开发 UNIX 操作系统而设计的。"
+    )
+    assert not is_formula_text("于是他们走了很远很远……直到天黑。")
+    # 真点乘 ⋅（U+22C5）仍视为数学符号
+    assert is_formula_text("a ⋅ b ≡ c")
+
+
 def test_math_font_names() -> None:
     assert is_math_font("CMMI12")
     assert is_math_font("CMSY10")
