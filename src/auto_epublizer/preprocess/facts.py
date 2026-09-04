@@ -150,6 +150,26 @@ def collect_facts(store: RunStore, config) -> dict[str, Any]:
     }
 
 
+def _ocr_routing(caps: dict[str, Any]) -> list[str]:
+    """扫描件 OCR 五档路由提示（确定性；最终决策见 preprocessing/plan.md）。
+
+    优先级：传统 OCR → rapidocr → 视觉 LLM 兜底 → MinerU 外部 API → 询问用户。
+    """
+    c = caps["capabilities"]
+    if c.get("tesseract", {}).get("available") or c.get("ocrmypdf", {}).get("available"):
+        return [
+            "扫描件 OCR 路由：首选传统 OCR（tesseract/ocrmypdf 可用）——"
+            "可先对扫描 PDF 做文字层重建再入库"
+        ]
+    if c.get("rapidocr", {}).get("available"):
+        return ["扫描件 OCR 路由：RapidOCR 离线 OCR（init 自动走 pdf.ocr: auto）"]
+    if c.get("llm_vision_model", {}).get("available"):
+        return ["扫描件 OCR 路由：视觉 LLM 兜底（页面转图 → 多模态模型）"]
+    if c.get("mineru", {}).get("available"):
+        return ["扫描件 OCR 路由：MinerU 外部 API（MINERU_API_KEY 已配置）"]
+    return ["扫描件 OCR 路由：无可用 OCR 手段——请用户提供可用 OCR / 解析手段或手工 OCR 后重跑"]
+
+
 def _route_suggestions(sniff_facts: dict[str, Any], capabilities: dict[str, Any]) -> list[str]:
     """确定性路由提示（非决策；决策由 agent 写 plan.md）。"""
     caps = capabilities["capabilities"]
@@ -161,12 +181,7 @@ def _route_suggestions(sniff_facts: dict[str, Any], capabilities: dict[str, Any]
         out.append("EPUB 含加密描述（DRM）：无法直接解析，需用户提供无 DRM 来源")
     if kind == "pdf":
         if sniff_facts.get("scanned"):
-            if caps["rapidocr"]["available"]:
-                out.append("扫描件：init 将自动走 RapidOCR 离线 OCR")
-            else:
-                out.append(
-                    "扫描件且无 OCR：安装 uv sync --extra ocr，或多模态兜底（见 multimodal 自报）"
-                )
+            out.extend(_ocr_routing(capabilities))
         elif not sniff_facts.get("has_text_layer"):
             out.append("PDF 文字层判定异常：请人工复核")
         if sniff_facts.get("garbled_ratio", 0) > 0.02:
@@ -263,6 +278,7 @@ def render_facts_md(facts: dict[str, Any]) -> str:
     for name, item in caps["capabilities"].items():
         lines.append(f"- {'✓' if item['available'] else '✗'} {name}")
     lines.append(f"- multimodal：{'是' if caps['multimodal'] else '待 agent 自报（能否看图）'}")
+    lines.append(f"- search：{'有' if caps['search'] else '待 agent 自报（是否有网络搜索工具）'}")
 
     lines += ["", "## 路由提示（确定性；最终决策见 preprocessing/plan.md）", ""]
     for s in facts["suggestions"]:

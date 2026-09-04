@@ -16,13 +16,38 @@ auto-epublizer preprocess
 目录 TOC、规模统计（单元/词数/句数/token 粗估）、内容体检、环境能力快照（doctor）、
 确定性路由提示，以及 **agent 待办清单**。
 
+## 1.1 能力自报（capabilities.md）
+
+CLI 探测不到的五维能力边界，由你（agent）开工前自报，写 `preprocessing/capabilities.md`：
+
+| 维度 | 自报内容 | 影响 |
+|---|---|---|
+| agent 自身能力 | multimodal（能否看图）、search（是否有网络搜索工具） | 扫描 PDF 视觉兜底 / 背景知识补齐路由 |
+| agent 模型 | 模型 ID、上下文窗口、是否视觉模型 | 单次可处理的书内容量、是否可走多模态 |
+| OS 环境 | 本机可达的 CLI 工具（doctor 已探测部分） | ingest/OCR 路由 |
+| 外部 API 边界 | 可用 LLM provider、MinerU key、网络可达 | 翻译/解析/检索可用性 |
+| 待处理文件工作量 | 规模粗估（facts 有 token 粗估）、难点预估 | 切分与分阶段计划 |
+
+`multimodal` / `search` 也可从 `facts.md` 的「环境能力快照」里确认（CLI 探测不到的显示
+「待 agent 自报」）。
+
+## 1.2 背景知识补齐（Plan B 路由）
+
+翻译前若缺少背景知识（专名、史实、文化背景、可疑 OCR 文本），按此路由：
+
+1. **有网络搜索工具**（自报 search=true）：自行检索，结果与来源记入 `references/web/`
+   （URL、标题、时间），追加到 `references/index.jsonl`；
+2. **无搜索工具**：明确询问用户，将用户提供的材料放 `references/user/`；
+3. 两者都没有时不强行补；把缺口写进 `risks.md` 留待翻译/审校时处理。
+
 ## 2. 按待办依次撰写（全部写在 `preprocessing/`）
 
 ### 2.1 `plan.md`（方案决策）
 
 输入：facts.md（源类型/体检/能力快照/路由提示）+ `references/ingest.md` 决策表。
-写明：选择的 ingest 路由（pandoc / 按页切片 / 离线 OCR / 视觉 LLM 兜底）及**依据**；
-扫描件时明确 OCR 或视觉兜底的执行方式；DRM/损坏等阻断问题在此升级给用户。
+写明：选择的 ingest 路由（pandoc / 按页切片 / OCR 五档：传统 OCR→rapidocr→视觉 LLM→
+MinerU API→询问用户）及**依据**；扫描件时明确 OCR 或视觉兜底的执行方式；
+DRM/损坏等阻断问题在此升级给用户。
 
 ### 2.2 `global.md`（全局理解）
 

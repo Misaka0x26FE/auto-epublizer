@@ -7,8 +7,8 @@
 
 先跑 `auto-epublizer preprocess <input>`（新书）拿 `preprocessing/facts.md`——其中已含
 源文件嗅探结果（类型/DRM/文字层/扫描件判定/乱码率）、doctor 能力快照与确定性路由提示；
-再结合 **agent 自报 multimodal**（能否看图，CLI 探测不到）按此表定方案（写入
-`preprocessing/plan.md`）：
+再结合 **agent 自报 multimodal**（能否看图）与 **search**（是否有网络搜索工具，CLI 探测不到）
+按此表定方案（写入 `preprocessing/plan.md`）：
 
 | 输入 | 条件 | 路由 |
 |---|---|---|
@@ -16,9 +16,15 @@
 | EPUB / DOCX / HTML | `pandoc` ✓ | pandoc → Markdown + 抽媒体 |
 | EPUB / DOCX / HTML | `pandoc` ✗ | 请用户先转 PDF/TXT/MD |
 | PDF 文字层 | `pymupdf` ✓ | 按页切片抽文字层 |
-| PDF 扫描件 | `rapidocr` ✓（`uv sync --extra ocr`） | `init` 自动启用离线 OCR（`pdf.ocr: auto`） |
+| PDF 扫描件 | `tesseract` / `ocrmypdf` ✓ | 传统 OCR 优先：扫描 PDF 先重建文字层再入库 |
+| PDF 扫描件 | `rapidocr` ✓（`uv sync --extra ocr`） | 离线 OCR（`pdf.ocr: auto`） |
 | PDF 扫描件 | 无 OCR，但 multimodal=true 且 LLM 可用 | 视觉 LLM 兜底：页转图 → 多模态模型（只转需要的页） |
-| PDF 扫描件 | 三者皆无 | 明确告知无法处理；请用户手工 OCR 或换源 |
+| PDF 扫描件 | `MINERU_API_KEY` 已配置 | MinerU 外部 API（复杂版面可选） |
+| PDF 扫描件 | 以上皆无 | 明确告知无法处理；请用户提供可用 OCR / 手工 OCR 或换源 |
+
+**OCR 路由优先级固定**：传统 OCR（tesseract/ocrmypdf）→ rapidocr → 视觉 LLM 兜底 →
+MinerU 外部 API → 询问用户。facts.md 的「路由提示」给出确定性选择；agent 在 plan.md
+记录最终路由与依据。
 
 `pdf.ocr: off` 可在 config 关闭自动 OCR；`pdf.ocr: <其他值>` 视为强制要求（不可用时报错）。
 
@@ -39,13 +45,16 @@
   可单独重跑——断点续跑粒度 = 页。
 - 每页文本块保留 `bbox` 与页号，是后续结构聚合与对账的 ground truth。
 - 无文字层的扫描件：`page.get_pixmap(dpi)` 渲染 PNG → OCR → 作为该页文本块（`ocr:true`）。
+- 页面块支持四种 type：`text` / `image` / `table` / `formula`（保留 bbox）——插图/表格/公式
+  的提取与 md 表示见 `docs/pdf-content-spec.md`；对应描述文件落 `raw/inserts/`。
 
 ## 中间产物
 
 ```text
 structured/raw/
-├── page-001.json ...   # PDF 逐页切片（文字层/OCR）
-└── media/              # pandoc 抽取的图片等媒体
+├── page-001.json ...   # PDF 逐页切片（文字层/OCR；blocks 含 text/image/table/formula）
+├── inserts/            # 插图/表格/公式描述文件（<id>.json）+ index.jsonl
+└── media/              # pandoc 抽取的图片 + PDF 提取的插图/裁剪图
 ```
 
 `raw/` 持久化供审查，可由源文件重建。
