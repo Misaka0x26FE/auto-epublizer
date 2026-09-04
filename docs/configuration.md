@@ -91,6 +91,8 @@ output:
   mono: true
   bilingual: false
   about_page: true        # 书末附加"关于此翻译"说明页
+  theme: standard         # 排版主题：standard | compact | spacious（docs/epub-template-spec.md §5）
+                          # 仅排版微调（泛化字族/行距/缩进/对齐），无具体字体名/颜色/字号
 ```
 
 ## 配置快照与续跑

@@ -1,6 +1,6 @@
 # 质量控制流程设计（auto-epublizer）
 
-本文档把 README 里的"五道关"落成可实现的规格：每道关的**触发时机、输入、输出、失败动作、
+本文档把 README 里的"六道关"落成可实现的规格：每道关的**触发时机、输入、输出、失败动作、
 成本、数据契约、验收阈值与收敛条件**。范围边界沿用：只负责**交付质量**（准确 / 完整 /
 一致 / 规范 / 结构正确 / 可复现），不做价值观 / 政治 / 思想性判断。
 
@@ -55,9 +55,13 @@ translator(强档)                 G0 零 token 静态校验 ── 不过则退
 | 对照表完整性 | 每句原文有 `src↔tgt` 映射，`seq` 连续 1..N 无缺号、无重复 | 标记单元 `aligned_failed`，退回重译该段 |
 | 句数一致 | 原文句数 == 译句句数（允许 `note` 声明的拆/并句） | 同上 |
 | 长度比 | `len(tgt)/len(src)` 落在 `[0.30, 3.0]`；译文非空 | 告警，交 G1 复核 |
-| 标点规范化 | 全角/半角、引号、省略号符合目标语言规则（纯函数） | 告警 |
 | 术语命中 | 正文出现 glossary `source` 时，译文包含对应 `target`（NFKC 归一化 + 词边界） | 告警，交 G1 定责 |
-| 残留产物 | 无 HTML 注释、占位符、提取标记、页眉页码 | 告警 |
+| 勘误留痕 | 句 src 命中已知排印讹误先例（IDG→IDF 等）→ align `note` 前缀 `corr:` | 留痕，不告警 |
+
+> 实现状态：以上五项已接线（`g0_unit_flags` / `annotate_correction_notes`）。
+> 规格中的「标点规范化」（`normalize_punctuation`）与「残留产物」（HTML 注释/占位符/
+> 页眉页码）属确定性纯函数，分别在构建期样式清理与 G4 解包审计（`E_RESIDUE`/`W_RESIDUE`）
+> 承担；源语言字符残留属语义判断，归 G1（agent 任务）。
 
 G0 不烧 token、不出"裁决"，只出**确定性告警**，作为 G1 的输入线索。
 
@@ -99,29 +103,46 @@ Autofix（可选）：先写可恢复索引 `reviews/<ts>/autofix/index.json`，
 ### G4 EPUB 结构 QA（build 后，本地）
 
 - `epubcheck` 零 error（jar 缓存于 `~/.cache`）。
-- 解包逐项审计（对应传统 epub-qa.md）：
+- 解包逐项审计（`qa/audit.py`，已实现）：
   - `mimetype` 首位、未压缩、内容恰为 `application/epub+zip`；
   - `META-INF/container.xml` 良构、指向 OPF；
-  - manifest 每个 href 可解析、spine 每个 idref 存在、封面 `properties="cover-image"`；
-  - nav 链接全部可解析，TOC 与评审后的标题层级一致（front matter 平铺、章嵌套）；
-  - 每个内容文档 `xml:lang` 正确、恰好一个 `h1`、无跳级；
-  - 脚注/尾注引用↔定义双向可跳、编号连续；
-  - 无 HTML 残留、占位符、外部 URL；样式最小化、流式安全。
+  - manifest 每个 href 可解析、spine 每个 idref 存在；
+  - nav / NCX / landmarks / 内容文档 img src 引用全部可解析（悬空检测）；
+  - 危险 URL（javascript:/data:）注入拦截；
+  - 主题层边界：style.css 无具体字体名/字号（`E_THEME_FONT`）、无颜色（`E_THEME_COLOR`）；
+  - 封面 meta 互证：`properties="cover-image"` ↔ `<meta name="cover">`（`E_COVER_META`）；
+  - 每个内容文档 `xml:lang` 正确、恰好一个 `h1`、无跳级（`E_HEADING_SKIP`）；
+  - 残留：HTML 注释（`E_RESIDUE`）、markdown/pandoc 标记（`W_RESIDUE`）；
+  - 内部锚点可解析（`E_ANCHOR`，含脚注 noteref→footnote）+ 脚注回链（`E_FN_BACKLINK`）；
+  - 双语 src/tgt 段落数成对（`E_BI_PAIRS`）；
+  - 媒体：alt 空值（`W_IMG_NO_ALT`）、格式兼容（`W_IMG_FORMAT`）、超大/超宽超高/未压缩
+    （`W_IMG_LARGE`/`W_IMG_RATIO`/`W_IMG_UNCOMPRESSED`）、EPUB 总体积（`W_EPUB_SIZE`）；
+  - DC 元数据缺失提示（`W_META_INCOMPLETE`）。
+- 溯源审计（`qa/provenance.py`，postprocessing-spec §2）：三边对账、媒体溯源、逐段覆盖率、
+  目录层级——见 G5。
 
 ### G5 交付验收（发布前）
 
-- 汇总 G0–G4 结果生成 `report.json`：
+- 汇总 G0–G4 + 溯源审计生成 `report.json`：
   ```json
   {
-    "title": "…", "slug": "…", "units_total": 1,
-    "g0_flags": 0, "g1_issues": 0, "g2_confirmed": 0,
-    "g3_termination": "clean_confirmed", "g3_rounds": 2,
+    "slug": "…", "epub_path": "…",
+    "g0_flags": [], "g1_candidates": 0, "g2_confirmed": 0,
+    "g3_patched": 0, "g3_termination": "clean_confirmed", "g3_rounds": 2,
     "g4_epubcheck_errors": 0, "g4_audit": "pass",
-    "error_rate": 0.0, "released": false
+    "error_rate": 0.0,
+    "provenance_coverage": 1.0, "units_missing": 0, "units_order_ok": true,
+    "media_lost": 0, "toc_missing": [], "toc_flat": false,
+    "provenance_findings": [],
+    "released": true, "released_reason": "ok"
   }
   ```
-- 发布清单核对：成品命名（`<书名简写>-<作者简写>.epub`）、元数据（DC 项齐全）、封面、版权署名、许可。
-- **放行条件**：`g2_confirmed == 0` 或全部已修订；`g4_epubcheck_errors == 0`；`g4_audit == "pass"`。
+- 发布清单核对：成品命名（`<slug>.epub` / `<slug>-bi.epub`，`W_NAMING`）、元数据（DC 项齐全）、
+  封面、版权署名、许可。
+- **放行条件**（对齐 docs/postprocessing-spec.md §5）：`g2_confirmed == 0` 或全部已修订；
+  `g4_epubcheck_errors == 0`；`g4_audit == "pass"`；溯源完整（`provenance_coverage ≈ 1.0`
+  （无翻译产物为 null）、三边对账/媒体溯源零缺失、`toc_flat == false`）。
+  G0 告警为 advisory，不阻断（英→中长度比天然偏低，实测大量误报）。
 
 ## 3. 数据契约（落 `reviews/`）
 
