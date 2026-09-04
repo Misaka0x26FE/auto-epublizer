@@ -513,3 +513,13 @@ def test_footnote_semantics_global_numbering() -> None:
     assert 'href="#fn-2"' in d2 and 'id="fn-2"' in d2 and 'href="#ref-2"' in d2
     # 字面标记不得残留
     assert "[^1]" not in d1 and "[^1]" not in d2
+
+
+def test_markdown_semantic_tags() -> None:
+    """语义标签保留（epub-template-spec P2）：blockquote/诗行块/ul/ol。"""
+    md = "> 引用第一行。\n\n| 诗行一\n| 诗行二\n\n- 甲\n- 乙\n\n1. 第一\n2. 第二\n"
+    out = markdown_to_xhtml(md)
+    assert "<blockquote><p>引用第一行。</p></blockquote>" in out
+    assert '<p class="verse">诗行一<br/>诗行二</p>' in out
+    assert "<ul><li>甲</li><li>乙</li></ul>" in out
+    assert "<ol><li>第一</li><li>第二</li></ol>" in out

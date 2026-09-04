@@ -30,6 +30,17 @@ auto-epublizer qa [--epub <path>] [--workspace <dir>]
 | 内容文档 img src 无法解析（媒体悬空） | `E_IMG_SRC` |
 | javascript:/data: URL 注入 | `E_UNSAFE_URL` |
 | 内容文档缺 lang / h1 数量不为 1 | `W_NO_LANG` / `W_H1_COUNT`（告警） |
+| 标题跳级（h1→h3 等） | `E_HEADING_SKIP` |
+| HTML 注释残留 / markdown 标记残留（`![` `**` `:::` `{.` `[^`） | `E_RESIDUE` / `W_RESIDUE`（error/告警） |
+| DC 元数据缺失（creator/date/publisher/rights） | `W_META_INCOMPLETE`（告警） |
+| 内部锚点无法解析（含脚注 noteref→footnote） | `E_ANCHOR` |
+| 脚注 aside 缺回链或回链不可解析 | `E_FN_BACKLINK` |
+| 双语 src/tgt 段落数不一致 | `E_BI_PAIRS` |
+| 主题含具体字体名/字号 / 颜色 | `E_THEME_FONT` / `E_THEME_COLOR` |
+| 封面 properties 与 meta 互证失败 | `E_COVER_META` |
+| img alt 空值或缺失 / 格式兼容性差（.webp/.avif） | `W_IMG_NO_ALT` / `W_IMG_FORMAT`（告警） |
+| 图片超大（>4000px）/ 超宽超高（>5:1）/ 未压缩（>2MB） | `W_IMG_LARGE` / `W_IMG_RATIO` / `W_IMG_UNCOMPRESSED`（告警） |
+| EPUB 总体积超阈值（50MB） | `W_EPUB_SIZE`（告警） |
 
 ## 质量报告 `report.json`
 

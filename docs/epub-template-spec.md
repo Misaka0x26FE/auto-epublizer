@@ -33,12 +33,12 @@
 | nav.xhtml + toc.ncx | ✅ | 目录层级符合源文件层级（level 链路已通，嵌套渲染已落地） |
 | 语义地标 landmarks | ✅ | frontmatter/bodymatter/backmatter 各取首个落地标 |
 | 每文档 `xml:lang` + 恰好一个 `h1` | ✅ | 全文档一致 |
-| 标题层级 h1–h6 语义 + 无跳级 | ⬜ P2 | 不得 h1→h3 跳级 |
+| 标题层级 h1–h6 语义 + 无跳级 | ✅ | `E_HEADING_SKIP` 校验（P2） |
 | **脚注语义化** | ✅ | `noteref`/`footnote` + 全局序号 + 双向跳转（§6，已落地） |
 | 封面 `cover-image` | ✅ | `properties="cover-image"` + `<meta name="cover">` + spine `linear="no"` |
 | 封面/目录页 `linear="no"` | ✅ | cover 单元内容文档不进正文阅读顺序 |
 | 目录锚点 | ✅ | 单元级嵌套（源文标题已切分为单元，h1–h6 锚点随层级实现覆盖） |
-| 语义标签 | ⬜ P2 | 引用 `blockquote`、诗歌 `verse`、列表 `ul/ol` 保留语义 |
+| 语义标签 | ✅ | 引用 `blockquote`、诗行块 `p.verse`、列表 `ul/ol` 保留语义（P2） |
 | 双语版 src/tgt 各自 `lang` | ✅ | 每段标注源/目标语言 |
 
 ## 4. 呈现层（无样式默认模板）
@@ -113,15 +113,16 @@ output:
   bilingual: false
 ```
 
-### 7.2 实现影响清单（✅ 1–4、6 已落地；5 部分落地）
+### 7.2 实现影响清单（✅ 全部落地）
 
 1. ✅ `build/__init__.py`：`_STYLE_CSS` 瘦身为功能性样式 + `_THEMES` 主题表；`build_epub` 接受 `theme`/`cover_media`。
-2. ✅ `build/html.py`：`render_document` 只产出语义 XHTML，CSS 从模板/主题注入（解耦）。
+2. ✅ `build/html.py`：`render_document` 只产出语义 XHTML（含 blockquote/verse/ul/ol），CSS 从模板/主题注入（解耦）。
 3. ✅ 脚注语义化：`FootnoteState` 全局编号器 + noteref/footnote 渲染。
 4. ✅ 封面 `cover-image`：cover 单元首个图片自动识别 + `<meta name="cover">` + `linear="no"`。
-5. ⬜ 目录锚点 `id`（单元级嵌套已覆盖）、语义标签保留：P2。
-6. ✅ `qa/audit.py`：`E_THEME_FONT`（具体字体名/字号）/`E_THEME_COLOR`/`E_COVER_META`；
-   溯源审计 `W_NO_COVER`（qa/provenance.py）。
+5. ✅ 语义标签保留 + 断页/图注样式（目录为单元级嵌套，无单元内子标题锚点需求）。
+6. ✅ `qa/audit.py`：`E_THEME_FONT`/`E_THEME_COLOR`/`E_COVER_META`/`E_HEADING_SKIP`/
+   `E_RESIDUE`/`W_RESIDUE`/`W_META_INCOMPLETE`/`E_ANCHOR`/`E_FN_BACKLINK`/`E_BI_PAIRS`/
+   `W_EPUB_SIZE`/`W_IMG_UNCOMPRESSED`；溯源审计 `W_NO_COVER`/`W_NAMING`。
 
 ## 8. 后续实现清单（按优先级）
 
@@ -132,8 +133,7 @@ output:
 | P0 ✅ | `_STYLE_CSS` 瘦身（去字体/颜色/字号，回归测试锁定） | 呈现层 |
 | P1 ✅ | 主题机制（预置三套 + `--theme` + `output.theme` + audit 校验） | 主题层 |
 | P1 ✅ | 封面 `cover-image` + `linear="no"` + `W_NO_COVER` 对账 | 结构层 |
-| P2 | 语义标签保留（blockquote/verse/ul/ol） | 结构层 |
-| P2 | audit 补强（标题跳级/残留/元数据完备） | 结构层 |
+| P2 ✅ | 语义标签保留（blockquote/verse/ul/ol） | 结构层 |
+| P2 ✅ | audit 补强（标题跳级/残留/锚点回链/双语成对/元数据完备/体积） | 结构层 |
 
-> P0/P1 已于 2026-09-04 落地（详见 `docs/postprocessing-spec.md` §4）；语义标签与
-> audit 补强为 P2。
+> P0/P1/P2 已于 2026-09-04 全部落地（详见 `docs/postprocessing-spec.md` §4）。

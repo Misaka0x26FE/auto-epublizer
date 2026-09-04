@@ -53,7 +53,8 @@ def test_audit_valid_epub(tmp_path: Path) -> None:
     epub = _make_epub(tmp_path)
     result = audit_epub(epub)
     assert result.ok, [f.message for f in result.findings]
-    assert not result.findings
+    # 零 error；warning（如元数据补全提示 W_META_INCOMPLETE）不阻断
+    assert not [f for f in result.findings if f.level == "error"]
 
 
 def test_audit_mimetype_first(tmp_path: Path) -> None:
@@ -279,3 +280,93 @@ def test_audit_theme_violations(tmp_path: Path) -> None:
     assert "E_THEME_FONT" in codes  # 具体字体名 + 字号
     assert "E_THEME_COLOR" in codes
     assert not result.ok
+
+
+def test_audit_heading_skip_residue_anchor_pairs(tmp_path: Path) -> None:
+    """P2 audit：标题跳级 / 残留 / 内部锚点 / 双语成对（zip 注入模拟）。"""
+    out = _make_epub(tmp_path)
+    # 注入：h1→h3 跳级、HTML 注释、不可解析锚点、双语不成对
+    bad = (
+        '<h1>标题</h1><h3>跳级</h3><!-- 注释 --><p class="tgt">只有译文</p>'
+        '<p><a href="#missing">断锚</a></p>'
+    )
+    out2 = out.with_name("bad2.epub")
+    with zipfile.ZipFile(out) as zin, zipfile.ZipFile(out2, "w") as zout:
+        for item in zin.infolist():
+            data = (
+                zin.read(item.filename).replace(b"<h1>", bad.encode("utf-8"), 1)
+                if item.filename.endswith("front-preface.xhtml")
+                else zin.read(item.filename)
+            )
+            zout.writestr(item, data)
+    result = audit_epub(out2)
+    codes = {f.code for f in result.findings}
+    assert "E_HEADING_SKIP" in codes
+    assert "E_RESIDUE" in codes  # HTML 注释
+    assert "E_ANCHOR" in codes
+    assert "E_BI_PAIRS" in codes
+    assert not result.ok
+
+
+def test_audit_footnote_backlink_ok_and_missing(tmp_path: Path) -> None:
+    """P2 audit：脚注回链——正常 noteref/footnote 无告警；删回链 → E_FN_BACKLINK。"""
+    from auto_epublizer.build.html import FootnoteState
+
+    pub = _pub()
+    entries = [{"id": "ch01", "region": "body", "title": "第一章"}]
+    state = FootnoteState()
+    content = [
+        (
+            "ch01.xhtml",
+            render_document(
+                "第一章",
+                "正文[^1]。\n\n[^1]: 注释。",
+                lang="zh-CN",
+                unit_id="ch01",
+                fn_state=state,
+            ),
+        )
+    ]
+    out = build_epub(
+        pub,
+        entries,
+        content,
+        lang="zh-CN",
+        modified="2026-01-01T00:00:00Z",
+        out_path=tmp_path / "fn.epub",
+    )
+    assert not [f for f in audit_epub(out).findings if f.level == "error"]
+
+    # 注入：footnote aside 去掉回链
+    out2 = out.with_name("fn_bad.epub")
+    with zipfile.ZipFile(out) as zin, zipfile.ZipFile(out2, "w") as zout:
+        for item in zin.infolist():
+            data = zin.read(item.filename)
+            if item.filename.endswith("ch01.xhtml"):
+                data = data.replace(b'<a epub:type="backlink" href="#ref-1">', b"<span>")
+            zout.writestr(item, data)
+    codes = {f.code for f in audit_epub(out2).findings}
+    assert "E_FN_BACKLINK" in codes
+
+
+def test_audit_volume_warnings(tmp_path: Path, monkeypatch) -> None:
+    """P2 体积审计：模块阈值可注入；超大图 → W_IMG_UNCOMPRESSED；总体积 → W_EPUB_SIZE。"""
+    from auto_epublizer.qa import audit as audit_mod
+
+    monkeypatch.setattr(audit_mod, "_MAX_IMG_BYTES", 1024)
+    monkeypatch.setattr(audit_mod, "_MAX_EPUB_BYTES", 2048)
+    pub = _pub()
+    entries = [{"id": "ch01", "region": "body", "title": "第一章"}]
+    content = [("ch01.xhtml", render_document("第一章", "![图](media/big.png)\n", lang="zh-CN"))]
+    out = build_epub(
+        pub,
+        entries,
+        content,
+        lang="zh-CN",
+        modified="2026-01-01T00:00:00Z",
+        out_path=tmp_path / "big.epub",
+        media_files=[("media/big.png", b"X" * 4096)],
+    )
+    codes = {f.code for f in audit_epub(out).findings}
+    assert "W_IMG_UNCOMPRESSED" in codes
+    assert "W_EPUB_SIZE" in codes

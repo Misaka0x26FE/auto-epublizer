@@ -43,6 +43,7 @@ _STYLE_CSS = """\
 img {
   max-width: 100%;
   height: auto;
+  page-break-inside: avoid; /* 图片断页：大图不跨页 */
 }
 p.imgp {
   text-indent: 0;
@@ -51,6 +52,12 @@ p.imgp {
 figure.imgfig {
   margin: 1em 0;
   text-align: center; /* 图注段落 */
+}
+p.verse {
+  text-indent: 0; /* 诗行不缩进（epub-template-spec 语义标签） */
+}
+blockquote {
+  margin: 0.5em 0 0.5em 1.5em;
 }
 section.footnotes {
   margin-top: 2em;

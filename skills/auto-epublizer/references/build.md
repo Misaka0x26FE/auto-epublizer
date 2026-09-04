@@ -49,5 +49,7 @@ DC 元数据来自 `publication.json.meta`：`dc:title`、`dc:creator`、`dc:lan
   spine `linear="no"`）；无封面源图时 audit 提示 `W_NO_COVER`（provenance）。
 - **脚注**：`[^label]` → 标准弹窗注释（noteref/footnote），全书跨章全局连续编号 + 双向跳转。
 - **目录层级**：源文标题层级（`level`）→ nav 嵌套 `<ol>` + NCX 嵌套 navPoint（`dtb:depth`）。
-- **图片**：只缩不放大居中；独立图段（alt 非空）→ `figure+figcaption` 图注。
+- **图片**：只缩不放大居中 + 断页（`page-break-inside: avoid`）；独立图段（alt 非空）→
+  `figure+figcaption` 图注。
+- **语义标签**：引用 `>` → `blockquote`；诗行块 `|` → `p.verse`；`- `/`1. ` → `ul/ol`。
 - 原图优先+补充层为后续扩展点。
