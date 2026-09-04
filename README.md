@@ -481,6 +481,7 @@ auto-epublizer status [--json]
 | [docs/quality-lessons.md](docs/quality-lessons.md) | 历史实践提炼的正向目标 + 负面限制 |
 | [docs/publishing-workflow.md](docs/publishing-workflow.md) | 传统三审三校映射 |
 | [docs/pdf-parsing.md](docs/pdf-parsing.md) | PDF 方案 |
-| [docs/preprocessing-plan-v2.md](docs/preprocessing-plan-v2.md) | 预处理 v2 更新计划（能力边界确认 + OCR 路由 / 网络搜索 / PDF 内容提取） |
+| [docs/plans/](docs/plans/) | **计划文档目录**（每轮任务立项/状态/索引；含 preprocessing-plan v1/v2） |
+| [docs/pdf-content-spec.md](docs/pdf-content-spec.md) | PDF 内容提取规范（书签切章/插图路由/表格双路径/公式检测/inserts 溯源） |
 | [docs/genre-style.md](docs/genre-style.md) + [docs/genres/](docs/genres/) | 文体优化 |
 | [template/](template/) | 工作区目录模板 |

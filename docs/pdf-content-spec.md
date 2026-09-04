@@ -2,7 +2,7 @@
 
 > 状态：**已实现**（P0–P2 随本规范同批落地；实现与规范的偏差已回写本文）。
 > 本文档定义 PDF 内容提取（ingest 阶段，计划 C）的验收标准、数据契约与实现阶段。
-> 战略背景见 `docs/pdf-parsing.md`；本规范是 `docs/preprocessing-plan-v2.md`
+> 战略背景见 `docs/pdf-parsing.md`；本规范是 `docs/plans/preprocessing-plan-v2.md`
 > 计划 C 的落点。改动须同步回本规范与 `skills/`。
 
 ## 1. 定位与范围
@@ -201,4 +201,4 @@ structured/raw/inserts/
 - 跨页表格合并、脚注/尾注专项（`pdf-parsing.md` §2.2 仍为扩展点）、竖排/繁体阅读顺序
 - 公式 LLM 自动转 LaTeX（FormulaAgent）
 - 内嵌图 Pillow 重采样/JPEG 量化（扩展点）
-- marker-pdf / MinerU 本地引擎默认后端（可选外部 API，`preprocessing-plan-v2` §3.4）
+- marker-pdf / MinerU 本地引擎默认后端（可选外部 API，`plans/preprocessing-plan-v2` §3.4）
