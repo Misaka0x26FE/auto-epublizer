@@ -21,9 +21,10 @@ agent 只需基础能力，无需 MCP/子代理。
 
 ## Route Before Acting
 
-先跑 `auto-epublizer doctor --json` 做能力自检（工具链/依赖/LLM Key），并**自报 multimodal**
-（能否看图，CLI 无法探测）——据此选择 ingest 路由（见 `references/ingest.md` 的能力-路由
-决策表）。然后读本 Skill 目录的 `manifest.json`，按当前阶段只读需要的 reference。
+先跑 `auto-epublizer doctor --json` 做能力自检（工具链/依赖/LLM Key/MinerU/网络），并**自报
+multimodal / search**（能否看图、有无搜索工具，CLI 无法探测）——据此选择 ingest 路由
+（见 `references/ingest.md` 的能力-路由决策表）。然后读本 Skill 目录的 `manifest.json`，
+按当前阶段只读需要的 reference。
 
 | 场景 | 读 |
 |---|---|
@@ -59,9 +60,9 @@ agent 只需基础能力，无需 MCP/子代理。
 ## 标准流程
 
 ```bash
-auto-epublizer doctor --json                              # 能力自检（开工前；multimodal 自报）
+auto-epublizer doctor --json                              # 能力自检（开工前；multimodal/search 自报）
 auto-epublizer preprocess <input>                         # 预处理：init + 零 token 事实 → preprocessing/facts.*
-#   agent 读 facts.md，撰写 plan/global/units/terms/risks/report（见 references/preprocessing.md）
+#   agent 读 facts.md，撰写 capabilities/plan/global/units/terms/risks/report（见 references/preprocessing.md）
 auto-epublizer analyze                                    # 分层理解 + 术语播种（无 Key 时降级，可省略）
 auto-epublizer translate [--target zh-CN] [--force]       # 路径 A：CLI 内部翻译
 #   路径 B：agent 读 structured/ 手写 translation/ + align/，然后：

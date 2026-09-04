@@ -81,7 +81,8 @@ DRM/损坏等阻断问题在此升级给用户。
 
 - `auto-epublizer status --json` 的 `preprocessing_complete == true`（facts + global.md 齐）
   且不再有 `preprocessing_plan_missing` stale 提示。
-- plan/global/units/terms/risks/report 六类产物齐备（小书可合并风险与报告，但 plan/global/terms 必备）。
+- capabilities/plan/global/units/terms/risks/report 七类产物齐备
+  （小书可合并风险与报告，但 capabilities/plan/global/terms 必备）。
 
 ## 4. 与 analyze 的关系
 

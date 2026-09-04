@@ -1,8 +1,8 @@
 # 工作状态交接（workstate）
 
-> 用途：**会话压缩交接**。本文件记录截至 2026-09-04 的任务状态、已定决策、下一步与
-> 注意事项，供新会话（或续跑）直接接手，不必重读全部历史。权威计划见
-> `docs/preprocessing-plan-v2.md`；Plan C 规范见 `docs/pdf-content-spec.md`。
+> 用途：**会话压缩交接**。本文件记录预处理 v2 三份计划（A/B/C）落地任务的状态。
+> **截至 2026-09-04 该任务已全部完成**（S0–S5 全部提交推送），保留供追溯与后续任务参考。
+> 权威计划见 `docs/preprocessing-plan-v2.md`；Plan C 规范见 `docs/pdf-content-spec.md`。
 
 ## 1. 目标与路线
 
@@ -10,11 +10,11 @@
 （A OCR 路由 / B 网络搜索 / C PDF 内容提取）全部落地**。阶段：
 
 - **S0** 写 `docs/pdf-content-spec.md`（Plan C 规范）— ✅ **已完成**
-- **S1** doctor 扩探测 + facts 五档路由 + skills 路由表（Plan A/B）— 🔄 **进行中（代码已改，未测/未提交）**
-- **S2** C-P0：书签切章 + 内嵌图提取 + inserts 描述文件基座 + 多栏排序
-- **S3** C-P1：插图路由 + 表格双路径 + 公式检测标记
-- **S4** C-P2：provenance 审计扩展 + 图片优化
-- **S5** 文档同步（AGENTS.md/SKILL.md/workflow.md）+ 全量回归 + 提交推送
+- **S1** doctor 扩探测 + facts 五档路由 + skills 路由表（Plan A/B）— ✅ **已完成**（42eef38）
+- **S2** C-P0：书签切章 + 内嵌图提取 + inserts 基座 + 多栏排序 — ✅ **已完成**（a1b7306）
+- **S3** C-P1：插图路由 + 表格双路径 + 公式检测标记 — ✅ **已完成**（d84fbcd）
+- **S4** C-P2：provenance inserts 审计 + 放行门接入 — ✅ **已完成**（d14e6f4）
+- **S5** 文档同步（AGENTS/README/SKILL/workflow/postprocessing-spec/spec 回写）— ✅ **已完成**
 
 **每阶段：回归测试 + ruff + 单阶段一提交**。提交信息用 Conventional Commits；只暂存本阶段文件。
 

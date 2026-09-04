@@ -1,8 +1,9 @@
 # PDF 内容提取规范（pdf-content-spec）
 
-> 状态：**规范稿**。本文档定义 PDF 内容提取（ingest 阶段，计划 C）的验收标准、数据契约与
-> 实现计划。战略背景见 `docs/pdf-parsing.md`；本规范是 `docs/preprocessing-plan-v2.md`
-> 计划 C 的落点。实现时以本文档为准；改动须同步回本规范与 `skills/`。
+> 状态：**已实现**（P0–P2 随本规范同批落地；实现与规范的偏差已回写本文）。
+> 本文档定义 PDF 内容提取（ingest 阶段，计划 C）的验收标准、数据契约与实现阶段。
+> 战略背景见 `docs/pdf-parsing.md`；本规范是 `docs/preprocessing-plan-v2.md`
+> 计划 C 的落点。改动须同步回本规范与 `skills/`。
 
 ## 1. 定位与范围
 
@@ -98,11 +99,15 @@ structured/raw/inserts/
 
 | 判据 | 判定 | 动作 |
 |---|---|---|
-| 图 block 占页面积 ≥ 0.70 且页面文字覆盖率 < 0.15 | 整页插图/图版页 | `page.get_pixmap` 整页渲染 → `media/pNNN-page.png`，method=`full_page` |
+| 图 block 占页面积 ≥ 0.70、文字覆盖率 < 0.15、**且页面文字 < 200 字** | 整页插图/图版页 | `page.get_pixmap` 整页渲染 → `media/pNNN-page.png`，method=`full_page` |
 | 其余图 block 面积 ≥ 32×32 px | 内嵌插图 | `extract_image` 提取原始字节 → method=`embedded` |
 | 面积 < 32×32 px | 装饰（项目符号/分隔线） | 忽略，不产出记录 |
 
-- 一页多图：按阅读顺序排序后页内序号递增。
+- **字数守卫（实现补充）**：带 OCR 文字层的扫描页字形覆盖率天然 < 0.15、整页扫描背景
+  图占比 ≈ 1.0，仅凭面积判据会把每一页误路由为整页图版并丢失正文——故整页路由要求
+  页面文字 < 200 字。同因，页面文字 ≥ 200 字时占页 ≥ 0.85 的图判为**扫描背景**直接跳过
+  （不提取、不记录）；OCR 域的页（`ocr:true`）不做整页路由/表格/公式检测。
+- 一页多图：按阅读顺序排序后页内序号递增；同一 xref 多矩形只提取一次原始字节。
 - **文体加权**：阈值是 CLI 常量（见 §7 配置项）；agent 在 `plan.md` 按 `detect_genre`
   提示调整（如小说图版页阈值放松、教材内嵌小图标视为装饰）。CLI 不做文体判断。
 
@@ -121,8 +126,9 @@ structured/raw/inserts/
 确定性检测（任一命中即标 `type=formula`）：
 
 1. **符号特征**：文本短（≤200 字）且含 ≥2 个数学符号（`∫∑√∂∓±×÷≠≤≥∞∈∀∃∇·…` 或希腊字母）；
-2. **字体特征**：span 字体名含 `Math` / `Symbol` / `CMMI` / `CMR` 等数学字体；
-3. **独立行特征**：单独成块的居中短文本，前后行无标点收尾。
+2. **字体特征**：span 字体名含 `Math` / `CMMI` / `CMSY` / `CMEX` / `Symbol` 等数学字体
+   （**`CMR` 除外**——它是 TeX 正文默认字体，计入会使纯 TeX 排版的书全篇误判）；
+3. **独立行特征**：单独成块的居中短文本（≤120 字、句末无标点），且含 ≥1 个数学符号。
 
 处理：
 
@@ -144,7 +150,7 @@ structured/raw/inserts/
 
 - 本规范实现不新增 config 段；阈值作为 `ingest/images.py` 模块常量
   （`FULL_PAGE_AREA_RATIO=0.70`、`TEXT_COVERAGE_MAX=0.15`、`MIN_IMAGE_SIZE=32`、
-  `MAX_IMAGE_DIM=1800`）。
+  `MAX_IMAGE_DIM=1800`、`RENDER_DPI=150`、`BACKGROUND_AREA_RATIO=0.85`）。
 - agent 在 `plan.md` 覆盖阈值 = 直接以自身能力处理（不传 CLI 参数）。
 
 ## 8. 图片优化
@@ -167,17 +173,16 @@ structured/raw/inserts/
 
 `ProvenanceResult` 新增字段：`inserts_total`、`inserts_missing_files`、`inserts_no_desc`、
 `inserts_no_latex`。放行条件 `prov_ok` 纳入 `inserts_missing_files == 0`
-（溯源完整 = 每个插入内容可回原始地址且文件在）。
+（溯源完整 = 每个插入内容可回原始地址且文件在）；`report.json` 暴露
+`inserts_missing_files` 字段，W 级发现经 `provenance_findings` 透出。
 
-## 10. 分阶段实现
+## 10. 分阶段实现（已全部完成）
 
 | 阶段 | 内容 | 模块 |
 |---|---|---|
-| P0 | 书签切章 + 内嵌图提取 + inserts 基座 + 多栏排序 | `pdf_reader.py`、`images.py`、`inserts.py`、`reading_order.py` |
-| P1 | 插图路由（整页/嵌入）+ 表格双路径 + 公式检测标记 | `images.py`、`tables.py`、`inserts.py` |
-| P2 | provenance 审计扩展 + 图片优化 | `qa/provenance.py`、`images.py` |
-
-P0–P2 每个阶段独立可验收（见 §11），完成后全量回归。
+| P0 ✅ | 书签切章 + 内嵌图提取 + inserts 基座 + 多栏排序 | `pdf_reader.py`、`images.py`、`inserts.py`、`reading_order.py` |
+| P1 ✅ | 插图路由（整页/嵌入）+ 表格双路径 + 公式检测标记 | `images.py`、`tables.py`、`formula.py`、`inserts.py` |
+| P2 ✅ | provenance 审计扩展 + 图片优化 | `qa/provenance.py`、`qa/report.py`、`images.py` |
 
 ## 11. 测试计划
 

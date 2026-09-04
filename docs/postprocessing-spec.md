@@ -138,6 +138,8 @@
 - `provenance_coverage == 1.0`（每段可溯）
 - 三边对账零 error、媒体溯源零 error
 - 目录层级零 `E_TOC_FLAT`（有层级源）
+- 插入内容文件零缺失（`inserts_missing_files == 0`，pdf-content-spec §9：
+  每个插图/表格/公式可回溯原始地址 `{page,bbox,xref,method}` 且媒体文件在盘）
 
 ## 6. 测试计划
 
