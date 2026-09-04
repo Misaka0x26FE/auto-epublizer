@@ -26,7 +26,7 @@ def _parse_epubcheck_output(text: str) -> tuple[int, int, list[str]]:
 
 def run_epubcheck(epub_path: str | Path, jar_path: str | Path | None = None) -> EpubcheckResult:
     """用 epubcheck jar 校验 EPUB；jar 缺失时返回 available=False。"""
-    jar = Path(jar_path) if jar_path else Path.home() / ".cache" / "epubcheck.jar"
+    jar = Path(jar_path).expanduser() if jar_path else Path.home() / ".cache" / "epubcheck.jar"
     if not jar.is_file():
         return EpubcheckResult(
             available=False,

@@ -88,7 +88,8 @@ class FixLoopConfig(BaseModel):
 
 
 class EpubcheckConfig(BaseModel):
-    jar: str = "~/.cache/epubcheck.jar"
+    # pydantic v2 默认值不走 field_validator，必须显式 validate_default 展开 `~`
+    jar: str = Field(default="~/.cache/epubcheck.jar", validate_default=True)
     strict: bool = True
 
     @field_validator("jar")
