@@ -52,7 +52,7 @@ structured/
 - 段落 = Segment（最小可对齐单元），一段对应源/译文各一个；
 - 批次 = 若干段落，一次发给模型，模型**必须返回等长句对 JSON**；
 - 超长段拆成多段，续段 `cont=True`、无独立 anchor，回填时并回原段；
-- 批次边界 = 断点续跑检查点（`.progress.json` 记录每章译到第几批）。
+- 批次边界 = 断点续跑检查点（每单元译到第几批由单元状态 + align 进度体现，`.progress.json` 为预留未落盘）。
 
 ## 4. 分层理解注入（全本 → 章节 → 重点）
 
@@ -110,7 +110,7 @@ align/<id>.jsonl  ← {seq, src, tgt, note}
 ## 7. 状态机与续跑
 
 - 单元：`pending → split → analyzed → translated → aligned → reviewed → built`。
-- `.progress.json` 记录每单元译到第几批、每句对齐状态；中断后同命令续跑，已完成批次安全跳过。
+- 断点续跑 = 按单元状态 + align 进度跳过已完成批次（`.progress.json` 为预留断点文件，未落盘）。
 - 改术语表/理解/解析缓存时，须覆盖受影响单元的中断后续跑（与 RunStore 不变量一致）。
 
 ## 8. 与质量控制的衔接

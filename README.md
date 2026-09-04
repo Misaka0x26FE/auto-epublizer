@@ -48,7 +48,8 @@ source/ ──ingest──▶ structured/（四层结构拆分）
 ```
 
 每单元状态机：`pending → split → analyzed → translated → aligned → reviewed → built`，记入
-`publication.json` + `.progress.json`。其中 `reviewed` = 通过 G1–G3 审校（影子修订/autofix 后），
+`publication.json`（断点续跑 = 按单元状态跳过已完成单元，`.progress.json` 为预留未落盘）。
+其中 `reviewed` = 通过 G1–G3 审校（影子修订/autofix 后），
 `built` = 已封装进 EPUB；`convert` 路径跳过 `analyzed/translated/reviewed`，直接 `split → built`。
 
 翻译流程详细设计（切片 → 分层理解注入 → 句对 → 术语表闭环）见 [docs/translation-flow.md](docs/translation-flow.md)；
@@ -121,7 +122,7 @@ PDF 解析难点与方案见 [docs/pdf-parsing.md](docs/pdf-parsing.md)；
 │   └── <slug>-bi.epub           # 双语版
 │
 ├── publication.json             # 权威索引：DC 元数据 + 内容树 + 状态机 + 配置快照
-├── .progress.json               # 断点续跑（可丢弃）
+├── .progress.json               # （预留）批次级断点；当前未落盘，断点=单元级跳过
 ├── glossary.db                  # 术语库内部索引（可选 SQLite；权威是 analysis/glossary.csv）
 ├── events.jsonl                 # 追加式行为账本（翻译/审校/产物对账）
 └── usage.json                   # token 用量账本（追加式，一次增量只合并一次）
@@ -134,7 +135,7 @@ PDF 解析难点与方案见 [docs/pdf-parsing.md](docs/pdf-parsing.md)；
 | 不可动 | `source/`、`references/user/` | 用户原始材料，绝不改动 |
 | 中间产物（持久化） | `structured/`（含 `raw/`） | 源文拆分 + 处理源文件的中间文件，持久化保存供审查；可由源文件重建 |
 | 事实 + 智能产物 | `preprocessing/facts.*` 由 CLI 幂等生成；其余 `preprocessing/`、`analysis/`、`translation/`、`reviews/`、`output/` | facts 零 token 可重建；其余管线/agent 产出，有状态、可续跑 |
-| 账本/断点 | `.progress.json`、`events.jsonl`、`usage.json` | 追加式，保留用于审计与续跑 |
+| 账本/断点 | `events.jsonl`、`usage.json` 追加式账本；`.progress.json` 为预留断点（未落盘） | 保留用于审计与续跑（断点=单元级跳过） |
 | 权威 | `publication.json`、`glossary.db` | 唯一真相，原子写 |
 
 ### 参考目录（references/）

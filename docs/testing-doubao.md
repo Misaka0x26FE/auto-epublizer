@@ -230,16 +230,18 @@ uv run auto-epublizer init ~/books/legacy.pdf
 
 ## 6. 已知限制（遇到 ≠ bug，记录即可）
 
+> 2026-09-04 复核：OCR 与术语提案两条已接线（`pdf.ocr: auto/off` + `import --terms`），
+> 从本表移除；其余条目仍成立，对应修复计划 P2–P4（analyze 截断/源语言检测/并发/章级聚合）。
+
 | 现象 | 原因 |
 |---|---|
-| PDF 整书一个单元、无章切分 | 未实现章级聚合 |
-| 扫描 PDF 报「没有可抽取的文字层」 | OCR 后端存在但未接进 CLI 路径 |
-| `released` 恒 False | 容器无 epubcheck jar；装了才会按真实结果放行 |
-| analyze 的 overview/global 只看前 6000 字 | 截断设计，长书理解覆盖不全 |
-| 翻译期不自动提案术语冲突 | `Glossary.propose()` 未接线（三态闭环在 CSV 工具层） |
-| review 逐批串行、G2/G3 逐句调用 | 无并发实现，长书慢且贵 |
-| convert 的 `dc:language=und` | 源语言未检测时（convert 路径不跑 analyze） |
-| `.progress.json` 不存在 | 只实现单元级跳过，无批次级断点文件 |
+| PDF 整书一个单元、无章切分 | 未实现章级聚合（P4） |
+| `released` 恒 False | 容器无 epubcheck jar；装了才会按真实结果放行（环境限制，非 bug） |
+| analyze 的 overview/global 只看前 6000 字 | 截断设计，长书理解覆盖不全（P2） |
+| 翻译期不自动提案术语冲突 | translate 路径不自动提案；三态闭环经 `import --terms` 触发（CSV 工具层） |
+| review 逐批串行、G2/G3 逐句调用 | 无并发实现，长书慢且贵（P3） |
+| convert 的 `dc:language=und` | 源语言未检测时（convert 路径不跑 analyze；P2 修复） |
+| `.progress.json` 未落盘 | 预留断点文件，实际断点=单元级跳过（契约已标注预留） |
 | 自动化批量重试后仍失败 | 每批已重试 2 次，报错即停，人工看报文 |
 
 ## 7. 结果记录模板

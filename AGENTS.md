@@ -106,7 +106,7 @@ skills/auto-epublizer/
 
 - 每个 reference 只覆盖一个阶段，SKILL.md 用「Route Before Acting」路由表让 agent 按当前
   阶段只读一份，不一次加载全部。
-- 文档以**实际 CLI 能力**为准：未实现项（如 G0 自动接入、封面/脚注、网络检索、视觉 LLM 兜底）
+- 文档以**实际 CLI 能力**为准：未实现项（如 G0 自动接入、网络检索、视觉 LLM 兜底）
   显式标注「后续扩展点」，避免 agent 照未实现功能操作。
 - 安装：`scripts/install-skills.sh --target opencode` 复制到 agent 的 skills 目录。
 
@@ -127,7 +127,7 @@ skills/auto-epublizer/
 ├── preprocessing/    ⑧ 预处理层：facts.json/facts.md（CLI 零 token 事实）+
 │                       agent 撰写的 plan/global/units/terms/risks/report
 ├── publication.json  权威索引（DC 元数据 + 内容树 + 状态机 + 配置快照）
-├── .progress.json    断点续跑（可丢弃）
+├── .progress.json    （预留）批次级断点；当前未落盘，断点=单元级跳过
 ├── glossary.db       术语库内部索引（可选，SQLite）
 ├── events.jsonl      追加式行为账本
 └── usage.json        token 用量账本（一次增量只合并一次）
@@ -139,7 +139,8 @@ skills/auto-epublizer/
 目录生命周期：`source/`、`references/user/` 不可动；`structured/`（含 `raw/` 中间产物）
 持久化保存供审查，可由源文件重建；`preprocessing/facts.*` 由 CLI 幂等生成，其余
 `preprocessing/` 产物、`analysis/`、`translation/`、`reviews/`、`output/` 是智能产物；
-`.progress.json`、`events.jsonl`、`usage.json` 是追加式账本/断点；
+`events.jsonl`、`usage.json` 是追加式账本；`.progress.json` 为预留断点文件（当前未落盘，
+实际断点续跑 = 按 `publication.json` 单元状态跳过已完成单元）；
 `publication.json`、`glossary.db` 是权威真相。
 
 **预处理分工**：`preprocess` 命令只产出零 token 事实（嗅探/元数据/TOC/体检/规模）；
