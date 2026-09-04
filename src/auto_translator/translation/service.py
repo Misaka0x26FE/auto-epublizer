@@ -10,6 +10,7 @@ from auto_common.workspace import RunStore
 
 from ..agents.translator import TranslatorAgent
 from ..glossary import Glossary, load_glossary_csv, terms_in_text
+from ..review import annotate_correction_notes
 from .align import align_rows, write_align
 from .slice import chunk_paragraphs
 
@@ -121,14 +122,14 @@ def translate_unit(
     tgt_path.parent.mkdir(parents=True, exist_ok=True)
     tgt_path.write_text(translated_md, encoding="utf-8")
 
-    # 句级对齐：每块 src↔tgt 逐句对齐，全局 seq 连续
+    # 句级对齐：每块 src↔tgt 逐句对齐，全局 seq 连续；勘误先例留痕（corr:wrong→right）
     rows: list[dict[str, Any]] = []
     seq = 0
     for s, t in zip(blocks, translated_blocks, strict=False):
         for row in align_rows(s, t):
             seq += 1
             rows.append({"seq": seq, "src": row["src"], "tgt": row["tgt"], "note": row["note"]})
-    write_align(store.unit_align_path(unit_id), rows)
+    write_align(store.unit_align_path(unit_id), annotate_correction_notes(rows))
 
     return {"unit": unit_id, "blocks": len(blocks), "sentences": seq, "target_lang": target_lang}
 

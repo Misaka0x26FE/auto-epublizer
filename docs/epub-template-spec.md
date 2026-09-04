@@ -30,15 +30,15 @@
 | 项 | 现状 | 规范要求 |
 |---|---|---|
 | mimetype / container / OPF | ✅ | mimetype 首位未压缩、内容恰为 `application/epub+zip` |
-| nav.xhtml + toc.ncx | ✅ | 目录层级符合源文件层级（见后） |
+| nav.xhtml + toc.ncx | ✅ | 目录层级符合源文件层级（level 链路已通，嵌套渲染已落地） |
 | 语义地标 landmarks | ✅ | frontmatter/bodymatter/backmatter 各取首个落地标 |
 | 每文档 `xml:lang` + 恰好一个 `h1` | ✅ | 全文档一致 |
-| 标题层级 h1–h6 语义 + 无跳级 | ⬜ | 不得 h1→h3 跳级 |
-| **脚注语义化** | ⬜ | `noteref`/`footnote` + 全局序号 + 双向跳转（§6） |
-| 封面 `cover-image` | ⬜ | `properties="cover-image"` + `<meta name="cover">` |
-| 封面/目录页 `linear="no"` | ⬜ | 不进正文阅读顺序 |
-| 目录锚点 | ⬜ | 每个 h2/h3 带稳定 `id` 供 nav 跳转 |
-| 语义标签 | ⬜ | 引用 `blockquote`、诗歌 `verse`、列表 `ul/ol` 保留语义 |
+| 标题层级 h1–h6 语义 + 无跳级 | ⬜ P2 | 不得 h1→h3 跳级 |
+| **脚注语义化** | ✅ | `noteref`/`footnote` + 全局序号 + 双向跳转（§6，已落地） |
+| 封面 `cover-image` | ⬜ P1 | `properties="cover-image"` + `<meta name="cover">` |
+| 封面/目录页 `linear="no"` | ⬜ P1 | 不进正文阅读顺序 |
+| 目录锚点 | ✅ | 单元级嵌套（源文标题已切分为单元，h1–h6 锚点随层级实现覆盖） |
+| 语义标签 | ⬜ P2 | 引用 `blockquote`、诗歌 `verse`、列表 `ul/ol` 保留语义 |
 | 双语版 src/tgt 各自 `lang` | ✅ | 每段标注源/目标语言 |
 
 ## 4. 呈现层（无样式默认模板）
@@ -54,20 +54,12 @@
 | 强调 | `strong`/`em` 语义 | 渲染交阅读器默认 |
 | 链接 | `a href` 语义 | 危险 URL（javascript:/data:）降级纯文本 |
 
-### 当前实现的偏差（需修正）
+### 当前实现的偏差（✅ 已修正 2026-09-04）
 
-现有 `build/__init__.py` 的 `_STYLE_CSS` 包含**非功能性样式**，须移除：
-
-```text
-font-family: Georgia, "Noto Serif CJK SC", ...   ← 删（不设字体）
-line-height: 1.9                                  ← 移入主题层
-font-size: 1.45em（h1）                            ← 删（不设字号）
-text-indent: 2em（p）                              ← 移入主题层
-text-align: justify（p）                           ← 移入主题层
-margin: 4% 5%（body）                              ← 移入主题层
-```
-
-只保留：`img { max-width:100%; height:auto; }`、`p.imgp`（图片段居中不缩进）。
+`build/__init__.py` 的 `_STYLE_CSS` 已完成瘦身：移除 `font-family`、`font-size`、
+`line-height`、`text-indent: 2em`、`text-align: justify`、标题居中等非功能性样式，
+只保留功能性规则（`img` 限宽、`p.imgp` 图片段居中、`section.footnotes`），
+并有回归测试锁定（禁止 font-family/color/font-size/line-height/justify 回潮）。
 
 ## 5. 主题层（有限个性化）
 
@@ -134,13 +126,13 @@ output:
 
 | 优先级 | 项 | 归属 |
 |---|---|---|
-| P0 | 脚注语义化（弹窗 + 全局序号 + 双向跳转） | 结构层 |
-| P0 | 目录层级（嵌套 nav/NCX + 目录锚点 id） | 结构层 |
-| P0 | `_STYLE_CSS` 瘦身（去字体/颜色/字号） | 呈现层 |
+| P0 ✅ | 脚注语义化（弹窗 + 全局序号 + 双向跳转） | 结构层 |
+| P0 ✅ | 目录层级（嵌套 nav/NCX + `dtb:depth`，level 链路补全） | 结构层 |
+| P0 ✅ | `_STYLE_CSS` 瘦身（去字体/颜色/字号，回归测试锁定） | 呈现层 |
 | P1 | 主题机制（预置三套 + `--theme` + `output.theme`） | 主题层 |
 | P1 | 封面 `cover-image` + `linear="no"` | 结构层 |
 | P2 | 语义标签保留（blockquote/verse/ul/ol） | 结构层 |
 | P2 | audit 主题/脚注/封面校验 | 结构层 |
 
-> 脚注语义化、目录层级、样式瘦身为本轮（P0）落地项；主题机制、封面为 P1；语义标签、
-> 校验补强为 P2。具体任务拆解见 `docs/postprocessing-spec.md`。
+> P0 三项已于 2026-09-04 落地（详见 `docs/postprocessing-spec.md` §4）；主题机制、
+> 封面为 P1；语义标签、校验补强为 P2。

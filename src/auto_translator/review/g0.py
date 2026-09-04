@@ -116,6 +116,30 @@ def apply_corrections(text: str, corrections: dict[str, str] | None = None) -> s
     return out
 
 
+def detect_corrections(
+    text: str, corrections: dict[str, str] | None = None
+) -> list[tuple[str, str]]:
+    """检测文本命中的已知排印讹误（源文勘误线索；纯函数，不改文本）。"""
+    mapping = {**(_DEFAULT_CORRECTIONS if corrections is None else corrections)}
+    return [(wrong, right) for wrong, right in mapping.items() if wrong in (text or "")]
+
+
+def annotate_correction_notes(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """按句 src 命中的勘误先例给 align 行补 note 前缀（``corr:wrong→right``）。
+
+    留痕源错修正：溯源时区分「译错」与「源错按先例修正」。不改 src/tgt 文本。
+    """
+    out: list[dict[str, Any]] = []
+    for row in rows:
+        hits = detect_corrections(row.get("src") or "")
+        if hits:
+            prefix = "corr:" + ",".join(f"{w}→{r}" for w, r in hits)
+            note = row.get("note")
+            row = {**row, "note": f"{prefix};{note}" if note else prefix}
+        out.append(row)
+    return out
+
+
 def strip_copyright_boilerplate(lines: list[str]) -> list[str]:
     """剔除版权残句（从含版权特征的连续块开始截断到末尾）。"""
     text = "\n".join(lines)

@@ -44,13 +44,23 @@ auto-epublizer qa [--epub <path>] [--workspace <dir>]
 - `g4_epubcheck_errors == 0`（epubcheck 已实际运行）
 - `g4_audit == "pass"`（解包审计零 error）
 - 审校 `g2_confirmed == 0` 或全部已修订
+- 溯源完整（postprocessing-spec §5）：`provenance_coverage ≈ 1.0`（无翻译产物时为
+  null，不适用）、`units_missing == 0`、`units_order_ok`、`media_lost == 0`、`toc_flat == false`
 
 `released` 为 False 时看 `released_reason` 判定原因：
-`unresolved_confirmed`（G2 确认未修订）/ `audit_failed` / `epubcheck_not_run`（jar 缺失，
-装 jar 重跑）/ `epubcheck_errors`。G0 告警（`g0_flags`）是 advisory 线索，不阻断放行。
+`unresolved_confirmed`（G2 确认未修订）/ `audit_failed` / `provenance_incomplete`
+（溯源不完整：看 `provenance_findings` 里的 E_UNIT_MISSING/E_UNIT_ORDER/E_MEDIA_LOST/
+E_MEDIA_ORDER/E_TOC_FLAT 定位）/ `epubcheck_not_run`（jar 缺失，装 jar 重跑）/
+`epubcheck_errors`。G0 告警（`g0_flags`）是 advisory 线索，不阻断放行；
+`toc_missing`（facts 源 TOC 对账）与 `W_TOC_DEPTH` 是 warning 线索，不阻断。
 
 ## 排查
 
 - `epubcheck errors: -1` → 未装 jar；按 `doctor` 提示下载放到 `~/.cache/epubcheck.jar` 后重跑。
 - `成品不存在` → 先 `build` 或 `convert`。
 - 审计发现 `W_H1_COUNT` → 内容文档标题层级问题（每章应恰一个 h1）。
+- `provenance_incomplete` →
+  - `E_UNIT_MISSING`：spine 缺单元——检查该单元译文/源文是否存在、是否为空壳被跳过；
+  - `E_MEDIA_LOST`/`E_MEDIA_ORDER`：译文丢图或图片顺序变了——对照 `structured/` 原文补齐；
+  - 覆盖率 < 1.0：`report.json` 无逐段清单，跑 `g0` 看告警定位漏译段落；
+  - `E_TOC_FLAT`：源文有层级但目录扁平——确认源单元 `level` 已登记（重跑 init/preprocess）。

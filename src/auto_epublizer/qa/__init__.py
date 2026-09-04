@@ -10,14 +10,17 @@ from __future__ import annotations
 
 from .audit import AuditFinding, AuditResult, audit_epub
 from .epubcheck import EpubcheckResult, run_epubcheck
+from .provenance import ProvenanceResult, audit_provenance
 from .report import QaResult, generate_report
 
 __all__ = [
     "AuditFinding",
     "AuditResult",
     "EpubcheckResult",
+    "ProvenanceResult",
     "QaResult",
     "audit_epub",
+    "audit_provenance",
     "generate_report",
     "run_epubcheck",
 ]
