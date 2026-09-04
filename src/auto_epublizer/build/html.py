@@ -66,8 +66,9 @@ def _split_footnote_defs(md: str) -> tuple[str, dict[str, str]]:
     for line in md.splitlines():
         m = _FN_DEF.match(line)
         if m:
-            current = m.group(1)
-            defs[current] = m.group(2).strip()
+            label = str(m.group(1))
+            defs[label] = m.group(2).strip()
+            current = label
             continue
         if current is not None:
             label = current
@@ -163,6 +164,11 @@ def _inline(text: str) -> str:
 
 # 图注段落：整段仅一张图且 alt 非空 → figure + figcaption（postprocessing-spec P1）
 _IMG_ONLY_BLOCK = re.compile(r"^!\[([^\]]+)\]\(([^)]+)\)\s*$")
+# 语义标签（epub-template-spec P2）：引用块 / 诗行块 / 列表
+_BQ_LINE = re.compile(r"^\s*>\s?(.*)$")
+_VERSE_LINE = re.compile(r"^\s*\|\s?(.*)$")
+_UL_LINE = re.compile(r"^\s*[-*]\s+(.*)$")
+_OL_LINE = re.compile(r"^\s*\d{1,3}[.、)]\s+(.*)$")
 
 
 def markdown_to_xhtml(md: str, *, unit_id: str = "", fn_state: FootnoteState | None = None) -> str:
@@ -201,6 +207,39 @@ def markdown_to_xhtml(md: str, *, unit_id: str = "", fn_state: FootnoteState | N
             )
             continue
         lines = block.splitlines()
+        non_empty = [l for l in lines if l.strip()]
+        # 语义标签（epub-template-spec P2）：引用 / 诗行 / 列表保留原生元素
+        if non_empty and all(_BQ_LINE.match(l) for l in non_empty):
+            inner = "\n".join(
+                (_BQ_LINE.match(l).group(1) or "").strip()  # type: ignore[union-attr]
+                for l in non_empty
+            ).strip()
+            if inner:
+                out.append(f"<blockquote><p>{_inline(escape(inner))}</p></blockquote>")
+                continue
+        if non_empty and all(_VERSE_LINE.match(l) for l in non_empty):
+            vlines = [
+                (_VERSE_LINE.match(l).group(1) or "").strip()  # type: ignore[union-attr]
+                for l in non_empty
+            ]
+            body = "<br/>".join(_inline(escape(v)) for v in vlines if v)
+            if body:
+                out.append(f'<p class="verse">{body}</p>')
+                continue
+        if non_empty and all(_UL_LINE.match(l) for l in non_empty):
+            lis = "".join(
+                f"<li>{_inline(escape(_UL_LINE.match(l).group(1).strip()))}</li>"  # type: ignore[union-attr]
+                for l in non_empty
+            )
+            out.append(f"<ul>{lis}</ul>")
+            continue
+        if non_empty and all(_OL_LINE.match(l) for l in non_empty):
+            lis = "".join(
+                f"<li>{_inline(escape(_OL_LINE.match(l).group(1).strip()))}</li>"  # type: ignore[union-attr]
+                for l in non_empty
+            )
+            out.append(f"<ol>{lis}</ol>")
+            continue
         m = _HEADING_RE.match(lines[0])
         if m:
             level = min(len(m.group(1)), 6)

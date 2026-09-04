@@ -118,16 +118,17 @@
 - ✅ 图注 `<figcaption>`：独立图段（alt 非空）→ `figure+figcaption`
 - 尺寸策略「只缩不放大」：已在 P0 样式瘦身时作为功能性规则锁定（回归测试）
 
-### P2 — 补充项
+### P2 — 补充项（✅ 已完成 2026-09-04）
 
-- 可访问性：标题无跳级（`E_HEADING_SKIP`）、alt/lang 补全
-- 残留检查：译文残留源语言字符、markdown/pandoc 残留、HTML 注释、占位符（`E_RESIDUE`）
-- 元数据完备：DC 项齐全 + ISBN（`W_META_INCOMPLETE`）
-- 双语溯源：`build --bilingual` src/tgt 成对、顺序一致
-- 内部链接：脚注双向跳转、交叉引用可解析
-- 体积审计：EPUB 超阈值、图片未压缩告警
-- 命名规范 + spine 顺序 = 源顺序
-- 图片断页：`page-break-inside: avoid`
+- ✅ 可访问性：标题无跳级（`E_HEADING_SKIP`）；alt 空值（P1 已做 `W_IMG_NO_ALT`）、lang（原有 `W_NO_LANG`）
+- ✅ 残留检查：HTML 注释（`E_RESIDUE`）/ markdown·pandoc 标记（`W_RESIDUE`：`![` `**` `:::` `{.` `[^`）；
+  源语言字符残留属语义判断，归 G1 审校（agent 任务），不做确定性检查
+- ✅ 元数据完备：creator/date/publisher/rights 缺失 → `W_META_INCOMPLETE`（告警，供 agent 补全）
+- ✅ 双语溯源：`build --bilingual` src/tgt 段落数成对（`E_BI_PAIRS`）
+- ✅ 内部链接：内部锚点可解析（`E_ANCHOR`，含 noteref→footnote）+ 脚注回链（`E_FN_BACKLINK`）
+- ✅ 体积审计：EPUB 总体积（`W_EPUB_SIZE`，50MB）+ 单图未压缩（`W_IMG_UNCOMPRESSED`，2MB）
+- ✅ 命名规范：成品文件名以 slug 为前缀（`W_NAMING`，qa 接线）；spine 顺序 = 源顺序（P0 provenance 已覆盖）
+- ✅ 图片断页：`page-break-inside: avoid`（功能性样式）
 
 ## 5. 放行条件扩展
 

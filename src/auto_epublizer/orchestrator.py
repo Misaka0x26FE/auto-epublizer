@@ -512,6 +512,15 @@ def qa(
                 "message": "源 TOC 缺失条目：" + "、".join(toc_missing),
             }
         )
+    # 命名规范（postprocessing-spec P2）：成品文件名应以 slug 为前缀
+    if not epub.stem.startswith(pub.slug):
+        report.provenance_findings.append(
+            {
+                "level": "warning",
+                "code": "W_NAMING",
+                "message": f"成品命名与 slug 不符：{epub.name}（期望前缀 {pub.slug}）",
+            }
+        )
     store.save_qa(report.to_dict())
     return report.to_dict()
 

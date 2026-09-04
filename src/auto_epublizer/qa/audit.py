@@ -10,6 +10,11 @@ from pathlib import Path
 _XHTML = "application/xhtml+xml"
 _HTTPS = re.compile(r"^(https?|javascript|data):", re.IGNORECASE)
 
+# 体积阈值（postprocessing-spec P2 体积审计；可按需调整）
+_MAX_EPUB_BYTES = 50 * 1024 * 1024
+_MAX_IMG_BYTES = 2 * 1024 * 1024
+_MEDIA_EXTS = (".png", ".jpg", ".jpeg", ".gif", ".bmp", ".webp", ".avif")
+
 
 @dataclass
 class AuditFinding:
@@ -232,5 +237,90 @@ def audit_epub(path: str | Path) -> AuditResult:
             )
         elif cover_meta and cover_meta.group(1) not in manifest_ids:
             result.add("error", "E_COVER_META", f"cover meta 指向未知条目：{cover_meta.group(1)}")
+
+        # 8. 标题跳级（postprocessing-spec P2）：h1→h3 等跳级
+        for name in names:
+            if not name.endswith(".xhtml") or name.endswith(("nav.xhtml", "landmarks.xhtml")):
+                continue
+            content = zf.read(name).decode("utf-8")
+            levels = [int(m) for m in re.findall(r"<h([1-6])\b", content, re.IGNORECASE)]
+            for prev, cur in zip(levels, levels[1:]):
+                if cur > prev + 1:
+                    result.add("error", "E_HEADING_SKIP", f"标题跳级 h{prev}→h{cur}：{name}")
+                    break
+
+        # 9. 残留检查（postprocessing-spec P2）：HTML 注释=error；markdown/pandoc 标记=warning
+        for name in names:
+            if not name.endswith(".xhtml") or name.endswith(("nav.xhtml", "landmarks.xhtml")):
+                continue
+            content = zf.read(name).decode("utf-8")
+            if "<!--" in content:
+                result.add("error", "E_RESIDUE", f"HTML 注释残留：{name}")
+            for marker in ("![", "**", ":::", "{.", "[^"):
+                if marker in content:
+                    result.add("warning", "W_RESIDUE", f"markdown 标记残留（{marker}）：{name}")
+                    break
+
+        # 10. 元数据完备（postprocessing-spec P2）：次级 DC 项缺失提示（供 agent 补全）
+        missing_meta = [
+            tag
+            for tag, needle in (
+                ("dc:creator", "<dc:creator>"),
+                ("dc:date", "<dc:date>"),
+                ("dc:publisher", "<dc:publisher>"),
+                ("dc:rights", "<dc:rights>"),
+            )
+            if needle not in opf
+        ]
+        if missing_meta:
+            result.add("warning", "W_META_INCOMPLETE", "DC 元数据缺失：" + "、".join(missing_meta))
+
+        # 11. 内部锚点与脚注回链（postprocessing-spec P2）
+        for name in names:
+            if not name.endswith(".xhtml"):
+                continue
+            content = zf.read(name).decode("utf-8")
+            ids = set(re.findall(r'\bid="([^"]+)"', content))
+            for href in re.findall(r'href="#([^"]+)"', content):
+                if href not in ids:
+                    result.add("error", "E_ANCHOR", f"内部锚点无法解析（#{href}）：{name}")
+            for m in re.finditer(
+                r'<aside[^>]*epub:type="footnote"[^>]*id="([^"]+)"[^>]*>(.*?)</aside>',
+                content,
+                re.DOTALL,
+            ):
+                fn_id, body = m.group(1), m.group(2)
+                back = re.findall(r'href="#([^"]+)"', body)
+                if not back or back[0] not in ids:
+                    result.add(
+                        "error", "E_FN_BACKLINK", f"脚注 {fn_id} 缺回链或回链不可解析：{name}"
+                    )
+
+        # 12. 双语成对（postprocessing-spec P2）：class=src/tgt 段落数一致
+        for name in names:
+            if not name.endswith(".xhtml") or name.endswith(("nav.xhtml", "landmarks.xhtml")):
+                continue
+            content = zf.read(name).decode("utf-8")
+            n_src = len(re.findall(r'<p class="src"', content))
+            n_tgt = len(re.findall(r'<p class="tgt"', content))
+            if (n_src or n_tgt) and n_src != n_tgt:
+                result.add(
+                    "error", "E_BI_PAIRS", f"双语 src/tgt 段落数不一致（{n_src}/{n_tgt}）：{name}"
+                )
+
+        # 13. 体积审计（postprocessing-spec P2）：告警不阻断
+        total = sum(i.file_size for i in zf.infolist())
+        if total > _MAX_EPUB_BYTES:
+            result.add("warning", "W_EPUB_SIZE", f"EPUB 体积过大：{total // (1024 * 1024)}MB")
+        for item in zf.infolist():
+            if (
+                Path(item.filename).suffix.lower() in _MEDIA_EXTS
+                and item.file_size > _MAX_IMG_BYTES
+            ):
+                result.add(
+                    "warning",
+                    "W_IMG_UNCOMPRESSED",
+                    f"图片过大（{item.file_size // 1024}KB，建议压缩）：{item.filename}",
+                )
 
     return result
