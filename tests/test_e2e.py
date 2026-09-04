@@ -85,10 +85,14 @@ def test_full_pipeline(tmp_path: Path) -> None:
     assert r["termination"] == "clean_confirmed"
     assert store.load_publication().units[0].status == "reviewed"
 
-    # 5. build（从译文）+ qa
+    # 5. build（从译文）+ qa（密闭：epubcheck jar 指向不存在路径，不依赖本机是否装 jar）
+    from auto_common.config import Config
+
+    cfg = Config()
+    cfg.qc.epubcheck.jar = str(tmp_path / "nope.jar")
     epub = orch.build(store)
     assert epub.is_file()
-    report = orch.qa(store, epub_path=str(epub))
+    report = orch.qa(store, epub_path=str(epub), config=cfg)
     assert report["g4_audit"] == "pass"
     assert store.load_publication().units[0].status == "built"
 

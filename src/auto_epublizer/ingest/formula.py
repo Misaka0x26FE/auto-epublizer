@@ -15,7 +15,10 @@ from __future__ import annotations
 import re
 from typing import Any
 
-_MATH_CHARS = set("∫∑∏√∂∇∓±×÷¬≈≡≤≥∞∈∉∋∀∃·…°′″ℓ℘ℑℜ")
+# 数学符号集：刻意排除 `·`(U+00B7 间隔号/中点) 与 `…`(U+2026 省略号)——两者在
+# 中文文本里是高频标点（人名/省略），计入会大面积误判正文（真书 dogfooding 实证）；
+# 数学点乘用 `⋅`(U+22C5)、星乘用 `∗`(U+2217) 表达。
+_MATH_CHARS = set("∫∑∏√∂∇∓±×÷¬≈≡≤≥∞∈∉∋∀∃⋅∗°′″ℓ℘ℑℜ")
 _GREEK_RE = re.compile(r"[\u0370-\u03ff\u2100-\u214f\U0001d400-\U0001d7ff]")
 _MATH_FONT_RE = re.compile(r"Math|CMMI|CMSY|CMEX|Symbol", re.IGNORECASE)
 _CHAPTER_PREFIX_RE = re.compile(
