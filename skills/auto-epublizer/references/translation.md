@@ -58,6 +58,33 @@ translation/
 - 段级等长：输入 N 段，输出 N 项；数量不符重试（`align_retry_limit`），再逐段兜底。
 - 拆句/并句在 `note` 声明；`note` 记录拆/并句/漏译/存疑。
 
+## 特殊段处理（PDF 内容提取产物）
+
+PDF ingest 会产出三类非纯文本段（来源见 `references/ingest.md`；描述文件在
+`structured/raw/inserts/`）。翻译时按类型处理：
+
+| 段形态 | 处理 |
+|---|---|
+| 图片引用段：`![p012-img01](raw/media/…)` | **原样保留**，不翻译 alt（alt 是 inserts id，非内容）；译文段与源段一致即可通过 G0 |
+| 公式段：`$$原始抽取文本$$` | 保留 `$$…$$` 包裹；内部公式文本**不做机器翻译**（多为符号乱串，译文保持原样；真实译文进 inserts 的 `latex`，见下节） |
+| markdown 表格段：`\| a \| b \|…` | 翻译**单元格文字**，保留管道符/分隔行/对齐结构；表格两端不要加空行合并 |
+
+## inserts 补全（agent 任务：语义字段）
+
+`raw/inserts/<id>.json` 的确定性字段（id/type/source/file）由 CLI 生成；
+**语义字段由你补全**——时机：该单元翻译完成后、跑 `qa` 之前。provenance 审计以
+`<id>.json` 单文件为权威（`index.jsonl` 只是快照，可不改）：
+
+1. **必做·所有记录**：按 `source.page` 回源页（PDF 查看器翻到该页）核对内容，
+   写 `content_desc`——这个插图/表格/公式**讲什么、为什么出现在此处**（一两句即可）；
+2. **formula 记录**：手写 `latex`（依据 `source.bbox` 定位页内公式；`$$…$$` 里的
+   原始抽取文本仅供参考，以图为准）；
+3. 可选：确认文件在盘（`source.file` 对应 `structured/raw/<file>`）——缺失会报
+   `E_INSERT_MISSING_FILE`，见 `references/qa.md`。
+
+不补全不阻断构建（W 级 warning），但 `content_desc` 会进 EPUB 的图片 alt/说明位，
+空描述直接影响成品质量——**视为必做**。
+
 ## 术语三态闭环
 
 ```text

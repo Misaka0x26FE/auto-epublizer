@@ -59,3 +59,35 @@ def test_write_empty_is_noop_and_read_missing_is_empty(tmp_path) -> None:
     write_inserts(tmp_path, [])
     assert not (tmp_path / "inserts").exists()
     assert read_inserts(tmp_path) == []
+
+
+def test_read_inserts_scans_files_not_index(tmp_path) -> None:
+    """读取以 <id>.json 为权威：排除 index.jsonl；手工补语义即时生效。"""
+    import json
+
+    recs = [_rec("p012-img01", "image", file="media/p012-img01.png")]
+    write_inserts(tmp_path, recs)
+    # agent 只编辑单文件补 content_desc（index.jsonl 快照不动）
+    p = tmp_path / "inserts" / "p012-img01.json"
+    data = json.loads(p.read_text(encoding="utf-8"))
+    data["content_desc"] = "第一章示意图"
+    p.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+    # agent 手工新增一条记录
+    rec2 = _rec("p013-fml01", "formula").model_copy(update={"latex": "E=mc^2"})
+    (tmp_path / "inserts" / "p013-fml01.json").write_text(rec2.model_dump_json(), encoding="utf-8")
+
+    loaded = read_inserts(tmp_path)
+    assert [r.id for r in loaded] == ["p012-img01", "p013-fml01"]
+    assert loaded[0].content_desc == "第一章示意图"
+    assert loaded[1].latex == "E=mc^2"
+
+
+def test_read_inserts_skips_corrupt_files(tmp_path) -> None:
+    """坏 json 跳过；index.jsonl 不作为读取源。"""
+    (tmp_path / "inserts").mkdir()
+    (tmp_path / "inserts" / "p001-img01.json").write_text("{broken", encoding="utf-8")
+    (tmp_path / "inserts" / "p002-img01.json").write_text(
+        _rec("p002-img01", "image").model_dump_json(), encoding="utf-8"
+    )
+    (tmp_path / "inserts" / "index.jsonl").write_text("garbage\n", encoding="utf-8")
+    assert [r.id for r in read_inserts(tmp_path)] == ["p002-img01"]

@@ -334,6 +334,40 @@ def test_provenance_inserts_errors_and_warnings(tmp_path: Path) -> None:
     assert result.inserts_no_latex == 1
 
 
+def test_provenance_inserts_single_file_edit_reflected(tmp_path: Path) -> None:
+    """只编辑 <id>.json（不动 index.jsonl）→ 审计即时反映（W_INSERT_NO_DESC 消失）。"""
+    import json as _json
+
+    from auto_epublizer.ingest.inserts import InsertRecord, InsertSource
+
+    store, entries = _make_workspace(
+        tmp_path, [{"id": "ch01", "rel": "body/ch01.md", "md": "# 一\n\n甲。\n"}]
+    )
+    _write_inserts(
+        store,
+        [
+            InsertRecord(
+                id="p001-img01",
+                type="image",
+                source=InsertSource(page=1, bbox=[0, 0, 10, 10], xref=1, method="embedded"),
+            ),
+        ],
+    )
+    epub = _build(store, entries)
+    result = audit_provenance(store, entries, epub)
+    assert any(f["code"] == "W_INSERT_NO_DESC" for f in result.findings)
+
+    # agent 补语义：只写单文件
+    p = store.structured_dir / "raw" / "inserts" / "p001-img01.json"
+    data = _json.loads(p.read_text(encoding="utf-8"))
+    data["content_desc"] = "示意图"
+    p.write_text(_json.dumps(data, ensure_ascii=False), encoding="utf-8")
+
+    result2 = audit_provenance(store, entries, epub)
+    assert not any(f["code"] == "W_INSERT_NO_DESC" for f in result2.findings)
+    assert result2.inserts_no_desc == 0
+
+
 def test_report_blocks_release_on_missing_insert_files() -> None:
     """inserts 文件缺失 → prov 不完整，阻断放行（provenance_incomplete）。"""
     report = generate_report(

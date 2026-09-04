@@ -1,7 +1,7 @@
 # 计划：skills 缺口——inserts 补全与判读指引
 
-> 状态：**规划中**（2026-09-04 立项）。前置：preprocessing-plan-v2 计划 C 已落地
-> （S2–S4），`docs/pdf-content-spec.md` 已实现。
+> 状态：**已完成**（2026-09-04）。审计源已切换为 `<id>.json` 单文件（`read_inserts` 扫目录），
+> translation/qa/ingest 三处 skills 指引补齐，测试 +3（共 248）。
 
 ## 1. 背景与问题
 

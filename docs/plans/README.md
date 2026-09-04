@@ -16,6 +16,6 @@
 |---|---|---|
 | [preprocessing-plan.md](preprocessing-plan.md) | 已被 v2 取代 | 预处理 v1（分类识别 + 分层理解 + 补充环节） |
 | [preprocessing-plan-v2.md](preprocessing-plan-v2.md) | 已完成 | 预处理 v2（能力边界确认 + 计划 A OCR 路由 / B 网络搜索 / C PDF 内容提取） |
-| [2026-09-04-skills-inserts-guidance.md](2026-09-04-skills-inserts-guidance.md) | 规划中 | skills 缺口：inserts 补全与判读指引（translation/qa + 审计源切换） |
+| [2026-09-04-skills-inserts-guidance.md](2026-09-04-skills-inserts-guidance.md) | 已完成 | skills 缺口：inserts 补全与判读指引（translation/qa + 审计源切换） |
 | [2026-09-04-capabilities-status.md](2026-09-04-capabilities-status.md) | 规划中 | capabilities.md 接入 status 完整性检查 |
 | [2026-09-04-pdf-dogfooding.md](2026-09-04-pdf-dogfooding.md) | 规划中 | 真书 dogfooding：新 PDF 管线实战验证与阈值回填 |

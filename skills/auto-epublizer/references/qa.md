@@ -56,14 +56,32 @@ auto-epublizer qa [--epub <path>] [--workspace <dir>]
 - `g4_audit == "pass"`（解包审计零 error）
 - 审校 `g2_confirmed == 0` 或全部已修订
 - 溯源完整（postprocessing-spec §5）：`provenance_coverage ≈ 1.0`（无翻译产物时为
-  null，不适用）、`units_missing == 0`、`units_order_ok`、`media_lost == 0`、`toc_flat == false`
+  null，不适用）、`units_missing == 0`、`units_order_ok`、`media_lost == 0`、
+  `toc_flat == false`、`inserts_missing_files == 0`（插图/表格/公式可回溯原始地址且文件在，
+  pdf-content-spec §9）
 
 `released` 为 False 时看 `released_reason` 判定原因：
 `unresolved_confirmed`（G2 确认未修订）/ `audit_failed` / `provenance_incomplete`
 （溯源不完整：看 `provenance_findings` 里的 E_UNIT_MISSING/E_UNIT_ORDER/E_MEDIA_LOST/
-E_MEDIA_ORDER/E_TOC_FLAT 定位）/ `epubcheck_not_run`（jar 缺失，装 jar 重跑）/
-`epubcheck_errors`。G0 告警（`g0_flags`）是 advisory 线索，不阻断放行；
+E_MEDIA_ORDER/E_TOC_FLAT/E_INSERT_MISSING_FILE/E_INSERT_BAD_SOURCE 定位）/
+`epubcheck_not_run`（jar 缺失，装 jar 重跑）/ `epubcheck_errors`。
+G0 告警（`g0_flags`）是 advisory 线索，不阻断放行；
 `toc_missing`（facts 源 TOC 对账）与 `W_TOC_DEPTH` 是 warning 线索，不阻断。
+
+## 插入内容（inserts）审计判读
+
+`raw/inserts/<id>.json`（插图/表格/公式描述文件，pdf-content-spec §2）存在时，
+provenance 追加四码检查（W 级不阻断，但按 translation.md「inserts 补全」补齐后再复跑）：
+
+| 码 | 级别 | 含义与处置 |
+|---|---|---|
+| `E_INSERT_MISSING_FILE` | error | `source.file` 指向的媒体文件不在盘——重跑该单元 ingest（`preprocess`/`init`）或从源 PDF 重新提取；确认不是被误删 |
+| `E_INSERT_BAD_SOURCE` | error | `source.page` 非正整数或 `bbox` 非法——描述文件损坏，手工修正该 `<id>.json` 的 source 字段（回源 PDF 核对页号/坐标） |
+| `W_INSERT_NO_DESC` | warning | `content_desc` 为空——agent 按 translation.md「inserts 补全」回源页写内容描述 |
+| `W_INSERT_NO_LATEX` | warning | formula 记录 `latex` 为空——agent 手写 LaTeX 填入（依据 bbox 定位公式，图为准） |
+
+计数在 `report.json` 的溯源字段：`inserts_total` / `inserts_missing_files`（进放行门）/
+`inserts_no_desc` / `inserts_no_latex`；逐条信息看 `provenance_findings`。
 
 ## 排查
 
