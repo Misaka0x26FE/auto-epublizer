@@ -12,6 +12,7 @@ from typing import Any
 from auto_common.llm.base import LLMClient
 from auto_common.workspace import RunStore, atomic_write_json
 
+from .._parallel import map_parallel
 from ..agents.review_agents import ArbiterAgent, EvidenceAgent, FixerAgent
 from ..agents.reviewer import ReviewerAgent
 from ..glossary import Glossary, load_glossary_csv
@@ -93,6 +94,60 @@ class ReviewRun:
                 out[unit.id] = rows
         return out
 
+    def _review_batch_task(
+        self,
+        unit_id: str,
+        batch: list[dict[str, Any]],
+        shadow: dict[str, dict[int, str]],
+        round_no: int,
+    ) -> list[Issue]:
+        """G1 单个批次审校（并发任务）：返回该批次的 Issue 列表。
+
+        只读 shadow（本轮固定），与其它批次无共享可变状态，可安全并发；
+        结果由调用方按稳定原文序合并。
+        """
+        pairs = []
+        for r in batch:
+            tgt = shadow.get(unit_id, {}).get(r["seq"], r["tgt"])
+            pairs.append({"seq": r["seq"], "src": r["src"], "tgt": tgt})
+        issues: list[Issue] = []
+        for it in self.reviewer.review_batch(pairs):
+            seq = it.get("seq")
+            issues.append(
+                Issue(
+                    issue_id=f"r{round_no}-{unit_id}-{it.get('seq', 0)}",
+                    chapter=unit_id,
+                    index=it.get("seq", 0),
+                    seq=[seq] if isinstance(seq, int) else list(seq or []),
+                    type=it.get("type", "mistranslation"),
+                    detail=it.get("detail", ""),
+                    suggestion=it.get("suggestion", ""),
+                )
+            )
+        return issues
+
+    def _fix_task(
+        self, issue: Issue, shadow: dict[str, dict[int, str]]
+    ) -> tuple[Issue, str, str] | None:
+        """G3 单个 issue 影子修订（并发任务）：解析 before → fixer 计算 after。
+
+        只读 shadow（当前已确认 issue 列表固定），fixer 调用无共享可变状态；
+        shadow 的写回由调用方串行应用，避免并发改 dict。
+        返回 (issue, before, after)；无 before 返回 None。
+        """
+        unit_id = issue.chapter
+        seq = issue.seq[0] if issue.seq else issue.index
+        before = shadow.get(unit_id, {}).get(seq)
+        if before is None:
+            for r in self._align_cache.get(unit_id, []):
+                if r["seq"] == seq:
+                    before = r["tgt"]
+                    break
+        if before is None:
+            return None
+        after = self.fixer.fix(before, issue.to_dict())
+        return issue, before, after
+
     def run(self, *, clean_confirmations: int = 2, fix_max_rounds: int = 2) -> dict[str, Any]:
         state = ConvergenceState()
         shadow: dict[str, dict[int, str]] = {}  # unit_id -> seq -> tgt
@@ -106,53 +161,44 @@ class ReviewRun:
             round_issues: list[Issue] = []
             round_patches: list[Patch] = []
 
-            for unit_id, rows in self._align_cache.items():
-                for batch in _batch(rows):
-                    pairs = []
-                    for r in batch:
-                        tgt = shadow.get(unit_id, {}).get(r["seq"], r["tgt"])
-                        pairs.append({"seq": r["seq"], "src": r["src"], "tgt": tgt})
-                    issues = self.reviewer.review_batch(pairs)
-                    for it in issues:
-                        seq = it.get("seq")
-                        issue = Issue(
-                            issue_id=f"r{round_no}-{unit_id}-{it.get('seq', 0)}",
-                            chapter=unit_id,
-                            index=it.get("seq", 0),
-                            seq=[seq] if isinstance(seq, int) else list(seq or []),
-                            type=it.get("type", "mistranslation"),
-                            detail=it.get("detail", ""),
-                            suggestion=it.get("suggestion", ""),
-                        )
-                        round_issues.append(issue)
+            # G1 逐批审校（批次级并发 + 稳定原文序合并，C7）
+            tasks: list[tuple[str, list[dict[str, Any]]]] = [
+                (unit_id, batch)
+                for unit_id, rows in self._align_cache.items()
+                for batch in _batch(rows)
+            ]
+            per_batch = map_parallel(
+                lambda t, rno=round_no: self._review_batch_task(t[0], t[1], shadow, rno),
+                tasks,
+            )
+            for batch_issues in per_batch:
+                round_issues.extend(batch_issues)
 
             total_candidates += len(round_issues)
 
-            # G2 取证裁决（注入只读证据）
-            for issue in round_issues:
+            # G2 取证裁决（并发只读评估，稳定序合并；C7）
+            def _adjudicate(issue: Issue) -> tuple[Issue, str]:
                 seq = issue.seq[0] if issue.seq else issue.index
                 context = self._evidence_context(issue.chapter, seq)
                 verdict = self.evidence.adjudicate(issue.to_dict(), context=context)
-                if verdict.get("verdict") == VERDICT_CONFIRMED:
+                return issue, verdict.get("verdict", "")
+
+            for issue, verdict in map_parallel(_adjudicate, round_issues):
+                if verdict == VERDICT_CONFIRMED:
                     issue.verdict = VERDICT_CONFIRMED
                     total_confirmed += 1
                 else:
                     issue.verdict = VERDICT_DISMISSED
 
-            # G3 影子修订
+            # G3 影子修订（并发计算 after，串行应用 shadow；C7）
             confirmed = [i for i in round_issues if i.verdict == VERDICT_CONFIRMED]
-            for issue in confirmed:
+            fixed = map_parallel(lambda i: self._fix_task(i, shadow), confirmed)
+            for outcome in fixed:
+                if outcome is None:
+                    continue
+                issue, before, after = outcome
                 unit_id = issue.chapter
                 seq = issue.seq[0] if issue.seq else issue.index
-                before = shadow.get(unit_id, {}).get(seq)
-                if before is None:
-                    for r in self._align_cache.get(unit_id, []):
-                        if r["seq"] == seq:
-                            before = r["tgt"]
-                            break
-                if before is None:
-                    continue
-                after = self.fixer.fix(before, issue.to_dict())
                 if after == before:
                     failed_fixes += 1
                 else:

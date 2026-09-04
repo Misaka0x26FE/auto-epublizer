@@ -8,6 +8,7 @@ from typing import Any
 from auto_common.llm.base import LLMClient
 from auto_common.workspace import RunStore
 
+from .._parallel import map_parallel
 from ..agents.translator import TranslatorAgent
 from ..glossary import Glossary, load_glossary_csv, terms_in_text
 from ..review import annotate_correction_notes
@@ -152,7 +153,7 @@ def translate(
     glossary = Glossary(load_glossary_csv(store.analysis_dir / "glossary.csv"))
 
     done_statuses = {"translated", "aligned", "reviewed", "built"}
-    translated = 0
+    pending: list[tuple[str, str]] = []
     skipped = 0
     for unit in pub.units:
         rel_path = (unit.meta or {}).get("rel_path")
@@ -161,19 +162,29 @@ def translate(
         if not force and unit.status in done_statuses:
             skipped += 1
             continue
-        info = translate_unit(
+        pending.append((unit.id, rel_path))
+
+    # 单元级并发 + 稳定原文序合并（C7）：各单元写独立 translation/align 文件，
+    # 结果按 publication 单元序收集；状态/账本顺序落盘，避免并发写 publication.json。
+    def _run_unit(item: tuple[str, str]) -> dict[str, Any]:
+        unit_id, rel_path = item
+        return translate_unit(
             store,
             client,
-            unit_id=unit.id,
+            unit_id=unit_id,
             rel_path=rel_path,
             glossary=glossary,
             target_lang=target,
             tier=tier,
         )
+
+    results = map_parallel(_run_unit, pending)
+    translated = 0
+    for (unit_id, _rel), info in zip(pending, results, strict=False):
         translated += 1
-        store.set_unit_status(unit.id, "translated")
-        store.set_unit_status(unit.id, "aligned")
-        store.log_event("batch_translated", unit=unit.id, sentences=info["sentences"])
+        store.set_unit_status(unit_id, "translated")
+        store.set_unit_status(unit_id, "aligned")
+        store.log_event("batch_translated", unit=unit_id, sentences=info["sentences"])
 
     # 用量账本：一次运行增量只合并一次（run_id 幂等）
     from datetime import datetime
