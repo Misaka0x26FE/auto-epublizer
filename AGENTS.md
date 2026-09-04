@@ -62,7 +62,7 @@ auto-epublizer g0                # 翻译/导入后立即静态校验（advisory
 auto-epublizer review
 
 # 7. 封装输出
-auto-epublizer build          # 纯译文 / 双语 EPUB → output/
+auto-epublizer build          # 纯译文 / 双语 EPUB → output/（--theme 选排版主题）
 
 # 8. 质检（G0 静态校验 + G4 审计 + G5 汇总放行 → report.json）
 auto-epublizer qa             # 结构审计 + epubcheck
@@ -117,7 +117,7 @@ skills/auto-epublizer/
 ```text
 <book-slug>/
 ├── source/           ① 待处理文件（原样，绝不改动）
-├── output/           ② 成品 EPUB（<title>.<lang>.epub / <title>.<lang>-bi.epub）
+├── output/           ② 成品 EPUB（<slug>.epub / <slug>-bi.epub）
 ├── structured/       ③ 按出版物四层结构拆分的源文（frontmatter/body/backmatter/media）
 │                     + raw/（处理源文件的中间产物：OCR 页图、PDF→HTML，持久化供审查）
 ├── analysis/         ④ 分层理解（analyze 产物：overview/global/units/keypoints/glossary 等）
@@ -156,7 +156,8 @@ skills/auto-epublizer/
 {"seq": 1, "src": "原句", "tgt": "译句", "note": null}
 ```
 
-`seq` 是双语排版、QA 定位、断点续跑的锚点；`note` 记录拆句/并句/漏译/存疑。
+`seq` 是双语排版、QA 定位、断点续跑的锚点；`note` 记录拆句/并句/漏译/存疑，
+`corr:wrong→right` 前缀 = 源文勘误先例留痕（translate/import 两路径自动写入）。
 
 ## 架构边界
 
@@ -215,7 +216,11 @@ skills 的能力-路由决策表选择 ingest 路由（pandoc / 按页切片 / �
 3. **证据取证 Agent Loop（strong）**：候选先取证再裁决，禁止假设未取得的上下文；术语库与影子修订都是待核验材料。
 4. **冲突仲裁 + 影子修订 + 盲复审**：跨块矛盾终局仲裁；Fixer 只在影子 overlay 改；下一轮盲审不传旧说明；连续 clean 确认或 max_rounds 收敛；振荡检测（摘要 SHA-256 循环）。
 5. **EPUB 结构 QA**：epubcheck 零 error + 解包逐项审计（mimetype 首位、manifest/spine/nav 解析、封面、lang、每章一个 h1、脚注双向跳转、无残留）。
-6. **交付验收**：汇总 G0–G4 生成 `report.json`（g0_flags/g1_issues/g2_confirmed/g3_termination/error_rate/released），放行条件为 `g2_confirmed == 0` 或全部已修订、`g4_epubcheck_errors == 0`、`g4_audit == "pass"`。
+6. **交付验收**：汇总 G0–G4 + 溯源审计生成 `report.json`（g0_flags/g1_issues/g2_confirmed/
+   g3_termination/error_rate/provenance_coverage/units_missing/media_lost/released/
+   released_reason），放行条件为 `g2_confirmed == 0` 或全部已修订、`g4_epubcheck_errors == 0`、
+   `g4_audit == "pass"`、溯源完整（`provenance_coverage ≈ 1.0`（无翻译产物为 null）、
+   三边对账/媒体溯源零缺失、目录层级不扁平；详见 docs/postprocessing-spec.md §5）。
 
 ## 配置、密钥与 provider
 

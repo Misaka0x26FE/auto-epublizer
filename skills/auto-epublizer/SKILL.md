@@ -68,7 +68,7 @@ auto-epublizer translate [--target zh-CN] [--force]       # 路径 A：CLI 内�
 auto-epublizer import [--unit <id>] [--terms preprocessing/terms.csv]  # 登记手写产物
 auto-epublizer g0                                         # 静态校验（advisory）
 auto-epublizer review                                     # 审校（G1–G3，无 LLM 时 agent 自行审校）
-auto-epublizer build [--bilingual]                        # 封装 EPUB → output/
+auto-epublizer build [--bilingual] [--theme standard|compact|spacious]  # 封装 EPUB → output/
 auto-epublizer qa                                         # epubcheck + 解包审计
 auto-epublizer status --json                              # 查看进度/状态机/产物-状态对账
 ```
