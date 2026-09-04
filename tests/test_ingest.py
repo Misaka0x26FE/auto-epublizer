@@ -305,3 +305,58 @@ def test_load_document_pdf_embedded_images(tmp_path: Path) -> None:
     i_img = next(i for i, t in enumerate(texts) if "p001-img01" in t)
     i_after = texts.index("Text after image.")
     assert i_before < i_img < i_after
+
+
+def test_load_document_pdf_full_page_image_route(tmp_path: Path) -> None:
+    """整页图版路由：图占满页且文字极少 → 渲染整页（method=full_page）。"""
+    import fitz
+
+    from auto_epublizer.ingest.inserts import read_inserts
+
+    pdf_path = tmp_path / "plates.pdf"
+    pdf = fitz.open()
+    page = pdf.new_page()
+    png = fitz.Pixmap(fitz.csRGB, fitz.IRect(0, 0, 48, 48)).tobytes("png")
+    page.insert_image(page.rect, stream=png)
+    page.insert_text((72, 60), "Plate I")  # 少量文字仍走整页路由
+    pdf.save(str(pdf_path))
+    pdf.close()
+
+    store = init_workspace(pdf_path, workspace_dir=tmp_path / "ws")
+    doc = load_document(pdf_path, store=store)
+    raw_dir = store.structured_dir / "raw"
+    records = read_inserts(raw_dir)
+    assert len(records) == 1
+    rec = records[0]
+    assert rec.source.method == "full_page"
+    assert rec.file == "media/p001-page.png"
+    assert (raw_dir / rec.file).is_file()
+    assert rec.source.xref is None  # 整页渲染，无内嵌对象号
+    # 段引用整页图
+    refs = [s for u in doc.units for s in u.segments if "p001-page.png" in s.source]
+    assert len(refs) == 1
+
+
+def test_load_document_pdf_scan_background_not_extracted(tmp_path: Path) -> None:
+    """扫描背景守卫：文字多的整页背景图不提取（不污染 media/inserts）。"""
+    import fitz
+
+    from auto_epublizer.ingest.inserts import read_inserts
+
+    pdf_path = tmp_path / "scan.pdf"
+    pdf = fitz.open()
+    page = pdf.new_page()
+    png = fitz.Pixmap(fitz.csRGB, fitz.IRect(0, 0, 48, 48)).tobytes("png")
+    page.insert_image(page.rect, stream=png)
+    body = " ".join(["Running body text sentence."] * 30)  # 远超 200 字
+    page.insert_text((72, 72), body[:200], fontsize=10)
+    page.insert_text((72, 92), body[200:400], fontsize=10)
+    page.insert_text((72, 112), body[400:], fontsize=10)
+    pdf.save(str(pdf_path))
+    pdf.close()
+
+    store = init_workspace(pdf_path, workspace_dir=tmp_path / "ws")
+    load_document(pdf_path, store=store)
+    raw_dir = store.structured_dir / "raw"
+    assert read_inserts(raw_dir) == []
+    assert not (raw_dir / "media").exists() or not list((raw_dir / "media").iterdir())
