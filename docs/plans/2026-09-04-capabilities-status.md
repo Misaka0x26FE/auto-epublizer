@@ -1,8 +1,7 @@
 # 计划：capabilities.md 接入 status 完整性检查
 
-> 状态：**规划中**（2026-09-04 立项）。前置：preprocessing-plan-v2 §capabilities 契约；
-> S1 已让 doctor 输出 `search: null` 自报位并更新 skills，但 **CLI 状态机不认
-> capabilities.md**。
+> 状态：**已完成**（2026-09-04）。`preprocessing_complete` 现要求 global.md +
+> capabilities.md 同时在盘；facts 的 agent_todo 首位插入 capabilities 自报项（7 项）。
 
 ## 1. 背景与问题
 

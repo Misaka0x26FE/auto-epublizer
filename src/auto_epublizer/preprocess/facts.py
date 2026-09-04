@@ -140,6 +140,7 @@ def collect_facts(store: RunStore, config) -> dict[str, Any]:
         "checks": _checks_facts(store, sniff_facts),
         "suggestions": suggestions,
         "agent_todo": [
+            "preprocessing/capabilities.md：自报五维能力边界（multimodal/search/模型/外部 API/工作量），见 references/preprocessing.md §1.1",
             "preprocessing/plan.md：结合 capabilities 与 suggestions 写处理方案决策（路由+依据）",
             "preprocessing/global.md：主要内容/中心思想/语言风格/叙事结构",
             "preprocessing/units/<id>.md：每章梗概/思想/登场人物/术语注意",

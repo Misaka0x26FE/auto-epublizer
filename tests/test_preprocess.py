@@ -217,8 +217,9 @@ def test_collect_facts_and_write(tmp_path: Path) -> None:
     # 体检与建议
     assert facts["checks"]["drm"] is False
     assert any("纯文本" in s for s in facts["suggestions"])
-    # agent 待办
-    assert len(facts["agent_todo"]) == 6
+    # agent 待办（首位 capabilities 自报，共 7 项）
+    assert len(facts["agent_todo"]) == 7
+    assert "capabilities.md" in facts["agent_todo"][0]
     # 落盘
     json_path = Path(result["facts_json"])
     md_path = Path(result["facts_md"])
@@ -282,14 +283,20 @@ def test_status_reports_preprocessing_state(tmp_path: Path) -> None:
     # 未预处理
     data = orch.status(store)
     assert data["has_preprocessing"] is False
-    # facts 有、plan/global 缺 → stale 提示
+    # facts 有、plan/global/capabilities 缺 → stale 提示
     orch.preprocess(store, config=Config())
     data = orch.status(store)
     assert data["has_preprocessing"] is True
     assert data["preprocessing_complete"] is False
     assert any(s["reason"] == "preprocessing_plan_missing" for s in data["stale"])
-    # agent 补完 global.md → complete
+    # agent 补完 global.md 但 capabilities.md 仍缺 → 仍不 complete
     (store.preprocessing_dir / "global.md").write_text("理解完成。", encoding="utf-8")
+    data = orch.status(store)
+    assert data["preprocessing_complete"] is False
+    # capabilities.md 也补完 → complete
+    (store.preprocessing_dir / "capabilities.md").write_text(
+        "# 能力自报\n\nmultimodal：否；search：无。", encoding="utf-8"
+    )
     data = orch.status(store)
     assert data["preprocessing_complete"] is True
     assert not any(s["id"] == "preprocessing" for s in data["stale"])
