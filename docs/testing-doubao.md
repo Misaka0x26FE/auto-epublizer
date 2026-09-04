@@ -231,12 +231,11 @@ uv run auto-epublizer init ~/books/legacy.pdf
 ## 6. 已知限制（遇到 ≠ bug，记录即可）
 
 > 2026-09-04 复核：OCR 与术语提案两条已接线（`pdf.ocr: auto/off` + `import --terms`）；
-> analyze 截断、review/translation 串行、convert 源语言已由修复计划 P2/P3 修复，一并移除；
-> 剩余条目仍成立。
+> analyze 截断、review/translation 串行、convert 源语言、PDF 章级聚合已由修复计划
+> P2/P3/P4 修复，一并移除；剩余条目仍成立。
 
 | 现象 | 原因 |
 |---|---|
-| PDF 整书一个单元、无章切分 | 未实现章级聚合（P4） |
 | `released` 恒 False | 容器无 epubcheck jar；装了才会按真实结果放行（环境限制，非 bug） |
 | `.progress.json` 未落盘 | 预留断点文件，实际断点=单元级跳过（契约已标注预留） |
 | 自动化批量重试后仍失败 | 每批已重试 2 次，报错即停，人工看报文 |

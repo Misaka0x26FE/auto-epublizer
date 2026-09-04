@@ -10,17 +10,107 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import tempfile
 from pathlib import Path
 
 import fitz  # pymupdf
 
-from .models import KIND_TEXT, SourceDocument, SourceSegment, SourceUnit
+from .models import KIND_HEADING, KIND_TEXT, SourceDocument, SourceSegment, SourceUnit
 from .ocr import OcrBackend
 
 
 class PdfError(RuntimeError):
     """PDF 解析失败。"""
+
+
+_CHAPTER_KEYWORD = re.compile(
+    r"第[0-9０-９一二三四五六七八九十百千]+[章話话节節回部巻卷]"
+    r"|序章|終章|序幕|プロローグ|エピローグ|あとがき|まえがき"
+    r"|Chapter\s+\d+|CHAPTER\s+\d+",
+    re.IGNORECASE,
+)
+
+
+def _median_font_size(segments: list[SourceSegment]) -> float:
+    sizes = sorted(
+        float(s.meta.get("source_font_size") or 0)
+        for s in segments
+        if s.kind != KIND_HEADING and float(s.meta.get("source_font_size") or 0) > 0
+    )
+    if not sizes:
+        return 0.0
+    n = len(sizes)
+    mid = n // 2
+    return sizes[mid] if n % 2 else (sizes[mid - 1] + sizes[mid]) / 2.0
+
+
+def _is_chapter_heading(seg: SourceSegment, body_median: float) -> bool:
+    """标题启发式：章节关键词，或短文本且字号显著大于正文中位数（>1.3×）。"""
+    text = seg.source.strip()
+    if not text or len(text) > 80:
+        return False
+    if _CHAPTER_KEYWORD.search(text):
+        return True
+    size = float(seg.meta.get("source_font_size") or 0)
+    return size > 0 and body_median > 0 and size >= body_median * 1.3
+
+
+def aggregate_pdf_chapters(
+    segments: list[SourceSegment],
+    *,
+    book_title: str,
+    page_count: int,
+) -> list[SourceUnit]:
+    """按标题启发式把 PDF 扁平段切分为章节单元（C9）。
+
+    命中标题（章节关键词 / 大字号短文本）处起新单元；无任何标题信号时
+    保持单单元（回退旧行为）。OCR 路径无字号信息，仅关键词可命中。
+    """
+    body_median = _median_font_size(segments)
+    if not any(_is_chapter_heading(s, body_median) for s in segments):
+        return [
+            SourceUnit(
+                id="ch01",
+                kind="chapter",
+                title=book_title,
+                segments=segments,
+                meta={"page_range": [1, page_count]},
+            )
+        ]
+
+    units: list[SourceUnit] = []
+    current_title: str | None = None
+    current: list[SourceSegment] = []
+    chapter_no = 0
+
+    def _flush() -> None:
+        nonlocal current_title, current, chapter_no
+        if not current and current_title is None:
+            return
+        chapter_no += 1
+        units.append(
+            SourceUnit(
+                id=f"ch{chapter_no:02d}",
+                kind="chapter",
+                title=current_title or book_title,
+                segments=current,
+                meta={"page_range": [1, page_count], "aggregated": True},
+            )
+        )
+        current_title = None
+        current = []
+
+    for seg in segments:
+        if _is_chapter_heading(seg, body_median):
+            _flush()
+            current_title = seg.source.strip()
+            current = [seg.model_copy(update={"kind": KIND_HEADING})]
+        else:
+            current.append(seg)
+    _flush()
+
+    return units
 
 
 def _page_blocks(page: fitz.Page) -> list[dict]:
@@ -30,10 +120,16 @@ def _page_blocks(page: fitz.Page) -> list[dict]:
         if block.get("type") != 0:
             continue
         lines: list[str] = []
+        max_size = 0.0
         for line in block.get("lines", []):
+            line_size = 0.0
+            for span in line.get("spans", []):
+                size = float(span.get("size", 0) or 0)
+                line_size = max(line_size, size)
             text = "".join(span.get("text", "") for span in line.get("spans", []))
             if text.strip():
                 lines.append(text)
+                max_size = max(max_size, line_size)
         text = "\n".join(lines)
         if not text.strip():
             continue
@@ -42,6 +138,7 @@ def _page_blocks(page: fitz.Page) -> list[dict]:
                 "type": "text",
                 "bbox": block.get("bbox"),
                 "text": text,
+                "font_size": max_size,
             }
         )
     return blocks
@@ -110,6 +207,7 @@ def read_pdf(
                         meta={
                             "source_page": page_no + 1,
                             "source_bbox": block.get("bbox"),
+                            "source_font_size": block.get("font_size"),
                         },
                     )
                 )
@@ -123,16 +221,11 @@ def read_pdf(
     if total_blocks == 0:
         raise PdfError("该 PDF 没有可抽取的文字层；若是扫描件请走 OCR 路径")
 
-    if segments:
-        units.append(
-            SourceUnit(
-                id="ch01",
-                kind="chapter",
-                title=os.path.splitext(os.path.basename(str(path)))[0],
-                segments=segments,
-                meta={"page_range": [1, page_count]},
-            )
-        )
+    units = aggregate_pdf_chapters(
+        segments,
+        book_title=os.path.splitext(os.path.basename(str(path)))[0],
+        page_count=page_count,
+    )
 
     return SourceDocument(
         title=os.path.splitext(os.path.basename(str(path)))[0],

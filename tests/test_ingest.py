@@ -128,3 +128,82 @@ def test_normalize_to_workspace(tmp_path: Path) -> None:
     store = init_workspace(src, workspace_dir=tmp_path / "ws")
     doc = load_document(src, store=store)
     assert doc.fmt == "text"
+
+
+def _make_pdf(path: Path, pages: list[list[tuple[str, float]]]) -> Path:
+    """构造多页 PDF：每页一组 (文本, 字号)，字号>正文即标题信号。"""
+    import fitz
+
+    pdf = fitz.open()
+    for page_items in pages:
+        page = pdf.new_page()
+        y = 72
+        for text, size in page_items:
+            page.insert_text((72, y), text, fontsize=size)
+            y += max(size * 1.5, 24)
+    pdf.save(str(path))
+    pdf.close()
+    return path
+
+
+def test_load_document_pdf_chapter_aggregation(tmp_path: Path) -> None:
+    """PDF 按字号/章节关键词切分章节单元（C9）：大字号标题 → 多单元。"""
+    pdf_path = _make_pdf(
+        tmp_path / "book.pdf",
+        [
+            [("Chapter One", 24), ("The opening paragraph of the first chapter.", 12)],
+            [("Chapter Two", 24), ("Second chapter body text here.", 12)],
+        ],
+    )
+    store = init_workspace(pdf_path, workspace_dir=tmp_path / "ws")
+    doc = load_document(pdf_path, store=store)
+    titles = [u.title for u in doc.units]
+    assert titles == ["Chapter One", "Chapter Two"], f"应聚合为两章，got {titles}"
+    assert [u.id for u in doc.units] == ["ch01", "ch02"]
+    # 每章首段是标题 kind=heading
+    assert doc.units[0].segments[0].kind == "heading"
+    assert doc.units[1].segments[0].kind == "heading"
+
+
+def test_load_document_pdf_chapter_aggregation_keyword(tmp_path: Path) -> None:
+    """章节关键词兜底：同字号下「第N章」文本也命中标题（C9 纯函数层）。
+
+    直接用 aggregate_pdf_chapters 构造段，避免 PDF 默认字体无法渲染 CJK
+    字形导致抽取文本变成占位符。
+    """
+    from auto_epublizer.ingest.models import KIND_TEXT, SourceSegment
+    from auto_epublizer.ingest.pdf_reader import aggregate_pdf_chapters
+
+    def seg(text: str, size: float = 12.0) -> SourceSegment:
+        return SourceSegment(
+            index=0,
+            source=text,
+            kind=KIND_TEXT,
+            meta={"source_page": 1, "source_font_size": size},
+        )
+
+    segments = [
+        seg("第一章 开始"),
+        seg("正文内容若干。"),
+        seg("第二章 发展"),
+        seg("更多正文。"),
+    ]
+    units = aggregate_pdf_chapters(segments, book_title="book", page_count=2)
+    assert [u.title for u in units] == ["第一章 开始", "第二章 发展"]
+    assert units[0].segments[0].kind == "heading"
+
+
+def test_load_document_pdf_no_heading_single_unit(tmp_path: Path) -> None:
+    """无标题信号（同字号正文）时保持单单元回退（C9 不破坏旧行为）。"""
+    pdf_path = _make_pdf(
+        tmp_path / "book.pdf",
+        [
+            [("Plain running text page one.", 12)],
+            [("More plain running text page two.", 12)],
+        ],
+    )
+    store = init_workspace(pdf_path, workspace_dir=tmp_path / "ws")
+    doc = load_document(pdf_path, store=store)
+    assert len(doc.units) == 1
+    assert doc.units[0].id == "ch01"
+    assert doc.units[0].meta.get("aggregated") is not True
