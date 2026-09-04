@@ -30,6 +30,7 @@ _NO_END_PUNCT = "。．.!?！？；;，,：:"
 MAX_FORMULA_TEXT = 200
 MAX_ISOLATED_TEXT = 120
 CENTER_TOLERANCE = 0.12  # 水平中心偏离页中心 ≤ 12% 页宽视为居中
+MATH_FONT_RATIO = 0.5  # 数学字体字符占比 ≥ 50% 才触发字体特征
 
 
 def count_math_chars(text: str) -> int:
@@ -55,14 +56,21 @@ def is_formula_block(
     page_width: float | None = None,
     chapter_re: re.Pattern[str] = _CHAPTER_PREFIX_RE,
 ) -> bool:
-    """文本块是否为公式（三路特征任一命中；章节标题排除）。"""
+    """文本块是否为公式（三路特征任一命中；章节标题排除）。
+
+    字体特征带占比守卫（math_font_chars / 块长 ≥ MATH_FONT_RATIO）：TeX 排版的
+    正文书里引号/尖括号等常用 CMSY 渲染，单看「出现过数学字体」会把整段正文
+    误判为公式（真书 dogfooding 实证，On Lisp 全书 80+ 误报）。
+    """
     if block.get("type") != "text":
         return False
     text = (block.get("text") or "").strip()
     if not text or chapter_re.search(text):
         return False
     if is_math_font(block.get("math_font")):
-        return True
+        math_chars = int(block.get("math_font_chars") or 0)
+        if math_chars >= MATH_FONT_RATIO * max(1, len(text)):
+            return True
     if is_formula_text(text):
         return True
     return _is_isolated_centered(block, page_width, text)

@@ -206,14 +206,17 @@ def _page_blocks(page: fitz.Page) -> list[dict]:
         lines: list[str] = []
         max_size = 0.0
         math_font: str | None = None
+        math_font_chars = 0
         for line in block.get("lines", []):
             line_size = 0.0
             for span in line.get("spans", []):
                 size = float(span.get("size", 0) or 0)
                 line_size = max(line_size, size)
                 font = span.get("font") or ""
-                if math_font is None and is_math_font(font):
-                    math_font = font
+                if is_math_font(font):
+                    if math_font is None:
+                        math_font = font
+                    math_font_chars += len(span.get("text", ""))
             text = "".join(span.get("text", "") for span in line.get("spans", []))
             if text.strip():
                 lines.append(text)
@@ -229,6 +232,7 @@ def _page_blocks(page: fitz.Page) -> list[dict]:
         }
         if math_font is not None:
             entry["math_font"] = math_font
+            entry["math_font_chars"] = math_font_chars
         blocks.append(entry)
     return blocks
 
