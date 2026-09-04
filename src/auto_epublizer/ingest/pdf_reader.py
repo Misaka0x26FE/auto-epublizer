@@ -16,8 +16,11 @@ from pathlib import Path
 
 import fitz  # pymupdf
 
+from .images import extract_embedded_images
+from .inserts import InsertRecord, write_inserts
 from .models import KIND_HEADING, KIND_TEXT, SourceDocument, SourceSegment, SourceUnit
 from .ocr import OcrBackend
+from .reading_order import sort_reading_order
 
 
 class PdfError(RuntimeError):
@@ -56,17 +59,90 @@ def _is_chapter_heading(seg: SourceSegment, body_median: float) -> bool:
     return size > 0 and body_median > 0 and size >= body_median * 1.3
 
 
+def _seg_page(seg: SourceSegment) -> int:
+    """段所在页号（1-based；缺失/非法按第 1 页处理，保证总是落进某个单元）。"""
+    try:
+        p = int(seg.meta.get("source_page") or 0)
+    except (TypeError, ValueError):
+        return 1
+    return p if p >= 1 else 1
+
+
+def _level1_toc(toc: list[list] | None, page_count: int) -> list[tuple[int, str]]:
+    """提取有效 level-1 书签（页号单调、去重、越界过滤）；少于 2 条视为无效。"""
+    if not toc:
+        return []
+    entries: list[tuple[int, str]] = []
+    for item in toc:
+        try:
+            level, title, page = int(item[0]), str(item[1]).strip(), int(item[2])
+        except (TypeError, ValueError, IndexError):
+            continue
+        if level != 1 or not title or page < 1 or page > page_count:
+            continue
+        if entries and page <= entries[-1][0]:
+            continue  # 非单调 / 同页重复：取首个
+        entries.append((page, title))
+    return entries if len(entries) >= 2 else []
+
+
+def _aggregate_by_toc(
+    segments: list[SourceSegment],
+    *,
+    book_title: str,
+    page_count: int,
+    entries: list[tuple[int, str]],
+) -> list[SourceUnit]:
+    """按书签切章：首个条目前的页 → frontmatter；末章延伸到全书末页。"""
+    units: list[SourceUnit] = []
+    first_start = entries[0][0]
+    if first_start > 1:
+        front = [s for s in segments if _seg_page(s) < first_start]
+        if front:
+            units.append(
+                SourceUnit(
+                    id="fm01",
+                    kind="frontmatter",
+                    title=book_title,
+                    segments=front,
+                    meta={"page_range": [1, first_start - 1], "aggregated": True},
+                )
+            )
+    for i, (start_page, title) in enumerate(entries):
+        end_page = entries[i + 1][0] - 1 if i + 1 < len(entries) else page_count
+        segs = [s for s in segments if start_page <= _seg_page(s) <= end_page]
+        units.append(
+            SourceUnit(
+                id=f"ch{i + 1:02d}",
+                kind="chapter",
+                title=title,
+                segments=segs,
+                meta={"page_range": [start_page, end_page], "aggregated": True},
+            )
+        )
+    return units
+
+
 def aggregate_pdf_chapters(
     segments: list[SourceSegment],
     *,
     book_title: str,
     page_count: int,
+    toc: list[list] | None = None,
 ) -> list[SourceUnit]:
-    """按标题启发式把 PDF 扁平段切分为章节单元（C9）。
+    """把 PDF 扁平段切分为章节单元：书签 TOC 优先，字号/关键词启发式降级。
 
+    书签路径（≥2 条单调 level-1 条目）：level-1 页号为章边界，首条目前的页归
+    frontmatter，末章延伸到全书末页。无有效书签时回落标题启发式（C9）：
     命中标题（章节关键词 / 大字号短文本）处起新单元；无任何标题信号时
     保持单单元（回退旧行为）。OCR 路径无字号信息，仅关键词可命中。
     """
+    entries = _level1_toc(toc, page_count)
+    if entries:
+        return _aggregate_by_toc(
+            segments, book_title=book_title, page_count=page_count, entries=entries
+        )
+
     body_median = _median_font_size(segments)
     if not any(_is_chapter_heading(s, body_median) for s in segments):
         return [
@@ -170,8 +246,11 @@ def read_pdf(
 
     units: list[SourceUnit] = []
     segments: list[SourceSegment] = []
+    records: list[InsertRecord] = []
     total_blocks = 0
     page_count = doc.page_count
+    toc = doc.get_toc(simple=True)
+    raw_path: Path | None = Path(raw_dir) if raw_dir is not None else None
     tmp_dir: str | None = None
     if ocr_backend is not None:
         tmp_dir = tempfile.mkdtemp(prefix="auto-epub-ocr-")
@@ -181,11 +260,15 @@ def read_pdf(
             blocks = _page_blocks(page)
             if not blocks and ocr_backend is not None:
                 blocks = _ocr_page(page, ocr_backend, dpi=page_dpi, tmp_dir=tmp_dir or "")
+            if raw_path is not None:
+                raw_path.mkdir(parents=True, exist_ok=True)
+                img_blocks = extract_embedded_images(
+                    doc, page, records=records, media_dir=raw_path / "media"
+                )
+                blocks = sort_reading_order([*blocks, *img_blocks])
             total_blocks += len(blocks)
-            if raw_dir is not None:
-                raw_dir = Path(raw_dir)
-                raw_dir.mkdir(parents=True, exist_ok=True)
-                (raw_dir / f"page-{page_no + 1:03d}.json").write_text(
+            if raw_path is not None:
+                (raw_path / f"page-{page_no + 1:03d}.json").write_text(
                     json.dumps(
                         {
                             "page_idx": page_no + 1,
@@ -199,16 +282,20 @@ def read_pdf(
                 )
             for block in blocks:
                 idx = len(segments)
+                meta = {
+                    "source_page": page_no + 1,
+                    "source_bbox": block.get("bbox"),
+                    "source_font_size": block.get("font_size"),
+                }
+                if block.get("insert_id"):
+                    meta["insert_id"] = block["insert_id"]
+                    meta["insert_type"] = block["type"]
                 segments.append(
                     SourceSegment(
                         index=idx,
                         source=block["text"],
                         kind=KIND_TEXT,
-                        meta={
-                            "source_page": page_no + 1,
-                            "source_bbox": block.get("bbox"),
-                            "source_font_size": block.get("font_size"),
-                        },
+                        meta=meta,
                     )
                 )
     finally:
@@ -220,11 +307,14 @@ def read_pdf(
 
     if total_blocks == 0:
         raise PdfError("该 PDF 没有可抽取的文字层；若是扫描件请走 OCR 路径")
+    if raw_path is not None and records:
+        write_inserts(raw_path, records)
 
     units = aggregate_pdf_chapters(
         segments,
         book_title=os.path.splitext(os.path.basename(str(path)))[0],
         page_count=page_count,
+        toc=toc,
     )
 
     return SourceDocument(
