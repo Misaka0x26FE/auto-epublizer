@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 from typing import Any
 
@@ -120,14 +121,48 @@ def ensure_structure(store: RunStore) -> list[dict[str, Any]]:
     return prepare_structure(store)
 
 
+def _source_language(store: RunStore, pub: Any, entries: list[dict[str, Any]]) -> str:
+    """EPUB 源语言标注：优先元数据；缺省用确定性脚本启发式采样源文判定。
+
+    convert/build 不跑 analyze，语言元数据可能缺失（此前一律 und）。此处以
+    detect_language（纯函数启发式）采样首个非空单元判定：拉丁/未知脚本默认 en，
+    若样本完全不含拉丁字母（无法判定脚本）则诚实返回 und。
+    """
+    lang = pub.meta.language or ""
+    if lang:
+        return lang
+    sample = ""
+    for e in entries:
+        rel = e.get("rel_path")
+        if not rel:
+            continue
+        path = store.structured_dir / rel
+        if path.is_file():
+            try:
+                sample = path.read_text(encoding="utf-8", errors="ignore")
+            except OSError:
+                continue
+        if sample.strip():
+            break
+    sample = sample[:4000]
+    if not sample.strip():
+        return "und"
+    from auto_translator.analysis.detect import detect_language
+
+    detected = detect_language(sample)
+    if detected == "en" and not re.search("[A-Za-z]", sample):
+        return "und"
+    return detected
+
+
 def convert(store: RunStore, *, output: str | None = None, theme: str | None = None) -> Path:
     """仅转换：ingest + structure + build（源语言正文）。"""
     entries = ensure_structure(store)
     if not entries:
         raise OrchestrationError("源文件无可解析的内容单元")
     pub = store.load_publication()
-    # convert 不翻译：正文是源语言，EPUB 语言标注须用源语言（未检测时为 und）。
-    lang = pub.meta.language or "und"
+    # convert 不翻译：正文是源语言，EPUB 语言标注须用源语言（启发式检测兜底）。
+    lang = _source_language(store, pub, entries)
     return _render_and_pack(
         store,
         pub,
@@ -165,7 +200,7 @@ def _render_and_pack(
     from .build.html import FootnoteState
 
     out_path = Path(output) if output else store.output_dir / f"{pub.slug}{suffix}.epub"
-    src_lang = pub.meta.language or "und"
+    src_lang = _source_language(store, pub, entries)
     media_root = store.structured_dir / "raw" / "media"
     fn_state = FootnoteState()
     content = []

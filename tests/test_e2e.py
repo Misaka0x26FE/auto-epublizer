@@ -142,3 +142,48 @@ def test_orchestrator_unit_heading_and_skip_empty() -> None:
     assert skip_empty_unit("# 正文\n\n实际段落。\n", "正文") is False
     # 真实章节标题页（仅标题、无正文）：保留作目录锚点
     assert skip_empty_unit("# 第一章\n", "第一章") is False
+
+
+def test_convert_source_language_heuristic(tmp_path: Path) -> None:
+    """convert 无语言元数据时以确定性启发式判定源语言（C8 回归）。
+
+    中文源文件 → dc:language=zh；拉丁源文件 → dc:language=en；无法判定脚本 → und。
+    """
+    import xml.etree.ElementTree as ET
+    import zipfile
+
+    # 中文源：init（.md 无语言元数据）→ convert → dc:language 应为 zh
+    zh_src = tmp_path / "zh.md"
+    zh_src.write_text("# 第一章\n\n从前有座山，山上有座庙。\n", encoding="utf-8")
+    store = orch.init(str(zh_src), workspace_dir=str(tmp_path / "ws_zh"))
+    epub = orch.convert(store)
+    with zipfile.ZipFile(epub) as zf:
+        opf = zf.read("OEBPS/content.opf").decode("utf-8")
+    ns = {"dc": "http://purl.org/dc/elements/1.1/"}
+    lang = ET.fromstring(opf).find(".//dc:language", ns)
+    assert lang is not None and lang.text == "zh", (
+        f"中文源应判定 zh，got {lang.text if lang is not None else None}"
+    )
+
+    # 拉丁源 → en
+    en_src = tmp_path / "en.md"
+    en_src.write_text("# Chapter I\n\nThe quick brown fox jumps.\n", encoding="utf-8")
+    store_en = orch.init(str(en_src), workspace_dir=str(tmp_path / "ws_en"))
+    epub_en = orch.convert(store_en)
+    with zipfile.ZipFile(epub_en) as zf:
+        opf_en = zf.read("OEBPS/content.opf").decode("utf-8")
+    lang_en = ET.fromstring(opf_en).find(".//dc:language", ns)
+    assert lang_en is not None and lang_en.text == "en"
+
+    # 元数据优先：显式 language 不被启发式覆盖
+    meta_src = tmp_path / "meta.md"
+    meta_src.write_text("你好世界\n", encoding="utf-8")
+    store_meta = orch.init(str(meta_src), workspace_dir=str(tmp_path / "ws_meta"))
+    pub = store_meta.load_publication()
+    pub.meta.language = "fr"  # 模拟已探测/用户指定元数据
+    store_meta.save_publication(pub)
+    epub_meta = orch.convert(store_meta)
+    with zipfile.ZipFile(epub_meta) as zf:
+        opf_m = zf.read("OEBPS/content.opf").decode("utf-8")
+    lang_m = ET.fromstring(opf_m).find(".//dc:language", ns)
+    assert lang_m is not None and lang_m.text == "fr"
