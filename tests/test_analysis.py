@@ -149,3 +149,80 @@ def test_analyze_degrades_without_llm_key(tmp_path: Path) -> None:
     # 未发生任何 LLM 调用
     assert client._calls == []
     assert store.load_publication().units[0].status == "analyzed"
+
+
+def test_chunk_helpers() -> None:
+    """分块与采样纯函数：短文不分块、段落边界优先、首尾必选且保序（C6）。"""
+    from auto_translator.analysis.service import _sample_chunks, _split_chunks
+
+    # 短文不分块
+    assert _split_chunks("ab", 6000) == ["ab"]
+
+    # 长文分块且段落边界优先（边界位于窗口后段时优先断开）
+    parts = _split_chunks("x" * 4000 + "\n\n" + "y" * 8000, 6000)
+    assert parts[0] == "x" * 4000
+    assert all(len(c) <= 6000 for c in parts)
+
+    # 单段长文按 size 均切
+    assert all(len(c) <= 6000 for c in _split_chunks("x" * 25000, 6000))
+
+    # 采样：首尾必选、数量上限、保序
+    chunks = [str(i) for i in range(10)]
+    s = _sample_chunks(chunks, 5)
+    assert s[0] == "0" and s[-1] == "9"
+    assert len(s) <= 5
+    assert s == sorted(s)
+
+    # 不超上限时原样返回
+    assert _sample_chunks(["a", "b"], 5) == ["a", "b"]
+
+
+def test_analyze_long_text_chunked(tmp_path: Path) -> None:
+    """长书（>6000 字）analyze：overview/global 分块采样 + merge，覆盖全书而非只看开头（C6）。"""
+    from auto_translator.analysis.service import _sample_chunks, _split_chunks, analyze
+
+    # 单章超长文本（无段落分隔，确保切成多个 6000 字块）
+    unit_text = "In my younger years my father gave me some advice. " * 400
+    store = _structured_workspace_long(tmp_path, unit_text)
+
+    # 精确计算分块数，按调用顺序入队：overview(n+merge) → global(n+merge) → unit → seed → characters
+    chunks = _sample_chunks(_split_chunks(unit_text, 6000), max_chunks=5)
+    n = len(chunks)
+    client = FakeClient()
+    for _ in range(n + 1):
+        client.enqueue("overview 回复。")
+    for _ in range(n + 1):
+        client.enqueue("global 回复。")
+    client.enqueue("单元理解回复。")
+    client.enqueue_json([])  # seed_terms
+    client.enqueue_json([])  # characters
+
+    analyze(store, client)
+
+    stages = [c["stage"] for c in client._calls]
+    assert stages.count("analysis_overview") == n, "overview 分块调用数应与采样块数一致"
+    assert stages.count("analysis_global") == n
+    assert stages.count("analysis_overview_merge") == 1
+    assert stages.count("analysis_global_merge") == 1
+    assert n > 1, "长书必须分块（此前只看前 6000 字）"
+
+    # 每个分块调用都收到原文而非空串（FakeClient 记录 messages）
+    for c in client._calls:
+        if c["stage"] in ("analysis_overview", "analysis_global"):
+            user_msg = c["messages"][-1]["content"]
+            assert user_msg.strip(), f"{c['stage']} 分块输入为空"
+
+
+def _structured_workspace_long(tmp_path: Path, unit_text: str):
+    """建含单超长单元的结构化工作区（复用 _structured_workspace 的拆分流程）。"""
+    src = tmp_path / "book.md"
+    src.write_text(f"# Chapter I\n\n{unit_text}\n", encoding="utf-8")
+    store = init_workspace(src, workspace_dir=tmp_path / "ws")
+    from auto_epublizer.ingest import load_document
+    from auto_epublizer.structure import rebuild_structure, write_structured
+
+    doc = load_document(store.dir / store.load_publication().meta.source, store=store)
+    entries = rebuild_structure(doc, store.load_publication())
+    write_structured(store, doc, entries)
+    store.set_units(entries)
+    return store

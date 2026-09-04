@@ -30,6 +30,48 @@ from ..glossary import (
 from .detect import detect_genre, detect_language
 
 
+def _split_chunks(text: str, size: int) -> list[str]:
+    """按 size 切块，优先在段落边界断开，避免切断句子。"""
+    if len(text) <= size:
+        return [text]
+    parts: list[str] = []
+    start = 0
+    while start < len(text):
+        end = start + size
+        if end < len(text):
+            brk = text.rfind("\n\n", start, end)
+            if brk > start + size // 2:
+                end = brk
+        parts.append(text[start:end])
+        start = end
+    return parts
+
+
+def _sample_chunks(chunks: list[str], max_chunks: int) -> list[str]:
+    """均匀采样分块：首尾必选、中间均匀分布、保持顺序（确定性）。"""
+    n = len(chunks)
+    if n <= max_chunks:
+        return chunks
+    idxs = {0, n - 1}
+    remaining = max_chunks - 2
+    for k in range(1, remaining + 1):
+        idxs.add(round(k * (n - 2) / (remaining + 1)))
+    return [chunks[i] for i in sorted(idxs)]
+
+
+def _chunked_understanding(agent: AnalyzerAgent, text: str, *, kind: str) -> str:
+    """全书级理解：长文分块采样（首/中/尾覆盖）+ 合并去重；短文保持单次调用。
+
+    kind ∈ {"overview", "global"}。避免旧实现只看前 6000 字导致长书尾部盲区（C6）。
+    """
+    chunks = _sample_chunks(_split_chunks(text, 6000), max_chunks=5)
+    single = agent.overview if kind == "overview" else agent.global_understanding
+    if len(chunks) == 1:
+        return single(chunks[0])
+    notes = [single(c) for c in chunks]
+    return agent.merge_notes(notes, kind=kind)
+
+
 def render_style_md(
     genre: str,
     *,
@@ -162,8 +204,8 @@ def analyze(store: RunStore, client: LLMClient | None, *, tier: str = "cheap") -
     terms_seeded = 0
     if agent is not None and use_llm:
         # overview / global / keypoints
-        overview = agent.overview(full_text[:6000])
-        global_md = agent.global_understanding(full_text[:6000])
+        overview = _chunked_understanding(agent, full_text, kind="overview")
+        global_md = _chunked_understanding(agent, full_text, kind="global")
         (store.analysis_dir / "overview.md").write_text(
             f"# 内容概要（overview.md）\n\n{overview}\n", encoding="utf-8"
         )
