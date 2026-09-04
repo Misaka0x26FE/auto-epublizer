@@ -2,7 +2,7 @@
 
 > 用途：**会话压缩交接**。本文件记录预处理 v2 三份计划（A/B/C）落地任务的状态。
 > **截至 2026-09-04 该任务已全部完成**（S0–S5 全部提交推送），保留供追溯与后续任务参考。
-> 权威计划见 `docs/preprocessing-plan-v2.md`；Plan C 规范见 `docs/pdf-content-spec.md`。
+> 权威计划见 `docs/plans/preprocessing-plan-v2.md`；Plan C 规范见 `docs/pdf-content-spec.md`。
 
 ## 1. 目标与路线
 
