@@ -202,7 +202,8 @@ PDF 解析难点与方案见 [docs/pdf-parsing.md](docs/pdf-parsing.md)；
 | 状态与续跑（RunStore） | 借鉴 wenyi：tmp+`os.replace` 原子写、`source_sha256` 绑定、多级 flock、manifest 最后原子提交、`events.jsonl` 账本、导出快照 | 断点续跑与一致性核心 |
 | 数据模型 | Document → Chapter → Segment（pydantic v2） | Segment 是最小可翻译/对齐单元，带 `anchor`/`resource_href`/`cont`；meta 记 `source_page` 溯源 |
 | PDF（文字层） | `pymupdf`（AGPL，与本项目同许可兼容）| 按页切片抽文字层 + 版面块 → Markdown，逐页落 `structured/raw/` |
-| 扫描 PDF（OCR） | `rapidocr_onnxruntime`（可选 extra，懒加载） | 扫描件按 `pdf.ocr: auto/off/强制` 路由；难页由 agent 视觉兜底（multimodal 自报） |
+| PDF 内容提取 | `pymupdf` 内置（`find_tables`/渲染） | 书签 TOC 切章、多栏阅读顺序、内嵌图/整页图版路由、表格双路径（md/裁剪图）、公式检测标记 → `raw/inserts/` 溯源（见 docs/pdf-content-spec.md） |
+| 扫描 PDF（OCR） | `rapidocr_onnxruntime`（可选 extra，懒加载） | OCR 五档路由：tesseract/ocrmypdf → rapidocr → 视觉 LLM → MinerU API → 询问用户（multimodal 由 agent 自报） |
 | EPUB 输入 | `pandoc` 统一 → Markdown（纯文本）+ 抽取媒体 | 非 PDF 一律先走 pandoc |
 | DOCX / HTML | `pandoc` 统一 → Markdown + 媒体 | 同上 |
 | TXT/MD | 原生解析 + 标题推断（pandoc 兜底） | 最简路径 |
@@ -330,9 +331,9 @@ source,target,type,aliases,gender,reading,status,note
 2. **CLI 子命令映射管线阶段**，agent 按阶段推进、每步可验证：
 
    ```text
-   auto-epublizer doctor           # 能力自检：工具链/依赖/LLM 探测（multimodal 由 agent 自报）
+   auto-epublizer doctor           # 能力自检：工具链/依赖/LLM/MinerU/网络探测（multimodal/search 由 agent 自报）
    auto-epublizer preprocess <input>  # 预处理：init + 嗅探/元数据/TOC/体检/规模 → preprocessing/facts.*
-                                      # （agent 读 facts.md 撰写 plan/global/units/terms/risks/report）
+                                      # （agent 读 facts.md 撰写 capabilities/plan/global/units/terms/risks/report）
    auto-epublizer init <input>     # 仅建工作区：source/ + publication.json + 四层结构拆分（preprocess 子集）
    auto-epublizer analyze          # 生成 analysis/（无 LLM Key 时确定性降级，可省略）
    auto-epublizer translate        # 路径 A：CLI 内部翻译 → translation/ + align/
@@ -443,9 +444,9 @@ source,target,type,aliases,gender,reading,status,note
 
 ```bash
 # ── 能力自检 + 预处理（agent 开工前）──────────────────────────
-auto-epublizer doctor [--ping]                        # 工具链/依赖/LLM 探测；multimodal 由 agent 自报
+auto-epublizer doctor [--ping]                        # 工具链/依赖/LLM/MinerU/网络探测；multimodal/search 由 agent 自报
 auto-epublizer preprocess <input> [--reference <path...>]  # init + 零 token 事实 → preprocessing/facts.*
-#   agent 读 facts.md 撰写 preprocessing/{plan,global,units,terms,risks,report}
+#   agent 读 facts.md 撰写 preprocessing/{capabilities,plan,global,units,terms,risks,report}
 
 # ── 完整翻译管线 ─────────────────────────────────────────────
 auto-epublizer analyze                                # analysis/ 生成（无 Key 确定性降级，可省略）

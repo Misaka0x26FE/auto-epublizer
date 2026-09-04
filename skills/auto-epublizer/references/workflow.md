@@ -4,8 +4,9 @@
 
 工作区是 `<workspaces_dir>/<book-slug>/`，权威索引是 `publication.json`。
 
-**开工前**：`auto-epublizer doctor --json` 自检环境（pandoc/pymupdf/OCR/epubcheck/LLM Key），
-并自报 multimodal（能否看图）——按 `references/ingest.md` 的能力-路由决策表选 ingest 路由。
+**开工前**：`auto-epublizer doctor --json` 自检环境（pandoc/pymupdf/OCR/epubcheck/LLM
+Key/MinerU/网络），并自报 multimodal / search（能否看图、有无搜索工具）——按
+`references/ingest.md` 的能力-路由决策表选 ingest 路由。
 
 ```text
 无 publication.json               -> 全新流程：先 preprocess <input>（= init + 事实收集）
@@ -22,9 +23,9 @@
 ## 标准阶段
 
 ```text
-doctor（能力自检：工具链 + LLM 可用性 + 自报 multimodal）
+doctor（能力自检：工具链 + LLM 可用性 + 自报 multimodal/search）
   -> preprocess （CLI：嗅探/元数据/TOC/体检/规模 -> preprocessing/facts.*，零 token）
-  -> agent 理解 （读 facts.md 撰写 plan/global/units/terms/risks/report）
+  -> agent 理解 （读 facts.md 撰写 capabilities/plan/global/units/terms/risks/report）
   -> analyze    （可选：LLM 增强分层理解 -> analysis/；无 Key 时省略）
   -> 翻译      （路径 A：translate；路径 B：agent 手写后 import 登记）
   -> g0        （静态校验，advisory）
@@ -42,7 +43,7 @@ convert <input>   -> 归一化 + 结构 + EPUB + QA
 ## 命令总览
 
 ```bash
-# 能力自检（开工前必做；multimodal 由 agent 自报补填）
+# 能力自检（开工前必做；multimodal/search 由 agent 自报补填）
 auto-epublizer doctor [--json] [--ping]
 
 # 预处理（新书：init + 零 token 事实收集 → preprocessing/facts.*；已有工作区：幂等刷新）
@@ -109,5 +110,5 @@ auto-epublizer status --workspace <dir> --json
 | `缺少 API Key` | 无 Key 是合法形态：analyze 降级 + agent 手写翻译 + `import` 登记；或有 Key 环境设置环境变量 |
 | `导入失败`（import 阻断） | 按 `--unit` 输出的错误清单修 align（断号/空译文/缺文件）后重试 |
 | `pandoc` 缺失 | `doctor` 已提示；装 pandoc 或先把文件转为 PDF/TXT/MD |
-| 扫描 PDF 处理不了 | 按 `doctor` + multimodal 自报走路由：装 `[ocr]` extra → 离线 OCR；或视觉 LLM 兜底 |
+| 扫描 PDF 处理不了 | 按 OCR 五档路由（`doctor` + multimodal 自报）：tesseract/ocrmypdf → rapidocr（`[ocr]` extra）→ 视觉 LLM 兜底 → MinerU API → 询问用户 |
 | 单元状态停在中间态 / stale | `status --json` 定位，从对应阶段续跑（手写产物跑 `import`） |

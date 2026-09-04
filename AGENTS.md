@@ -33,7 +33,7 @@
 
 ```bash
 # 0. 能力自检（agent 开工前必做：判断自身能力边界 + 环境工具链）
-auto-epublizer doctor [--ping]   # 工具链/依赖/LLM 探测；multimodal 由 agent 自报补填
+auto-epublizer doctor [--ping]   # 工具链/依赖/LLM 探测；multimodal/search 由 agent 自报补填
 
 # 1. 安装
 uv sync
@@ -198,8 +198,11 @@ CLI → Orchestrator（薄 façade）→ 领域服务 → agents / llm / glossar
 基础能力，**不要求 MCP、子代理或任何特殊工具**。
 
 **能力自检先行**：agent 开工前先跑 `auto-epublizer doctor` 判断环境工具链（pandoc/pymupdf/
-OCR/epubcheck/LLM Key），并**自报 multimodal**（能否看图，CLI 无法探测）——据此按
-skills 的能力-路由决策表选择 ingest 路由（pandoc / 按页切片 / 离线 OCR / 视觉 LLM 兜底）。
+OCR（tesseract/ocrmypdf/rapidocr）/epubcheck/LLM Key/MinerU/网络），并**自报 multimodal
+与 search**（能否看图、有无搜索工具，CLI 无法探测）——据此按
+skills 的能力-路由决策表选择 ingest 路由（pandoc / 按页切片 / OCR 五档：
+传统 OCR→rapidocr→视觉 LLM→MinerU API→询问用户）。PDF 内容提取（插图/表格/公式/
+多栏/书签切章）规范见 [docs/pdf-content-spec.md](docs/pdf-content-spec.md)。
 
 ## 状态与续跑不变量
 
