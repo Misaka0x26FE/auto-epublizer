@@ -28,6 +28,45 @@ def test_table_to_markdown_collapses_newlines() -> None:
     assert "| multi line |" in md
 
 
+def test_extract_tables_rejects_oversized_cells(tmp_path) -> None:
+    """单格超长 → 版面误检（整页吞进一格），放弃记录（真书 dogfooding 回归）。"""
+    import fitz
+
+    from auto_epublizer.ingest.inserts import InsertRecord
+    from auto_epublizer.ingest.tables import extract_tables
+
+    pdf = fitz.open()
+    page = pdf.new_page()
+    _draw_table(page, 200, 200, 500, 320)
+    long_text = "很长的一段正文。" * 40  # 单格 > 300 字符
+    page.insert_text((210, 235), long_text[:80], fontsize=9)
+    page.insert_text((210, 255), long_text[80:160], fontsize=9)
+    pdf_path = tmp_path / "big.pdf"
+    pdf.save(str(pdf_path))
+    pdf.close()
+
+    doc = fitz.open(str(pdf_path))
+    records: list[InsertRecord] = []
+    blocks = extract_tables(
+        doc[0],
+        records=records,
+        media_dir=tmp_path / "media",
+        image_bboxes=[],
+        formula_bboxes=[],
+    )
+    doc.close()
+    if blocks:
+        assert all(
+            max(len((c or "").strip()) for row in [b.get("markdown", "").split("|")] for c in row)
+            <= 300
+            for b in blocks
+        )
+    # 无论如何不应产出带超长单元格的 md 记录
+    assert all(
+        r.markdown is None or len(max(r.markdown.split("|"), key=len)) <= 300 for r in records
+    )
+
+
 def _draw_table(page, x0, y0, x1, y1) -> None:
     """画一个 2x2 带线表格边框（供 find_tables lines 策略检出）。"""
     mid_x = (x0 + x1) / 2

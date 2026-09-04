@@ -521,7 +521,7 @@ def qa(
     if not epub.is_file():
         raise OrchestrationError(f"成品不存在：{epub}；请先 build/convert")
     audit = audit_epub(epub)
-    jar = config.qc.epubcheck.jar if config is not None else None
+    jar = (config.qc.epubcheck.jar or None) if config is not None else None
     epubcheck = run_epubcheck(epub, jar_path=jar)
     entries = structure_entries(store)
     provenance = audit_provenance(store, entries, epub)

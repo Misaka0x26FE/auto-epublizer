@@ -15,6 +15,9 @@ import fitz
 from .images import _render_clip
 from .inserts import InsertRecord, InsertSource, next_insert_id
 
+MAX_TABLE_CELL_CHARS = 300  # 单格超此长度视为版面误检（整页被吞进一格），放弃该表
+TABLE_MAX_AREA_RATIO = 0.5  # 表格 bbox 超页面积一半 → 粘连正文/代码/插图的误检，放弃
+
 
 def table_to_markdown(rows: list[list[str | None]]) -> str | None:
     """单元格矩阵 → markdown 表格（首行表头 + 分隔行）；无有效内容返回 None。"""
@@ -53,9 +56,12 @@ def extract_tables(
     except Exception:  # noqa: BLE001  表格检测失败：放弃该页表格
         return []
     page_no = page.number + 1
+    page_area = abs(page.rect) or 1.0
     blocks: list[dict] = []
     for table in finder.tables:
         bbox = [float(v) for v in table.bbox]
+        if (bbox[2] - bbox[0]) * (bbox[3] - bbox[1]) >= TABLE_MAX_AREA_RATIO * page_area:
+            continue  # 版面误检：真表格很少占半页；粘连框会吞正文/插图（dogfooding 实证）
         has_graphic = any(_overlaps(bbox, ob) for ob in [*image_bboxes, *formula_bboxes])
         iid = next_insert_id(records, page_no, "table")
         if has_graphic:
@@ -81,8 +87,14 @@ def extract_tables(
                 }
             )
         else:
-            md = table_to_markdown(table.extract())
+            cells = table.extract()
+            md = table_to_markdown(cells)
             if md is None:
+                continue
+            longest = max((len((c or "").strip()) for row in cells for c in row), default=0)
+            if longest > MAX_TABLE_CELL_CHARS:
+                # 版面误检（正文/代码被吸进一格，真书 dogfooding 实证）：放弃，
+                # 内容回归普通 text 块参与后续流程
                 continue
             records.append(
                 InsertRecord(
