@@ -131,3 +131,75 @@ def test_review_protocol_violation_exhausted_raises(tmp_path: Path) -> None:
 
     with pytest.raises(RuntimeError, match="审校"):
         review(store, client)
+
+
+class _CountingConcurrentClient(FakeClient):
+    """并发计数 + 回显 client：审校返回 clean，翻译回显；记录最大并发（C7）。
+
+    G1 批次并行时 complete_json 的并发调用数应 >1（真并发而非串行包装）。
+    """
+
+    def __init__(self, delay: float = 0.05) -> None:
+        super().__init__()
+        self._delay = delay
+        self._active = 0
+        self._max_active = 0
+
+    def complete_json(
+        self,
+        messages,
+        *,
+        tier="strong",
+        max_tokens=None,
+        stage=None,
+    ):
+        import re
+        import time
+
+        with self._lock:
+            self._active += 1
+            self._max_active = max(self._max_active, self._active)
+        try:
+            time.sleep(self._delay)
+            if stage == "review":
+                return {"issues": [], "reviewed_segments": 1, "complete": True}
+            user = next(m["content"] for m in messages if m["role"] == "user")
+            paras = re.findall(r"^\[(\d+)\] (.+)$", user, re.MULTILINE)
+            paras = [p for _, p in sorted(paras, key=lambda x: int(x[0]))]
+            return {"translations": [[f"译:{p}"] for p in paras]}
+        finally:
+            with self._lock:
+                self._active -= 1
+
+
+def test_review_g1_batch_concurrency(tmp_path: Path) -> None:
+    """多单元多批审校：G1 真并发（max_active>1），两轮 clean 收敛（C7 稳定序合并）。"""
+    src = tmp_path / "book.md"
+    src.write_text(
+        "# Chapter One\n\n"
+        "First content sentence. Second content sentence.\n\n"
+        "# Chapter Two\n\n"
+        "Third content sentence. Fourth content sentence.\n\n"
+        "# Chapter Three\n\n"
+        "Fifth content sentence. Sixth content sentence.\n",
+        encoding="utf-8",
+    )
+    store = init_workspace(src, workspace_dir=tmp_path / "ws")
+    from auto_epublizer.ingest import load_document
+    from auto_epublizer.structure import rebuild_structure, write_structured
+
+    doc = load_document(store.dir / store.load_publication().meta.source, store=store)
+    entries = rebuild_structure(doc, store.load_publication())
+    write_structured(store, doc, entries)
+    store.set_units(entries)
+    assert len(store.load_publication().units) == 3, "fixture 应有 3 个单元"
+
+    client = _CountingConcurrentClient(delay=0.05)
+    translate(store, client)
+    client._max_active = 0  # 重置：只统计审校阶段并发
+    result = review(store, client)
+    assert result["termination"] == "clean_confirmed"
+    assert client._max_active >= 2, "G1 批次未真并发（max_active=1）"
+    assert all(u.status == "reviewed" for u in store.load_publication().units), (
+        "三个单元都应通过审校"
+    )
