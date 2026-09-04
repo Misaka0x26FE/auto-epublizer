@@ -49,8 +49,27 @@ def test_math_font_names() -> None:
 
 
 def test_formula_block_font_feature() -> None:
-    block = {"type": "text", "text": "anything", "bbox": [0, 0, 100, 20], "math_font": "CMMI12"}
+    block = {
+        "type": "text",
+        "text": "anything",
+        "bbox": [0, 0, 100, 20],
+        "math_font": "CMMI12",
+        "math_font_chars": 8,
+    }
     assert is_formula_block(block, page_width=612, chapter_re=_RE)
+
+
+def test_formula_block_font_ratio_guard() -> None:
+    """TeX 正文书引号 span 用 CMSY：数学字体占比低不触发字体特征（dogfooding 回归）。"""
+    prose = "A chapter’s worth of notes begins on page 387. The notes contain references."
+    block = {
+        "type": "text",
+        "text": prose,
+        "bbox": [72, 500, 540, 560],
+        "math_font": "CMSY10",
+        "math_font_chars": 1,  # 只有 ’ 一个字符在数学字体
+    }
+    assert not is_formula_block(block, page_width=612, chapter_re=_RE)
 
 
 def test_formula_block_chapter_title_excluded() -> None:
