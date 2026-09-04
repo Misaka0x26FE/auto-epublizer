@@ -69,10 +69,7 @@ def init_workspace(
             target_language=lang,
         ),
         config=ConfigSnapshot(
-            engine_profile=cfg.llm.provider,
             bilingual=cfg.pipeline.bilingual,
-            polish=cfg.pipeline.polish,
-            review=cfg.pipeline.review,
             target_language=lang,
         ),
         units=[],

@@ -159,7 +159,6 @@ def _caps_summary(**available: bool) -> dict:
         "tesseract",
         "ocrmypdf",
         "rapidocr",
-        "llm_vision_model",
         "mineru",
     }
     caps = [
@@ -184,8 +183,7 @@ def test_ocr_routing_falls_back_to_rapidocr() -> None:
     assert "RapidOCR" in _routing(_caps_summary(rapidocr=True, mineru=True))
 
 
-def test_ocr_routing_vision_llm_before_mineru() -> None:
-    assert "视觉 LLM" in _routing(_caps_summary(llm_vision_model=True, mineru=True))
+def test_ocr_routing_mineru_tier() -> None:
     assert "MinerU" in _routing(_caps_summary(mineru=True))
 
 
@@ -252,30 +250,6 @@ def test_preprocess_requires_workspace(tmp_path: Path) -> None:
 
 
 # ── 上下文 fallback 与 status 对账 ──────────────────────────────────────
-
-
-def test_translate_context_falls_back_to_preprocessing(tmp_path: Path) -> None:
-    from auto_translator.translation.service import _read_analysis
-
-    store = _workspace(tmp_path)
-    pre = store.preprocessing_dir
-    (pre / "units").mkdir(parents=True, exist_ok=True)
-    (pre / "global.md").write_text("# 全局理解\n\n主题：测试。", encoding="utf-8")
-    (pre / "units" / "ch01.md").write_text("第一章梗概。", encoding="utf-8")
-
-    ctx = _read_analysis(store, "ch01")
-    assert "全局理解" in ctx
-    assert "第一章梗概" in ctx
-
-
-def test_review_context_falls_back_to_preprocessing(tmp_path: Path) -> None:
-    from auto_common.llm.providers.fake import FakeClient
-    from auto_translator.review.service import ReviewRun
-
-    store = _workspace(tmp_path)
-    (store.preprocessing_dir / "global.md").write_text("预处理全局理解。", encoding="utf-8")
-    run = ReviewRun(store, FakeClient())
-    assert "预处理全局理解" in run._load_book_context()
 
 
 def test_status_reports_preprocessing_state(tmp_path: Path) -> None:

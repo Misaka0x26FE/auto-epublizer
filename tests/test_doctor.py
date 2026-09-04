@@ -32,9 +32,11 @@ def test_collect_capabilities_returns_all_probes() -> None:
         "lxml",
         "epubcheck",
         "mineru",
-        "llm_key",
-        "llm_vision_model",
     } <= names
+    # 唯一 LLM 原则：无任何 LLM 探测
+    assert (
+        "llm_key" not in names and "llm_vision_model" not in names and "llm_endpoint" not in names
+    )
     # network 只在 --ping 时探测（离线默认不出现）
     assert "network" not in names
 
@@ -82,16 +84,6 @@ def test_network_probe_available_on_first_host(monkeypatch) -> None:
     cap = probe_network()
     assert cap.available is True
     assert calls == ["https://www.baidu.com"]
-
-
-def test_llm_key_absent_marks_unavailable(monkeypatch) -> None:
-
-    cfg = Config()
-    monkeypatch.delenv(cfg.llm.api_key_env, raising=False)
-    caps = collect_capabilities(cfg, ping=False)
-    llm = _find(caps, "llm_key")
-    assert llm.available is False
-    assert "export" in llm.hint
 
 
 def test_epubcheck_missing_jar_has_download_hint(tmp_path) -> None:

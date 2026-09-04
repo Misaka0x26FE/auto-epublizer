@@ -152,9 +152,11 @@ def collect_facts(store: RunStore, config) -> dict[str, Any]:
 
 
 def _ocr_routing(caps: dict[str, Any]) -> list[str]:
-    """扫描件 OCR 五档路由提示（确定性；最终决策见 preprocessing/plan.md）。
+    """扫描件 OCR 路由提示（确定性；最终决策见 preprocessing/plan.md）。
 
-    优先级：传统 OCR → rapidocr → 视觉 LLM 兜底 → MinerU 外部 API → 询问用户。
+    优先级：传统 OCR → rapidocr → MinerU 外部 API → 询问用户。
+    视觉兜底（页面转图理解）是 agent 自身能力——由 agent 按自报 multimodal 决策，
+    不在本路由内。
     """
     c = caps["capabilities"]
     if c.get("tesseract", {}).get("available") or c.get("ocrmypdf", {}).get("available"):
@@ -164,11 +166,12 @@ def _ocr_routing(caps: dict[str, Any]) -> list[str]:
         ]
     if c.get("rapidocr", {}).get("available"):
         return ["扫描件 OCR 路由：RapidOCR 离线 OCR（init 自动走 pdf.ocr: auto）"]
-    if c.get("llm_vision_model", {}).get("available"):
-        return ["扫描件 OCR 路由：视觉 LLM 兜底（页面转图 → 多模态模型）"]
     if c.get("mineru", {}).get("available"):
         return ["扫描件 OCR 路由：MinerU 外部 API（MINERU_API_KEY 已配置）"]
-    return ["扫描件 OCR 路由：无可用 OCR 手段——请用户提供可用 OCR / 解析手段或手工 OCR 后重跑"]
+    return [
+        "扫描件 OCR 路由：无可用 OCR 手段——请用户提供可用 OCR / 解析手段或手工 OCR 后重跑"
+        "（若你可看图〔multimodal 自报〕，可自行视觉兜底难页）"
+    ]
 
 
 def _route_suggestions(sniff_facts: dict[str, Any], capabilities: dict[str, Any]) -> list[str]:
