@@ -8,6 +8,7 @@ from pathlib import Path
 from auto_common.workspace import Publication, PublicationMeta, Unit
 from auto_epublizer.build import build_epub
 from auto_epublizer.build.html import (
+    FootnoteState,
     markdown_to_xhtml,
     render_bilingual_document,
     render_document,
@@ -375,3 +376,76 @@ def test_build_epub_ncx_no_dangling_refs(tmp_path: Path) -> None:
         for doc in ("OEBPS/toc.ncx", "OEBPS/landmarks.xhtml", "OEBPS/nav.xhtml"):
             text = zf.read(doc).decode("utf-8")
             assert "ch02.xhtml" not in text, f"{doc} 悬空引用 ch02.xhtml"
+
+
+def test_nested_nav_and_ncx_hierarchy(tmp_path: Path) -> None:
+    """目录层级：源文 level 序列 → nav 嵌套 <ol> + NCX 嵌套 navPoint + dtb:depth（P0）。"""
+    pub = _pub()
+    entries = [
+        {"id": "ch01", "region": "body", "title": "第一章", "level": 1},
+        {"id": "ch02", "region": "body", "title": "第一节", "level": 2},
+        {"id": "ch03", "region": "body", "title": "第二节", "level": 2},
+        {"id": "ch04", "region": "body", "title": "第二章", "level": 1},
+    ]
+    content = [
+        (f"{e['id']}.xhtml", render_document(e["title"], "正文。", lang="zh-CN")) for e in entries
+    ]
+    out = build_epub(
+        pub,
+        entries,
+        content,
+        lang="zh-CN",
+        modified="2026-01-01T00:00:00Z",
+        out_path=tmp_path / "n.epub",
+    )
+    with zipfile.ZipFile(out) as zf:
+        nav = zf.read("OEBPS/nav.xhtml").decode("utf-8")
+        ncx = zf.read("OEBPS/toc.ncx").decode("utf-8")
+    # ch02/ch03 嵌套在 ch01 的 li 内层 <ol>（首个 </ol> 即内层闭合）；ch04 回到外层
+    inner = nav.split('<a href="ch01.xhtml">')[1].split("</ol>")[0]
+    assert "ch02.xhtml" in inner and "ch03.xhtml" in inner and "ch04.xhtml" not in inner
+    assert nav.count("<ol>") == 2
+    assert "dtb:depth" in ncx and 'content="2"' in ncx
+
+
+def test_flat_toc_for_flat_source(tmp_path: Path) -> None:
+    """平级源（无 level 信息，如 PDF 单元）目录保持扁平、dtb:depth=1。"""
+    pub = _pub()
+    entries = [
+        {"id": "ch01", "region": "body", "title": "甲"},
+        {"id": "ch02", "region": "body", "title": "乙"},
+    ]
+    content = [
+        (f"{e['id']}.xhtml", render_document(e["title"], "正文。", lang="zh-CN")) for e in entries
+    ]
+    out = build_epub(
+        pub,
+        entries,
+        content,
+        lang="zh-CN",
+        modified="2026-01-01T00:00:00Z",
+        out_path=tmp_path / "f.epub",
+    )
+    with zipfile.ZipFile(out) as zf:
+        nav = zf.read("OEBPS/nav.xhtml").decode("utf-8")
+        ncx = zf.read("OEBPS/toc.ncx").decode("utf-8")
+    assert nav.count("<ol>") == 1
+    assert 'dtb:depth" content="1"' in ncx
+
+
+def test_footnote_semantics_global_numbering() -> None:
+    """脚注语义化：noteref/footnote + 跨单元全局连续编号 + 双向跳转（epub-template-spec §6）。"""
+    state = FootnoteState()
+    d1 = render_document(
+        "C1", "第一句[^1]。\n\n[^1]: 注甲", lang="zh-CN", unit_id="ch01", fn_state=state
+    )
+    d2 = render_document(
+        "C2", "第二句[^1]。\n\n[^1]: 注乙", lang="zh-CN", unit_id="ch02", fn_state=state
+    )
+    # 章内：noteref → fn-1；章末 aside(footnote) 带 id 与回链
+    assert 'epub:type="noteref"' in d1 and 'href="#fn-1"' in d1
+    assert 'epub:type="footnote"' in d1 and 'id="fn-1"' in d1 and 'href="#ref-1"' in d1
+    # 跨单元全局连续：ch02 的 [^1] 是全局第 2 条
+    assert 'href="#fn-2"' in d2 and 'id="fn-2"' in d2 and 'href="#ref-2"' in d2
+    # 字面标记不得残留
+    assert "[^1]" not in d1 and "[^1]" not in d2

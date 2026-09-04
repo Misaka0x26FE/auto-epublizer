@@ -18,6 +18,7 @@ from .build import build_epub, collect_media
 from .build.html import render_bilingual_document, render_document, slug_file
 from .ingest import load_document
 from .qa import audit_epub, generate_report, run_epubcheck
+from .qa.provenance import audit_provenance
 from .structure import rebuild_structure, skip_empty_unit, unit_heading, write_structured
 
 
@@ -368,6 +369,11 @@ def import_translations(
         if errors:
             failed.append({"unit": unit.id, "errors": errors})
             continue
+        # 勘误先例留痕：按句 src 命中的已知讹误补 note（corr:wrong→right）并写回
+        from auto_translator.review import annotate_correction_notes
+        from auto_translator.translation.align import write_align
+
+        write_align(align_path, annotate_correction_notes(rows))
         store.set_unit_status(unit.id, "translated")
         store.set_unit_status(unit.id, "aligned")
         imported.append(unit.id)
@@ -434,6 +440,32 @@ def _collect_g0_flags(store: RunStore, config: Config | None = None) -> list[dic
     return flags
 
 
+def _toc_missing_from_facts(store: RunStore, entries: list[dict[str, Any]]) -> list[str]:
+    """facts 源 TOC vs 单元标题对账（postprocessing-spec §2.3 W_TOC_MISSING 线索）。
+
+    无 facts.json 时返回空（不告警）。匹配规则：标题相等或互为子串。
+    """
+    facts_path = store.preprocessing_dir / "facts.json"
+    if not facts_path.is_file():
+        return []
+    try:
+        facts = read_json(facts_path)
+    except (OSError, ValueError):
+        return []
+    toc = (facts.get("source") or {}).get("toc") or []
+    titles = [str(e.get("title") or "").strip() for e in entries]
+    titles = [t for t in titles if t]
+    missing: list[str] = []
+    for item in toc:
+        raw = item.get("title") if isinstance(item, dict) else str(item)
+        title = str(raw or "").strip()
+        if not title:
+            continue
+        if not any(title == t or title in t or t in title for t in titles):
+            missing.append(title)
+    return missing
+
+
 def qa(
     store: RunStore, *, epub_path: str | None = None, config: Config | None = None
 ) -> dict[str, Any]:
@@ -443,8 +475,11 @@ def qa(
         raise OrchestrationError(f"成品不存在：{epub}；请先 build/convert")
     audit = audit_epub(epub)
     epubcheck = run_epubcheck(epub)
+    entries = structure_entries(store)
+    provenance = audit_provenance(store, entries, epub)
     review_result = _latest_review_result(store)
     g0_flags = _collect_g0_flags(store, config)
+    toc_missing = _toc_missing_from_facts(store, entries)
     total_sentences = sum(len(read_align(store.unit_align_path(u.id))) for u in pub.units)
     report = generate_report(
         pub.slug,
@@ -454,7 +489,17 @@ def qa(
         review=review_result,
         g0_flags=g0_flags,
         total_sentences=total_sentences,
+        provenance=provenance.to_dict(),
+        toc_missing=toc_missing,
     )
+    if toc_missing:
+        report.provenance_findings.append(
+            {
+                "level": "warning",
+                "code": "W_TOC_MISSING",
+                "message": "源 TOC 缺失条目：" + "、".join(toc_missing),
+            }
+        )
     store.save_qa(report.to_dict())
     return report.to_dict()
 

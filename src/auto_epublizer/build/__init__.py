@@ -159,6 +159,11 @@ def _toc_depths(entries: list[dict[str, Any]]) -> list[int]:
     return depths
 
 
+def toc_depths(entries: list[dict[str, Any]]) -> list[int]:
+    """公开别名：单元清单 → 目录嵌套深度（qa/provenance 与 build 共用同一算法）。"""
+    return _toc_depths(entries)
+
+
 def _toc_tree(entries: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """按嵌套深度把单元清单组织成目录树：[{entry, children: […]}]。"""
     tree: list[dict[str, Any]] = []

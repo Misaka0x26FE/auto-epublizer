@@ -89,21 +89,23 @@
 
 ## 4. 分阶段实现计划
 
-### P0 — 结构 / 溯源 / 目录层级（本轮核心）
+### P0 — 结构 / 溯源 / 目录层级（✅ 已完成 2026-09-04）
 
-1. **目录层级**（链路补全，信息已在 `SourceUnit.meta["heading_level"]`，当前被丢弃）：
-   - `structure/rebuild.py`：`rebuild_structure` 把 `heading_level` 写进 entry（`entry["level"]`）
-   - `orchestrator`/`store`：level 存进 `Unit.meta`，`structure_entries` 回填
-   - `build/__init__.py`：`_render_nav` 嵌套 `<ol>`、`_render_ncx` 嵌套 `<navPoint>`（含 `dtb:depth`）
-   - `qa/audit.py`：`E_TOC_FLAT`（有层级却扁平）/ `W_TOC_DEPTH`（与源文 level 序列不一致）
+1. ✅ **目录层级**（链路补全，信息已在 `SourceUnit.meta["heading_level"]`）：
+   - ✅ `structure/rebuild.py`：`rebuild_structure` 把 `heading_level` 写进 entry（`entry["level"]`）
+   - ✅ `orchestrator`/`store`：level 存进 `Unit.meta`，`structure_entries` 回填
+   - ✅ `build/__init__.py`：`_render_nav` 嵌套 `<ol>`、`_render_ncx` 嵌套 `<navPoint>`（含 `dtb:depth`）
+   - ✅ 目录层级审计：`E_TOC_FLAT`（源有层级 nav 扁平）/ `W_TOC_DEPTH`（深度序列不一致）
+     ——在 `qa/provenance.py`（需对照源 level，非 audit_epub）
    - PDF 源：单 unit 无层级，依赖 agent 在 preprocessing 切分并登记 level（CLI 提供机制）
-2. **三边对账**：新纯函数审计，接入 `qa`（`E_UNIT_MISSING`/`E_UNIT_ORDER`）
-3. **媒体溯源**：`E_MEDIA_LOST`/`E_MEDIA_ORDER`
-4. **逐段覆盖率**：`provenance_coverage` 进 report.json
-5. **源文勘误留痕**：`apply_corrections` 命中项写 align `note`
-6. **TOC 对账**：`W_TOC_MISSING`
-7. **脚注语义化**：`noteref`/`footnote` + 全局序号 + 双向跳转（见 epub-template-spec §6）
-8. **样式瘦身**：`_STYLE_CSS` 去字体/颜色/字号（见 epub-template-spec §4）
+2. ✅ **三边对账**：`qa/provenance.py`（`E_UNIT_MISSING`/`E_UNIT_ORDER`），接入 `qa`
+3. ✅ **媒体溯源**：`E_MEDIA_LOST`/`E_MEDIA_ORDER`
+4. ✅ **逐段覆盖率**：`provenance_coverage` 进 report.json（无翻译产物为 null）
+5. ✅ **源文勘误留痕**：`detect_corrections` + `annotate_correction_notes`；
+   translate 与 import 两路径均写 align `note` 前缀 `corr:wrong→right`
+6. ✅ **TOC 对账**：facts 源 TOC vs 单元标题 → `W_TOC_MISSING`（warning 线索）
+7. ✅ **脚注语义化**：`noteref`/`footnote` + 全局序号 + 双向跳转（`FootnoteState`）
+8. ✅ **样式瘦身**：`_STYLE_CSS` 去字体/颜色/字号/行距/缩进/对齐（回归测试锁定）
 
 ### P1 — 媒体位置 / 样式 / 主题
 
