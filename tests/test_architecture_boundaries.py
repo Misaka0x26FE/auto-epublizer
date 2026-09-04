@@ -1,11 +1,12 @@
 """架构边界契约测试：固定依赖方向，防止反向导入。
 
 三包依赖方向：``auto_common ← auto_translator ← auto_epublizer``。
-- auto_common 是基础设施（config/llm/workspace），不依赖其余两包；
-- auto_translator 是翻译引擎，只依赖 auto_common，不依赖 auto_epublizer；
+- auto_common 是基础设施（config/workspace），不依赖其余两包，且不含任何 LLM 模块
+  （唯一 LLM 原则）；
+- auto_translator 是术语/对齐/G0 校验等确定性领域逻辑，只依赖 auto_common，
+  不依赖 auto_epublizer，也不做任何 LLM 调用；
 - auto_epublizer 是转 EPUB + 编排层，可依赖 auto_common / auto_translator；
-- orchestrator 不直接调用领域函数实现逻辑、不持有线程池；
-- agents/ 是内部 LLM 调用服务，不得依赖编排、状态机或 RunStore。
+- orchestrator 不直接调用领域函数实现逻辑、不持有线程池。
 """
 
 from __future__ import annotations
@@ -46,21 +47,35 @@ def test_common_is_leaf() -> None:
         assert not bad, f"{py.relative_to(SRC)} 不得依赖 {bad}"
 
 
+def test_common_has_no_llm_module() -> None:
+    """唯一 LLM 原则：auto_common 不含任何 llm 模块或文件。"""
+    assert not (SRC / "auto_common" / "llm").exists(), "auto_common/llm 应已移除"
+    for py in (SRC / "auto_common").rglob("*.py"):
+        assert "llm" not in py.parts, f"{py.relative_to(SRC)} 属 LLM 模块"
+
+
+def test_no_llm_api_calls_anywhere() -> None:
+    """唯一 LLM 原则：全库不得出现 LLM 客户端/补全调用符号。"""
+    forbidden_symbols = (
+        "LLMClient",
+        "complete_json",
+        "chat/completions",
+        "OpenAICompatible",
+        "create_client",
+        "FakeClient",
+    )
+    for py in SRC.rglob("*.py"):
+        text = py.read_text(encoding="utf-8")
+        for sym in forbidden_symbols:
+            assert sym not in text, f"{py.relative_to(SRC)} 含 LLM 调用符号 {sym}"
+
+
 def test_translator_does_not_import_epublizer() -> None:
     """auto_translator 只依赖 auto_common，不依赖 auto_epublizer。"""
     for py in (SRC / "auto_translator").rglob("*.py"):
         imports = _module_imports(py)
         bad = {m for m in imports if m.split(".")[0] == "auto_epublizer"}
         assert not bad, f"{py.relative_to(SRC)} 不得依赖 auto_epublizer"
-
-
-def test_agents_do_not_depend_on_runstore_or_orchestration() -> None:
-    """agents 是内部 LLM 调用服务，不得依赖编排、状态机或 RunStore。"""
-    forbidden = {"auto_common.workspace", "auto_epublizer"}
-    for py in (SRC / "auto_translator" / "agents").rglob("*.py"):
-        imports = _module_imports(py)
-        bad = {m for m in imports if m in forbidden or m.startswith("auto_epublizer")}
-        assert not bad, f"{py.relative_to(SRC)} 不得依赖编排/状态机"
 
 
 def test_domain_services_do_not_import_orchestrator() -> None:

@@ -130,58 +130,6 @@ def test_event_ledger_append(tmp_path: Path) -> None:
     assert events[0]["count"] == 2
 
 
-def test_usage_ledger_merge(tmp_path: Path) -> None:
-    store = _make_store(tmp_path)
-    inc = {
-        "by_tier": {
-            "cheap": {
-                "calls": 2,
-                "prompt_tokens": 20,
-                "completion_tokens": 10,
-                "total_tokens": 30,
-                "cache_hit_tokens": 0,
-                "cache_miss_tokens": 0,
-            }
-        },
-        "by_stage": {
-            "translate": {
-                "calls": 2,
-                "prompt_tokens": 20,
-                "completion_tokens": 10,
-                "total_tokens": 30,
-                "cache_hit_tokens": 0,
-                "cache_miss_tokens": 0,
-            }
-        },
-    }
-    store.merge_usage(inc)
-    merged = store.merge_usage(inc)
-    assert merged["totals"]["calls"] == 4
-
-
-def test_usage_merge_idempotent_by_run_id(tmp_path: Path) -> None:
-    store = _make_store(tmp_path)
-    inc = {
-        "by_tier": {
-            "cheap": {
-                "calls": 1,
-                "prompt_tokens": 10,
-                "completion_tokens": 5,
-                "total_tokens": 15,
-                "cache_hit_tokens": 0,
-                "cache_miss_tokens": 0,
-            }
-        },
-        "by_stage": {},
-    }
-    store.merge_usage(inc, run_id="run-1")
-    # 同一 run_id 重复合并应被幂等跳过
-    store.merge_usage(inc, run_id="run-1")
-    merged = store.merge_usage(inc, run_id="run-2")
-    assert merged["totals"]["calls"] == 2
-    assert set(merged["merged_runs"]) == {"run-1", "run-2"}
-
-
 def test_export_snapshot_frozen(tmp_path: Path) -> None:
     store = _make_store(tmp_path)
     pub = store.create_export_snapshot(actual_sha256="a" * 64)

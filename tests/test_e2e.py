@@ -1,18 +1,58 @@
-"""端到端一条龙：init → 结构 → analyze → translate → review → build → qa（FakeClient）。
+"""端到端一条龙（agent 路径）：init → 结构 → agent 手写翻译+align → import →
+agent 写审校 result.json → build → qa。
 
-验证完整翻译路径在 orchestrator/领域服务层面可跑通，且状态机正确推进：
-split → analyzed → translated → aligned → reviewed → built。
+唯一 LLM 原则：CLI 不做任何 LLM 调用——测试中的「agent 产物」直接写文件，
+与真实 agent 工作方式一致。验证状态机推进：
+split → translated → aligned → reviewed → built。
 """
 
 from __future__ import annotations
 
 from pathlib import Path
 
-from auto_common.llm.providers.fake import FakeClient
 from auto_epublizer import orchestrator as orch
 
 
-def test_full_pipeline(tmp_path: Path) -> None:
+def _write_translation_and_align(store) -> None:
+    """模拟 agent 手写翻译：translation/ 镜像 structured 树 + align/ 句级对照。"""
+    pub = store.load_publication()
+    for unit in pub.units:
+        rel = unit.meta["rel_path"]
+        sp = store.structured_dir / rel
+        src_md = sp.read_text(encoding="utf-8")
+        tgt_md = src_md.replace(
+            "In my younger years my father gave me some advice.",
+            "在我年轻还稚嫩的时候，我父亲给过我一番忠告。",
+        ).replace(
+            "Whenever you feel like criticizing any one, remember that.",
+            "每当你想要批评任何人的时候，都要记住，这世上并不是所有人都有你拥有的那些优越条件。",
+        )
+        tgt_md = tgt_md.replace("# Chapter I", "# 第一章")
+        tp = store.translation_dir / rel
+        tp.parent.mkdir(parents=True, exist_ok=True)
+        tp.write_text(tgt_md, encoding="utf-8")
+        # align：标题 + 2 段 = 3 句对
+        rows = [
+            {"seq": 1, "src": "Chapter I", "tgt": "第一章", "note": None},
+            {
+                "seq": 2,
+                "src": "In my younger years my father gave me some advice.",
+                "tgt": "在我年轻还稚嫩的时候，我父亲给过我一番忠告。",
+                "note": None,
+            },
+            {
+                "seq": 3,
+                "src": "Whenever you feel like criticizing any one, remember that.",
+                "tgt": "每当你想要批评任何人的时候，都要记住，这世上并不是所有人都有你拥有的那些优越条件。",
+                "note": None,
+            },
+        ]
+        from auto_translator.translation import write_align
+
+        write_align(store.unit_align_path(unit.id), rows)
+
+
+def test_full_pipeline_agent_path(tmp_path: Path) -> None:
     src = tmp_path / "book.md"
     src.write_text(
         "# Chapter I\n\nIn my younger years my father gave me some advice.\n\n"
@@ -27,65 +67,34 @@ def test_full_pipeline(tmp_path: Path) -> None:
     assert (store.structured_dir / "body" / "ch01.md").is_file()
     assert pub.units[0].status == "split"
 
-    # 2. analyze：overview / global / unit / seed_terms / characters（novel）
-    client = FakeClient()
-    client.enqueue("全书概览：一个关于成长与批评的故事。")
-    client.enqueue("主题：成长；人称：第一人称；语气：克制。")
-    client.enqueue("本章梗概：父亲忠告与处世准则。")
-    client.enqueue_json(
-        [
-            {
-                "source": "advice",
-                "target": "忠告",
-                "type": "term",
-                "aliases": [],
-                "gender": "",
-                "note": "",
-            }
-        ]
-    )
-    client.enqueue_json(
-        [
-            {
-                "source": "father",
-                "reading": "",
-                "target": "父亲",
-                "gender": "男",
-                "role": "",
-                "note": "叙述者父亲",
-            }
-        ]
-    )
-    result = orch.analyze(store, client)
-    assert result["language"] == "en"
-    assert result["genre"] == "novel"
-    assert store.load_publication().meta.language == "en"
-
-    # 3. translate：标题 + 2 段 = 3 blocks，一个批次
-    client = FakeClient()
-    client.enqueue_json(
-        {
-            "translations": [
-                ["第一章"],
-                ["在我年轻还稚嫩的时候，我父亲给过我一番忠告。"],
-                [
-                    "每当你想要批评任何人的时候，都要记住，这世上并不是所有人都有你拥有的那些优越条件。"
-                ],
-            ]
-        }
-    )
-    orch.translate(store, client)
+    # 2. 翻译登记（import）：G0 校验 + 状态推进 translated → aligned
+    _write_translation_and_align(store)
+    result = orch.import_translations(store)
+    assert result["imported"] == ["ch01"]
     assert store.load_publication().units[0].status == "aligned"
 
-    # 4. review：两轮 clean → clean_confirmed
-    client = FakeClient()
-    client.enqueue_json({"issues": [], "reviewed_segments": 3, "complete": True})
-    client.enqueue_json({"issues": [], "reviewed_segments": 3, "complete": True})
-    r = orch.review(store, client)
-    assert r["termination"] == "clean_confirmed"
+    # 3. agent 手写审校产物：reviews/review-<ts>/result.json（clean_confirmed 契约）
+    from auto_common.workspace import atomic_write_json
+
+    review_dir = store.reviews_dir / "review-20260904T000000"
+    review_dir.mkdir(parents=True, exist_ok=True)
+    atomic_write_json(
+        review_dir / "result.json",
+        {
+            "issue_count": 0,
+            "g1_candidates": 0,
+            "g2_confirmed": 0,
+            "g3_patched": 0,
+            "termination": "clean_confirmed",
+            "rounds": 2,
+        },
+    )
+    # import 的 review 登记入口：按契约把通过审校的单元推进 reviewed
+    for u in store.load_publication().units:
+        store.set_unit_status(u.id, "reviewed")
     assert store.load_publication().units[0].status == "reviewed"
 
-    # 5. build（从译文）+ qa（密闭：epubcheck jar 指向不存在路径，不依赖本机是否装 jar）
+    # 4. build（从译文）+ qa（密闭：epubcheck jar 指向不存在路径，不依赖本机是否装 jar）
     from auto_common.config import Config
 
     cfg = Config()
@@ -96,7 +105,7 @@ def test_full_pipeline(tmp_path: Path) -> None:
     assert report["g4_audit"] == "pass"
     assert store.load_publication().units[0].status == "built"
 
-    # 5b. build 的目录与页面标题取译文标题（豆包实测 P8 回归）
+    # 5. build 的目录与页面标题取译文标题（豆包实测 P8 回归）
     import zipfile
 
     with zipfile.ZipFile(epub) as zf:
@@ -116,17 +125,9 @@ def test_full_pipeline(tmp_path: Path) -> None:
     assert report_json["total_sentences"] == 3
     assert report_json["released"] is False  # epubcheck 未运行，不放行
     assert report_json["error_rate"] == 0.0
-
-    # 7. usage.json 覆盖 analyze/translate/review 三个阶段（各自 run_id 幂等合并）
-    usage = json.loads((store.dir / "usage.json").read_text(encoding="utf-8"))
-    assert "analyze" in "".join(usage.get("merged_runs", []))
-    assert "translate" in "".join(usage.get("merged_runs", []))
-    assert "review" in "".join(usage.get("merged_runs", []))
-    assert usage["totals"]["calls"] > 0
+    assert not (store.dir / "usage.json").exists(), "唯一 LLM 原则：无 token 用量账本"
 
     # 译文确实写入了 EPUB（含中文标题）
-    import zipfile
-
     with zipfile.ZipFile(epub) as zf:
         body = zf.read("OEBPS/ch01.xhtml").decode("utf-8")
     assert "第一章" in body

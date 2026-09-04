@@ -1,4 +1,8 @@
-"""Orchestrator：薄 façade，只装配与路由，不直接调用领域函数、不持有线程池。"""
+"""Orchestrator：薄 façade，只装配与路由，不直接调用领域函数、不持有线程池。
+
+唯一 LLM 原则：编排层不做任何 LLM 调用——理解/翻译/审校由操作 CLI 的 agent 完成，
+这里只装配确定性领域服务（ingest/structure/build/qa/preprocess）。
+"""
 
 from __future__ import annotations
 
@@ -7,12 +11,7 @@ from pathlib import Path
 from typing import Any
 
 from auto_common.config import Config
-from auto_common.llm import create_client
-from auto_common.llm.base import LLMClient
 from auto_common.workspace import RunStore, init_workspace, read_json
-from auto_translator import analysis as analysis_mod
-from auto_translator import review as review_mod
-from auto_translator import translation as translation_mod
 from auto_translator.translation.align import read_align
 
 from .build import build_epub, collect_media
@@ -25,10 +24,6 @@ from .structure import rebuild_structure, skip_empty_unit, unit_heading, write_s
 
 class OrchestrationError(RuntimeError):
     """编排失败，向 CLI 显示的中文错误。"""
-
-
-def make_client(config: Config) -> LLMClient:
-    return create_client(config.llm)
 
 
 def init(
@@ -290,27 +285,6 @@ def preprocess(store: RunStore, *, config: Config | None = None) -> dict[str, An
         units=facts["structure"]["totals"]["units"],
     )
     return {"facts": facts, "facts_json": str(json_path), "facts_md": str(md_path)}
-
-
-def analyze(store: RunStore, client: LLMClient, *, tier: str = "cheap") -> dict[str, Any]:
-    return analysis_mod.analyze(store, client, tier=tier)
-
-
-def translate(
-    store: RunStore,
-    client: LLMClient,
-    *,
-    target_language: str | None = None,
-    tier: str = "strong",
-    force: bool = False,
-) -> dict[str, Any]:
-    return translation_mod.translate(
-        store, client, target_lang=target_language, tier=tier, force=force
-    )
-
-
-def review(store: RunStore, client: LLMClient) -> dict[str, Any]:
-    return review_mod.review(store, client)
 
 
 def build(

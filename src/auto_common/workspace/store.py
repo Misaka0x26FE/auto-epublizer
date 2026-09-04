@@ -4,7 +4,6 @@
 - ``source_sha256`` 绑定源内容身份，拒绝同名不同内容静默复用状态；
 - 多级 flock（run/state/event）隔离长流程与短状态读写；
 - ``events.jsonl`` 追加式行为账本；
-- ``usage.json`` 用量账本，一次运行增量只合并一次；
 - 导出前冻结一致快照（ExportSnapshot）。
 """
 
@@ -77,10 +76,6 @@ class RunStore:
     @property
     def event_log_path(self) -> Path:
         return self.dir / "events.jsonl"
-
-    @property
-    def usage_path(self) -> Path:
-        return self.dir / "usage.json"
 
     @property
     def progress_path(self) -> Path:
@@ -274,49 +269,6 @@ class RunStore:
                 except json.JSONDecodeError:
                     continue
         return rows
-
-    # ── 用量账本 ──────────────────────────────────────────────────────────
-    def load_usage(self) -> dict[str, Any]:
-        if not self.usage_path.is_file():
-            return {
-                "totals": {},
-                "by_tier": {},
-                "by_stage": {},
-            }
-        with self.state_lock():
-            return read_json(self.usage_path)
-
-    def merge_usage(
-        self, increment: dict[str, Any], *, run_id: str | None = None
-    ) -> dict[str, Any]:
-        """把一次运行增量合并进历史累计用量。
-
-        ``run_id`` 用于幂等：同一 run_id 只合并一次，重试/续跑不重复计费。
-        """
-        from ..llm.usage import merge_usage_summaries
-
-        with self.state_lock():
-            current = (
-                read_json(self.usage_path)
-                if self.usage_path.is_file()
-                else {"by_tier": {}, "by_stage": {}}
-            )
-            merged_runs = list(current.get("merged_runs", []))
-            if run_id:
-                if run_id in merged_runs:
-                    return current
-                merged_runs.append(run_id)
-            merged = merge_usage_summaries(
-                current
-                or {
-                    "by_tier": {},
-                    "by_stage": {},
-                },
-                increment,
-            )
-            merged["merged_runs"] = merged_runs
-            atomic_write_json(self.usage_path, merged)
-            return merged
 
     # ── 导出快照 ──────────────────────────────────────────────────────────
     def create_export_snapshot(self, *, actual_sha256: str) -> Publication:

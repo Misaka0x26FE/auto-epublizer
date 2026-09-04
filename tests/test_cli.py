@@ -1,4 +1,4 @@
-"""CLI 测试：命令解析、无 LLM 命令链路、错误提示（CliRunner）。"""
+"""CLI 测试：命令解析、确定性命令链路、错误提示（CliRunner）。"""
 
 from __future__ import annotations
 
@@ -6,7 +6,6 @@ from pathlib import Path
 
 from typer.testing import CliRunner
 
-from auto_common.llm.providers.fake import FakeClient
 from auto_epublizer.cli import app
 
 runner = CliRunner()
@@ -57,37 +56,9 @@ def test_status_requires_workspace(tmp_path: Path) -> None:
     assert result.exit_code != 0
 
 
-def test_analyze_with_fake_client(tmp_path: Path, monkeypatch) -> None:
-    import auto_epublizer.cli as cli_mod
-
-    src = tmp_path / "book.md"
-    src.write_text("# Chapter I\n\nSome text here.\n", encoding="utf-8")
-    ws = tmp_path / "ws"
-    _invoke("convert", str(src), "--workspace", str(ws))
-
-    client = FakeClient()
-    client.enqueue("概览。")
-    client.enqueue("全局。")
-    client.enqueue("单元理解。")
-    client.enqueue_json([])
-    client.enqueue_json([])
-    monkeypatch.setattr(cli_mod.orch, "make_client", lambda cfg: client)
-
-    result = _invoke("analyze", "--workspace", str(ws / "book"))
-    assert "分析完成" in result.output
-
-
-def test_translate_with_fake_client(tmp_path: Path, monkeypatch) -> None:
-    import auto_epublizer.cli as cli_mod
-
-    src = tmp_path / "book.md"
-    src.write_text("# Chapter I\n\nSome text here.\n", encoding="utf-8")
-    ws = tmp_path / "ws"
-    _invoke("convert", str(src), "--workspace", str(ws))
-
-    client = FakeClient()
-    client.enqueue_json({"translations": [["第一章"], ["一些文本。"]]})
-    monkeypatch.setattr(cli_mod.orch, "make_client", lambda cfg: client)
-
-    result = _invoke("translate", "--workspace", str(ws / "book"))
-    assert "翻译完成" in result.output
+def test_llm_commands_removed(tmp_path: Path) -> None:
+    """唯一 LLM 原则：analyze/translate/review 命令已移除（语义工作是 agent 任务）。"""
+    for name in ("analyze", "translate", "review"):
+        result = runner.invoke(app, [name, "--workspace", str(tmp_path)])
+        assert result.exit_code != 0
+        assert "No such command" in result.output

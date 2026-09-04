@@ -15,15 +15,20 @@
 2. **转 EPUB**：来源复杂文件（PDF/扫描 PDF/EPUB/DOCX/HTML/TXT/Markdown）→ 标准 EPUB 3。
 
 - Python 3.12，包管理用 `uv`。
-- 翻译引擎为 OpenAI 兼容 API（`base_url`/`api_key`/`model` 多 profile）。
+- **唯一 LLM 原则（硬约束）**：本项目中**唯一的 LLM 就是操作本 CLI 的 agent 本身**——
+  CLI 只做确定性、零 token 的计算（解析/切片/检测/校验/构建/审计）；一切语义工作
+  （理解、翻译、审校判断、术语裁决、公式 LaTeX、内容描述）由 agent 用自身能力完成。
+  **禁止新增任何 LLM API 调用**（新依赖、新端点、agents/ 包扩展均不许）；存量内部
+  LLM 路径（`agents/` 包与 translate/analyze/review 的路径 A）**已废弃待移除**，
+  见 [docs/plans/2026-09-04-remove-internal-llm.md](docs/plans/2026-09-04-remove-internal-llm.md)。
+  判据不变：「同样输入必须得到同样输出 → Python；需理解/权衡/判断 → agent」，
+  完整版见 [docs/agent-vs-code.md](docs/agent-vs-code.md)。
 - 工作区为 `publication.json` 权威索引 + 工作区目录（见下），不沿用旧 `split/` 流程。
 - 质量检验六道关（G0–G5），重点参考 wenyi（`trans_novel`）的 Review 体系。
 - **只负责交付质量**（准确 / 完整 / 一致 / 规范 / 结构正确 / 可复现），**不做内容的价值观 / 政治 / 思想性判断**。
-- **能力分工**：生成与初筛由 CLI 内部调用 LLM（`agents/` 包）完成；**内容理解、语义判断、
+- **能力分工**：CLI 负责确定性计算与校验放行；**内容理解、语义判断、
   质量把关、术语裁决、修复决策**由使用本项目的 agent 用自身能力（读文件、判断、写文件）完成。
   agent 只需基础能力，无需 MCP / 子代理。
-  完整判据（「同样输入必须得到同样输出 → Python，需理解/权衡/判断 → agent」）见
-  [docs/agent-vs-code.md](docs/agent-vs-code.md)。
 - **产物规范**：EPUB 形态规范（无样式模板 / 有限主题 / 标准弹窗注释）见
   [docs/epub-template-spec.md](docs/epub-template-spec.md)；后处理验收与实现计划
   （内容溯源 / 媒体 / 目录层级）见 [docs/postprocessing-spec.md](docs/postprocessing-spec.md)。
@@ -42,24 +47,20 @@ uv sync
 
 # 3. 预处理（零 token 事实收集 + agent 理解）：
 auto-epublizer preprocess <input>   # 新书：init + 嗅探/元数据/TOC/体检/规模 → preprocessing/facts.*
-#    agent 读 facts.md，按待办清单撰写：plan.md（方案决策）/ global.md（全局理解）/
-#    units/<id>.md（章节理解）/ terms.csv（术语预提取）/ risks.md（风险）/ report.md（汇总）
+#    agent 读 facts.md，按待办清单撰写：capabilities.md（自报五维）/ plan.md（方案决策）/
+#    global.md（全局理解）/ units/<id>.md / terms.csv / risks.md / report.md
 auto-epublizer preprocess           # 已有工作区：幂等刷新 facts
 
-# 4. 解析（LLM 可用时：概要/全局/每单元/重点/术语播种；无 Key 时确定性降级，
-#    analysis/*.md 与术语表由 agent 自身能力撰写；上下文也可来自 preprocessing/）
-auto-epublizer analyze
+# 4. 理解（agent 任务）：analysis/*.md 与术语表由 agent 自身能力撰写
+#    （概述/全局/每单元/重点；上下文也可只来自 preprocessing/）
 
-# 5. 翻译——两条等价路径，产物同构：
-#    路径 A（有 LLM Key）：CLI 内部翻译
-auto-epublizer translate [--target zh-CN] [--force]
-#    路径 B（agent 手写）：agent 读 structured/ 自己翻译，写 translation/ + align/，
+# 5. 翻译（agent 任务）：agent 读 structured/ 自己翻译，写 translation/ + align/，
 #    然后「import」登记：G0 校验 + 状态推进 + 术语冲突外置（terms.csv 可经 --terms 导入）
 auto-epublizer import [--unit <id>] [--terms preprocessing/terms.csv]
 auto-epublizer g0                # 翻译/导入后立即静态校验（advisory，不必等到 qa）
 
-# 6. 审校（只读影子修订，G1–G3 收敛循环，写 reviews/review-<ts>/；无 LLM 时由 agent 自行审校）
-auto-epublizer review
+# 6. 审校（agent 任务）：agent 按 G1–G3 语义自行审校，写 reviews/review-<ts>/
+#    （issues/patches/summary/result.json；qa 从 result.json 读 g1/g2/g3 计数）
 
 # 7. 封装输出
 auto-epublizer build          # 纯译文 / 双语 EPUB → output/（--theme 选排版主题）
@@ -71,9 +72,9 @@ auto-epublizer status --json  # 查看进度/状态机/产物-状态对账
 
 仅转换不翻译：`auto-epublizer convert <input> -o output/book.epub`。
 
-**两条路径的分工不变式**：无论译文来自 CLI 内部 LLM 还是 agent 手写，都汇入同一套
-G0 校验、状态机、术语闭环、构建与质检。`publication.json` 状态只经 CLI 命令推进，
-agent 不手工编辑。
+**状态不变式**：语义产物由 agent 手写，`publication.json` 状态只经 CLI 命令推进
+（`import`/`review` 登记入口），agent 不手工编辑；所有产物汇入同一套
+G0 校验、状态机、术语闭环、构建与质检。
 
 ## skills/ 目录（面向下游 agent 的可安装指引）
 
