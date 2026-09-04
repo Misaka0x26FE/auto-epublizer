@@ -358,6 +358,8 @@ def read_pdf(
     tmp_dir: str | None = None
     if ocr_backend is not None:
         tmp_dir = tempfile.mkdtemp(prefix="auto-epub-ocr-")
+    if raw_path is not None:
+        raw_path.mkdir(parents=True, exist_ok=True)
     try:
         for page_no in range(page_count):
             page = doc[page_no]
