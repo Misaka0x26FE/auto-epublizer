@@ -150,6 +150,49 @@ def test_sniff_unsupported_format(tmp_path: Path) -> None:
 # ── facts 收集与落盘 ────────────────────────────────────────────────────
 
 
+def _caps_summary(**available: bool) -> dict:
+    """构造 capabilities_summary 形状的假数据：只列出的名字 available=True。"""
+    from auto_epublizer.doctor import Capability, capabilities_summary
+
+    names = {
+        "pandoc",
+        "tesseract",
+        "ocrmypdf",
+        "rapidocr",
+        "llm_vision_model",
+        "mineru",
+    }
+    caps = [
+        Capability(name=n, available=n in available, impact="", hint="", detail="")
+        for n in sorted(names)
+    ]
+    return capabilities_summary(caps)
+
+
+def _routing(caps: dict) -> str:
+    from auto_epublizer.preprocess.facts import _ocr_routing
+
+    return _ocr_routing(caps)[0]
+
+
+def test_ocr_routing_prefers_traditional_ocr() -> None:
+    assert "传统 OCR" in _routing(_caps_summary(tesseract=True, rapidocr=True))
+    assert "传统 OCR" in _routing(_caps_summary(ocrmypdf=True))
+
+
+def test_ocr_routing_falls_back_to_rapidocr() -> None:
+    assert "RapidOCR" in _routing(_caps_summary(rapidocr=True, mineru=True))
+
+
+def test_ocr_routing_vision_llm_before_mineru() -> None:
+    assert "视觉 LLM" in _routing(_caps_summary(llm_vision_model=True, mineru=True))
+    assert "MinerU" in _routing(_caps_summary(mineru=True))
+
+
+def test_ocr_routing_no_backend_asks_user() -> None:
+    assert "请用户提供" in _routing(_caps_summary())
+
+
 def _workspace(tmp_path: Path):
     src = tmp_path / "book.md"
     src.write_text(
