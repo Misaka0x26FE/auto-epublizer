@@ -19,6 +19,21 @@ _ANALYSIS_SYSTEM = (
 )
 
 
+_OVERVIEW_MERGE_SYSTEM = (
+    "你是资深文学编辑与翻译策划。以下是同一本书若干片段的分段内容概要"
+    "（按全书顺序编号，覆盖首/中/尾）。请合并去重，写成覆盖全书整体的概要："
+    "主题、主要人物、情节/论证脉络，控制在 300 字以内，直接输出正文。"
+)
+
+
+_ANALYSIS_MERGE_SYSTEM = (
+    "你是资深翻译编辑。以下是同一本书若干片段的「全局理解」要点"
+    "（按全书顺序编号，覆盖首/中/尾）。请合并去重，剔除片段特有细节，"
+    "保留跨全书成立的结论，输出结构化 Markdown 列表：主题、叙事人称与时态、"
+    "文体/语气、跨章依赖/伏笔、高风险处。直接输出正文，不要输出 JSON。"
+)
+
+
 def _text(messages: list[dict[str, str]]) -> str:
     return "\n\n".join(m["content"] for m in messages if m.get("role") == "user")
 
@@ -48,6 +63,19 @@ class AnalyzerAgent:
             ],
             tier=self._tier,
             stage="analysis_global",
+        )
+
+    def merge_notes(self, notes: list[str], *, kind: str) -> str:
+        """合并分块理解（overview/global）为全书级结论（C6 分块聚合）。"""
+        system = _ANALYSIS_MERGE_SYSTEM if kind == "global" else _OVERVIEW_MERGE_SYSTEM
+        joined = "\n\n---\n\n".join(f"[片段 {i + 1}]\n{n}" for i, n in enumerate(notes))
+        return self._client.complete(
+            [
+                {"role": "system", "content": system},
+                {"role": "user", "content": joined},
+            ],
+            tier=self._tier,
+            stage=f"analysis_{kind}_merge",
         )
 
     def unit_understanding(self, title: str, unit_text: str, global_ctx: str = "") -> str:
