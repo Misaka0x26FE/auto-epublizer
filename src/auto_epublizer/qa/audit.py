@@ -244,7 +244,7 @@ def audit_epub(path: str | Path) -> AuditResult:
                 continue
             content = zf.read(name).decode("utf-8")
             levels = [int(m) for m in re.findall(r"<h([1-6])\b", content, re.IGNORECASE)]
-            for prev, cur in zip(levels, levels[1:]):
+            for prev, cur in zip(levels, levels[1:], strict=False):
                 if cur > prev + 1:
                     result.add("error", "E_HEADING_SKIP", f"标题跳级 h{prev}→h{cur}：{name}")
                     break

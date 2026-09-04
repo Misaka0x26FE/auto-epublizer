@@ -207,36 +207,36 @@ def markdown_to_xhtml(md: str, *, unit_id: str = "", fn_state: FootnoteState | N
             )
             continue
         lines = block.splitlines()
-        non_empty = [l for l in lines if l.strip()]
+        non_empty = [line for line in lines if line.strip()]
         # 语义标签（epub-template-spec P2）：引用 / 诗行 / 列表保留原生元素
-        if non_empty and all(_BQ_LINE.match(l) for l in non_empty):
+        if non_empty and all(_BQ_LINE.match(line) for line in non_empty):
             inner = "\n".join(
-                (_BQ_LINE.match(l).group(1) or "").strip()  # type: ignore[union-attr]
-                for l in non_empty
+                (_BQ_LINE.match(line).group(1) or "").strip()  # type: ignore[union-attr]
+                for line in non_empty
             ).strip()
             if inner:
                 out.append(f"<blockquote><p>{_inline(escape(inner))}</p></blockquote>")
                 continue
-        if non_empty and all(_VERSE_LINE.match(l) for l in non_empty):
+        if non_empty and all(_VERSE_LINE.match(line) for line in non_empty):
             vlines = [
-                (_VERSE_LINE.match(l).group(1) or "").strip()  # type: ignore[union-attr]
-                for l in non_empty
+                (_VERSE_LINE.match(line).group(1) or "").strip()  # type: ignore[union-attr]
+                for line in non_empty
             ]
             body = "<br/>".join(_inline(escape(v)) for v in vlines if v)
             if body:
                 out.append(f'<p class="verse">{body}</p>')
                 continue
-        if non_empty and all(_UL_LINE.match(l) for l in non_empty):
+        if non_empty and all(_UL_LINE.match(line) for line in non_empty):
             lis = "".join(
-                f"<li>{_inline(escape(_UL_LINE.match(l).group(1).strip()))}</li>"  # type: ignore[union-attr]
-                for l in non_empty
+                f"<li>{_inline(escape(_UL_LINE.match(line).group(1).strip()))}</li>"  # type: ignore[union-attr]
+                for line in non_empty
             )
             out.append(f"<ul>{lis}</ul>")
             continue
-        if non_empty and all(_OL_LINE.match(l) for l in non_empty):
+        if non_empty and all(_OL_LINE.match(line) for line in non_empty):
             lis = "".join(
-                f"<li>{_inline(escape(_OL_LINE.match(l).group(1).strip()))}</li>"  # type: ignore[union-attr]
-                for l in non_empty
+                f"<li>{_inline(escape(_OL_LINE.match(line).group(1).strip()))}</li>"  # type: ignore[union-attr]
+                for line in non_empty
             )
             out.append(f"<ol>{lis}</ol>")
             continue
