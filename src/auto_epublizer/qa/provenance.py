@@ -11,6 +11,7 @@ postprocessing-spec §2/§3 的实现，四类检查全部只出信号不出裁�
 
 from __future__ import annotations
 
+import math
 import re
 import zipfile
 from collections import Counter
@@ -22,6 +23,7 @@ from urllib.parse import unquote
 from auto_translator.translation.align import read_align
 
 from ..build import slug_file, toc_depths
+from ..ingest.inserts import read_inserts
 from ..structure import skip_empty_unit
 
 # 图片引用三种形态：pandoc 占位（original-image-src）、HTML <img>、标准 markdown
@@ -47,6 +49,11 @@ class ProvenanceResult:
     toc_depths_nav: list[int] = field(default_factory=list)
     toc_flat: bool = False
     toc_depth_mismatch: bool = False
+    # 插入内容（插图/表格/公式）溯源（pdf-content-spec §9）
+    inserts_total: int = 0
+    inserts_missing_files: int = 0
+    inserts_no_desc: int = 0
+    inserts_no_latex: int = 0
     findings: list[dict[str, str]] = field(default_factory=list)
 
     def add(self, level: str, code: str, message: str) -> None:
@@ -146,6 +153,39 @@ def _opf_has_cover(zf: zipfile.ZipFile) -> bool:
         return 'properties="cover-image"' in zf.read(m.group(1)).decode("utf-8")
     except KeyError:
         return False
+
+
+def _audit_inserts(result: ProvenanceResult, structured_dir: Path) -> None:
+    """插入内容溯源审计（raw/inserts/index.jsonl 存在时；pdf-content-spec §9）。
+
+    error：文件缺失 / source 非法（页号非正整数、bbox 非 4 个有限数）；
+    warning：agent 未补 content_desc / formula 未手写 latex。
+    """
+    records = read_inserts(structured_dir / "raw")
+    if not records:
+        return
+    result.inserts_total = len(records)
+    raw_dir = structured_dir / "raw"
+    for r in records:
+        if r.file and not (raw_dir / r.file).is_file():
+            result.inserts_missing_files += 1
+            result.add("error", "E_INSERT_MISSING_FILE", f"插入内容文件缺失：{r.id}（{r.file}）")
+        page = r.source.page
+        bbox = r.source.bbox
+        bad_source = not isinstance(page, int) or isinstance(page, bool) or page < 1
+        if not bad_source and bbox is not None:
+            bad_source = len(bbox) != 4 or not all(
+                isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(float(v))
+                for v in bbox
+            )
+        if bad_source:
+            result.add("error", "E_INSERT_BAD_SOURCE", f"插入内容 source 非法：{r.id}")
+        if not (r.content_desc or "").strip():
+            result.inserts_no_desc += 1
+            result.add("warning", "W_INSERT_NO_DESC", f"插入内容缺 agent 描述：{r.id}")
+        if r.type == "formula" and not (r.latex or "").strip():
+            result.inserts_no_latex += 1
+            result.add("warning", "W_INSERT_NO_LATEX", f"公式缺 agent 手写 LaTeX：{r.id}")
 
 
 def audit_provenance(
@@ -285,5 +325,8 @@ def audit_provenance(
     elif result.toc_depths_expected and nav_depths and result.toc_depths_expected != nav_depths:
         result.toc_depth_mismatch = True
         result.add("warning", "W_TOC_DEPTH", "nav 嵌套深度与源文标题层级序列不一致")
+
+    # ── 插入内容溯源：插图/表格/公式描述文件与原始地址 ────────────────────
+    _audit_inserts(result, structured_dir)
 
     return result

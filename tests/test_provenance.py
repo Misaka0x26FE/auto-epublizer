@@ -221,3 +221,135 @@ def _audit_ok() -> Any:
     from auto_epublizer.qa.audit import AuditResult
 
     return AuditResult(ok=True)
+
+
+# ── 插入内容溯源审计（pdf-content-spec §9） ────────────────────────────────
+
+
+def _write_inserts(store: RunStore, records: list[Any]) -> None:
+    from auto_epublizer.ingest.inserts import write_inserts
+
+    write_inserts(store.structured_dir / "raw", records)
+
+
+def test_provenance_inserts_happy_path(tmp_path: Path) -> None:
+    """inserts 齐备（文件在、source 合法、描述/latex 已补）→ 零 INSERT 发现。"""
+    from auto_epublizer.ingest.inserts import InsertRecord, InsertSource
+
+    store, entries = _make_workspace(
+        tmp_path, [{"id": "ch01", "rel": "body/ch01.md", "md": "# 一\n\n甲。\n"}]
+    )
+    media = store.structured_dir / "raw" / "media"
+    media.mkdir(parents=True)
+    (media / "p001-img01.png").write_bytes(b"png")
+    _write_inserts(
+        store,
+        [
+            InsertRecord(
+                id="p001-img01",
+                type="image",
+                source=InsertSource(page=1, bbox=[0, 0, 10, 10], xref=1, method="embedded"),
+                file="media/p001-img01.png",
+                content_desc="示意图",
+            ),
+            InsertRecord(
+                id="p002-fml01",
+                type="formula",
+                source=InsertSource(page=2, bbox=[0, 0, 10, 10], method="formula"),
+                content_desc="质能方程",
+                latex="E = mc^2",
+            ),
+        ],
+    )
+    result = audit_provenance(store, entries, _build(store, entries))
+    assert result.ok
+    assert result.inserts_total == 2
+    assert result.inserts_missing_files == 0
+    assert result.inserts_no_desc == 0 and result.inserts_no_latex == 0
+    assert not any("INSERT" in f["code"] for f in result.findings)
+
+
+def test_provenance_inserts_errors_and_warnings(tmp_path: Path) -> None:
+    """缺文件/坏 source 为 error；缺描述/公式缺 latex 为 warning。"""
+    from auto_epublizer.ingest.inserts import InsertRecord, InsertSource
+
+    store, entries = _make_workspace(
+        tmp_path, [{"id": "ch01", "rel": "body/ch01.md", "md": "# 一\n\n甲。\n"}]
+    )
+    media = store.structured_dir / "raw" / "media"
+    media.mkdir(parents=True)
+    (media / "p001-img01.png").write_bytes(b"png")
+    _write_inserts(
+        store,
+        [
+            InsertRecord(
+                id="p001-img01",
+                type="image",
+                source=InsertSource(page=1, bbox=[0, 0, 10, 10], xref=1, method="embedded"),
+                file="media/p001-img01.png",
+                content_desc="在文件",
+            ),
+            InsertRecord(
+                id="p002-img01",
+                type="image",
+                source=InsertSource(page=2, bbox=[0, 0, 10, 10], method="embedded"),
+                file="media/gone.png",
+                content_desc="文件缺失",
+            ),
+            InsertRecord(
+                id="p003-img01",
+                type="image",
+                source=InsertSource(page=0, method="embedded"),
+                content_desc="坏页号",
+            ),
+            InsertRecord(
+                id="p004-img01",
+                type="image",
+                source=InsertSource(page=4, bbox=[0, 0, 10], method="embedded"),
+                content_desc="坏 bbox",
+            ),
+            InsertRecord(
+                id="p005-fml01",
+                type="formula",
+                source=InsertSource(page=5, method="formula"),
+                content_desc="公式",
+            ),
+            InsertRecord(
+                id="p006-img01",
+                type="image",
+                source=InsertSource(page=6, method="embedded"),
+            ),
+        ],
+    )
+    result = audit_provenance(store, entries, _build(store, entries))
+    codes = [f["code"] for f in result.findings]
+    assert "E_INSERT_MISSING_FILE" in codes
+    assert "E_INSERT_BAD_SOURCE" in codes
+    assert "W_INSERT_NO_LATEX" in codes
+    assert "W_INSERT_NO_DESC" in codes
+    assert not result.ok
+    assert result.inserts_total == 6
+    assert result.inserts_missing_files == 1
+    assert result.inserts_no_desc == 1
+    assert result.inserts_no_latex == 1
+
+
+def test_report_blocks_release_on_missing_insert_files() -> None:
+    """inserts 文件缺失 → prov 不完整，阻断放行（provenance_incomplete）。"""
+    report = generate_report(
+        "book",
+        _audit_ok(),
+        EpubcheckResult(available=True, ran=True, errors=0, warnings=0),
+        provenance={
+            "coverage": None,
+            "units_missing": [],
+            "units_order_ok": True,
+            "media_lost": [],
+            "toc_flat": False,
+            "inserts_missing_files": 2,
+            "findings": [],
+        },
+    )
+    assert report.released is False
+    assert report.released_reason == "provenance_incomplete"
+    assert report.inserts_missing_files == 2
