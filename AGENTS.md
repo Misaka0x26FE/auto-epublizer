@@ -18,9 +18,10 @@
 - **唯一 LLM 原则（硬约束）**：本项目中**唯一的 LLM 就是操作本 CLI 的 agent 本身**——
   CLI 只做确定性、零 token 的计算（解析/切片/检测/校验/构建/审计）；一切语义工作
   （理解、翻译、审校判断、术语裁决、公式 LaTeX、内容描述）由 agent 用自身能力完成。
-  **禁止新增任何 LLM API 调用**（新依赖、新端点、agents/ 包扩展均不许）；存量内部
-  LLM 路径（`agents/` 包与 translate/analyze/review 的路径 A）**已废弃待移除**，
-  见 [docs/plans/2026-09-04-remove-internal-llm.md](docs/plans/2026-09-04-remove-internal-llm.md)。
+  **禁止新增任何 LLM API 调用**（新依赖、新端点、任何包扩展均不许）；存量内部
+  LLM 路径（`auto_common/llm/`、`agents/` 包、translate/analyze/review 命令）**已移除**，
+  见 [docs/plans/2026-09-04-remove-internal-llm.md](docs/plans/2026-09-04-remove-internal-llm.md)，
+  由 `test_architecture_boundaries.py` 的 `test_no_llm_api_calls_anywhere` 强制回归。
   判据不变：「同样输入必须得到同样输出 → Python；需理解/权衡/判断 → agent」，
   完整版见 [docs/agent-vs-code.md](docs/agent-vs-code.md)。
 - 工作区为 `publication.json` 权威索引 + 工作区目录（见下），不沿用旧 `split/` 流程。
@@ -38,12 +39,12 @@
 
 ```bash
 # 0. 能力自检（agent 开工前必做：判断自身能力边界 + 环境工具链）
-auto-epublizer doctor [--ping]   # 工具链/依赖/LLM 探测；multimodal/search 由 agent 自报补填
+auto-epublizer doctor [--ping]   # 工具链/依赖/MinerU/网络探测；multimodal/search 由 agent 自报补填
 
 # 1. 安装
 uv sync
 
-# 2. 配置（API Key 只从环境变量读取，见「配置与密钥」）
+# 2. 配置（无密钥段；可选外部解析 API 的 MINERU_API_KEY 只从环境变量读取，见「配置与密钥」）
 
 # 3. 预处理（零 token 事实收集 + agent 理解）：
 auto-epublizer preprocess <input>   # 新书：init + 嗅探/元数据/TOC/体检/规模 → preprocessing/facts.*
@@ -73,8 +74,8 @@ auto-epublizer status --json  # 查看进度/状态机/产物-状态对账
 仅转换不翻译：`auto-epublizer convert <input> -o output/book.epub`。
 
 **状态不变式**：语义产物由 agent 手写，`publication.json` 状态只经 CLI 命令推进
-（`import`/`review` 登记入口），agent 不手工编辑；所有产物汇入同一套
-G0 校验、状态机、术语闭环、构建与质检。
+（`import` 登记入口；审校产物 `result.json` 由 agent 手写、状态推进参照其契约），
+agent 不手工编辑；所有产物汇入同一套 G0 校验、状态机、术语闭环、构建与质检。
 
 ## skills/ 目录（面向下游 agent 的可安装指引）
 
@@ -107,7 +108,7 @@ skills/auto-epublizer/
 
 - 每个 reference 只覆盖一个阶段，SKILL.md 用「Route Before Acting」路由表让 agent 按当前
   阶段只读一份，不一次加载全部。
-- 文档以**实际 CLI 能力**为准：未实现项（如 G0 自动接入、网络检索、视觉 LLM 兜底）
+- 文档以**实际 CLI 能力**为准：未实现项（如 G0 自动接入、网络检索）
   显式标注「后续扩展点」，避免 agent 照未实现功能操作。
 - 安装：`scripts/install-skills.sh --target opencode` 复制到 agent 的 skills 目录。
 
@@ -121,33 +122,32 @@ skills/auto-epublizer/
 ├── output/           ② 成品 EPUB（<slug>.epub / <slug>-bi.epub）
 ├── structured/       ③ 按出版物四层结构拆分的源文（frontmatter/body/backmatter/media）
 │                     + raw/（处理源文件的中间产物：OCR 页图、PDF→HTML，持久化供审查）
-├── analysis/         ④ 分层理解（analyze 产物：overview/global/units/keypoints/glossary 等）
+├── analysis/         ④ 分层理解（agent 产物：overview/global/units/keypoints/glossary 等）
 ├── translation/      ⑤ 译文（镜像 structured 树）+ align/<unit-id>.jsonl 句级对照表
-├── reviews/          ⑥ 审校运行记录 review-<ts>/（每轮 issues/patches/summary/usage）
+├── reviews/          ⑥ 审校运行记录 review-<ts>/（issues/patches/summary/result.json）
 ├── references/       ⑦ 参考：user/（用户上传）+ web/（agent 网络检索）+ index.jsonl
 ├── preprocessing/    ⑧ 预处理层：facts.json/facts.md（CLI 零 token 事实）+
 │                       agent 撰写的 plan/global/units/terms/risks/report
 ├── publication.json  权威索引（DC 元数据 + 内容树 + 状态机 + 配置快照）
 ├── .progress.json    （预留）批次级断点；当前未落盘，断点=单元级跳过
 ├── glossary.db       术语库内部索引（可选，SQLite）
-├── events.jsonl      追加式行为账本
-└── usage.json        token 用量账本（一次增量只合并一次）
+└── events.jsonl      追加式行为账本
 ```
 
 单元状态机：`pending → split → analyzed → translated → aligned → reviewed → built`
-（`reviewed`=通过审校，`built`=已封装；`convert` 路径跳过 analyze/translate/review，直接 split → built）。
+（`reviewed`=通过审校，`built`=已封装；`convert` 路径跳过理解/翻译/审校，直接 split → built）。
 
 目录生命周期：`source/`、`references/user/` 不可动；`structured/`（含 `raw/` 中间产物）
 持久化保存供审查，可由源文件重建；`preprocessing/facts.*` 由 CLI 幂等生成，其余
 `preprocessing/` 产物、`analysis/`、`translation/`、`reviews/`、`output/` 是智能产物；
-`events.jsonl`、`usage.json` 是追加式账本；`.progress.json` 为预留断点文件（当前未落盘，
+`events.jsonl` 是追加式账本；`.progress.json` 为预留断点文件（当前未落盘，
 实际断点续跑 = 按 `publication.json` 单元状态跳过已完成单元）；
 `publication.json`、`glossary.db` 是权威真相。
 
 **预处理分工**：`preprocess` 命令只产出零 token 事实（嗅探/元数据/TOC/体检/规模）；
 **方案决策与分层理解是 agent 任务**——读 facts.md 与 docs 决策表写 `plan.md`，
 用自身能力完成全局理解/章节理解/术语预提取/风险标注。理解上下文的读取优先级：
-`analysis/`（analyze 或 agent 直写）→ `preprocessing/`（agent 预处理产物）。
+`analysis/`（agent 直写）→ `preprocessing/`（agent 预处理产物）。
 
 术语表三态：`种子 → 候选 → 冲突 → 确认`。`analysis/glossary.csv` 是权威（人类/agent 可读），
 冲突外置到 `glossary_conflicts.jsonl`；翻译 worker 只读快照 + 追加提案，由单线程合并器裁决后写回 CSV。
@@ -166,9 +166,9 @@ skills/auto-epublizer/
 三包 monorepo，依赖方向必须保持（`test_architecture_boundaries.py` 固定）：
 
 ```text
-auto_common（基础设施：config/llm/workspace）
-      ▲                        ▲
-auto_translator（翻译引擎：glossary/genre/agents/analysis/translation/review）
+auto_common（基础设施：config/workspace）
+      ▲
+auto_translator（确定性领域逻辑：glossary/genre/analysis(detect)/translation(align)/review(g0/models/convergence)）
       ▲
 auto_epublizer（转 EPUB + 编排：ingest/structure/build/qa + orchestrator/cli）
 ```
@@ -176,34 +176,32 @@ auto_epublizer（转 EPUB + 编排：ingest/structure/build/qa + orchestrator/cl
 逻辑分层（跨包不变）：
 
 ```text
-CLI → Orchestrator（薄 façade）→ 领域服务 → agents / llm / glossary / workspace(RunStore)
+CLI → Orchestrator（薄 façade）→ 领域服务 → glossary / align / g0 / workspace(RunStore)
 ```
 
 - `auto_common` 是叶子，不得依赖 `auto_translator` / `auto_epublizer`。
 - `auto_translator` 只依赖 `auto_common`，不得依赖 `auto_epublizer`。
 - `orchestrator.py` 只装配与路由，不直接调用领域函数，不持有线程池。
 - 下层不得反向导入 orchestrator。
-- `agents/` 是**内部 LLM 调用服务**（翻译/审校/取证/仲裁/修订的提示词封装），不是子代理、也不是 MCP 服务；不得依赖编排、状态机或 RunStore。
+- 全库不得有任何 LLM 模块/调用（唯一 LLM 原则，由架构边界测试强制）。
 - 并发属于具体领域服务；结果必须按稳定原文序合并，不得让线程完成顺序改变输出。
 - 第三方依赖保留各自许可证并在 `THIRD_PARTY_LICENSES.md` 登记；AGPL 依赖可直接引入（项目自身为 AGPL）。
 
-**能力分工**：CLI 内部调用 OpenAI 兼容 API 完成**确定性触发的生成与初筛**——分析生成
-（`analysis/`）、术语播种、翻译（`translation/`）、审校报 issue（G1）、取证裁决（G2）、仲裁与
-影子修订（G3）。**LLM 是可选加速器而非硬依赖**：无 API Key 的环境（如豆包云容器），
-`analyze` 自动确定性降级（启发式检测 + style.md），翻译由 agent 用自身能力手写
-`translation/`+`align/` 后经 `import` 命令登记——两条路径汇入同一套 G0 校验、状态机、
-术语闭环、构建与质检。而**语义判断类工作由 agent 自身完成**：读 `analysis/`/`reviews/`/
-`report.json` 理解内容、判读结果；术语冲突终局裁决（`glossary_conflicts.jsonl` → 写回
-`glossary.csv`）；未收敛情形（`max_rounds`/`no_progress`/`unresolved_fixes`）的处置；
-源文勘误、复杂结构判断；修复与放行决策。agent 只需**读文件、跑 shell、写文件**三种
-基础能力，**不要求 MCP、子代理或任何特殊工具**。
+**能力分工**：CLI 只做确定性计算与校验放行——解析/切片/检测（语言体裁启发式、PDF 插图/
+表格/公式）、G0 静态校验、import 登记、构建、qa 审计。**语义判断类工作全部由 agent
+自身完成**：理解层（`analysis/` 与 `preprocessing/`）、翻译（`translation/`+`align/`）、
+审校（G1–G3，写 `reviews/review-<ts>/result.json`）、术语冲突终局裁决
+（`glossary_conflicts.jsonl` → 写回 `glossary.csv`）、inserts 语义（content_desc/latex）、
+未收敛情形（`max_rounds`/`no_progress`/`unresolved_fixes`）的处置、源文勘误、复杂结构
+判断、修复与放行决策。agent 只需**读文件、跑 shell、写文件**三种基础能力，
+**不要求 MCP、子代理或任何特殊工具**。
 
 **能力自检先行**：agent 开工前先跑 `auto-epublizer doctor` 判断环境工具链（pandoc/pymupdf/
-OCR（tesseract/ocrmypdf/rapidocr）/epubcheck/LLM Key/MinerU/网络），并**自报 multimodal
-与 search**（能否看图、有无搜索工具，CLI 无法探测）——据此按
-skills 的能力-路由决策表选择 ingest 路由（pandoc / 按页切片 / OCR 五档：
-传统 OCR→rapidocr→视觉 LLM→MinerU API→询问用户）。PDF 内容提取（插图/表格/公式/
-多栏/书签切章）规范见 [docs/pdf-content-spec.md](docs/pdf-content-spec.md)。
+OCR（tesseract/ocrmypdf/rapidocr）/epubcheck/MinerU/网络），并**自报 multimodal 与
+search**（能否看图、有无搜索工具，CLI 无法探测）——据此按
+skills 的能力-路由决策表选择 ingest 路由（pandoc / 按页切片 / OCR 档：
+传统 OCR→rapidocr→MinerU API→询问用户；「看」是 agent 自身能力）。PDF 内容提取
+（插图/表格/公式/多栏/书签切章）规范见 [docs/pdf-content-spec.md](docs/pdf-content-spec.md)。
 
 ## 状态与续跑不变量
 
@@ -229,9 +227,9 @@ skills 的能力-路由决策表选择 ingest 路由（pandoc / 按页切片 / O
 
 ## 配置、密钥与 provider
 
-- API Key 只从环境变量读取；禁止写入源码、测试、文档示例或提交。
-- 通用 LLM 抽象不感知具体 provider 私有协议；重试由统一模块负责，关闭 SDK 内置重试避免嵌套。
-- 测试默认用 `FakeClient`/mock，不调用真实 LLM 或网络。
+- 配置**无任何 LLM/密钥段**（唯一 LLM 原则）；可选外部解析 API 的 `MINERU_API_KEY`
+  只从环境变量读取，禁止写入源码、测试、文档示例或提交。
+- 测试全部确定性离线：不调用任何 LLM、不依赖外部网络。
 - 用户可预期错误 → 明确异常 + 简洁中文提示；CLI 不打印 traceback。
 
 ## 开发与验证命令

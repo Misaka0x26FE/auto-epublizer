@@ -10,11 +10,10 @@
 | typer | CLI 框架 | MIT |
 | pydantic | 配置/数据模型 | MIT |
 | rich | 终端输出 | MIT |
-| httpx | HTTP 客户端（LLM 调用） | BSD-3-Clause |
+| httpx | HTTP 客户端（doctor 网络探测） | BSD-3-Clause |
 | pyyaml | 配置解析 | MIT |
 | lxml | XML 处理 | BSD-3-Clause |
 | pymupdf | PDF 文字层抽取 | AGPL-3.0（兼容，可同许可引入） |
-| json-repair | 宽松 JSON 解析 | MIT |
 
 ## 可选依赖（[ocr] extra）
 

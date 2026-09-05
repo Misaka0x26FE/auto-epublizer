@@ -2,7 +2,11 @@
 
 在传统"切片翻译"（`split/` → 分批译）基础上，加入**章节目录结构划分**与
 **全本 → 章节 → 重点内容的分层理解 + 术语表辅助**，作为质量控制的输入。
-范围沿用：只负责交付质量，不做价值观判断；翻译引擎为 OpenAI 兼容 API。
+范围沿用：只负责交付质量，不做价值观判断。
+
+> **唯一 LLM 原则**：翻译/理解/审校由操作 CLI 的 agent 完成（CLI 零 LLM 调用）。
+> 本文档描述工作流与数据流契约（structured/analysis/translation+align/reviews）；
+> 「分析」「翻译」「审校」各步的**语义执行者是 agent**，CLI 只做结构校验/状态推进/构建质检。
 
 ## 1. 总体流程
 
@@ -10,16 +14,16 @@
 source ──ingest──▶ structured/（章节目录结构划分，四层结构）
                        │
                        ▼
-                   analyze/（分层理解：overview 全本 + global 全局 + units 章节 + keypoints 重点
-                       │      + glossary 术语表 + characters 人物表）
+                   analysis/（分层理解：overview 全本 + global 全局 + units 章节 + keypoints 重点
+                       │      + glossary 术语表 + characters 人物表）〔agent 撰写〕
                        ▼
-                   translate（切片翻译：章节 → 段落 → 批次 → 句对）
+                   translate（切片翻译：章节 → 段落 → 句对）〔agent 撰写 translation/ + align/〕
                        │
                        ▼
-                   translation/ + align/（句级对照表）
+                   import（登记手写产物：G0 校验 + 状态推进 + 术语冲突外置）
                        │
                        ▼
-                   review（QC G0–G3）→ build → qa（G4–G5）
+                   review（QC G0–G3，agent 审校写 result.json）→ build → qa（G4–G5）
 ```
 
 ## 2. 章节目录结构划分（切片的基础单元）
@@ -74,13 +78,13 @@ structured/
 ## 5. 翻译批次数据流（切片 → 句对）
 
 ```
-段落数组 [p0, p1, …] + 分层上下文 + 术语子集
-        │  （一次 LLM 调用，json_mode）
+段落数组 [p0, p1, …] + 分层上下文 + 术语子集   （agent 阅读理解层与术语后逐段翻译）
+        │
         ▼
-{"translations": [ [句, 句, …], [句, …], … ]}   ← 每个段落返回一句或数句
-        │  （校验：段数一致，否则 align_retry_limit 次重试，再逐段兜底）
+translation/<rel>.md + align/<id>.jsonl  ← 每段一句或数句：{seq, src, tgt, note}
+        │  （import 校验：seq 连续、无空译文；拆/并句在 note 声明）
         ▼
-align/<id>.jsonl  ← {seq, src, tgt, note}
+状态推进 translated → aligned
 ```
 
 关键保证：

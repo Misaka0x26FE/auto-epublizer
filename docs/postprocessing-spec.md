@@ -143,7 +143,7 @@
 
 ## 6. 测试计划
 
-每项加最小回归测试（沿用 tempfile + FakeClient 离线惯例）：
+每项加最小回归测试（沿用 tempfile 离线惯例，不依赖任何外部 LLM）：
 
 - 目录层级：带 h1/h2/h3 的 markdown → 断言 nav 嵌套 `<ol>` + NCX 嵌套 navPoint + 不报 `E_TOC_FLAT`
 - 三边对账/媒体溯源/覆盖率：缺失/乱序/丢图 fixture → 断言对应 error code

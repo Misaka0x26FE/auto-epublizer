@@ -18,13 +18,14 @@
 | PDF 文字层 | `pymupdf` ✓ | 按页切片抽文字层 |
 | PDF 扫描件 | `tesseract` / `ocrmypdf` ✓ | 传统 OCR 优先：扫描 PDF 先重建文字层再入库 |
 | PDF 扫描件 | `rapidocr` ✓（`uv sync --extra ocr`） | 离线 OCR（`pdf.ocr: auto`） |
-| PDF 扫描件 | 无 OCR，但 multimodal=true 且 LLM 可用 | 视觉 LLM 兜底：页转图 → 多模态模型（只转需要的页） |
+| PDF 扫描件 | 无 OCR，但 multimodal=true | 视觉兜底：你自行渲染难页看图理解（只转需要的页），结果按页写回 `page-NNN.json`（`ocr:true`） |
 | PDF 扫描件 | `MINERU_API_KEY` 已配置 | MinerU 外部 API（复杂版面可选） |
 | PDF 扫描件 | 以上皆无 | 明确告知无法处理；请用户提供可用 OCR / 手工 OCR 或换源 |
 
-**OCR 路由优先级固定**：传统 OCR（tesseract/ocrmypdf）→ rapidocr → 视觉 LLM 兜底 →
-MinerU 外部 API → 询问用户。facts.md 的「路由提示」给出确定性选择；agent 在 plan.md
-记录最终路由与依据。
+**OCR 路由优先级固定**：传统 OCR（tesseract/ocrmypdf）→ rapidocr → MinerU 外部 API →
+询问用户；「视觉兜底」不在 CLI 路由内——它是你的自身能力（multimodal 自报），无多模态
+即视为无此能力。facts.md 的「路由提示」给出确定性选择；agent 在 plan.md 记录最终路由
+与依据。
 
 `pdf.ocr: off` 可在 config 关闭自动 OCR；`pdf.ocr: <其他值>` 视为强制要求（不可用时报错）。
 
@@ -65,6 +66,6 @@ structured/raw/
 
 - `source/` 原样，绝不改动；源内容身份以 `publication.json.meta.source_sha256` 绑定。
 - OCR 引擎懒加载：文字层 PDF 不付模型加载成本；`init` 遇扫描页自动调 RapidOCR。
-- 难页降级到多模态 LLM（页面转图）为后续扩展点；multimodal=true 时 agent 可自行渲染难页用视觉模型处理，
-  结果按页写回 `structured/raw/page-NNN.json`（`ocr:true`）。
+- 难页视觉兜底是你的能力（multimodal 自报）：可自行渲染难页看图理解，结果按页写回
+  `structured/raw/page-NNN.json`（`ocr:true`）。
 - 常见错误：`不支持的格式`（换扩展名）、`该 PDF 没有可抽取的文字层`（扫描件，装 OCR extra 或用视觉兜底）。
