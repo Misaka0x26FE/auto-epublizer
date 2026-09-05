@@ -36,6 +36,7 @@ multimodal / search**（能否看图、有无搜索工具，CLI 无法探测）�
 | EPUB 封装、确定性构建 | `references/build.md` |
 | epubcheck + 解包审计、质量报告 | `references/qa.md` |
 | 文体档案（novel/academic/paper/poetry/newspaper）应用 | `references/style.md` |
+| 源站/脏源/边界情况的实战经验（Baka-Tsuki 插图段、epubcheck 离线等） | `lessons/`（按主题匹配，仅命中才读） |
 
 ## Boundary（不可违背）
 

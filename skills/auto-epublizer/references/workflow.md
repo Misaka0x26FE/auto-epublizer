@@ -19,6 +19,10 @@ MinerU/网络），并自报 multimodal / search（能否看图、有无搜索�
   有 output/*.epub               -> 已封装，qa 或重新 build
 ```
 
+遇到**源站/脏源/边界情况**（如 Baka-Tsuki 插图段不渲染、epubcheck 离线装 jar、
+MediaWiki 卷导航垃圾混入 structured），先查 `lessons/` 目录——里面是真实工作沉淀的
+「判据 + 处置 + 验证」，命中即按它处理；未命中再自行排查。
+
 ## 标准阶段
 
 ```text
