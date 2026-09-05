@@ -11,7 +11,7 @@ MinerU/网络），并自报 multimodal / search（能否看图、有无搜索�
 ```text
 无 publication.json               -> 全新流程：先 preprocess <input>（= init + 事实收集）
 有 publication.json              -> 续跑：status --json 看状态机与对账（stale / preprocessing）
-  preprocessing_complete=false   -> 按 facts.md 待办完成 agent 理解产物（capabilities/plan/global/...）
+  preprocessing_complete=false   -> 按 facts.md 待办完成 agent 理解产物（todo.md 逐细节清单 + capabilities/plan/global/...）
   单元 status 全 built           -> 已完成，跳过对应阶段
   有 structured/ 无 analysis/ 且无 preprocessing/global.md -> agent 写 global.md（理解层）
   有 translation/ 但 status 未推进（stale） -> 运行 import 登记

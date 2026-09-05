@@ -256,9 +256,19 @@ def import_cmd(
         for err in item["errors"]:
             console.print(f"    {err}")
     for w in result["warnings"][:20]:
-        console.print(f"[yellow]⚠ {w['unit']} {w['check']}：{w['message']}[/yellow]")
+        color = "[red]" if w["check"] == "terminology" else "[yellow]"
+        mark = "✗" if w["check"] == "terminology" else "⚠"
+        console.print(
+            f"{color}{mark} {w['unit']} {w['check']}：{w['message']}[/{color.strip('[]')}]"
+        )
     if len(result["warnings"]) > 20:
         console.print(f"  … 共 {len(result['warnings'])} 条告警")
+    n_term = sum(1 for w in result["warnings"] if w["check"] == "terminology")
+    if n_term:
+        console.print(
+            f"[red]其中术语命中 {n_term} 条是真实缺陷（译文缺术语表源词），"
+            f"须逐条核验清零后才能放行[/red]"
+        )
     for sid in result["skipped"]:
         console.print(f"[dim]- {sid}：无 rel_path，跳过[/dim]")
     if result["conflicts_open"]:
@@ -285,10 +295,17 @@ def g0(
         result = orch.g0_check(store, unit_id=unit)
     except (ValueError, OSError, orch.OrchestrationError) as e:
         raise typer.Exit(f"G0 校验失败：{e}") from None
+    n_term = 0
     for f in result["flags"]:
-        console.print(f"[yellow]⚠ {f['unit']} {f['check']}：{f['message']}[/yellow]")
+        if f["check"] == "terminology":
+            # 术语命中是真实缺陷（译文缺术语表源词），必须逐条核验；长度比才是 advisory
+            n_term += 1
+            console.print(f"[red]✗ {f['unit']} {f['check']}：{f['message']}[/red]")
+        else:
+            console.print(f"[yellow]⚠ {f['unit']} {f['check']}：{f['message']}[/yellow]")
     console.print(
         f"G0 完成：校验 {len(result['checked_units'])} 单元，告警 {len(result['flags'])} 条"
+        f"（其中术语命中 {n_term} 条——真实缺陷，须逐条核验清零；其余为 advisory）"
     )
 
 

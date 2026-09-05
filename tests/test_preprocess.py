@@ -236,9 +236,9 @@ def test_collect_facts_and_write(tmp_path: Path) -> None:
     # 体检与建议
     assert facts["checks"]["drm"] is False
     assert any("纯文本" in s for s in facts["suggestions"])
-    # agent 待办（首位 capabilities 自报，共 7 项）
-    assert len(facts["agent_todo"]) == 7
-    assert "capabilities.md" in facts["agent_todo"][0]
+    # agent 待办（首位 todo.md 逐细节清单，共 8 项）
+    assert len(facts["agent_todo"]) == 8
+    assert "todo.md" in facts["agent_todo"][0]
     # 落盘
     json_path = Path(result["facts_json"])
     md_path = Path(result["facts_md"])
@@ -278,19 +278,26 @@ def test_status_reports_preprocessing_state(tmp_path: Path) -> None:
     # 未预处理
     data = orch.status(store)
     assert data["has_preprocessing"] is False
-    # facts 有、plan/global/capabilities 缺 → stale 提示
+    # facts 有、todo/plan/global/capabilities 缺 → stale 提示
     orch.preprocess(store, config=Config())
     data = orch.status(store)
     assert data["has_preprocessing"] is True
     assert data["preprocessing_complete"] is False
     assert any(s["reason"] == "preprocessing_plan_missing" for s in data["stale"])
-    # agent 补完 global.md 但 capabilities.md 仍缺 → 仍不 complete
+    # agent 补完 global.md 但 todo.md 仍缺 → 仍不 complete
     (store.preprocessing_dir / "global.md").write_text("理解完成。", encoding="utf-8")
     data = orch.status(store)
     assert data["preprocessing_complete"] is False
-    # capabilities.md 也补完 → complete
+    # capabilities.md 也补完但缺 todo.md → 仍不 complete
     (store.preprocessing_dir / "capabilities.md").write_text(
         "# 能力自报\n\nmultimodal：否；search：无。", encoding="utf-8"
+    )
+    data = orch.status(store)
+    assert data["preprocessing_complete"] is False
+    # todo.md 补完 → complete（逐细节任务清单是预处理必备产物）
+    (store.preprocessing_dir / "todo.md").write_text(
+        "# todo.md\n\n## 1. 单元翻译\n- [ ] ch01：读 structured → 写 translation+align → import → g0\n",
+        encoding="utf-8",
     )
     data = orch.status(store)
     assert data["preprocessing_complete"] is True

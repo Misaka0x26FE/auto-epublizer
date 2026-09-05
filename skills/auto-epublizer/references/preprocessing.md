@@ -42,6 +42,50 @@ CLI 探测不到的五维能力边界，由你（agent）开工前自报，写 `
 
 ## 2. 按待办依次撰写（全部写在 `preprocessing/`）
 
+### 2.0 `todo.md`（任务细化清单——开工第一件，贯穿全程）
+
+**要求**：读 facts 后、动手翻译前，把「处理这本书要做的每一个动作」细化成可勾选
+任务清单。粒度要小到**不用思考就能照做**：每一单元一项（阅读 structured → 写
+translation + align → import → g0）、每 3–5 单元一项 build 校验、审校/质检/交付
+各阶段逐项列出。翻译全程**每完成一项就勾掉一项**，并随进展追加/修正。
+
+模板（可在此基础按书增删，如按「部/章/行间」分组、附预计 token 或词数）：
+
+```markdown
+# todo.md（逐细节任务清单）
+
+> 开工第一件产物。完成一项勾一项（- [x]）；新任务追加到对应阶段。
+> 与 status --json / publication.json 状态机配合，杜绝「以为做了其实没做」。
+
+## 0. 预处理理解（facts 之后）
+- [ ] capabilities.md：自报五维能力边界
+- [ ] plan.md：方案决策（路由 + 依据 + 工作量）
+- [ ] global.md：全局理解
+- [ ] units/<id>.md：逐章理解
+- [ ] terms.csv：术语预提取 + import --terms
+- [ ] risks.md + report.md
+
+## 1. 单元翻译（每单元：读 structured → 写 translation + align → import --unit → g0 --unit）
+- [ ] ch01 <标题>（约 N 段）
+- [ ] ch02 <标题>
+- [ ] …（按 48 单元 / 25 章逐一列出）
+
+## 2. 过程校验（每译 3–5 单元一次）
+- [ ] build 一次，验证格式契约（图片段 / 空行 / 转义 / 目录层级）
+- [ ] 解包抽查：插图、目录、标题
+
+## 3. 审校（G1–G3）
+- [ ] 逐批审校，写 reviews/review-<ts>/{issues,patches,summary,result.json}
+- [ ] 术语冲突外置 glossary_conflicts.jsonl 逐条裁决写回 glossary.csv
+- [ ] 双语版 build（--bilingual）抽查，重点核省略号收尾段落
+
+## 4. 封装与质检（G4–G5）
+- [ ] build 全量 EPUB
+- [ ] qa：epubcheck 0 error + 审计 pass + G0 术语命中清零
+- [ ] 核对 status --json 无 stale、目录层级与源文一致
+- [ ] 交付：产物落 output/ + 记录 events
+```
+
 ### 2.1 `plan.md`（方案决策）
 
 输入：facts.md（源类型/体检/能力快照/路由提示）+ `references/ingest.md` 决策表。
@@ -82,6 +126,8 @@ CLI 探测不到的五维能力边界，由你（agent）开工前自报，写 `
 
 - `auto-epublizer status --json` 的 `preprocessing_complete == true`（facts + global.md 齐）
   且不再有 `preprocessing_plan_missing` stale 提示。
+- **todo.md 必须生成**：逐细节任务清单已列出全部单元翻译项与阶段校验项
+  （这是后续翻译/审校/交付的全程工作锚点）。
 - capabilities/plan/global/units/terms/risks/report 七类产物齐备
   （小书可合并风险与报告，但 capabilities/plan/global/terms 必备）。
 

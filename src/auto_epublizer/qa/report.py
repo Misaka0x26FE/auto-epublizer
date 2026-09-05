@@ -20,6 +20,7 @@ class QaResult:
     passed: bool = False
     # G5 交付验收（聚合 G0–G3）
     g0_flags: list[dict[str, Any]] = field(default_factory=list)
+    g0_terminology_open: int = 0  # 术语命中告警数：真实缺陷，必须清零才能放行
     g1_candidates: int = 0
     g2_confirmed: int = 0
     g3_patched: int = 0
@@ -74,6 +75,7 @@ def generate_report(
     g3_termination = str(rev.get("termination", ""))
     g3_rounds = int(rev.get("rounds", 0) or 0)
     flags = list(g0_flags or [])
+    g0_terminology_open = sum(1 for f in flags if f.get("check") == "terminology")
     error_rate = (g2_confirmed / total_sentences) if total_sentences else 0.0
 
     # 溯源审计结果映射（postprocessing-spec §5 放行扩展）
@@ -96,14 +98,23 @@ def generate_report(
 
     # 放行条件（对齐 AGENTS.md G5 + postprocessing-spec §5）：确认问题为零或全部已修订；
     # epubcheck 零 error；审计通过；溯源完整（覆盖率≈1.0、三边对账/媒体溯源零缺失、
-    # 目录层级不扁平）。G0 告警是 advisory，不作为放行硬条件——英→中等语言对
+    # 目录层级不扁平）。G0 长度比告警是 advisory，不作为放行硬条件——英→中等语言对
     # 长度比天然偏低，实测会产生大量误报（豆包实测 994 条均为误报）。
+    # **但 G0 术语命中（terminology）是真实缺陷**：译文中缺失了术语表的源词，
+    # 必须逐条核验清零才可放行（豆包实测曾把术语未命中与长度误报混为一谈而漏检）。
     confirmed_resolved = g2_confirmed == 0 or g2_confirmed <= g3_patched
     released = (
-        confirmed_resolved and epubcheck.ran and epubcheck.errors == 0 and audit.ok and prov_ok
+        confirmed_resolved
+        and g0_terminology_open == 0
+        and epubcheck.ran
+        and epubcheck.errors == 0
+        and audit.ok
+        and prov_ok
     )
     if released:
         reason = "ok"
+    elif g0_terminology_open:
+        reason = "terminology_open"
     elif not confirmed_resolved:
         reason = "unresolved_confirmed"
     elif not audit.ok:
@@ -136,6 +147,7 @@ def generate_report(
         g4_epubcheck_errors=epubcheck.errors if epubcheck.ran else -1,
         passed=passed,
         g0_flags=[dict(f) for f in flags],
+        g0_terminology_open=g0_terminology_open,
         g1_candidates=g1_candidates,
         g2_confirmed=g2_confirmed,
         g3_patched=g3_patched,

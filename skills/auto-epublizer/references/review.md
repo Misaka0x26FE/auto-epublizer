@@ -83,13 +83,27 @@ reviews/review-<ts>/
 | 指标 | 阈值 |
 |---|---|
 | 长度比 | `0.30 ≤ len(tgt)/len(src) ≤ 3.0`（G0 告警，advisory） |
+| **术语命中** | **0（G0 `terminology` 是真实缺陷，不是 advisory——译文缺了术语表源词；必须逐条核验清零，否则 G5 不放行，`released_reason=terminology_open`）** |
 | 空译文 | 禁止（`import` 直接退回） |
 | 句数一致 | 严格相等（含 `note` 声明例外） |
 | 差错率 | `confirmed_issues / 总句数 ≤ 1e-4` |
 | epubcheck | 0 error |
 
-> 说明：G0 可独立运行——`auto-epublizer g0` 在翻译/导入后立即校验（advisory，
-> 不阻断放行——英→中长度比天然偏低会大量误报）；`qa` 时也会对全部已对齐单元聚合 G0
-> 进 `report.json.g0_flags`。G1–G3 由你审校后写 `result.json`；全局理解上下文在
-> `analysis/` 缺失时回退 `preprocessing/global.md`。G4 由 `qa` 命令驱动；G5 由 `qa`
-> 聚合 G0–G4 写 `report.json`（含 `error_rate`/`released`/`released_reason`）。
+> 说明：G0 可独立运行——`auto-epublizer g0` 在翻译/导入后立即校验。
+> **G0 告警分两类，处理方式不同**：
+> - `terminology`（术语命中）：**真实缺陷**，CLI 以红色 `✗` 标出，`import` 也会单独
+>   计数提示；必须逐条核对译文/术语表后清零（补译 / 修术语表 / 声明例外）才能放行。
+>   豆包实测教训：曾把术语未命中与长度误报混为一谈全当噪声，漏掉真问题。
+> - `length`（长度比过低/过高）：advisory，英→中长度比天然偏低会大量误报，不作为
+>   放行硬条件；但**抽样核对**是否真漏译（尤其超长句被省略号收尾的段落）。
+>
+> G1–G3 由你审校后写 `result.json`；全局理解上下文在 `analysis/` 缺失时回退
+> `preprocessing/global.md`。G4 由 `qa` 命令驱动；G5 由 `qa` 聚合 G0–G4 写
+> `report.json`（含 `error_rate`/`released`/`released_reason`）。
+
+## 翻译期间的过程校验（QC 落实，豆包实测教训）
+
+- **每译 3–5 个单元 build 一次**：格式契约问题当轮暴露（图片段缺 `<img>` 行、
+  空行破坏、转义残留），避免一次污染多个单元到最后集中返工。
+- 每个单元写完即 `import --unit <id>` 登记 + `g0 --unit <id>` 校验，术语告警当场处理。
+- 标题在开工前一次性定稿进 `preprocessing/plan.md`，不在翻译中途改。
