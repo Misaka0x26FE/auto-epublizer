@@ -136,10 +136,20 @@ def _render_img(alt: str, src: str) -> str:
     src = src.strip()
     if _DANGEROUS_URL.match(src):
         return ""
+    # 空 alt 兜底为文件名（纯计算，不 IO）：MediaWiki 系源站图片常无 alt，
+    # 空 alt 会被审计 W_IMG_NO_ALT 标记；agent 可在译文里显式写 alt 覆盖。
+    alt = alt.strip() or _fallback_alt(src)
     return (
         f'<img src="{escape(src, quote=True)}" alt="{escape(alt, quote=True)}" '
         'style="max-width:100%;height:auto;display:block;margin:1em auto;"/>'
     )
+
+
+def _fallback_alt(src: str) -> str:
+    """从图片路径取可读文件名作兜底 alt：取 basename 并去扩展名。"""
+    from pathlib import PurePath
+
+    return PurePath(src.split("?", 1)[0]).name.rsplit(".", 1)[0] or src
 
 
 def _inline(text: str) -> str:

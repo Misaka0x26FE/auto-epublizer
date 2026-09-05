@@ -36,6 +36,19 @@ def test_render_document() -> None:
     assert "<title>T</title>" in html
 
 
+def test_render_document_empty_alt_falls_back_to_filename() -> None:
+    """空 alt 的图片兜底为文件名，避免审计 W_IMG_NO_ALT（豆包 GT2 实测）。"""
+    # markdown 空 alt
+    html = render_document("T", "![](media/x.png)", lang="zh-CN")
+    assert 'alt="x"' in html
+    # 显式 alt 不被覆盖
+    html2 = render_document("T", "![插图](media/x.png)", lang="zh-CN")
+    assert 'alt="插图"' in html2
+    # 危险 URL 仍降级为空
+    html3 = render_document("T", "![](javascript:alert(1))", lang="zh-CN")
+    assert "<img" not in html3
+
+
 def test_slug_file() -> None:
     assert slug_file("ch01") == "ch01"
     assert slug_file("front-titlepage") == "front-titlepage"

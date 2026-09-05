@@ -56,11 +56,13 @@
 # collect_media 能识别三种形态（三行连续 / 中间空行 / 夹带文本），关键在文件存在
 from auto_epublizer.build import collect_media
 import pathlib
-media = pathlib.Path("/tmp/opencode/med"); media.mkdir(exist_ok=True)
+
+media = pathlib.Path("/tmp/opencode/med")
+media.mkdir(exist_ok=True)
 (media / "x.png").write_bytes(b"PNG")
 for md in [
-    '<figure>\n<a><img src="media/x.png"/></a>\n</figure>\n',          # 三行连续
-    '<figure>\n\n<a><img src="media/x.png"/></a>\n\n</figure>\n',       # 中间空行
+    '<figure>\n<a><img src="media/x.png"/></a>\n</figure>\n',  # 三行连续
+    '<figure>\n\n<a><img src="media/x.png"/></a>\n\n</figure>\n',  # 中间空行
     '<figure>\n<a><img src="media/x.png"/></a>\n夹带文本\n</figure>\n',  # 夹带文本
 ]:
     out, files = collect_media(md, media)
