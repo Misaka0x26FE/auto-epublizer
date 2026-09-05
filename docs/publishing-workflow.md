@@ -91,7 +91,7 @@ T/TAC 1—2016 笔译服务标准定义的环节（依次）：
 |---|---|---|
 | 收稿（齐、清、定） | 正文+辅文+图表齐全 | `init`/ingest：source → structured 四层结构 |
 | 了解全书、制订编辑方案 | 统一标准防前后矛盾 | `analyze`：overview/global/units/keypoints 生成并注入翻译 |
-| 术语表先行 | 译者前期建术语表 | `analyze` 播种 glossary 三态 + `references/` 导入 |
+| 术语表先行 | 译者前期建术语表 | agent 播种 glossary 三态 + `references/` 导入 |
 | 试译制度 | 2–3 译者试译比选 | 可选样章试译验证质量（探索阶段） |
 | 初审 | 消灭基础错误（错字/标点/体例/译名） | QA 第 0 道（零 token 确定性检查）+ 第 1 道逐批审校（cheap） |
 | 复审 | 架构 + 一致 + 存疑 | 第 2 道证据取证 Agent Loop + 第 3 道冲突仲裁 |

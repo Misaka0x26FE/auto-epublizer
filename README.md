@@ -16,13 +16,13 @@
 | 项目 | 决策 |
 |---|---|
 | 形态 | Python 3.12 CLI，`uv` 管理依赖，`typer` + `pydantic` + `rich` |
-| 翻译引擎 | OpenAI 兼容 API（`base_url`/`api_key`/`model` 多 profile），目标语言任意可配 |
+| 翻译 | **agent 任务**（唯一 LLM 原则）：CLI 不做任何 LLM 调用，译文由操作 CLI 的 agent 手写后 import 登记；目标语言任意可配 |
 | 输出样式 | 纯译文 / 双语对照两种，命令参数切换 |
 | 输入格式 | TXT/Markdown、HTML、DOCX、EPUB、PDF（文字层）、扫描 PDF（OCR） |
 | 架构模型 | 全新 `publication.json` 工作区 + 工作区目录（不沿用传统 `split/` 流程） |
-| 句级对照表 | JSONL；**段落翻译 + 模型返回句对 JSON** |
+| 句级对照表 | JSONL：agent 手写 `{seq, src, tgt, note}`，import 校验 |
 | EPUB 写出 | 纯 Python 直写 EPUB 3，不依赖 pandoc/calibre；内置审计 + 可选 epubcheck |
-| OCR | RapidOCR 离线默认 + 同一 OpenAI 兼容端点视觉模型兜底 |
+| OCR | tesseract/ocrmypdf → RapidOCR → MinerU API；「看」由 agent 视觉能力（multimodal 自报） |
 | 双语排版 | 段落级上下对照 |
 | 校验 | epubcheck 自动拉 jar 到 `~/.cache`，零 error + 解包/溯源审计 + G5 放行 |
 | 许可 | 项目自身代码 **AGPL-3.0**；第三方依赖保留各自许可证并登记 |
@@ -31,20 +31,18 @@
 
 ```text
 doctor（能力自检）→ preprocess（嗅探/元数据/TOC/体检/规模 → preprocessing/facts.*，零 token）
-                        │ agent 读 facts 撰写 plan/global/units/terms/risks/report
+                        │ agent 读 facts 撰写 capabilities/plan/global/units/terms/risks/report
                         ▼
-source/ ──ingest──▶ structured/（四层结构拆分）
+source/ ──ingest──▶ structured/（四层结构拆分；PDF 含插图/表格/公式/inserts）
                         │
                         ▼
-                    analysis/（概要/全局/每章/重点/术语表/人物表；无 LLM Key 时确定性降级，
-                              上下文缺省回退 preprocessing/ 的 agent 理解产物）
+                    analysis/ + preprocessing/（agent 撰写理解层 + 术语表）
                         │
                         ▼
-                    translation/（读 analysis/ 翻译 → 句级 align/ 对照表）
-                              （路径 A：CLI 内 LLM；路径 B：agent 手写后 import 登记）
+                    translation/（agent 手写译文 + 句级 align/ 对照表 → import 登记）
                         │
                         ▼
-                    output/（EPUB：纯译文 / 双语；--theme 选排版主题）
+                    reviews/（agent 审校写 result.json）→ output/（EPUB：纯译文 / 双语）
 ```
 
 每单元状态机：`pending → split → analyzed → translated → aligned → reviewed → built`，记入
@@ -147,8 +145,8 @@ PDF 解析难点与方案见 [docs/pdf-parsing.md](docs/pdf-parsing.md)；
 
 参考信息的定位是**待核验证据，不是事实**：
 
-- `analyze` 阶段用它播种术语库、消歧人物/术语、补充风格指南；
-- `review` 取证 Agent 可引用，但和术语库、影子修订一样属于"待核验材料"，来源不明或与原文语义冲突时不得采信；
+- 理解/翻译/审校阶段可引用它们（播种术语、消歧人物/术语、补充风格指南），
+  但它们是"待核验材料"，来源不明或与原文语义冲突时不得采信；
 - 不要求仓库内的参考目录成为任何私有缓存的必需依赖。
 
 ### 元数据与源语言
@@ -156,8 +154,9 @@ PDF 解析难点与方案见 [docs/pdf-parsing.md](docs/pdf-parsing.md)；
 - **元数据（DC 15 项）**：`init` 时从源文件自动提取（EPUB 的 OPF / PDF 的 info / DOCX 属性 / HTML meta），
   写入 `publication.json.meta`；缺项或存疑的由用户/agent **确认而非猜测**（借鉴传统"Confirm, rather than infer"）。
   映射：title/creator/publisher/date/identifier(isbn,doi)/language/rights/description/subject…
-- **源语言**：`language.source: auto` 时，`analyze` 阶段用 cheap 档检测主要语言；失败则要求显式指定
-  ISO 639-1 代码（借鉴 wenyi `detect_language_ai`）。目标语言始终显式指定（任意可配）。
+- **源语言**：`language.source: auto` 时，convert 路径用确定性脚本启发式检测（拉丁→en、
+  汉字→zh、假名→ja、谚文→ko、西里尔→ru…）；失败则要求显式指定 ISO 639-1 代码。
+  目标语言始终显式指定（任意可配）。
 - **多目标语言**：一个工作区 = 一本书 × 一个目标语言；同一本书翻多个目标语言则建多个工作区（`--target` 不同）。
 
 ### 辅文五类 → 目录映射
@@ -203,14 +202,14 @@ PDF 解析难点与方案见 [docs/pdf-parsing.md](docs/pdf-parsing.md)；
 | 数据模型 | Document → Chapter → Segment（pydantic v2） | Segment 是最小可翻译/对齐单元，带 `anchor`/`resource_href`/`cont`；meta 记 `source_page` 溯源 |
 | PDF（文字层） | `pymupdf`（AGPL，与本项目同许可兼容）| 按页切片抽文字层 + 版面块 → Markdown，逐页落 `structured/raw/` |
 | PDF 内容提取 | `pymupdf` 内置（`find_tables`/渲染） | 书签 TOC 切章、多栏阅读顺序、内嵌图/整页图版路由、表格双路径（md/裁剪图）、公式检测标记 → `raw/inserts/` 溯源（见 docs/pdf-content-spec.md） |
-| 扫描 PDF（OCR） | `rapidocr_onnxruntime`（可选 extra，懒加载） | OCR 五档路由：tesseract/ocrmypdf → rapidocr → 视觉 LLM → MinerU API → 询问用户（multimodal 由 agent 自报） |
+| 扫描 PDF（OCR） | `rapidocr_onnxruntime`（可选 extra，懒加载） | OCR 路由：tesseract/ocrmypdf → rapidocr → MinerU API → 询问用户；「看」由 agent 视觉能力（multimodal 自报） |
 | EPUB 输入 | `pandoc` 统一 → Markdown（纯文本）+ 抽取媒体 | 非 PDF 一律先走 pandoc |
 | DOCX / HTML | `pandoc` 统一 → Markdown + 媒体 | 同上 |
 | TXT/MD | 原生解析 + 标题推断（pandoc 兜底） | 最简路径 |
 | 非 PDF 兜底 | pandoc 统一处理（HTML/DOCX/EPUB → Markdown + 抽取媒体） | pandoc 缺失时明确报错，由 agent 按能力路由 |
 | 结构重建 | 自研 `structure/` | 四层结构归类、标题层级（level）、页眉页脚/页码剔除 |
-| LLM 抽象 | 借鉴 wenyi：`complete`/`complete_json` + 档位 tiers（strong/cheap/fast）+ 统一重试 + 用量账本 + 宽松 JSON 解析 | 多 provider 可插拔 |
-| 翻译引擎 | OpenAI 兼容 API，段落翻译返回等长数组，失败逐段兜底 | 目标语言任意可配 |
+| 确定性领域逻辑 | 借鉴 wenyi：`align/` 句级对照表、`glossary.csv` 三态术语、G0 静态校验、review 收敛状态机 | 零 LLM 调用 |
+| 翻译 | agent 手写 `translation/` + `align/`，`import` 校验登记 | 目标语言任意可配 |
 | 术语表 | CSV 权威 + `glossary_conflicts.jsonl` 冲突外置 + 可选 SQLite 索引；worker 只读+追加提案、单线程合并裁决；逐批按出现过滤注入 | 三态生命周期，灵活可插拔 |
 | EPUB 写出 | 纯 Python `zipfile` 直写（不依赖 pandoc/calibre/lxml） | opf + 嵌套 nav/NCX + landmarks + 封面 + DC 元数据 + 脚注语义化 |
 | QA | 内置审计（13 项结构 + 溯源审计）+ 可选 epubcheck | G5 聚合放行（docs/postprocessing-spec.md §5） |
@@ -229,13 +228,12 @@ PDF 解析难点与方案见 [docs/pdf-parsing.md](docs/pdf-parsing.md)；
    - `manifest.json` 最后原子提交，作为初始化完成标志（"派生状态先落盘，manifest 最后"）；
    - `events.jsonl` 追加式行为账本，用于审计与批次检查点恢复；
    - 导出前冻结一致快照（ExportSnapshotStore），避免读到 manifest 与章节文件的混合时刻。
-3. **LLM 抽象**：`complete` / `complete_json` 统一接口 + 档位 tiers（strong/cheap/fast）+ 传输层统一重试（关闭 SDK 内置重试避免嵌套）+ 用量账本 + 畸形 JSON 宽松解析。
-4. **段级对齐策略**：一批 N 段整体发给模型，要求返回**等长 JSON 数组**；数量不符重试（align_retry_limit），仍不符则逐段兜底翻译——从结构上杜绝整段漏译。我们在此之上再加**句级对照表**（见上文）。
+3. **段级对齐策略**：一批 N 段整体发给模型，要求返回**等长 JSON 数组**；数量不符重试（align_retry_limit），仍不符则逐段兜底翻译——从结构上杜绝整段漏译。我们在此之上再加**句级对照表**（见上文）。
 5. **术语库**：SQLite 存储 + `term_conflicts` 冲突表；同 source 出现不同 target 时保留当前译法、记录候选待人工裁决；逐批按正文实际出现过滤注入 prompt；按 rowid 排序稳定前缀缓存。
-6. **提示词工程**：system 模板保持全静态（命中 DeepSeek 等前缀缓存）；user 模板按"静态→动态"排列（风格/全书概览 → 章梗概 → 术语表 → 前文译文 → 待译正文）；标点统一规范（PUNCT_RULE）。
-7. **全书理解**：风格分析（叙事人称/语气/语域/对话风格 + 人物/术语种子）→ 并行逐章梗概 → 全书概览，全部注入每个翻译批次。这正是我们 `analysis/` 目录的自动化来源。
-8. **架构边界**：`CLI → Orchestrator（薄 façade）→ 领域服务 → agents/ingest/glossary/assemble`，下层不得反向导入上层，并发只属于领域服务、结果按稳定顺序合并；用 `test_architecture_boundaries.py` 固定契约。
-9. **配置与续跑**：YAML 配置（language/llm/segment/pipeline/paths/output），同一命令幂等续跑。
+6. **标点规范**：中文标点统一（PUNCT_RULE 思路）；翻译时保持源文标点/段落结构。
+7. **架构边界**：`CLI → Orchestrator（薄 façade）→ 领域服务`，下层不得反向导入上层，
+   并发只属于领域服务、结果按稳定顺序合并；用 `test_architecture_boundaries.py` 固定契约。
+8. **配置与续跑**：YAML 配置（language/pipeline/qc/pdf/glossary/paths/output），同一命令幂等续跑。
 
 ### 差异（我们做不同 / 更强）
 
@@ -245,7 +243,7 @@ PDF 解析难点与方案见 [docs/pdf-parsing.md](docs/pdf-parsing.md)；
 | 对齐粒度 | 段级等长数组 | 段级对齐 + **句级 JSONL 对照表** |
 | 结构模型 | 全部按章处理 | 显式出版物**四层结构**（frontmatter/body/backmatter + 外观） |
 | 核心功能 | 翻译为主 | **转换（convert）为一等功能**，翻译可选 |
-| PDF | 依赖 MinerU 外部 API | 本地 OCR（RapidOCR）+ 可选视觉 LLM |
+| PDF | 依赖 MinerU 外部 API | 本地 OCR（RapidOCR）+ 文字层/插图/表格/公式提取 + agent 视觉 |
 | 工作区 | `state/<slug>/` | `publication.json` + 工作区目录 |
 
 ## 目录结构改进（六项缺口解决方案）
@@ -254,7 +252,7 @@ PDF 解析难点与方案见 [docs/pdf-parsing.md](docs/pdf-parsing.md)；
 
 | # | 缺口 | 解决方案 |
 |---|---|---|
-| 1 | 运行痕迹无处安放 | 新增 `events.jsonl`（行为账本）、`usage.json`（token 用量）、`reviews/`（每轮审校记录） |
+| 1 | 运行痕迹无处安放 | 新增 `events.jsonl`（行为账本）、`reviews/`（审校记录） |
 | 2 | `analysis/` 只覆盖正文 | 改为 `analysis/units/`，front/back matter（序、后记等散文单元）同样有理解文件 |
 | 3 | 术语表单一 CSV 扛不住复杂性 | 见下节「术语表（灵活方案）」：CSV 权威 + 冲突外置 + 存储可插拔 |
 | 4 | 处理源文件的中间产物无处安放 | 归入 `structured/raw/`（OCR 页图、PDF→HTML 等），持久化保存供审查 |
@@ -289,7 +287,7 @@ source,target,type,aliases,gender,reading,status,note
 
 `characters.csv` 是**人物档案**（`source,target,aliases,gender,role,first_chapter,note`），比 glossary 的
 `person` 类更细（含角色身份、出现章节）；`glossary.csv` 的 `person` 类只存译名用于翻译注入。两者同源
-（`analyze` 生成），characters 是 person 类术语的详细视图。
+（agent 撰写），characters 是 person 类术语的详细视图。
 
 冲突外置到 `analysis/glossary_conflicts.jsonl`（追加式）：
 
@@ -331,15 +329,13 @@ source,target,type,aliases,gender,reading,status,note
 2. **CLI 子命令映射管线阶段**，agent 按阶段推进、每步可验证：
 
    ```text
-   auto-epublizer doctor           # 能力自检：工具链/依赖/LLM/MinerU/网络探测（multimodal/search 由 agent 自报）
+   auto-epublizer doctor           # 能力自检：工具链/依赖/MinerU/网络探测（multimodal/search 由 agent 自报）
    auto-epublizer preprocess <input>  # 预处理：init + 嗅探/元数据/TOC/体检/规模 → preprocessing/facts.*
                                       # （agent 读 facts.md 撰写 capabilities/plan/global/units/terms/risks/report）
    auto-epublizer init <input>     # 仅建工作区：source/ + publication.json + 四层结构拆分（preprocess 子集）
-   auto-epublizer analyze          # 生成 analysis/（无 LLM Key 时确定性降级，可省略）
-   auto-epublizer translate        # 路径 A：CLI 内部翻译 → translation/ + align/
-   auto-epublizer import           # 路径 B：agent 手写产物登记（G0 校验 + 状态推进 + 术语导入）
+   auto-epublizer import           # 登记 agent 手写 translation/+align/（G0 校验 + 状态推进 + 术语导入）
    auto-epublizer g0               # 翻译/导入后立即静态校验（advisory）
-   auto-epublizer review           # 审校（只读影子修订）→ 质量报告
+   #   agent 手写审校产物 reviews/review-<ts>/（含 result.json）
    auto-epublizer build            # 封装 EPUB（纯译文 / 双语；--theme 选排版主题）
    auto-epublizer convert <input>  # 仅转换（不翻译）→ <slug>.epub
    auto-epublizer qa               # 结构审计 + epubcheck + 溯源审计 + G5 放行（report.json）
@@ -349,7 +345,7 @@ source,target,type,aliases,gender,reading,status,note
 3. **幂等与续跑**：同一命令中断后重跑即可续；已完成单元安全跳过。
 4. **机器可读输出**：`status --json`、`doctor --json` 输出稳定 JSON；`qa` 聚合结果落盘
    `report.json`；明确 exit code；用户可预期错误给清晰中文提示，不打印 traceback。
-5. **离线可验证**：测试用 `FakeClient`/mock，不调用真实 LLM 或网络；agent 改完代码跑 `uv run pytest -q` 即可自证。
+5. **离线可验证**：测试全部确定性离线，不依赖任何 LLM/外部网络（`uv run pytest -q` 自证）。
 6. **确定性输出**：同一输入必得同一产物；并发结果按稳定原文序合并，不随线程完成顺序变化。
 
 ## 质量检验体系（重点参考 wenyi）
@@ -431,35 +427,33 @@ source,target,type,aliases,gender,reading,status,note
 
 | # | 里程碑 | 交付物 | 验收 |
 |---|---|---|---|
-| M1 | 脚手架 + CLI + 配置 | `uv` 项目、`convert`/`translate` 命令、config 加载 | `--help` 可跑 |
+| M1 | 脚手架 + CLI + 配置 | `uv` 项目、`convert`/`import`/`build`/`qa` 命令、config 加载 | `--help` 可跑 |
 | M2 | 工作区模型 | publication.json schema + 稳定 ID + 工作区目录 + 状态机 | 单测覆盖 schema |
 | M3 | 归一化层 | MD/TXT → HTML → DOCX → EPUB → PDF 文字层 → structured/ | 样例文件抽对结构 |
 | M4 | 结构重建 + 清洗 | 层级/页眉页脚/分栏/脚注/表格 | 复杂 PDF 样例通过 |
 | M5 | EPUB 直写器 + QA | opf/nav/ncx/封面/DC 元数据 + 内置审计 + epubcheck | epubcheck 零 error |
-| M6 | 扫描 PDF OCR | RapidOCR + 视觉 LLM 兜底 | 扫描样张转出正确结构 |
-| M7 | 翻译 | analysis 生成 → 段落翻译返回句对 → JSONL 对照表 → 双语构建 | 译后 EPUB 术语一致 |
+| M6 | 扫描 PDF OCR | RapidOCR + 传统 OCR + MinerU API + agent 视觉 | 扫描样张转出正确结构 |
+| M7 | 翻译登记 | agent 手写 translation/+align/ → import 校验 → 双语构建 | 译后 EPUB 术语一致 |
 | M8 | 测试 + README + 打包 | 端到端 fixture 测试、`uv` 可安装 | `pytest` 全绿 |
 
 ## 命令形态
 
 ```bash
 # ── 能力自检 + 预处理（agent 开工前）──────────────────────────
-auto-epublizer doctor [--ping]                        # 工具链/依赖/LLM/MinerU/网络探测；multimodal/search 由 agent 自报
+auto-epublizer doctor [--ping]                        # 工具链/依赖/MinerU/网络探测；multimodal/search 由 agent 自报
 auto-epublizer preprocess <input> [--reference <path...>]  # init + 零 token 事实 → preprocessing/facts.*
 #   agent 读 facts.md 撰写 preprocessing/{capabilities,plan,global,units,terms,risks,report}
 
-# ── 完整翻译管线 ─────────────────────────────────────────────
-auto-epublizer analyze                                # analysis/ 生成（无 Key 确定性降级，可省略）
-auto-epublizer translate [--target zh-CN] [--force]   # 路径 A：默认跳过已完成单元（断点续跑）
-#   路径 B：agent 手写 translation/ + align/ 后登记：
+# ── 完整翻译管线（agent 主路径）──────────────────────────────
+#   agent 读 structured/ 手写 translation/ + align/，然后登记：
 auto-epublizer import [--unit <id>] [--terms <csv>]   # G0 校验 + 状态推进 + 术语冲突外置
 auto-epublizer g0                                     # 静态校验（advisory，不必等到 qa）
-auto-epublizer review                                 # 审校（只读影子修订，G1–G3）
+#   agent 写审校产物 reviews/review-<ts>/（含 result.json）
 auto-epublizer build [--bilingual] [--theme standard|compact|spacious]  # 封装 EPUB
 auto-epublizer qa [--epub <path>]                     # 审计 + epubcheck + 溯源审计 + G5 放行（report.json）
 
 # ── 仅转换（不翻译）─────────────────────────────────────────
-# convert = init(ingest + structure) + build 的快捷路径，跳过 analyze/translate/review
+# convert = init(ingest + structure) + build 的快捷路径
 auto-epublizer convert <input> [-o output/<slug>.epub]
 
 # ── 状态 ────────────────────────────────────────────────────

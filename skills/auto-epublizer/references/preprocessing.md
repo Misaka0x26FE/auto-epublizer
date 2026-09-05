@@ -25,7 +25,7 @@ CLI 探测不到的五维能力边界，由你（agent）开工前自报，写 `
 | agent 自身能力 | multimodal（能否看图）、search（是否有网络搜索工具） | 扫描 PDF 视觉兜底 / 背景知识补齐路由 |
 | agent 模型 | 模型 ID、上下文窗口、是否视觉模型 | 单次可处理的书内容量、是否可走多模态 |
 | OS 环境 | 本机可达的 CLI 工具（doctor 已探测部分） | ingest/OCR 路由 |
-| 外部 API 边界 | 可用 LLM provider、MinerU key、网络可达 | 翻译/解析/检索可用性 |
+| 外部 API 边界 | 可用外部解析 API（MinerU key）、网络可达 | 解析/检索可用性 |
 | 待处理文件工作量 | 规模粗估（facts 有 token 粗估）、难点预估 | 切分与分阶段计划 |
 
 `multimodal` / `search` 也可从 `facts.md` 的「环境能力快照」里确认（CLI 探测不到的显示
@@ -45,9 +45,9 @@ CLI 探测不到的五维能力边界，由你（agent）开工前自报，写 `
 ### 2.1 `plan.md`（方案决策）
 
 输入：facts.md（源类型/体检/能力快照/路由提示）+ `references/ingest.md` 决策表。
-写明：选择的 ingest 路由（pandoc / 按页切片 / OCR 五档：传统 OCR→rapidocr→视觉 LLM→
-MinerU API→询问用户）及**依据**；扫描件时明确 OCR 或视觉兜底的执行方式；
-DRM/损坏等阻断问题在此升级给用户。
+写明：选择的 ingest 路由（pandoc / 按页切片 / OCR 档：传统 OCR→rapidocr→MinerU API→
+询问用户；你能看图〔multimodal〕时可用视觉兜底）及**依据**；扫描件时明确 OCR 或
+视觉兜底的执行方式；DRM/损坏等阻断问题在此升级给用户。
 
 ### 2.2 `global.md`（全局理解）
 
@@ -84,12 +84,12 @@ DRM/损坏等阻断问题在此升级给用户。
 - capabilities/plan/global/units/terms/risks/report 七类产物齐备
   （小书可合并风险与报告，但 capabilities/plan/global/terms 必备）。
 
-## 4. 与 analyze 的关系
+## 4. 与 analysis 的关系
 
-- 无 LLM Key 环境：跳过 `analyze`，你的 preprocessing/ 产物即理解层（translate/review
-  的上下文 fallback 自动读取）。
-- 有 LLM Key 环境：`analyze` 生成 `analysis/`（优先级更高）；也可仅用 preprocessing/
-  走纯 agent 路径——两者共存时 `analysis/` 胜出。
+- 理解层由你撰写：可写 `preprocessing/`（plan/global/units/terms/risks/report），
+  也可写 `analysis/`（overview/global/units/keypoints/style/glossary，见
+  `references/analysis.md`）——两者都作为翻译/审校的上下文读取源，`analysis/` 优先。
+- `preprocess` 只产零 token 事实与待办清单；不做任何语义生成。
 
 ## 注意事项
 

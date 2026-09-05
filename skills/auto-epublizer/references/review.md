@@ -1,64 +1,74 @@
 # Review（六道关 QC 操作指引）
 
-六道关按成本分层：先零 token，再 cheap 档，再 strong 档，按需升级。`review` 命令跑 G1–G3 收敛循环，
-`qa` 命令跑 G4，G5 是交付前的终局汇总。
+六道关按成本分层：G0/G4/G5 是 CLI 确定性校验（零 token）；G1–G3 的**语义审校是 agent
+任务**（唯一 LLM 原则）——你用自身能力读双语对照找问题、裁决、修订，并把产物按契约写进
+`reviews/review-<ts>/`，`qa` 从 `result.json` 读 g1/g2/g3 计数与收敛状态。
 
 ## 关卡总览
 
-| 关卡 | 做什么 | 成本 | 产出 |
+| 关卡 | 做什么 | 谁做 | 产出 |
 |---|---|---|---|
-| G0 | 零 token 静态校验（对照表完整性/句数一致/长度比/术语命中/标点/残留） | 0 | 静态告警列表 |
-| G1 | 逐批双语审校（cheap 档 Reviewer） | cheap | `issues` 候选 |
-| G2 | 证据取证复核（strong 档 Agent Loop） | strong | `issues` 确认/驳回 |
-| G3 | 冲突仲裁 + 影子修订 + 盲复审收敛 | strong | `patches` + 收敛判定 |
-| G4 | EPUB 结构 QA（epubcheck + 解包审计） | 0（本地） | 结构审计报告 |
-| G5 | 交付验收（汇总 + 放行清单） | 0 | `report.json` |
+| G0 | 零 token 静态校验（对照表完整性/句数一致/长度比/术语命中/标点/残留） | CLI（`g0`/`import`） | 静态告警列表 |
+| G1 | 逐段双语审校（漏译/增译/误译/术语/人称） | agent | `issues` 候选 |
+| G2 | 证据取证复核（回源文/上下文确认） | agent | `issues` 确认/驳回 |
+| G3 | 仲裁 + 修订 + 收敛判定 | agent | `patches` + `termination` |
+| G4 | EPUB 结构 QA（epubcheck + 解包审计） | CLI（`qa`） | 结构审计报告 |
+| G5 | 交付验收（汇总 + 放行清单） | CLI（`qa`） | `report.json` |
 
-## 运行与产物
-
-```bash
-auto-epublizer review [--workspace <dir>]
-```
+## 审校产物契约（agent 手写）
 
 产出 `reviews/review-<ts>/`：
 
 ```text
 reviews/review-<ts>/
 ├── metadata.json         # 内容摘要 + 审校配置指纹
-├── rounds/<n>/{issues,patches,summary}.json   # 每轮问题/补丁/小结
-├── shadow_overlay.json   # 影子译文覆盖（不改正式 translation/）
-└── result.json           # 终局：issue_count / termination / rounds
+├── issues.json           # 本轮发现的问题（G1–G2 确认后）
+├── patches.json          # 修订建议（G3）
+├── summary.md            # 审校小结
+└── result.json           # 终局：issue_count / termination / rounds（qa 读取）
 ```
 
-## 审校结果判读
+`result.json` 必填键（qa 契约）：
 
-```bash
-auto-epublizer review ...   # 输出：issue=N 收敛=<termination> 轮次=<rounds>
+```json
+{
+  "issue_count": 0,
+  "g1_candidates": 0,
+  "g2_confirmed": 0,
+  "g3_patched": 0,
+  "termination": "clean_confirmed",
+  "rounds": 2
+}
 ```
 
-`termination`（收敛终态）含义：
+审校通过（`termination == "clean_confirmed"`）后，把对应单元状态推进 `reviewed`（经
+`auto-epublizer import` 或 status 对账；若你的修订改动了 `translation/`+`align/`，
+先重新 import 再置 reviewed）。
+
+## termination（收敛终态）
 
 | 值 | 含义 | 下一步 |
 |---|---|---|
 | `clean_confirmed` | 连续 N 轮无 issue | 可进入 build |
-| `max_rounds` | 达轮数上限仍未收敛 | 人工检查 `rounds/` 遗留 issue |
-| `no_progress` | 影子译文摘要出现 A↔B 循环 | 振荡，人工介入裁决 |
-| `unresolved_fixes` | Fixer 失败积压且复审不再报 | 人工处理无法修订的句子 |
+| `max_rounds` | 达轮数上限仍未收敛 | 人工检查遗留 issue |
+| `no_progress` | 修订摘要出现 A↔B 循环 | 振荡，人工介入裁决 |
+| `unresolved_fixes` | 无法修订的句子积压 | 人工处理 |
 
 ## G1 问题类型（宁缺毋滥）
 
 `missing`（漏译）/ `added`（增译）/ `mistranslation`（误译）/ `terminology`（术语违例）/
 `pronoun`（人称/性别错误）。合理语序调整、自然意译、风格润色**不算问题**，拿不准不报。
 
-## 影子修订与盲复审
+## 修订与盲复审
 
-- G3 只在 `shadow_overlay.json` 上生成"最小修改的完整单句替换"，正式 `translation/`、
-  `glossary.csv`、`publication.json` 全程只读。
-- 下一轮审校不传旧问题说明，只读修订后的影子译文（盲审），防止"按说明书打勾"。
+- 修订先出 `patches.json`（"最小修改的完整单句替换"），确认后再改 `translation/`+
+  `align/`（改后重新 `import`）；正式 `translation/`、`glossary.csv`、`publication.json`
+  不要绕过 import 直接手改。
+- 下一轮审校不传旧问题说明，只读修订后的译文（盲审），防止"按说明书打勾"。
 
 ## 术语冲突仲裁
 
-跨块对同一术语/人称/固定表达给出矛盾译法时，应外置到 `analysis/glossary_conflicts.jsonl`
+跨段对同一术语/人称/固定表达给出矛盾译法时，应外置到 `analysis/glossary_conflicts.jsonl`
 并终局裁决；同一词多种译法并存（如赤区/苏区）是"最隐蔽的质量问题"，裁决后写回
 `analysis/glossary.csv`（权威）。
 
@@ -72,16 +82,14 @@ auto-epublizer review ...   # 输出：issue=N 收敛=<termination> 轮次=<roun
 
 | 指标 | 阈值 |
 |---|---|
-| 长度比 | `0.30 ≤ len(tgt)/len(src) ≤ 3.0` |
-| 空译文 | 禁止（直接退回） |
+| 长度比 | `0.30 ≤ len(tgt)/len(src) ≤ 3.0`（G0 告警，advisory） |
+| 空译文 | 禁止（`import` 直接退回） |
 | 句数一致 | 严格相等（含 `note` 声明例外） |
 | 差错率 | `confirmed_issues / 总句数 ≤ 1e-4` |
 | epubcheck | 0 error |
 
-> 当前实现说明：G0 可独立运行——`auto-epublizer g0` 在翻译/导入后立即校验（advisory，
+> 说明：G0 可独立运行——`auto-epublizer g0` 在翻译/导入后立即校验（advisory，
 > 不阻断放行——英→中长度比天然偏低会大量误报）；`qa` 时也会对全部已对齐单元聚合 G0
-> 进 `report.json.g0_flags`。G1–G3 由 `review` 命令驱动（无 LLM Key 环境由 agent 自行
-> 审校：读 align/ 找漏译/误译/术语违例，直接修 translation/ 后重新 import；全局理解
-> 上下文在 analysis/ 缺失时回退 preprocessing/global.md）；G4 由 `qa` 命令驱动；G5 由
-> `qa` 聚合 G0–G4 写 `report.json`（含 `error_rate`/`released`/`released_reason`）。
-> 协议违例（G1 缺 `complete:true`、翻译句对数量不符）会整批重试 2 次后报错。
+> 进 `report.json.g0_flags`。G1–G3 由你审校后写 `result.json`；全局理解上下文在
+> `analysis/` 缺失时回退 `preprocessing/global.md`。G4 由 `qa` 命令驱动；G5 由 `qa`
+> 聚合 G0–G4 写 `report.json`（含 `error_rate`/`released`/`released_reason`）。
