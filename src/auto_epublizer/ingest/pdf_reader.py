@@ -3,7 +3,10 @@
 每页独立处理、独立落盘、可单独重跑（断点续跑粒度 = 页）；页级结果保留坐标与
 类型信息，是后续结构聚合与对账的 ground truth。
 
-无文字层（扫描件）时，若提供 OCR 后端则逐页渲染为图片并 OCR；否则报错提示走 OCR 路径。
+无文字层（扫描件）时，若提供 OCR 后端则逐页渲染为图片并 OCR；渲染页图持久化到
+``structured/raw/pages/pNNN.png``（传统 OCR 只识别字符，换行与插图由 agent 逐页
+阅读 OCR 产物 + 看图兜底，见 skills lessons）。扫描件的最优先路径是 MinerU 外部
+解析 API（见 ingest/mineru.py），本路径为次选。
 """
 
 from __future__ import annotations
@@ -324,12 +327,21 @@ def _page_extras(
     return sort_reading_order([*content, *table_blocks, *img_blocks])
 
 
-def _ocr_page(page: fitz.Page, backend: OcrBackend, *, dpi: int, tmp_dir: str) -> list[dict]:
-    """把一页渲染为图片并 OCR，返回该页的 text blocks。"""
+def _ocr_page(
+    page: fitz.Page, backend: OcrBackend, *, dpi: int, render_dir: Path | None
+) -> list[dict]:
+    """把一页渲染为图片并 OCR，返回该页的 text blocks。
+
+    渲染图落 ``render_dir``（有 raw_dir 时持久化到 ``structured/raw/pages/pNNN.png``，
+    供 agent 逐页阅读 OCR 产物、看图补换行/找插图——传统 OCR 只识别字符）。
+    """
+    if render_dir is None:
+        return []
     pix = page.get_pixmap(dpi=dpi)
-    img_path = os.path.join(tmp_dir, f"ocr-{page.number + 1:03d}.png")
-    pix.save(img_path)
-    text = backend.ocr_image(img_path)
+    render_dir.mkdir(parents=True, exist_ok=True)
+    img_path = render_dir / f"p{page.number + 1:03d}.png"
+    pix.save(str(img_path))
+    text = backend.ocr_image(str(img_path))
     if not text.strip():
         return []
     return [{"type": "text", "bbox": None, "text": text.strip(), "ocr": True}]
@@ -342,7 +354,11 @@ def read_pdf(
     ocr_backend: OcrBackend | None = None,
     page_dpi: int = 150,
 ) -> SourceDocument:
-    """读取 PDF：按页切片抽文字层，逐页写 page-NNN.json 到 raw_dir；扫描件走 OCR。"""
+    """读取 PDF：按页切片抽文字层，逐页写 page-NNN.json 到 raw_dir；扫描页走 OCR。
+
+    扫描页（无文字层）渲染图持久化到 ``raw/pages/pNNN.png``，OCR 文本以
+    ``ocr:true`` 块写入 page-NNN.json。
+    """
     try:
         doc = fitz.open(str(path))
     except Exception as e:  # noqa: BLE001
@@ -355,9 +371,13 @@ def read_pdf(
     page_count = doc.page_count
     toc = doc.get_toc(simple=True)
     raw_path: Path | None = Path(raw_dir) if raw_dir is not None else None
+    # 扫描页渲染目录：有 raw_dir 时持久化（raw/pages/，供 agent 看图找插图），
+    # 否则退临时目录
+    pages_dir: Path | None = raw_path / "pages" if raw_path is not None else None
     tmp_dir: str | None = None
-    if ocr_backend is not None:
+    if ocr_backend is not None and pages_dir is None:
         tmp_dir = tempfile.mkdtemp(prefix="auto-epub-ocr-")
+        pages_dir = Path(tmp_dir)
     if raw_path is not None:
         raw_path.mkdir(parents=True, exist_ok=True)
     try:
@@ -366,7 +386,7 @@ def read_pdf(
             blocks = _page_blocks(page)
             ocr_used = False
             if not blocks and ocr_backend is not None:
-                blocks = _ocr_page(page, ocr_backend, dpi=page_dpi, tmp_dir=tmp_dir or "")
+                blocks = _ocr_page(page, ocr_backend, dpi=page_dpi, render_dir=pages_dir)
                 ocr_used = True
             if raw_path is not None:
                 media_dir = raw_path / "media"

@@ -89,12 +89,58 @@ def _ocr_backend_if_needed(store: RunStore, config: Config | None = None):
     return RapidOcrBackend()
 
 
+def _mineru_client_if_preferred(store: RunStore, config: Config | None = None):
+    """MinerU 路由决策（扫描件最优先：版面/换行/插图识别，传统 OCR 只识别字符）。
+
+    - ``pdf.backend: mineru`` → 强制 MinerU（缺 MINERU_API_KEY 时明确报错）；
+    - ``pdf.backend: pymupdf`` → 禁用；
+    - ``auto``（默认）→ 扫描件（嗅探判定）且 key 存在 → MinerU；
+      文字层 PDF 仍走 pymupdf（离线、零成本）。
+    """
+    import os
+
+    from .ingest.mineru import MineruClient
+
+    pub = store.load_publication()
+    if not pub.meta.source.lower().endswith(".pdf"):
+        return None
+    cfg = config or Config()
+    backend = (cfg.pdf.backend or "auto").lower()
+    if backend == "pymupdf":
+        return None
+    key = os.environ.get("MINERU_API_KEY", "")
+    if not key:
+        if backend == "mineru":
+            raise OrchestrationError(
+                "pdf.backend=mineru 需要环境变量 MINERU_API_KEY（未检测到；"
+                "请向用户询问 MinerU API key）"
+            )
+        return None
+    if backend == "mineru":
+        return MineruClient(key)
+    # auto：仅扫描件优先走 MinerU
+    from .preprocess.sniff import sniff
+
+    src = store.dir / pub.meta.source
+    try:
+        facts = sniff(src) if src.is_file() else {}
+    except ValueError:
+        facts = {}
+    if facts.get("scanned"):
+        return MineruClient(key)
+    return None
+
+
 def prepare_structure(store: RunStore, *, config: Config | None = None) -> list[dict[str, Any]]:
     """解析源文件并写入四层结构（幂等）：structured/ + units 清单 + split 状态。"""
+    cfg = config or Config()
     doc = load_document(
         store.dir / store.load_publication().meta.source,
         store=store,
-        ocr_backend=_ocr_backend_if_needed(store, config),
+        ocr_backend=_ocr_backend_if_needed(store, cfg),
+        mineru_client=_mineru_client_if_preferred(store, cfg),
+        mineru_model=cfg.pdf.mineru_model,
+        mineru_language=cfg.pdf.mineru_language,
     )
     pub = store.load_publication()
     entries = rebuild_structure(doc, pub)

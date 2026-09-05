@@ -45,9 +45,10 @@ CLI 探测不到的五维能力边界，由你（agent）开工前自报，写 `
 ### 2.1 `plan.md`（方案决策）
 
 输入：facts.md（源类型/体检/能力快照/路由提示）+ `references/ingest.md` 决策表。
-写明：选择的 ingest 路由（pandoc / 按页切片 / OCR 档：传统 OCR→rapidocr→MinerU API→
-询问用户；你能看图〔multimodal〕时可用视觉兜底）及**依据**；扫描件时明确 OCR 或
-视觉兜底的执行方式；DRM/损坏等阻断问题在此升级给用户。
+写明：选择的 ingest 路由（pandoc / 按页切片 / 扫描件路由：**MinerU API 最优先——
+无 key 时先询问用户是否有**；无 key 才退传统 OCR/rapidocr + 逐页阅读兜底）及
+**依据**；扫描件时明确 OCR 或逐页阅读的执行方式（含工作量估算：页数 × 逐页阅读
+成本）；DRM/损坏等阻断问题在此升级给用户。
 
 ### 2.2 `global.md`（全局理解）
 

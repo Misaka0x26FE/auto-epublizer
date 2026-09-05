@@ -20,3 +20,4 @@
 | [2026-09-04-capabilities-status.md](2026-09-04-capabilities-status.md) | 已完成 | capabilities.md 接入 status 完整性检查 |
 | [2026-09-04-pdf-dogfooding.md](2026-09-04-pdf-dogfooding.md) | 已完成 | 真书 dogfooding：新 PDF 管线实战验证与阈值回填（5 缺陷修复） |
 | [2026-09-04-remove-internal-llm.md](2026-09-04-remove-internal-llm.md) | 已完成 | 移除内部 LLM 路径（唯一 LLM = agent 本身；代码 + 文档全库落地） |
+| [2026-09-05-scanned-pdf-mineru.md](2026-09-05-scanned-pdf-mineru.md) | 已完成 | 扫描件 PDF 处理方式更新：MinerU 最优先（后端落地）+ 传统 OCR 逐页阅读兜底 |

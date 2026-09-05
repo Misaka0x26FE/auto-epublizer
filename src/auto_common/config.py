@@ -42,10 +42,12 @@ class QCConfig(BaseModel):
 
 
 class PDFConfig(BaseModel):
-    backend: str = "auto"
+    backend: str = "auto"  # auto | pymupdf | mineru（auto=扫描件且 key 存在时优先 MinerU）
     ocr: str = "auto"
     page_dpi: int = 300
-    mineru_effort: str = "medium"
+    mineru_effort: str = "medium"  # 未接线（MinerU v4 API 无此参数）；保留兼容旧配置
+    mineru_model: str = "pipeline"  # pipeline（默认，确定性）| vlm（高精度，内部为 VLM）
+    mineru_language: str = "ch"  # MinerU OCR 语言（PaddleOCR 语言码：ch/en/ja/…）
 
 
 class GlossaryConfig(BaseModel):

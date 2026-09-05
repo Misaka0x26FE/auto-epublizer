@@ -121,7 +121,8 @@ skills/auto-epublizer/
 ├── source/           ① 待处理文件（原样，绝不改动）
 ├── output/           ② 成品 EPUB（<slug>.epub / <slug>-bi.epub）
 ├── structured/       ③ 按出版物四层结构拆分的源文（frontmatter/body/backmatter/media）
-│                     + raw/（处理源文件的中间产物：OCR 页图、PDF→HTML，持久化供审查）
+│                     + raw/（处理源文件的中间产物：OCR 页图、PDF→HTML、
+│                     pages/（扫描页渲染图）、mineru/（MinerU 解析产物），持久化供审查）
 ├── analysis/         ④ 分层理解（agent 产物：overview/global/units/keypoints/glossary 等）
 ├── translation/      ⑤ 译文（镜像 structured 树）+ align/<unit-id>.jsonl 句级对照表
 ├── reviews/          ⑥ 审校运行记录 review-<ts>/（issues/patches/summary/result.json）
@@ -199,8 +200,9 @@ CLI → Orchestrator（薄 façade）→ 领域服务 → glossary / align / g0 
 **能力自检先行**：agent 开工前先跑 `auto-epublizer doctor` 判断环境工具链（pandoc/pymupdf/
 OCR（tesseract/ocrmypdf/rapidocr）/epubcheck/MinerU/网络），并**自报 multimodal 与
 search**（能否看图、有无搜索工具，CLI 无法探测）——据此按
-skills 的能力-路由决策表选择 ingest 路由（pandoc / 按页切片 / OCR 档：
-传统 OCR→rapidocr→MinerU API→询问用户；「看」是 agent 自身能力）。PDF 内容提取
+skills 的能力-路由决策表选择 ingest 路由（pandoc / 按页切片 / 扫描件档：
+**MinerU 外部 API 最优先（无 key 时先询问用户）→ 传统 OCR + agent 逐页阅读兜底**；
+「看」是 agent 自身能力）。PDF 内容提取
 （插图/表格/公式/多栏/书签切章）规范见 [docs/pdf-content-spec.md](docs/pdf-content-spec.md)。
 
 ## 状态与续跑不变量

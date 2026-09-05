@@ -6,6 +6,7 @@ from pathlib import Path
 
 from auto_common.workspace import RunStore
 
+from .mineru import MineruClient, MineruError, read_mineru
 from .models import SourceDocument
 from .pandoc_reader import PandocError, read_pandoc
 from .pdf_reader import PdfError, read_pdf
@@ -32,10 +33,15 @@ def load_document(
     *,
     store: RunStore | None = None,
     ocr_backend=None,
+    mineru_client: MineruClient | None = None,
+    mineru_model: str = "pipeline",
+    mineru_language: str = "ch",
 ) -> SourceDocument:
     """按扩展名读取源文件并归一化为 SourceDocument。
 
-    ``ocr_backend``：扫描 PDF 无文字层时的 OCR 后端（None 则报错提示走 OCR）。
+    - ``ocr_backend``：pymupdf 路径下扫描页的 OCR 后端（None 则报错提示走 OCR）；
+    - ``mineru_client``：提供时 PDF 走 MinerU 外部解析（扫描件最优先路径），
+      版面/换行/插图/表格/公式由 MinerU 识别，优先级高于 pymupdf+OCR。
     """
     path = Path(source_path)
     ext = path.suffix.lower()
@@ -49,6 +55,17 @@ def load_document(
     if ext in (".txt", ".md", ".markdown"):
         return read_text(str(path))
     if ext == ".pdf":
+        if mineru_client is not None:
+            try:
+                return read_mineru(
+                    path,
+                    raw_dir=raw_dir,
+                    client=mineru_client,
+                    model_version=mineru_model,
+                    language=mineru_language,
+                )
+            except MineruError as e:
+                raise IngestError(str(e)) from e
         try:
             return read_pdf(path, raw_dir=raw_dir, ocr_backend=ocr_backend)
         except PdfError as e:
