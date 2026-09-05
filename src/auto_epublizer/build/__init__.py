@@ -183,7 +183,7 @@ def _render_opf(
             f'media-type="{escape(media_type)}"{prop_attr}/>'
         )
     m.append("  </manifest>")
-    m.append("  <spine>")
+    m.append('  <spine toc="ncx">')
     for rid in spine_ids:
         linear = ' linear="no"' if rid in cover_docs else ""
         m.append(f'    <itemref idref="{escape(rid)}"{linear}/>')
@@ -486,7 +486,7 @@ def build_epub(
             media_type = _MEDIA_TYPES.get(ext, "application/octet-stream")
             # href 与 XHTML 内引用一致（URL 编码特殊字符）
             href = quote(epub_path)
-            item_id = epub_path
+            item_id = epub_path.replace("/", "_")  # manifest id 必须为合法 XML name（不含 /）
             props = "cover-image" if cover_media and epub_path == cover_media else None
             if props:
                 cover_item_id = item_id

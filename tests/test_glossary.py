@@ -35,6 +35,18 @@ def test_csv_roundtrip(tmp_path: Path) -> None:
     assert loaded[1].aliases == ["James Gatz", "Jay"]
 
 
+def test_row_to_entry_tolerates_none_cells() -> None:
+    """None 单元格（非 csv.DictReader，如 JSON 反序列化行）不崩溃（豆包 GT2 实测回归）。"""
+    from auto_translator.glossary.csv_io import row_to_entry
+
+    entry = row_to_entry(
+        {"source": "foo", "target": None, "type": "person", "aliases": None, "note": None}
+    )
+    assert entry.source == "foo"
+    assert entry.target == "" and entry.note == "" and entry.aliases == []
+    assert entry.type == "person"
+
+
 def test_propose_new_term_becomes_seed() -> None:
     g = Glossary()
     g.propose("Sorge", "薛林根", type="person")

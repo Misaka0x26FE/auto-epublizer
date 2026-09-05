@@ -332,6 +332,10 @@ def test_build_epub_embeds_media_files(tmp_path: Path) -> None:
         opf = zf.read("OEBPS/content.opf").decode("utf-8")
         assert "media/x.png" in opf
         assert "image/png" in opf
+        # 豆包 GT2 实测回归：manifest media id 不得含 /（XML name 非法 → epubcheck RSC-005）
+        assert '<item id="media_x.png" href="media/x.png"' in opf
+        # NCX 存在时 spine 必须指定 toc（epubcheck RSC-005）
+        assert '<spine toc="ncx">' in opf
 
 
 def test_build_epub_embeds_stylesheet(tmp_path: Path) -> None:
@@ -413,7 +417,8 @@ def test_cover_image_and_linear_no(tmp_path: Path) -> None:
     with zipfile.ZipFile(out) as zf:
         opf = zf.read("OEBPS/content.opf").decode("utf-8")
     assert 'properties="cover-image"' in opf
-    assert '<meta name="cover" content="media/cover.png"/>' in opf
+    # cover meta 指向 manifest id（无斜杠版：item id 由路径去斜杠生成）
+    assert '<meta name="cover" content="media_cover.png"/>' in opf
     assert '<itemref idref="cover.xhtml" linear="no"/>' in opf
     assert '<itemref idref="ch01.xhtml"/>' in opf
 
