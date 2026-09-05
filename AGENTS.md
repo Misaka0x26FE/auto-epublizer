@@ -115,6 +115,20 @@ skills/auto-epublizer/
 
 > 维护本仓库时，改了 CLI 命令/工作区契约/QC 行为，须同步更新对应 reference 与 SKILL.md 路由表。
 
+## 文档地图（docs/ 四类文档各归其位）
+
+| 目录 | 定位 | 内容 | 何时新增/更新 |
+|---|---|---|---|
+| `docs/` 根 | **规范 / 交接 / 测试指南** | 设计规范（`pdf-content-spec` / `epub-template-spec` / `postprocessing-spec`）、交叉文档（`agent-vs-code` / `quality-control` / `quality-lessons` 规范表 / `configuration` / `translation-flow` / `publishing-workflow`）、交接（`workstate`）、豆包环境测试指南（`testing-doubao`） | 改设计/接交流程时 |
+| `docs/plans/` | **每次任务的计划文档** | `YYYY-MM-DD-<主题>.md`，立项→实施→回写状态（完成标提交号）；README 索引 | 每轮开发任务立项时 |
+| `skills/auto-epublizer/references/` | **面向「用 CLI 处理书」的 agent 常规操作指引** | 每个阶段一份（workflow/preprocessing/ingest/…/style） | 改 CLI 命令/工作区契约/QC 行为时 |
+| `skills/auto-epublizer/lessons/` | **真实工作沉淀的特定情况经验** | 判据/处置/验证三段式，每篇一主题；索引含来源与去向 | 遇到并解决一个特定源站/脏源/边界情况时 |
+
+**经验教训的归位规则**：计划文档的验证记录（如 `pdf-dogfooding` §6）是可复用经验的
+**来源**，但经验本体**沉淀到 `lessons/`**（计划文档保留验证上下文，lessons 提供
+「同型情况怎么判/怎么修」）；规范表（如 `quality-lessons.md` 的正向目标/负面限制）
+留在 `docs/` 作为 QC 设计依据。新教训一律写 `lessons/`，不往 plans 里塞经验正文。
+
 ## 工作区目录契约
 
 ```text
