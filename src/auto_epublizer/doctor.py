@@ -77,13 +77,17 @@ def probe_epubcheck(config: Config) -> Capability:
 
 
 def probe_mineru() -> Capability:
-    """外部解析 API MinerU：探测 MINERU_API_KEY 环境变量（本地只读，无网络）。"""
+    """外部解析 API MinerU：扫描件 PDF 首选解析方案（探测 MINERU_API_KEY，本地只读）。"""
     key = os.environ.get("MINERU_API_KEY", "")
     return Capability(
         name="mineru",
         available=bool(key),
-        impact="无 MinerU API key：复杂版面 PDF 无法走外部解析 API（MinerU Open Source License）",
-        hint="export MINERU_API_KEY=..." if not key else "",
+        impact="无 MinerU API key：扫描件退次选方案（传统 OCR 只识别字符，"
+        "换行与插图需 agent 逐页阅读兜底）",
+        hint="扫描件首选 MinerU（版面分析，可识别换行/插图/表格/公式）；"
+        "请询问用户是否有 API key，有则 export MINERU_API_KEY=..."
+        if not key
+        else "",
         detail="env MINERU_API_KEY" if key else "",
     )
 

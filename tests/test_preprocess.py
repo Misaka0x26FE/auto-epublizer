@@ -174,21 +174,42 @@ def _routing(caps: dict) -> str:
     return _ocr_routing(caps)[0]
 
 
-def test_ocr_routing_prefers_traditional_ocr() -> None:
-    assert "传统 OCR" in _routing(_caps_summary(tesseract=True, rapidocr=True))
-    assert "传统 OCR" in _routing(_caps_summary(ocrmypdf=True))
+def test_ocr_routing_prefers_mineru_when_key_present() -> None:
+    """key 存在 → 首选 MinerU（优先级反转后不再优先传统 OCR/rapidocr）。"""
+    assert "首选 MinerU" in _routing(_caps_summary(mineru=True, tesseract=True, rapidocr=True))
 
 
-def test_ocr_routing_falls_back_to_rapidocr() -> None:
-    assert "RapidOCR" in _routing(_caps_summary(rapidocr=True, mineru=True))
+def test_ocr_routing_asks_user_for_mineru_key_first() -> None:
+    """无 key → 第一提示是「询问用户是否有 MinerU key」（最优先方案）。"""
+    routing = _routing(_caps_summary(tesseract=True, rapidocr=True))
+    assert "询问用户" in routing and "MinerU" in routing
 
 
-def test_ocr_routing_mineru_tier() -> None:
-    assert "MinerU" in _routing(_caps_summary(mineru=True))
+def test_ocr_routing_secondary_traditional_ocr() -> None:
+    """无 key 时传统 OCR 降为次选提示（第二行）。"""
+    from auto_epublizer.preprocess.facts import _ocr_routing
+
+    for caps in (_caps_summary(tesseract=True), _caps_summary(ocrmypdf=True)):
+        lines = _ocr_routing(caps)
+        assert "传统 OCR" in lines[1]
+        assert "逐页阅读" in lines[1]
+
+
+def test_ocr_routing_secondary_rapidocr() -> None:
+    """无 key 时 rapidocr 降为次选提示（第二行）。"""
+    from auto_epublizer.preprocess.facts import _ocr_routing
+
+    lines = _ocr_routing(_caps_summary(rapidocr=True))
+    assert "RapidOCR" in lines[1]
+    assert "逐页阅读" in lines[1]
 
 
 def test_ocr_routing_no_backend_asks_user() -> None:
-    assert "请用户提供" in _routing(_caps_summary())
+    """完全无手段 → 提示询问用户（MinerU key / 其他 OCR / 手工 OCR）。"""
+    from auto_epublizer.preprocess.facts import _ocr_routing
+
+    lines = _ocr_routing(_caps_summary())
+    assert "询问用户" in lines[1]
 
 
 def _workspace(tmp_path: Path):

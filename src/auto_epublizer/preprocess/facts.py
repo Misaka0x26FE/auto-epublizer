@@ -152,26 +152,38 @@ def collect_facts(store: RunStore, config) -> dict[str, Any]:
 
 
 def _ocr_routing(caps: dict[str, Any]) -> list[str]:
-    """扫描件 OCR 路由提示（确定性；最终决策见 preprocessing/plan.md）。
+    """扫描件路由提示（确定性；最终决策见 preprocessing/plan.md）。
 
-    优先级：传统 OCR → rapidocr → MinerU 外部 API → 询问用户。
-    视觉兜底（页面转图理解）是 agent 自身能力——由 agent 按自报 multimodal 决策，
-    不在本路由内。
+    优先级（2026-09 更新）：**MinerU 外部 API 最优先**（版面分析，可识别
+    换行/插图/表格/公式）——key 未配置时先询问用户；无 key 才退次选：
+    传统 OCR（只识别字符）+ agent 逐页阅读 OCR 产物补换行、期间找插图。
     """
     c = caps["capabilities"]
-    if c.get("tesseract", {}).get("available") or c.get("ocrmypdf", {}).get("available"):
-        return [
-            "扫描件 OCR 路由：首选传统 OCR（tesseract/ocrmypdf 可用）——"
-            "可先对扫描 PDF 做文字层重建再入库"
-        ]
-    if c.get("rapidocr", {}).get("available"):
-        return ["扫描件 OCR 路由：RapidOCR 离线 OCR（init 自动走 pdf.ocr: auto）"]
     if c.get("mineru", {}).get("available"):
-        return ["扫描件 OCR 路由：MinerU 外部 API（MINERU_API_KEY 已配置）"]
-    return [
-        "扫描件 OCR 路由：无可用 OCR 手段——请用户提供可用 OCR / 解析手段或手工 OCR 后重跑"
-        "（若你可看图〔multimodal 自报〕，可自行视觉兜底难页）"
+        return [
+            "扫描件路由：首选 MinerU 外部 API（MINERU_API_KEY 已配置；"
+            "pdf.backend=auto 时 init 自动走 MinerU，版面/换行/插图由其识别）"
+        ]
+    out = [
+        "扫描件路由：最优先方案是 MinerU 外部 API（能识别换行/插图/版面，"
+        "传统 OCR 只识别字符）——请先询问用户是否有 MinerU API key"
     ]
+    if c.get("tesseract", {}).get("available") or c.get("ocrmypdf", {}).get("available"):
+        out.append(
+            "次选（无 key 时）：传统 OCR（tesseract/ocrmypdf 可用，先重建文字层再入库）"
+            "+ agent 逐页阅读 OCR 产物补换行、看 raw/pages/ 页图找插图"
+        )
+    elif c.get("rapidocr", {}).get("available"):
+        out.append(
+            "次选（无 key 时）：RapidOCR 离线 OCR（init 自动走 pdf.ocr: auto）"
+            "+ agent 逐页阅读 OCR 产物补换行、看 raw/pages/ 页图找插图"
+        )
+    else:
+        out.append(
+            "无可用 OCR 手段——询问用户：提供 MinerU key、其他 OCR 手段，或手工 OCR 后重跑"
+            "（若你可看图〔multimodal 自报〕，可自行视觉兜底难页）"
+        )
+    return out
 
 
 def _route_suggestions(sniff_facts: dict[str, Any], capabilities: dict[str, Any]) -> list[str]:

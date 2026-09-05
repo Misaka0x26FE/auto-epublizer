@@ -110,6 +110,28 @@ def test_load_document_pdf_ocr_fallback(tmp_path: Path) -> None:
     assert any("OCR 识别出的正文" in s.source for u in doc.units for s in u.segments)
 
 
+def test_load_document_pdf_ocr_persists_page_renders(tmp_path: Path) -> None:
+    """扫描页渲染图持久化到 raw/pages/（agent 逐页阅读找插图的素材）。"""
+    import fitz
+
+    from auto_epublizer.ingest.ocr import FakeOcrBackend
+    from auto_epublizer.ingest.pdf_reader import read_pdf
+
+    pdf_path = tmp_path / "scan.pdf"
+    pdf = fitz.open()
+    pdf.new_page()
+    pdf.new_page()
+    pdf.save(str(pdf_path))
+    pdf.close()
+
+    raw_dir = tmp_path / "raw"
+    read_pdf(pdf_path, raw_dir=raw_dir, ocr_backend=FakeOcrBackend(text="页文本"))
+    p1 = raw_dir / "pages" / "p001.png"
+    p2 = raw_dir / "pages" / "p002.png"
+    assert p1.is_file() and p2.is_file()
+    assert p1.read_bytes().startswith(b"\x89PNG")
+
+
 def test_fake_ocr_backend() -> None:
     backend = FakeOcrBackend(text="识别文本")
     assert backend.ocr_image("nope.png") == "识别文本"
