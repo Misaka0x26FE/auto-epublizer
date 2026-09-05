@@ -276,7 +276,7 @@ def test_aggregate_mineru_chapters_no_headings() -> None:
 
 
 def test_aggregate_mineru_chapters_pre_content_frontmatter() -> None:
-    """首个章级标题前的内容归 frontmatter；深层标题留在章内。"""
+    """每个标题（任意层级）都是单元边界；源文层级写入 heading_level。"""
     from auto_epublizer.ingest.models import SourceSegment
 
     segs = [
@@ -289,9 +289,14 @@ def test_aggregate_mineru_chapters_pre_content_frontmatter() -> None:
         SourceSegment(index=6, source="tail", kind=KIND_TEXT, meta={}),
     ]
     units = aggregate_mineru_chapters(segs, book_title="T")
-    assert [u.id for u in units] == ["fm01", "ch01", "ch02"]
+    assert [u.id for u in units] == ["fm01", "ch01", "ch02", "ch03"]
     assert units[0].kind == "frontmatter"
-    assert [s.source for s in units[1].segments] == ["body", "Sub", "more"]
+    # 源文标题层级原样保留（目录据此嵌套，E_TOC_FLAT 才能真实校验）
+    assert units[1].title == "Ch 1" and units[1].meta["heading_level"] == 1
+    assert units[2].title == "Sub" and units[2].meta["heading_level"] == 2
+    assert units[3].title == "Ch 2" and units[3].meta["heading_level"] == 1
+    assert [s.source for s in units[1].segments] == ["Ch 1", "body"]
+    assert [s.source for s in units[2].segments] == ["Sub", "more"]
 
 
 # ── 编排路由决策 + 全链路 ────────────────────────────────────────────────
@@ -323,6 +328,14 @@ def test_mineru_decision_forced_missing_key(
         orch._mineru_client_if_preferred(store, Config(pdf=PDFConfig(backend="mineru")))
 
 
+def _patch_sniff_scanned(monkeypatch: pytest.MonkeyPatch) -> None:
+    """让嗅探判定扫描件（经 importlib 取真子模块，规避 preprocess 包对函数的遮蔽）。"""
+    import importlib
+
+    sniff_module = importlib.import_module("auto_epublizer.preprocess.sniff")
+    monkeypatch.setattr(sniff_module, "sniff", lambda p: {"scanned": True})
+
+
 def test_mineru_decision_matrix(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """强制/禁用/auto×扫描 的路由矩阵（auto：文字层 PDF 不走 MinerU）。"""
     from auto_common.config import Config, PDFConfig
@@ -343,11 +356,7 @@ def test_mineru_decision_matrix(tmp_path: Path, monkeypatch: pytest.MonkeyPatch)
     assert auto_text is None
 
     # auto + 扫描件（嗅探 monkeypatch 为 scanned）→ MinerU
-    import sys
-
-    monkeypatch.setattr(
-        sys.modules["auto_epublizer.preprocess.sniff"], "sniff", lambda p: {"scanned": True}
-    )
+    _patch_sniff_scanned(monkeypatch)
     auto_scanned = orch._mineru_client_if_preferred(store, Config())
     assert isinstance(auto_scanned, MineruClient)
 
@@ -371,11 +380,7 @@ def test_mineru_e2e_init_scanned_pdf(tmp_path: Path, monkeypatch: pytest.MonkeyP
     from auto_epublizer import orchestrator as orch
 
     monkeypatch.setenv("MINERU_API_KEY", "k")
-    import sys
-
-    monkeypatch.setattr(
-        sys.modules["auto_epublizer.preprocess.sniff"], "sniff", lambda p: {"scanned": True}
-    )
+    _patch_sniff_scanned(monkeypatch)
     monkeypatch.setattr("auto_epublizer.ingest.mineru.MineruClient", _FakeClient)
 
     store = orch.init(str(_pdf(tmp_path)), workspace_dir=tmp_path / "ws", config=Config())

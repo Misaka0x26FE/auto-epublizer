@@ -46,6 +46,7 @@ v1 把预处理定义为「翻译前的文件拆解与分析」。v2 明确其�
 preprocessing/
 ├── facts.json        # CLI 确定性事实（幂等，含能力边界快照）
 ├── facts.md          # 人类可读版 + agent 待办 + doctor 能力快照
+├── todo.md           # 【新增】agent 写：逐细节任务清单（开工第一件，全程勾选）
 ├── capabilities.md   # 【新增】agent 自报：自身能力/模型/可调外部 API（五维 ①②④）
 ├── plan.md           # agent 写：处理方案决策（路由 + 依据）
 ├── global.md         # 全局理解
@@ -54,6 +55,11 @@ preprocessing/
 ├── risks.md          # 风险标注
 └── report.md         # 汇总报告
 ```
+
+`todo.md` 建议结构（agent 写，非 CLI 校验；模板见 `references/preprocessing.md` §2.0）：
+把全书处理细化到「不用思考就能照做」的颗粒度——每单元一项（读 structured → 写
+translation + align → import → g0）、每 3–5 单元一次 build 校验、审校/质检/交付
+各阶段逐项；全程勾选并随进展追加。
 
 `capabilities.md` 建议结构（agent 写，非 CLI 校验）：
 

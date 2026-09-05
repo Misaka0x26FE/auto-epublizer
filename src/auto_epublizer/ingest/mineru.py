@@ -351,37 +351,19 @@ def _segments_from_content_list(
 def aggregate_mineru_chapters(
     segments: list[SourceSegment], *, book_title: str
 ) -> list[SourceUnit]:
-    """按 MinerU 标题层级切章：章级标题为单元边界，章前内容归 frontmatter。
+    """按 MinerU 标题层级切单元：**每个标题（任意层级）都是单元边界**。
 
-    章级判定：取最小 ``text_level``；但最小层级**只出现一次且存在更深层级**时
-    视为书名页（典型：全书唯一 level-1 是书名，章节为 level-2），取更深一层
-    为章级。更深层级标题留在章内作为 heading 段（渲染为 ``##`` 子标题）；
-    无任何标题信号时保持单单元（与 aggregate_pdf_chapters 的回退一致）。
+    与 pandoc 路径一致（``pandoc_reader`` 对每个 ``#``/``##`` 标题各切一个单元）：
+    源文层级 ``text_level`` 原样写入单元 ``meta.heading_level``——EPUB 目录据此
+    嵌套（``#``→章、``##``→节），qa 的 ``E_TOC_FLAT`` 才能按源文层级真实校验。
+    首个标题前的内容归 frontmatter；无任何标题信号时保持单单元。
     """
-    level_counts: dict[int, int] = {}
-    for s in segments:
-        if s.kind == KIND_HEADING and s.meta.get("mineru_text_level"):
-            lvl = int(s.meta["mineru_text_level"])
-            level_counts[lvl] = level_counts.get(lvl, 0) + 1
-    if not level_counts:
-        return [
-            SourceUnit(
-                id="ch01",
-                kind="chapter",
-                title=book_title,
-                segments=segments,
-                meta={"aggregated": True, "parser": "mineru"},
-            )
-        ]
-    chapter_level = min(level_counts)
-    if level_counts[chapter_level] <= 1 and len(level_counts) > 1:
-        chapter_level = min(lvl for lvl in level_counts if lvl > chapter_level)
-
-    def _is_chapter(s: SourceSegment) -> bool:
-        return s.kind == KIND_HEADING and s.meta.get("mineru_text_level") == chapter_level
-
-    first = next((i for i, s in enumerate(segments) if _is_chapter(s)), None)
-    if first is None:
+    headings = [
+        (i, s)
+        for i, s in enumerate(segments)
+        if s.kind == KIND_HEADING and s.meta.get("mineru_text_level")
+    ]
+    if not headings:
         return [
             SourceUnit(
                 id="ch01",
@@ -393,45 +375,27 @@ def aggregate_mineru_chapters(
         ]
 
     units: list[SourceUnit] = []
-    if first > 0:
+    first_i = headings[0][0]
+    if first_i > 0:
         units.append(
             SourceUnit(
                 id="fm01",
                 kind="frontmatter",
                 title=book_title,
-                segments=segments[:first],
+                segments=segments[:first_i],
                 meta={"aggregated": True, "parser": "mineru"},
             )
         )
-    chapter_no = 0
-    current_title: str | None = None
-    current: list[SourceSegment] = []
-    for seg in segments[first:]:
-        if _is_chapter(seg):
-            if current or current_title:
-                chapter_no += 1
-                units.append(
-                    SourceUnit(
-                        id=f"ch{chapter_no:02d}",
-                        kind="chapter",
-                        title=current_title or book_title,
-                        segments=current,
-                        meta={"aggregated": True, "parser": "mineru"},
-                    )
-                )
-            current_title = seg.source.strip()
-            current = []
-        else:
-            current.append(seg)
-    if current or current_title:
-        chapter_no += 1
+    for idx, (start, head) in enumerate(headings):
+        end = headings[idx + 1][0] if idx + 1 < len(headings) else len(segments)
+        level = int(head.meta["mineru_text_level"])
         units.append(
             SourceUnit(
-                id=f"ch{chapter_no:02d}",
+                id=f"ch{idx + 1:02d}",
                 kind="chapter",
-                title=current_title or book_title,
-                segments=current,
-                meta={"aggregated": True, "parser": "mineru"},
+                title=head.source.strip(),
+                segments=[head, *segments[start + 1 : end]],
+                meta={"aggregated": True, "parser": "mineru", "heading_level": level},
             )
         )
     return units

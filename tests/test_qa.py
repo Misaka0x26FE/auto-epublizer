@@ -216,6 +216,39 @@ def test_generate_report_unconfirmed_blocks_release() -> None:
     assert result.released is False
 
 
+def test_generate_report_terminology_blocks_release() -> None:
+    """G0 术语命中是真实缺陷：存在即不放行（QC 落实；豆包曾把术语漏检混为 advisory）。"""
+    from auto_epublizer.qa import EpubcheckResult
+
+    audit = AuditResult(ok=True)
+    review = {
+        "g1_candidates": 0,
+        "g2_confirmed": 0,
+        "g3_patched": 0,
+        "termination": "clean_confirmed",
+        "rounds": 1,
+    }
+    result = generate_report(
+        "book",
+        audit,
+        EpubcheckResult(available=True, ran=True, errors=0, warnings=0),
+        review=review,
+        g0_flags=[
+            {"unit": "ch01", "check": "length", "message": "长度比过低（疑漏译）", "data": {}},
+            {
+                "unit": "ch01",
+                "check": "terminology",
+                "message": "术语 Academy City 译文缺失 学园都市",
+                "data": {},
+            },
+        ],
+        total_sentences=50,
+    )
+    assert result.g0_terminology_open == 1
+    assert result.released is False
+    assert result.released_reason == "terminology_open"
+
+
 def test_audit_media_warnings(tmp_path: Path) -> None:
     """媒体审计：缺 alt / 超宽图 / webp 兼容性告警（P1）；audit 不含主题违规。"""
     import struct

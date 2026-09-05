@@ -606,11 +606,13 @@ def status(store: RunStore, *, as_json: bool = False) -> dict[str, Any]:
             stale.append(
                 {"id": u.id, "status": u.status, "reason": "translation_present_not_imported"}
             )
-    # 预处理对账：facts 已生成但 agent 理解产物未完成（global.md + capabilities.md 必备，
-    # 见 docs/plans/preprocessing-plan-v2.md capabilities 契约）
+    # 预处理对账：facts 已生成但 agent 理解产物未完成（todo.md + global.md +
+    # capabilities.md 必备，见 docs/plans/preprocessing-plan-v2.md capabilities 契约
+    # 与 references/preprocessing.md §2.0 todo.md 要求）
     has_preprocessing = (store.preprocessing_dir / "facts.json").is_file()
     preprocessing_complete = (
         has_preprocessing
+        and (store.preprocessing_dir / "todo.md").is_file()
         and (store.preprocessing_dir / "global.md").is_file()
         and (store.preprocessing_dir / "capabilities.md").is_file()
     )
