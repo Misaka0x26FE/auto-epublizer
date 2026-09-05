@@ -261,7 +261,8 @@ def test_audit_media_warnings(tmp_path: Path) -> None:
     result = audit_epub(out)
     codes = {f.code for f in result.findings}
     assert "W_IMG_LARGE" in codes  # 5001px 宽
-    assert "W_IMG_NO_ALT" in codes  # 空 alt 的 img 无 alt 属性？——空 alt 仍有 alt=
+    # 空 alt 已被 build 兜底为文件名（test_build 回归），正常管道不再产生 W_IMG_NO_ALT
+    assert "W_IMG_NO_ALT" not in codes
     assert "W_IMG_FORMAT" in codes  # webp
     assert result.ok
 
