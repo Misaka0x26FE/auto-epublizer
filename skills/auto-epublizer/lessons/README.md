@@ -27,3 +27,5 @@
 |---|---|---|
 | [2026-09-05-baka-tsuki-html-figures.md](2026-09-05-baka-tsuki-html-figures.md) | Baka-Tsuki 源站 HTML 的插图段结构（figure>a>img 三行）在 ingest/build 的保真与复原 | 已修复（1766e7a 等）+ 经验留存 |
 | [2026-09-05-scanned-pdf-mineru-first.md](2026-09-05-scanned-pdf-mineru-first.md) | 扫描件 PDF：MinerU 最优先（换行/插图识别），传统 OCR 只识别字符需 agent 逐页阅读兜底 | 已落地（ingest/mineru.py）+ 经验留存 |
+| [2026-09-05-scanned-pdf-operations.md](2026-09-05-scanned-pdf-operations.md) | 扫描件实操：>200 页分批/合并、**别脚本化拆分（agent 手动拆）**、单单元构建丢 nav、围栏代码块缺支持 | 经验留存（豆包四轮实测） |
+| [2026-09-05-agent-translation-workflow.md](2026-09-05-agent-translation-workflow.md) | agent 主进程翻译工作流：每 3–5 单元 build 验证、标题先定稿、Write 工具代替 heredoc、G0 告警不能全当噪声 | 经验留存（GT1/GT2/On Lisp 实测） |
