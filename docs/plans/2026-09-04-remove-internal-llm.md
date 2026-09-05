@@ -1,6 +1,7 @@
 # 计划：移除内部 LLM 路径（唯一 LLM = agent 本身）
 
-> 状态：**实施中**（2026-09-04 立项并当日实施）。原则已写入 `AGENTS.md`「唯一 LLM 原则」：
+> 状态：**已完成**（2026-09-04）。代码移除（`ead308d`，-3294 行）+ 文档同步（`c331c9f`）；
+> 209 tests + ruff 全绿，`test_no_llm_api_calls_anywhere` 强制回归。原则已写入 `AGENTS.md`「唯一 LLM 原则」：
 > CLI 只做确定性、零 token 计算；禁止新增任何 LLM API 调用；存量内部 LLM 路径全部移除。
 
 ## 已定决策
