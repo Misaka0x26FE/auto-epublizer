@@ -29,3 +29,4 @@
 | [2026-09-05-scanned-pdf-mineru-first.md](2026-09-05-scanned-pdf-mineru-first.md) | 扫描件 PDF：MinerU 最优先（换行/插图识别），传统 OCR 只识别字符需 agent 逐页阅读兜底 | 已落地（ingest/mineru.py）+ 经验留存 |
 | [2026-09-05-scanned-pdf-operations.md](2026-09-05-scanned-pdf-operations.md) | 扫描件实操：>200 页分批/合并、**别脚本化拆分（agent 手动拆）**、单单元构建丢 nav、围栏代码块缺支持 | 经验留存（豆包四轮实测） |
 | [2026-09-05-agent-translation-workflow.md](2026-09-05-agent-translation-workflow.md) | agent 主进程翻译工作流：每 3–5 单元 build 验证、标题先定稿、Write 工具代替 heredoc、G0 告警不能全当噪声 | 经验留存（GT1/GT2/On Lisp 实测） |
+| [2026-09-05-scanned-pdf-issue-checklist.md](2026-09-05-scanned-pdf-issue-checklist.md) | 扫描件全流程 15 问题清单：主仓库缺口核实（围栏代码块/链接正则/转义）+ epubcheck 错误码速查 + 修复建议 | 经验留存（JS 权威指南实测；缺口待合入） |
