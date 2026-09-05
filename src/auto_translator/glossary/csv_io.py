@@ -52,16 +52,16 @@ def _coerce_gender(value: str) -> str:
     return value if value in GENDERS else ""
 
 
-def row_to_entry(row: dict[str, str]) -> GlossaryEntry:
+def row_to_entry(row: dict[str, str | None]) -> GlossaryEntry:
     return GlossaryEntry(
-        source=row.get("source", "").strip(),
-        target=row.get("target", "").strip(),
-        type=_coerce_type(row.get("type", "")),
-        aliases=_parse_aliases(row.get("aliases", "")),
-        gender=_coerce_gender(row.get("gender", "")),
-        reading=row.get("reading", "").strip(),
-        status=_coerce_status(row.get("status", "")),
-        note=row.get("note", "").strip(),
+        source=(row.get("source") or "").strip(),
+        target=(row.get("target") or "").strip(),
+        type=_coerce_type(row.get("type") or ""),
+        aliases=_parse_aliases(row.get("aliases") or ""),
+        gender=_coerce_gender(row.get("gender") or ""),
+        reading=(row.get("reading") or "").strip(),
+        status=_coerce_status(row.get("status") or ""),
+        note=(row.get("note") or "").strip(),
     )
 
 
