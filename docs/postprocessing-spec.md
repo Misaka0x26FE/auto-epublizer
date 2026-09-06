@@ -14,6 +14,9 @@
 
 ## 2. 三大类验收标准与现状差距
 
+> 现状列是**立项时（2026-09-04 前）快照**；完成情况以 §4 为准（P0–P2 已全部完成），
+> 下表 ⬜ 项均已实现并接入 `qa`。
+
 ### 2.1 内容完整性与溯源
 
 > 目标：仓库内容齐全无缺漏，翻译后的每个部分都能追溯到原文。
@@ -57,20 +60,33 @@
 
 ## 3. 数据契约
 
-### 3.1 溯源审计（新增，零 token 纯函数）
+### 3.1 溯源审计（零 token 纯函数）
 
-输入 `structured/<id>.md` + `translation/align/<id>.jsonl`，输出每单元：
+输入 `structured/<id>.md` + `translation/align/<id>.jsonl` + 成品 EPUB spine，
+输出**全书聚合**结果（`qa/provenance.py::ProvenanceResult`，经 `to_dict()` 进 report.json）：
 
 ```json
 {
-  "unit_id": "ch01",
-  "segments_total": 42,
-  "segments_covered": 42,
-  "missing_segments": [],
-  "media_src": 3,
-  "media_tgt": 3,
+  "units_total": 12,
+  "units_missing": [],
+  "units_unexpected": [],
+  "units_order_ok": true,
+  "coverage": 1.0,
+  "coverage_missing": [],
   "media_lost": [],
-  "media_order_ok": true
+  "media_order_violations": [],
+  "toc_depths_expected": [1, 2],
+  "toc_depths_nav": [1, 2],
+  "toc_flat": false,
+  "toc_depth_mismatch": false,
+  "inserts_total": 3,
+  "inserts_missing_files": 0,
+  "inserts_no_desc": 0,
+  "inserts_no_latex": 0,
+  "findings": [
+    {"level": "error", "code": "E_UNIT_ORDER", "message": "…"},
+    {"level": "warning", "code": "W_INSERT_NO_DESC", "message": "…"}
+  ]
 }
 ```
 
@@ -102,7 +118,7 @@
 3. ✅ **媒体溯源**：`E_MEDIA_LOST`/`E_MEDIA_ORDER`
 4. ✅ **逐段覆盖率**：`provenance_coverage` 进 report.json（无翻译产物为 null）
 5. ✅ **源文勘误留痕**：`detect_corrections` + `annotate_correction_notes`；
-   translate 与 import 两路径均写 align `note` 前缀 `corr:wrong→right`
+   import 路径写 align `note` 前缀 `corr:wrong→right`（translate 命令已随内部 LLM 移除）
 6. ✅ **TOC 对账**：facts 源 TOC vs 单元标题 → `W_TOC_MISSING`（warning 线索）
 7. ✅ **脚注语义化**：`noteref`/`footnote` + 全局序号 + 双向跳转（`FootnoteState`）
 8. ✅ **样式瘦身**：`_STYLE_CSS` 去字体/颜色/字号/行距/缩进/对齐（回归测试锁定）
@@ -132,12 +148,16 @@
 
 ## 5. 放行条件扩展
 
-现有 G5 放行条件（`g2_confirmed==0 或全部修订` + `epubcheck 0 error` + `audit pass`）
-基础上新增：
+现有 G5 放行条件（`g2_confirmed==0 或全部修订` + `g0_terminology_open==0` +
+`epubcheck 0 error（且实际运行）` + `audit pass`）基础上新增：
 
-- `provenance_coverage == 1.0`（每段可溯）
-- 三边对账零 error、媒体溯源零 error
+- `provenance_coverage ≈ 1.0`（≥0.9999，每段可溯；无翻译产物为 null，convert 路径不适用）
+- 三边对账零 error、媒体溯源零 error、溯源 findings 无 error 级
+  （`E_UNIT_ORDER`/`E_MEDIA_ORDER`/`E_INSERT_BAD_SOURCE` 等均阻断放行）
+- `inserts_missing_files == 0`（插入内容文件不缺失）
 - 目录层级零 `E_TOC_FLAT`（有层级源）
+
+> 实现见 `qa/report.py::generate_report`（`prov_ok` 聚合判定 + `released_reason` 细分）。
 - 插入内容文件零缺失（`inserts_missing_files == 0`，pdf-content-spec §9：
   每个插图/表格/公式可回溯原始地址 `{page,bbox,xref,method}` 且媒体文件在盘）
 

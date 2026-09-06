@@ -23,12 +23,12 @@ analysis/
 
 1. 先读 `preprocessing/facts.md` 与 `preprocessing/` 的理解产物（plan/global/units/terms）；
 2. 写 overview/global/units/keypoints（概述、全局、每单元、重点）；
-3. 语言与体裁：`publication.json` 的 `meta.language`/`meta.genre` 由 convert 路径用
-   确定性启发式回填（拉丁→en、汉字→zh、假名→ja、谚文→ko、西里尔→ru…；体裁按
-   参考文献/脚注/引用密集→academic、短标题块→newspaper、默认 novel）；如启发式不准，
-   直接用自身判断修正；
-4. `style.md`：可用 `render_style_md`（CLI 确定性助手）生成初稿再按书调整，或直接参照
-   `references/style.md` 写。
+3. 语言与体裁：convert/build 用确定性启发式（拉丁→en、汉字→zh、假名→ja、谚文→ko、
+   西里尔→ru…）为 EPUB 标注 `dc:language`（**不写回** `publication.json.meta`）；
+   `meta.genre` 检测未接线——由你自行判定文体并在 `style.md` 声明；
+4. `style.md`：可用 `render_style_md` 生成初稿再按书调整（库函数，无 CLI 子命令；
+   `uv run python -c "from auto_translator.analysis import render_style_md; print(render_style_md('novel'))"`），
+   或直接参照 `references/style.md` 写。
 
 ## 术语三态（agent 播种）
 
@@ -44,7 +44,8 @@ analysis/
 
 `person`（人物）/ `place`（地名）/ `org`（组织）/ `term`（术语）/ `event`（事件）/
 `period`（历史时期）/ `work`（作品）/ `fixed_expr`（固定表达）。小说还含 `appellation`（称谓）/
-`honorific`（敬称）/ `speech`（口癖），这些 **source-only** 类型只按完整原文精确匹配。
+`honorific`（敬称）/ `speech`（口癖）——这些是文体档案的 **source-only** 分类标注
+（提醒翻译时保持一致），术语命中检查对所有类型统一按字面/词边界匹配，无特殊分支。
 
 ## 注意事项
 

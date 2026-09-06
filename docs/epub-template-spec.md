@@ -85,7 +85,7 @@
 ```text
 standard  → serif + 1.7 行距 + 缩进 + 两端对齐 + 标题居中（默认）
 compact   → sans-serif + 1.4 行距 + 无缩进 + 左对齐
-spacious  → serif + 2.0 行距 + 缩进 + 两端对齐
+spacious  → serif + 2.0 行距 + 缩进 + 两端对齐 + 标题居中
 ```
 
 每套主题仅派生「排版微调」几个 CSS 属性，不引入字体名、颜色、字号；

@@ -5,7 +5,7 @@
 ## 命令
 
 ```bash
-auto-epublizer build [--bilingual] [-o <out.epub>] [--workspace <dir>]
+auto-epublizer build [--bilingual] [-o <out.epub>] [--theme standard|compact|spacious] [--workspace <dir>]
 ```
 
 - 单语：从 `translation/<rel_path>` 读译文（缺省回退 `structured/`）。

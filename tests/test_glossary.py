@@ -35,7 +35,7 @@ def test_csv_roundtrip(tmp_path: Path) -> None:
     assert loaded[1].aliases == ["James Gatz", "Jay"]
 
 
-def test_row_to_entry_tolerates_none_cells() -> None:
+def test_row_to_entry_tolerates_none_cells(tmp_path: Path) -> None:
     """None 单元格（非 csv.DictReader，如 JSON 反序列化行）不崩溃（豆包 GT2 实测回归）。"""
     from auto_translator.glossary.csv_io import row_to_entry
 
@@ -45,6 +45,23 @@ def test_row_to_entry_tolerates_none_cells() -> None:
     assert entry.source == "foo"
     assert entry.target == "" and entry.note == "" and entry.aliases == []
     assert entry.type == "person"
+
+
+def test_source_only_types_survive_csv_roundtrip(tmp_path: Path) -> None:
+    """文体档案 source-only 类型（appellation/honorific/speech）不做静默降级。
+
+    回归：此前 TERM_TYPES 白名单不含这三类，CSV 往返会静默降级为 term，
+    与 genre/profiles.py 的 novel source_only_types 契约矛盾。
+    """
+    entries = [
+        _entry("anie", "小安", type="appellation"),
+        _entry("dono", "大人", type="honorific"),
+        _entry("desu wa", "的说", type="speech"),
+    ]
+    p = tmp_path / "glossary.csv"
+    save_glossary_csv(p, entries)
+    loaded = load_glossary_csv(p)
+    assert [e.type for e in loaded] == ["appellation", "honorific", "speech"]
 
 
 def test_propose_new_term_becomes_seed() -> None:

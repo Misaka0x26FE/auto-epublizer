@@ -46,12 +46,15 @@ structured/
 
 在单元内部，把段落（Segment）按字符预算打包成批次：
 
-| 参数 | 默认 | 说明 |
+> 内部翻译管线已随「移除内部 LLM」删除（2026-09-04）；下表参数**无 CLI 默认值**，
+> 仅作为 agent 自行翻译时的操作建议（批次多大、注入多少上文由 agent 按上下文窗口决定）。
+
+| 参数 | 建议值 | 说明 |
 |---|---|---|
-| `max_chars_per_segment` | 1200 | 单段超过则按句末标点再拆，续段标 `cont` 回并 |
-| `max_chars_per_batch` | 1800 | 一个批次（句群）目标大小，按字符估算 token |
-| `rolling_context_segments` | 6 | 注入前文译文尾段数 |
-| `align_retry_limit` | 2 | 句对数量不符时的重试次数 |
+| `max_chars_per_segment` | 1200 | 单段超过则按句末标点再拆（续段回并在 align `note` 留痕） |
+| `max_chars_per_batch` | 1800 | 一个批次（句群）目标大小（agent 上下文预算） |
+| `rolling_context_segments` | 6 | 翻译时携带的前文译文尾段数 |
+| `align_retry_limit` | 2 | （历史参数，等长数组校验已随内部管线移除） |
 
 - 段落 = Segment（最小可对齐单元），一段对应源/译文各一个；
 - 批次 = 若干段落，一次发给模型，模型**必须返回等长句对 JSON**；

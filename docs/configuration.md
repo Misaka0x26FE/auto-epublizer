@@ -1,7 +1,10 @@
 # 配置参考（config.yaml 目标 schema）
 
-本文档汇总各环节的配置项，作为 `config.yaml` 与 `publication.json.meta.config`（配置快照）的统一形状。
+本文档汇总各环节的配置项，作为 `config.yaml` 的统一形状。
 实现以 `src/auto_common/config.py` 为契约，新增配置项须同步更新此处、根目录示例与测试。
+`init` 时仅把关键项快照进 `publication.json.config`（顶层字段，只含
+`bilingual` / `target_language` 两项，见 `workspace/models.py::ConfigSnapshot`），
+并非本表全量的镜像。
 
 **唯一 LLM 原则**：CLI 不调用任何 LLM，配置中没有 provider/密钥/档位段；
 一切语义工作（理解/翻译/审校）由操作 CLI 的 agent 用自身能力完成。
@@ -35,8 +38,8 @@ pdf:
 
 # ── 术语表 ──────────────────────────────────────────────────
 glossary:
-  storage: csv            # csv（默认）| sqlite（可选内部索引）
-  scope: chapter          # chapter=只注入本章出现的词条；full=全量表
+  storage: csv            # csv（默认，权威存储）；sqlite 未实现（预留）
+  scope: chapter          # 未接线（预留；当前术语注入由 agent 按本章出现过滤）
 
 # ── 路径 ─────────────────────────────────────────────────────
 paths:
@@ -44,9 +47,9 @@ paths:
 
 # ── 输出 ─────────────────────────────────────────────────────
 output:
-  mono: true
-  bilingual: false
-  about_page: true        # 书末附加"关于此翻译"说明页
+  mono: true              # 未接线（预留；mono/bilingual 由 build --bilingual 决定）
+  bilingual: false        # 未接线（同上）
+  about_page: true        # 未接线（预留；"关于此翻译"页未实现）
   theme: standard         # 排版主题：standard | compact | spacious（docs/epub-template-spec.md §5）
                           # 仅排版微调（泛化字族/行距/缩进/对齐），无具体字体名/颜色/字号
 ```

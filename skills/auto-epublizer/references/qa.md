@@ -54,6 +54,7 @@ auto-epublizer qa [--epub <path>] [--workspace <dir>]
 
 - `g4_epubcheck_errors == 0`（epubcheck 已实际运行）
 - `g4_audit == "pass"`（解包审计零 error）
+- G0 术语命中清零（`g0_terminology_open == 0`；长度比类告警才是 advisory）
 - 审校 `g2_confirmed == 0` 或全部已修订
 - 溯源完整（postprocessing-spec §5）：`provenance_coverage ≈ 1.0`（无翻译产物时为
   null，不适用）、`units_missing == 0`、`units_order_ok`、`media_lost == 0`、
@@ -65,13 +66,14 @@ auto-epublizer qa [--epub <path>] [--workspace <dir>]
 （溯源不完整：看 `provenance_findings` 里的 E_UNIT_MISSING/E_UNIT_ORDER/E_MEDIA_LOST/
 E_MEDIA_ORDER/E_TOC_FLAT/E_INSERT_MISSING_FILE/E_INSERT_BAD_SOURCE 定位）/
 `epubcheck_not_run`（jar 缺失，装 jar 重跑）/ `epubcheck_errors`。
-G0 告警（`g0_flags`）是 advisory 线索，不阻断放行；
+G0 **长度比**类告警是 advisory 线索，不阻断放行；**术语命中**（`g0_terminology_open`）
+是放行硬门，未清零 → `released_reason=terminology_open`。
 `toc_missing`（facts 源 TOC 对账）与 `W_TOC_DEPTH` 是 warning 线索，不阻断。
 
 ## 插入内容（inserts）审计判读
 
 `raw/inserts/<id>.json`（插图/表格/公式描述文件，pdf-content-spec §2）存在时，
-provenance 追加四码检查（W 级不阻断，但按 translation.md「inserts 补全」补齐后再复跑）：
+provenance 追加四码检查（E 级进放行门；W 级不阻断，但按 translation.md「inserts 补全」补齐后再复跑）：
 
 | 码 | 级别 | 含义与处置 |
 |---|---|---|
@@ -80,14 +82,18 @@ provenance 追加四码检查（W 级不阻断，但按 translation.md「inserts
 | `W_INSERT_NO_DESC` | warning | `content_desc` 为空——agent 按 translation.md「inserts 补全」回源页写内容描述 |
 | `W_INSERT_NO_LATEX` | warning | formula 记录 `latex` 为空——agent 手写 LaTeX 填入（依据 bbox 定位公式，图为准） |
 
-计数在 `report.json` 的溯源字段：`inserts_total` / `inserts_missing_files`（进放行门）/
-`inserts_no_desc` / `inserts_no_latex`；逐条信息看 `provenance_findings`。
+report.json 落盘的计数字段只有 `inserts_missing_files`（进放行门）；
+`inserts_total` / `inserts_no_desc` / `inserts_no_latex` 只在溯源结果对象内存在，
+不落盘——需要计数时自行统计 `provenance_findings` 里的 `W_INSERT_NO_DESC` /
+`W_INSERT_NO_LATEX` 条目。
 
 ## 排查
 
 - `epubcheck errors: -1` → 未装 jar；按 `doctor` 提示下载放到 `~/.cache/epubcheck.jar` 后重跑。
 - `成品不存在` → 先 `build` 或 `convert`。
 - 审计发现 `W_H1_COUNT` → 内容文档标题层级问题（每章应恰一个 h1）。
+- `W_NAMING` → 成品文件名与 slug 前缀不符；`-o` 重命名或按 `<slug>.epub`/`<slug>-bi.epub` 输出。
+- `W_STRUCT_MISSING` → structured/ 源文文件缺失（被误删）；从源文件重跑该单元 ingest。
 - `provenance_incomplete` →
   - `E_UNIT_MISSING`：spine 缺单元——检查该单元译文/源文是否存在、是否为空壳被跳过；
   - `E_MEDIA_LOST`/`E_MEDIA_ORDER`：译文丢图或图片顺序变了——对照 `structured/` 原文补齐；

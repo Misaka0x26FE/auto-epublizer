@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import fitz
+import pymupdf as fitz
 
 from .images import _render_clip
 from .inserts import InsertRecord, InsertSource, next_insert_id

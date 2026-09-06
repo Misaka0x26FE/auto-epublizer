@@ -7,6 +7,9 @@
 > ⚠️ **后续**：2026-09-04 另完成「移除内部 LLM 路径」（唯一 LLM 原则，`docs/plans/
 > 2026-09-04-remove-internal-llm.md`），本文件中提及的 `llm_vision_model`/`usage.json`/
 > `analyze` 等已过时，以该计划为准。
+> §2 的 OCR 优先级决策已被 2026-09-05「MinerU 外部 API 最优先」取代
+> （`lessons/2026-09-05-scanned-pdf-mineru-first.md`）；§6 中「qa/report.py 无需新增
+> 字段」亦已过时（`QaResult` 已含 `inserts_missing_files` 等溯源字段）。
 
 ## 1. 目标与路线
 

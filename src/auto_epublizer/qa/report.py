@@ -87,6 +87,9 @@ def generate_report(
     toc_flat = bool(prov.get("toc_flat"))
     prov_findings = list(prov.get("findings") or [])
     inserts_missing_files = int(prov.get("inserts_missing_files") or 0)
+    # error 级溯源发现必须清零：E_UNIT_ORDER（spine 含未知文档）、E_MEDIA_ORDER
+    # （图片相对顺序错乱）、E_INSERT_BAD_SOURCE 等均为真实缺陷（与 provenance.ok 一致）
+    prov_error_findings = [f for f in prov_findings if f.get("level") == "error"]
     prov_ok = (
         (coverage is None or coverage >= 0.9999)
         and units_missing == 0
@@ -94,6 +97,7 @@ def generate_report(
         and media_lost == 0
         and not toc_flat
         and inserts_missing_files == 0
+        and not prov_error_findings
     )
 
     # 放行条件（对齐 AGENTS.md G5 + postprocessing-spec §5）：确认问题为零或全部已修订；

@@ -23,7 +23,7 @@
 2. build 后成品 EPUB 里对应插图**缺失**；
 3. 源站原图 URL 可下载，但 build 找不到本地文件。
 
-**根因（实测校正）**：build 端 `collect_media`（`src/auto_epublizer/build/__init__.py:426`）
+**根因（实测校正）**：build 端 `collect_media`（`src/auto_epublizer/build/__init__.py`，其内 `_HTML_FIG_IMG`/`_HTML_IMG` 重写逻辑约 L426）
 用 `_HTML_FIG_IMG`/`_HTML_IMG` 提取 `<img src>` 并按 `raw/media/` 解析文件；**找不到文件
 → 该引用被丢弃**。`\s*` 允许换行，所以「三行连续 / 中间有空行 / 夹带少量文本」都能识别
 （已实测）；真正丢图的场景是：

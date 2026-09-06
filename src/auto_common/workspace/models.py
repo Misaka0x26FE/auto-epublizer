@@ -65,9 +65,9 @@ class PublicationMeta(BaseModel):
     creator: str | None = None
     contributors: list[str] = Field(default_factory=list)
     translator: str | None = None
-    language: str = ""  # 源语言（auto 时由 analyze 检测后回填）
+    language: str = ""  # 源语言（auto 时构建 EPUB 用确定性启发式判定，不写回本字段）
     target_language: str = "zh-CN"
-    genre: str | None = None  # 体裁（auto 时由 analyze 判定后回填）
+    genre: str | None = None  # 体裁（文体档案由 agent 依据源文自行判定并在 style.md 声明）
     publisher: str | None = None
     date: str | None = None
     identifier: Identifier = Field(default_factory=Identifier)

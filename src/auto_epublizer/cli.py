@@ -1,4 +1,4 @@
-"""typer CLI：init/convert/status 命令入口（convert 路径先行）。"""
+"""typer CLI 命令入口：init/convert/status/build/qa/preprocess/doctor/import/g0/version。"""
 
 from __future__ import annotations
 
@@ -209,10 +209,10 @@ def preprocess(
 @app.command()
 def doctor(
     json_output: bool = typer.Option(False, "--json", help="输出 JSON 能力报告"),
-    ping: bool = typer.Option(False, "--ping", help="实际请求 LLM 端点验证连通性（有超时风险）"),
+    ping: bool = typer.Option(False, "--ping", help="实际请求外部站点验证网络连通性（有超时风险）"),
     config: str | None = typer.Option(None, "--config", help="配置文件路径"),
 ) -> None:
-    """环境与能力自检：工具链 / Python 依赖 / LLM 可用性（纯只读）。"""
+    """环境与能力自检：工具链 / Python 依赖 / 外部解析 API 与网络（纯只读）。"""
     from .doctor import capabilities_summary, collect_capabilities
 
     cfg = load_config(config or _CONFIG_PATH)
@@ -231,7 +231,8 @@ def doctor(
             if c.hint:
                 console.print(f"      应对：{c.hint}")
     console.print(
-        "  [dim]multimodal（能否看图）需 agent 自行判定：能看图 → 扫描 PDF 可用视觉 LLM 兜底[/dim]"
+        "  [dim]multimodal（能否看图）与 search（有无搜索工具）CLI 无法探测，"
+        "由 agent 自行判定并落盘 preprocessing/capabilities.md[/dim]"
     )
 
 
@@ -241,6 +242,9 @@ def import_cmd(
     terms: str | None = typer.Option(
         None, "--terms", help="导入 agent 提取的新术语提案（CSV，含 source/target/type 列）"
     ),
+    reviewed: bool = typer.Option(
+        False, "--reviewed", help="把已对齐（aligned）单元推进为 reviewed（审校通过后的登记）"
+    ),
     workspace: str | None = typer.Option(None, "--workspace", help="工作区目录"),
     config: str | None = typer.Option(None, "--config", help="配置文件路径"),
 ) -> None:
@@ -248,9 +252,15 @@ def import_cmd(
     cfg = load_config(config or _CONFIG_PATH)
     store = _store_from(workspace, cfg)
     try:
-        result = orch.import_translations(store, unit_id=unit, terms_path=terms)
+        result = orch.import_translations(
+            store, unit_id=unit, terms_path=terms, mark_reviewed=reviewed
+        )
     except (ValueError, OSError, orch.OrchestrationError) as e:
         raise typer.Exit(f"导入失败：{e}") from None
+    if result["reviewed"]:
+        console.print(
+            f"[green]审校通过已登记：[/green]{len(result['reviewed'])} 个单元推进为 reviewed"
+        )
     for item in result["failed"]:
         console.print(f"[red]✗ {item['unit']}[/red]")
         for err in item["errors"]:
@@ -270,7 +280,7 @@ def import_cmd(
             f"须逐条核验清零后才能放行[/red]"
         )
     for sid in result["skipped"]:
-        console.print(f"[dim]- {sid}：无 rel_path，跳过[/dim]")
+        console.print(f"[dim]- {sid}：跳过（无 rel_path 或已 reviewed/built）[/dim]")
     if result["conflicts_open"]:
         console.print(
             f"[yellow]术语冲突 {result['conflicts_open']} 条已外置到 "

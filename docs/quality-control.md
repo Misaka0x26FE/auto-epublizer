@@ -52,8 +52,7 @@ translator(强档)                 G0 零 token 静态校验 ── 不过则退
 
 | 检查项 | 规则 | 失败动作 |
 |---|---|---|
-| 对照表完整性 | 每句原文有 `src↔tgt` 映射，`seq` 连续 1..N 无缺号、无重复 | 标记单元 `aligned_failed`，退回重译该段 |
-| 句数一致 | 原文句数 == 译句句数（允许 `note` 声明的拆/并句） | 同上 |
+| 对照表完整性 | 每句原文有 `src↔tgt` 映射，`seq` 连续 1..N 无缺号、无重复，无空原文/空译文 | 阻断该单元 import（报错清单），修正后重跑 |
 | 长度比 | `len(tgt)/len(src)` 落在 `[0.30, 3.0]`；译文非空 | 告警，交 G1 复核 |
 | 术语命中 | 正文出现 glossary `source` 时，译文包含对应 `target`（NFKC 归一化 + 词边界） | 告警，交 G1 定责 |
 | 勘误留痕 | 句 src 命中已知排印讹误先例（IDG→IDF 等）→ align `note` 前缀 `corr:` | 留痕，不告警 |
@@ -127,22 +126,29 @@ Autofix（可选）：先写可恢复索引 `reviews/<ts>/autofix/index.json`，
   ```json
   {
     "slug": "…", "epub_path": "…",
-    "g0_flags": [], "g1_candidates": 0, "g2_confirmed": 0,
+    "g0_flags": [], "g0_terminology_open": 0, "g1_candidates": 0, "g2_confirmed": 0,
     "g3_patched": 0, "g3_termination": "clean_confirmed", "g3_rounds": 2,
-    "g4_epubcheck_errors": 0, "g4_audit": "pass",
-    "error_rate": 0.0,
+    "total_sentences": 0, "error_rate": 0.0,
+    "g4_epubcheck_errors": 0, "g4_audit": "pass", "passed": true,
+    "audit": {"ok": true, "errors": 0, "findings": []},
+    "epubcheck": {"available": true, "ran": true, "errors": 0, "warnings": 0, "messages": []},
     "provenance_coverage": 1.0, "units_missing": 0, "units_order_ok": true,
     "media_lost": 0, "toc_missing": [], "toc_flat": false,
-    "provenance_findings": [],
+    "inserts_missing_files": 0, "provenance_findings": [],
     "released": true, "released_reason": "ok"
   }
   ```
 - 发布清单核对：成品命名（`<slug>.epub` / `<slug>-bi.epub`，`W_NAMING`）、元数据（DC 项齐全）、
   封面、版权署名、许可。
-- **放行条件**（对齐 docs/postprocessing-spec.md §5）：`g2_confirmed == 0` 或全部已修订；
-  `g4_epubcheck_errors == 0`；`g4_audit == "pass"`；溯源完整（`provenance_coverage ≈ 1.0`
-  （无翻译产物为 null）、三边对账/媒体溯源零缺失、`toc_flat == false`）。
-  G0 告警为 advisory，不阻断（英→中长度比天然偏低，实测大量误报）。
+- **放行条件**（对齐 docs/postprocessing-spec.md §5 与 `qa/report.py::generate_report`）：
+  `g2_confirmed == 0` 或全部已修订（`g3_patched`）；
+  **`g0_terminology_open == 0`**（G0 术语命中是真实缺陷——译文缺失术语表源词，
+  必须逐条核验清零，否则 `released_reason=terminology_open`）；
+  `g4_epubcheck_errors == 0`；`g4_audit == "pass"`；溯源完整
+  （`provenance_coverage ≈ 1.0`（无翻译产物为 null）、三边对账/媒体溯源零缺失、
+  `toc_flat == false`、溯源 findings 无 error 级）。
+  G0 **长度比**告警是 advisory，不阻断（英→中长度比天然偏低，实测大量误报）；
+  epubcheck 未运行（jar 缺失）视为未验证，不放行。
 
 ## 3. 数据契约（落 `reviews/`）
 
@@ -184,27 +190,23 @@ Autofix（可选）：先写可恢复索引 `reviews/<ts>/autofix/index.json`，
 ### Review 运行目录
 
 ```text
-reviews/review-<ts>/
-├── metadata.json         # 内容摘要 + 审校配置指纹 + 术语表指纹（复用判定）
-├── checkpoint.json       # 轮级检查点（续跑）
-├── rounds/<n>/{issues,patches,summary}.json
-├── conflicts.json        # 冲突仲裁记录
-├── shadow_overlay.json   # 影子译文覆盖
-├── autofix/index.json    # 可选：正式写回索引
-├── usage.json            # 本轮 token 增量
-└── result.json           # 终局：issue_count / termination / usage
+reviews/review-<ts>/     # agent 手写的审校记录（G1–G3 由 agent 自身执行）
+├── issues/               # 审校发现
+├── patches/              # 修订补丁
+├── summary               # 汇总说明
+└── result.json           # 终局（qa 从此读取）：g1_candidates / g2_confirmed /
+                         # g3_patched / termination / rounds（issue_count 为旧回退键）
 ```
 
 ## 4. 验收阈值（默认，可配置）
 
 | 指标 | 阈值 | 含义 |
 |---|---|---|
-| 长度比 | `0.30 ≤ ratio ≤ 3.0` | 过小疑漏译、过大疑失控 |
-| 空译文 | 禁止 | 直接退回 |
-| 句数一致 | 严格相等（含 `note` 声明例外） | 对齐完整性 |
-| 差错率 | `confirmed_issues / 总句数 ≤ 1e-4`（万分之一） | 对齐出版差错率惯例 |
-| epubcheck | 0 error | 结构合法性 |
-| 术语命中 | 术语违例数 → 0（仲裁后） | 全书一致性 |
+| 长度比 | `0.30 ≤ ratio ≤ 3.0`（advisory） | 过小疑漏译、过大疑失控；G1 复核 |
+| 空译文 | 禁止 | import 阻断该单元 |
+| 术语命中 | `g0_terminology_open == 0`（放行硬门） | 全书一致性；真实缺陷须清零 |
+| 差错率 | `confirmed / total_sentences ≤ 1e-4`（agent 自查参考，非 CLI 硬门） | 对齐出版差错率惯例 |
+| epubcheck | 0 error（且须实际运行） | 结构合法性 |
 
 ## 5. 收敛状态机（G3）
 
@@ -222,29 +224,33 @@ start ──▶ R1 审校 ──▶ 无 issue ──▶ clean_streak++ ──▶
 
 ## 6. 配置项（`config` 的 `qc` 段）
 
+`config.yaml` 的 `qc` 段**实际只有两项**（见 `auto_common/config.py`）：
+
 ```yaml
 qc:
-  gates: [g0, g1, g2, g3, g4, g5]
-  length_ratio: { too_short: 0.30, too_long: 3.0 }
-  error_rate_threshold: 0.0001
-  align_retry_limit: 2            # 翻译对齐失败重试次数
-  review: { enabled: true, concurrency: 4, output_retries: 2 }
-  evidence: { enabled: true, tier: strong, max_rounds: 2 }
-  arbitration: { enabled: true }
-  fix_loop: { enabled: true, max_rounds: 2, clean_confirmations: 2 }
-  autofix: false
+  length_ratio: { too_short: 0.30, too_long: 3.0 }   # G0 长度比告警阈值
   epubcheck: { jar: "~/.cache/epubcheck.jar", strict: true }
 ```
+
+以下参数是 **agent 审校操作的参考值**（G1–G3 由 agent 自行执行，CLI 不接线）：
+
+| 参数 | 参考值 | 说明 |
+|---|---|---|
+| `error_rate_threshold` | 0.0001 | 差错率自查阈值（`g2_confirmed / total_sentences`） |
+| `review.output_retries` | 2 | 审校 JSON 协议违例重试次数 |
+| `evidence.max_rounds` | 2 | 取证轮数上限 |
+| `fix_loop.max_rounds` | 2 | 修复轮数上限（收敛状态机：`(max_rounds+1)×clean_confirmations`） |
+| `fix_loop.clean_confirmations` | 2 | 连续 clean 确认次数 |
 
 ## 7. 与工作区目录的对应
 
 | QC 产物 | 落点 |
 |---|---|
 | 句级对照表 | `translation/align/<id>.jsonl` |
-| 静态告警 | `reviews/review-<ts>/g0_flags.json` |
-| 审校问题/补丁/仲裁 | `reviews/review-<ts>/` |
+| 静态告警 | G0 在 `import`/`g0` 命令当轮输出；`qa` 时重算并聚合进 `report.json` 的 `g0_flags`（不单独落盘） |
+| 审校问题/补丁/仲裁 | `reviews/review-<ts>/`（agent 手写，`result.json` 必备） |
 | 质量报告 | `report.json`（工作区根） |
-| 行为/用量账本 | `events.jsonl`、`usage.json` |
+| 行为账本 | `events.jsonl`（追加式；用量账本已随内部 LLM 移除而删除） |
 
 ## 8. 与传统三审三校的对应
 

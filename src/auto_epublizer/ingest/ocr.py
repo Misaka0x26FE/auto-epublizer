@@ -1,7 +1,7 @@
-"""OCR 抽象：RapidOCR 离线默认 + 视觉 LLM 兜底（占位）。
+"""OCR 抽象：RapidOCR 离线默认。
 
 - OCR 后端可插拔，测试用 fake；
-- 难页降级到多模态 LLM（页面转图片）的逻辑后续实现；
+- 无法识别的页面由 agent 逐页阅读兜底（唯一 LLM 原则：CLI 不调用任何模型）；
 - 每页记录处理方式，供审查与审计。
 """
 
@@ -22,7 +22,8 @@ class RapidOcrBackend:
             import rapidocr_onnxruntime  # noqa: F401
         except ImportError as e:  # pragma: no cover
             raise RuntimeError(
-                "未安装 rapidocr-onnxruntime；请安装 [ocr] extra 或配置视觉 LLM 兜底"
+                "未安装 rapidocr-onnxruntime；请 uv sync --extra ocr，"
+                "或改用 MinerU 外部 API / agent 逐页阅读兜底"
             ) from e
         self._engine = None
 

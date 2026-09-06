@@ -98,12 +98,12 @@ translation + align → import → g0）、每 3–5 单元一项 build 校验�
 
 主要内容、中心思想、语言风格（语域/语气/句式偏好）、叙事结构（人称/时态/跨章依赖）、
 文体判定（novel/academic/paper/poetry/newspaper，参照 `references/style.md`）。
-这是翻译上下文注入的来源之一（`translate` 在 `analysis/` 缺失时读本文件）。
+这是翻译上下文的来源之一（agent 翻译时在 `analysis/` 缺失的情况下回退读本文件）。
 
 ### 2.3 `units/<id>.md`（章节理解）
 
 每个单元一份：本章梗概/思想推进/登场人物/术语注意/与其他章的衔接。
-同样作为 translate 的章级上下文（fallback 顺序同上）。
+同样作为 agent 翻译的章级上下文（fallback 顺序同上）。
 
 ### 2.4 `terms.csv`（术语预提取）
 
@@ -124,7 +124,8 @@ translation + align → import → g0）、每 3–5 单元一项 build 校验�
 
 ## 3. 完成判据
 
-- `auto-epublizer status --json` 的 `preprocessing_complete == true`（facts + global.md 齐）
+- `auto-epublizer status --json` 的 `preprocessing_complete == true`
+  （facts + todo.md + global.md + capabilities.md 四者齐备）
   且不再有 `preprocessing_plan_missing` stale 提示。
 - **todo.md 必须生成**：逐细节任务清单已列出全部单元翻译项与阶段校验项
   （这是后续翻译/审校/交付的全程工作锚点）。
