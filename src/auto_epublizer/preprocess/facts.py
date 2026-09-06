@@ -140,6 +140,7 @@ def collect_facts(store: RunStore, config) -> dict[str, Any]:
         "checks": _checks_facts(store, sniff_facts),
         "suggestions": suggestions,
         "agent_todo": [
+            "元数据核对：对照源文版权页/题录核实 facts 嗅探的 title/creator/publisher/date/rights（嗅探值仅是推断，常错常缺；存疑处询问用户；确认/补全后用 auto-epublizer meta 写回 publication.json；译者署名默认=你的 agent 框架名（如 OpenCode/DouBao），用户指定名优先）",
             "preprocessing/todo.md：把全书处理细化到每个可执行动作的逐项任务清单（覆盖理解/翻译/审校/封装/质检全流程，含每单元翻译项与每 3-5 单元 build 校验项），见 references/preprocessing.md §2.0",
             "preprocessing/capabilities.md：自报五维能力边界（multimodal/search/模型/外部 API/工作量），见 references/preprocessing.md §1.1",
             "preprocessing/plan.md：结合 capabilities 与 suggestions 写处理方案决策（路由+依据）",

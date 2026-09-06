@@ -486,6 +486,40 @@ def import_translations(
     }
 
 
+def set_meta(
+    store: RunStore,
+    *,
+    title: str | None = None,
+    creator: str | None = None,
+    translator: str | None = None,
+    publisher: str | None = None,
+    date: str | None = None,
+    rights: str | None = None,
+) -> dict[str, Any]:
+    """更新 DC 元数据（agent 补全/核对 facts 嗅探值、译者署名的唯一写入口）。
+
+    仅显式传入的字段会被更新（None=不动；空串=清空该字段）。
+    publication.json 状态只经 CLI 命令推进，agent 不手工编辑。
+    """
+    pub = store.load_publication()
+    updates: dict[str, str | None] = {
+        "title": title,
+        "creator": creator,
+        "translator": translator,
+        "publisher": publisher,
+        "date": date,
+        "rights": rights,
+    }
+    changed = [k for k, v in updates.items() if v is not None]
+    for k in changed:
+        setattr(pub.meta, k, updates[k])
+    if not changed:
+        raise OrchestrationError("未指定任何要更新的字段（--title/--creator/--translator/…）")
+    store.save_publication(pub)
+    store.log_event("meta_update", fields=changed)
+    return {"updated": changed, "meta": pub.meta.model_dump()}
+
+
 def g0_check(store: RunStore, *, unit_id: str | None = None) -> dict[str, Any]:
     """G0 零 token 静态校验（独立命令；翻译/导入后立即跑，不必等到 qa）。"""
     from auto_translator.glossary import Glossary, load_glossary_csv
