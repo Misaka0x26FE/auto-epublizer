@@ -1,6 +1,9 @@
 # 计划：跨项目审查借鉴吸收（epub-builder + traditional-translation）
 
-> 状态：**实施中**（2026-09-06 立项；同日扩写为逐项技术设计版，未动代码）。
+> 状态：**已完成**（2026-09-06）。
+> 提交：S1 `3b79213`、S2 `c8e3114`（+模板锁文件修复 `9626f1a`）、S3 `729b120`、
+> S4.1 `f8255fb`、S4.2 `3b4a82a`、S4.4 `33b4beb`。
+> 最终验证：254 passed + ruff 三绿。经验沉淀：lessons/2026-09-06-conservation-total-only.md。
 > 来源：对 `~/github/epub-builder`（Go 姊妹项目）与 `traditional-translation` skill
 > 的只读调研（两份审查报告，41+27 项对照），合并去重后分四批落地。
 > 本文档是实施的权威依据：每项含现状代码锚点、技术设计、调用点、测试设计与文档同步清单。
@@ -642,12 +645,26 @@ S1（一次提交）→ S2（一次提交）→ S3（一次提交）→ S4.1 →
 
 | 阶段 | 状态 | 提交 |
 |---|---|---|
-| S1 放行门与守恒接线 | 规划中 | — |
-| S2 译者署名与元数据 | 规划中 | — |
-| S3 skills 文档批 | 规划中 | — |
-| S4.1 align 源绑定校验 | 规划中 | — |
-| S4.2 表格形状守恒 | 规划中 | — |
-| S4.3 结构冻结 | 暂缓（理由与重开条件见 §4.3） | — |
-| S4.4 SourceCatalog 最小形态 | 规划中 | — |
-| S4.5 错误码目录 | 暂缓（见 §4.5） | — |
-| S4.6 inserts 生命周期 | 暂缓（见 §4.6） | — |
+| S1 放行门与守恒接线 | ✅ 已完成 | `3b79213` |
+| S2 译者署名与元数据 | ✅ 已完成 | `c8e3114`（+`9626f1a` 锁文件修复） |
+| S3 skills 文档批 | ✅ 已完成 | `729b120` |
+| S4.1 align 源绑定校验 | ✅ 已完成 | `f8255fb` |
+| S4.2 表格形状守恒 | ✅ 已完成 | `3b4a82a` |
+| S4.3 结构冻结 | 暂缓（理由与重开条件见 §4.3，维持） | — |
+| S4.4 SourceCatalog 最小形态 | ✅ 已完成 | `33b4beb` |
+| S4.5 错误码目录 | 暂缓（见 §4.5，维持） | — |
+| S4.6 inserts 生命周期 | 暂缓（见 §4.6，维持） | — |
+
+## 实施备注（与设计的偏差）
+
+- S1.2 守恒类采用**单元级总量比对**（设计即如此），实践验证正确：测试覆盖了
+  「拆句挪位不误报」回归（`test_g0_marker_conservation`）。
+- S4.2 接线时曾把 g0 循环误嵌进表格循环（缩进事故导致 fidelity 短暂失效），
+  由 `test_import_blocks_on_rewritten_src` 抓出并修正——**每个不变量配一个
+  会失败的测试**这条元教训当场兑现了一次。
+- S4.4 的 reason 优先级落位 `audit_failed` 与 `provenance_incomplete` 之间
+  （设计文档写的是 provenance 之后，实现时按「内容完整 > 盘点 > 溯源」调整）。
+- qa 的 `released_reason` 全集现为九值（ok/terminology_open/glossary_conflict_open/
+  structure_open/unresolved_confirmed/audit_failed/catalog_open/
+  provenance_incomplete/epubcheck_not_run/epubcheck_errors），
+  invariants.md §2 与代码一致。
