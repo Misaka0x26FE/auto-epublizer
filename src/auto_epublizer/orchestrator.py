@@ -428,6 +428,10 @@ def import_translations(
             continue
         tgt_path = store.translation_dir / rel_path
         align_path = store.unit_align_path(unit.id)
+        structured_path = store.structured_dir / rel_path
+        structured_md = (
+            structured_path.read_text(encoding="utf-8") if structured_path.is_file() else None
+        )
         errors: list[str] = []
         if not tgt_path.is_file():
             errors.append(f"缺少译文文件：{tgt_path}")
@@ -439,10 +443,14 @@ def import_translations(
                 # 结构性错误：断号/空原文/空译文；「对照表为空」已在上面覆盖
                 if f.message != "对照表为空":
                     errors.append(f"对照表 {f.message}")
-            for f in g0_unit_flags(rows, glossary):
-                # 硬缺陷类（terminology/marker/footnote 等）与 advisory（length）都
-                # 收进告警：import 期不阻断，漏修被 G5 放行门兜底
-                if f.check in ("length", "terminology", "marker", "footnote"):
+            for f in g0_unit_flags(rows, glossary, structured_md=structured_md):
+                # 源保真反向违例（src 不在源文中）= 对照表不可信，阻断登记；
+                # 其余硬缺陷类（terminology/marker/footnote）与前向缺块（fidelity）、
+                # advisory（length）收进告警：import 期不阻断，漏修被 G5 放行门兜底
+                if f.check == "fidelity" and "不在源文中" in f.message:
+                    errors.append(f"源保真：{f.message}（seq={f.data.get('seq')}）")
+                    continue
+                if f.check in ("length", "terminology", "marker", "footnote", "fidelity"):
                     warned.append({"unit": unit.id, "check": f.check, "message": f.message})
         if errors:
             failed.append({"unit": unit.id, "errors": errors})
@@ -535,9 +543,17 @@ def g0_check(store: RunStore, *, unit_id: str | None = None) -> dict[str, Any]:
         if not rows:
             continue
         checked.append(unit.id)
+        rel_path = (unit.meta or {}).get("rel_path")
+        structured_path = store.structured_dir / rel_path if rel_path else None
+        structured_md = (
+            structured_path.read_text(encoding="utf-8")
+            if structured_path and structured_path.is_file()
+            else None
+        )
         for f in g0_unit_flags(
             rows,
             Glossary(load_glossary_csv(store.analysis_dir / "glossary.csv")),
+            structured_md=structured_md,
         ):
             flags.append({"unit": unit.id, "check": f.check, "message": f.message, "data": f.data})
     return {"checked_units": checked, "flags": flags}
@@ -555,11 +571,19 @@ def _collect_g0_flags(store: RunStore, config: Config | None = None) -> list[dic
         rows = read_align(store.unit_align_path(unit.id))
         if not rows:
             continue
+        rel_path = (unit.meta or {}).get("rel_path")
+        structured_path = store.structured_dir / rel_path if rel_path else None
+        structured_md = (
+            structured_path.read_text(encoding="utf-8")
+            if structured_path and structured_path.is_file()
+            else None
+        )
         for f in g0_unit_flags(
             rows,
             glossary,
             too_short=float(cfg.qc.length_ratio.get("too_short", 0.30)),
             too_long=float(cfg.qc.length_ratio.get("too_long", 3.0)),
+            structured_md=structured_md,
         ):
             flags.append({"unit": unit.id, "check": f.check, "message": f.message, "data": f.data})
     return flags

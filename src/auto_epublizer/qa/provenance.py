@@ -20,6 +20,8 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import unquote
 
+from auto_translator.review.fidelity import content_blocks as _paragraphs
+from auto_translator.review.fidelity import norm_text as _norm
 from auto_translator.translation.align import read_align
 
 from ..build import slug_file, toc_depths
@@ -66,21 +68,6 @@ class ProvenanceResult:
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
-
-
-def _norm(text: str) -> str:
-    """归一化：去除全部空白字符（段落↔句子集包含比较用）。"""
-    return re.sub(r"\s+", "", text or "")
-
-
-def _paragraphs(md_text: str) -> list[str]:
-    """structured md 的正文段落块（跳过标题行/空块）。"""
-    out: list[str] = []
-    for block in re.split(r"\n\s*\n", (md_text or "").strip("\n")):
-        block = block.strip()
-        if block and not block.startswith("#"):
-            out.append(block)
-    return out
 
 
 def _img_refs(md_text: str) -> list[str]:
