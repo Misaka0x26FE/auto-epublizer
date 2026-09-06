@@ -27,8 +27,10 @@ from .g0 import (
     length_ratio,
     markers_conserved,
     normalize_punctuation,
+    parse_md_tables,
     repair_missing_hyphens,
     strip_copyright_boilerplate,
+    table_shape_flags,
 )
 from .models import Issue, Patch
 
@@ -56,7 +58,9 @@ __all__ = [
     "markers_conserved",
     "norm_text",
     "normalize_punctuation",
+    "parse_md_tables",
     "repair_missing_hyphens",
     "strip_copyright_boilerplate",
     "summarize",
+    "table_shape_flags",
 ]

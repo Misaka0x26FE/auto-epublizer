@@ -40,7 +40,7 @@ reason 判定优先级 = 上表自上而下（先 g0 硬缺陷 → 冲突 → �
 | `terminology` | glossary source 出现而译文缺 target | **硬缺陷** |
 | `marker` | `{fig:NNN}` 等标记 **单元级总量** src/tgt 一致 | **硬缺陷** |
 | `footnote` | pandoc `[^label]` + 句末数字注码总量一致 | **硬缺陷** |
-| `table` | 表格形状守恒（S4.2；译文表格行列数与源一致） | **硬缺陷** |
+| `table` | 表格形状守恒（表数/逐表行列数；import **阻断**） | **硬缺陷（阻断）** |
 | `fidelity` | align src ↔ structured 双向覆盖（S4.1） | **硬缺陷** |
 | `length` | 长度比 `[0.30, 3.0]` | advisory |
 
