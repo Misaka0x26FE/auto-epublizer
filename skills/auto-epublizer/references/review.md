@@ -8,7 +8,7 @@
 
 | 关卡 | 做什么 | 谁做 | 产出 |
 |---|---|---|---|
-| G0 | 零 token 静态校验（对照表完整性/长度比/术语命中） | CLI（`g0`/`import`） | 静态告警列表 |
+| G0 | 零 token 静态校验（对照表完整性/长度比/术语命中/插入标记守恒/脚注守恒） | CLI（`g0`/`import`） | 静态告警列表 |
 | G1 | 逐段双语审校（漏译/增译/误译/术语/人称） | agent | `issues` 候选 |
 | G2 | 证据取证复核（回源文/上下文确认） | agent | `issues` 确认/驳回 |
 | G3 | 仲裁 + 修订 + 收敛判定 | agent | `patches` + `termination` |
@@ -86,6 +86,9 @@ reviews/review-<ts>/
 | 指标 | 阈值 |
 |---|---|
 | 长度比 | `0.30 ≤ len(tgt)/len(src) ≤ 3.0`（G0 告警，advisory） |
+| **插入标记守恒** | **`{fig:NNN}` 等标记 src/tgt 单元级总量一致（硬缺陷；未清零 G5 报 `structure_open`）** |
+| **脚注守恒** | **pandoc `[^label]` 与句末数字注码总量一致（硬缺陷，同上）** |
+| **术语冲突** | **`glossary_conflicts_open == 0`（裁决写回 glossary.csv 前 qa 不放行，`glossary_conflict_open`）** |
 | **术语命中** | **0（G0 `terminology` 是真实缺陷，不是 advisory——译文缺了术语表源词；必须逐条核验清零，否则 G5 不放行，`released_reason=terminology_open`）** |
 | 空译文 | 禁止（`import` 阻断该单元） |
 | 差错率 | `confirmed_issues / 总句数 ≤ 1e-4`（agent 自查参考，非 CLI 硬门） |

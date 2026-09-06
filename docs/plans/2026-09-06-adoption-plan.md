@@ -63,8 +63,10 @@ csv_io.py:108，每行 `GlossaryConflict.as_jsonl()`，含 `status` 字段，默
 2. `orchestrator.qa`：在调 `generate_report` 前统计——
    ```python
    from auto_translator.glossary import read_conflicts_jsonl
+
    conflicts_open = sum(
-       1 for c in read_conflicts_jsonl(store.analysis_dir / "glossary_conflicts.jsonl")
+       1
+       for c in read_conflicts_jsonl(store.analysis_dir / "glossary_conflicts.jsonl")
        if c.get("status") == "open"
    )
    ```
@@ -96,7 +98,8 @@ align/length/terminology 三类。脚注在 structured md 里还有第二种表�
 
 1. `review/g0.py` 新增：
    ```python
-   _FN_PANDOC = re.compile(r"\[\^[^\]\s]+\]")   # pandoc 脚注引用/定义统一计数
+   _FN_PANDOC = re.compile(r"\[\^[^\]\s]+\]")  # pandoc 脚注引用/定义统一计数
+
 
    def count_footnote_marks(text: str) -> int:
        """统计 pandoc 脚注标记（[^label] 引用与定义）数量。"""
@@ -109,11 +112,11 @@ align/length/terminology 三类。脚注在 structured md 里还有第二种表�
    - 循环后：
      ```python
      if sum_marker_src != sum_marker_tgt:
-         flags.append(G0Flag("marker", "插入标记数量不守恒",
-                             {"src": sum_marker_src, "tgt": sum_marker_tgt}))
+         flags.append(
+             G0Flag("marker", "插入标记数量不守恒", {"src": sum_marker_src, "tgt": sum_marker_tgt})
+         )
      if sum_fn_src != sum_fn_tgt:
-         flags.append(G0Flag("footnote", "脚注标记数量不守恒",
-                             {"src": sum_fn_src, "tgt": sum_fn_tgt}))
+         flags.append(G0Flag("footnote", "脚注标记数量不守恒", {"src": sum_fn_src, "tgt": sum_fn_tgt}))
      ```
    - 函数签名不变（仍是 `rows + glossary` 纯函数），三个调用点
      （import/g0_check/_collect_g0_flags）零改动即生效。
@@ -163,6 +166,7 @@ align/length/terminology 三类。脚注在 structured md 里还有第二种表�
 1. **`E_ZIP_DUPLICATE`**（插在 §1 mimetype 检查后）：
    ```python
    from collections import Counter
+
    dupes = [n for n, c in Counter(names).items() if c > 1]
    for d in dupes:
        result.add("error", "E_ZIP_DUPLICATE", f"zip 条目名重复：{d}")
@@ -172,8 +176,9 @@ align/length/terminology 三类。脚注在 structured md 里还有第二种表�
 2. **`E_IMG_REMOTE`**（§4b 循环，L153 的 `_HTTPS` 跳过改为报错）：
    ```python
    if _HTTPS.match(src):
-       result.add("error", "E_IMG_REMOTE",
-                  f"img src 为外部链接（媒体必须打包进 EPUB）：{name} -> {src}")
+       result.add(
+           "error", "E_IMG_REMOTE", f"img src 为外部链接（媒体必须打包进 EPUB）：{name} -> {src}"
+       )
        continue
    ```
    L197 媒体审计循环的 `_HTTPS` 跳过保留（外链已在 4b 报 error，此处无需重复）。
@@ -196,7 +201,8 @@ align/length/terminology 三类。脚注在 structured md 里还有第二种表�
 4. **`W_META_INCOMPLETE` 查非空**（§10 改判定）：
    ```python
    missing_meta = [
-       tag for tag in ("dc:creator", "dc:date", "dc:publisher", "dc:rights")
+       tag
+       for tag in ("dc:creator", "dc:date", "dc:publisher", "dc:rights")
        if not re.search(rf"<{tag}>\s*\S[^<]*</{tag}>", opf)
    ]
    ```
@@ -254,12 +260,10 @@ publication.json 只经 CLI 命令推进（红线：agent 不手编）——所�
    ```python
    if meta.creator:
        m.append(f'    <dc:creator id="creator-aut">{escape(meta.creator)}</dc:creator>')
-       m.append('    <meta refines="#creator-aut" property="role" '
-                'scheme="marc:relators">aut</meta>')
+       m.append('    <meta refines="#creator-aut" property="role" scheme="marc:relators">aut</meta>')
    if meta.translator:
        m.append(f'    <dc:creator id="creator-trl">{escape(meta.translator)}</dc:creator>')
-       m.append('    <meta refines="#creator-trl" property="role" '
-                'scheme="marc:relators">trl</meta>')
+       m.append('    <meta refines="#creator-trl" property="role" scheme="marc:relators">trl</meta>')
    ```
    （原作者标 `aut`、译者标 `trl`；两 id 全包唯一；convert 路径 translator 为空则
    整段不输出，单语转换书不受影响；双语/纯译 EPUB 均生效——渲染层不区分。）
@@ -426,11 +430,14 @@ SKILL.md 路由表加一行 + workflow.md「阶段路由」开头加一段：
    def norm_text(text: str) -> str:
        """归一化：去除全部空白字符（与 provenance._norm 同规则，抽公共）。"""
 
+
    def content_blocks(structured_md: str) -> list[str]:
        """正文块：按空行切，跳标题行（#开头）、空块、纯 HTML 注释块。"""
 
+
    def all_lines(structured_md: str) -> list[str]:
        """全部非空行（含标题行）——反向匹配语料。"""
+
 
    def fidelity_flags(structured_md: str, rows: list[dict]) -> list[G0Flag]:
        """双向源保真（块级）：

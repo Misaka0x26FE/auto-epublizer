@@ -440,7 +440,9 @@ def import_translations(
                 if f.message != "对照表为空":
                     errors.append(f"对照表 {f.message}")
             for f in g0_unit_flags(rows, glossary):
-                if f.check in ("length", "terminology"):
+                # 硬缺陷类（terminology/marker/footnote 等）与 advisory（length）都
+                # 收进告警：import 期不阻断，漏修被 G5 放行门兜底
+                if f.check in ("length", "terminology", "marker", "footnote"):
                     warned.append({"unit": unit.id, "check": f.check, "message": f.message})
         if errors:
             failed.append({"unit": unit.id, "errors": errors})
@@ -558,6 +560,8 @@ def _toc_missing_from_facts(store: RunStore, entries: list[dict[str, Any]]) -> l
 def qa(
     store: RunStore, *, epub_path: str | None = None, config: Config | None = None
 ) -> dict[str, Any]:
+    from auto_translator.glossary import read_conflicts_jsonl
+
     pub = store.load_publication()
     epub = Path(epub_path) if epub_path else store.output_dir / f"{pub.slug}.epub"
     if not epub.is_file():
@@ -571,6 +575,12 @@ def qa(
     g0_flags = _collect_g0_flags(store, config)
     toc_missing = _toc_missing_from_facts(store, entries)
     total_sentences = sum(len(read_align(store.unit_align_path(u.id))) for u in pub.units)
+    # 术语冲突未裁决数（S1.1 放行硬门：裁决写回前 qa 不放行）
+    glossary_conflicts_open = sum(
+        1
+        for c in read_conflicts_jsonl(store.analysis_dir / "glossary_conflicts.jsonl")
+        if c.get("status") == "open"
+    )
     report = generate_report(
         pub.slug,
         audit,
@@ -581,6 +591,7 @@ def qa(
         total_sentences=total_sentences,
         provenance=provenance.to_dict(),
         toc_missing=toc_missing,
+        glossary_conflicts_open=glossary_conflicts_open,
     )
     if toc_missing:
         report.provenance_findings.append(
