@@ -16,3 +16,9 @@ structured/raw/*.tiff
 *.tmp
 .DS_Store
 __pycache__/
+
+# ── 运行时锁文件（store 状态锁/账本锁；本地运行产物，不入库）─────────
+.state.lock
+.events.lock
+.usage.lock
+.progress.lock
