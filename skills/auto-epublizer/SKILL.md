@@ -27,7 +27,7 @@ multimodal / search**（能否看图、有无搜索工具，CLI 无法探测）�
 | 场景 | 读 |
 |---|---|
 | 全新任务 / 状态路由 / 多阶段请求 / 命令总览 | `references/workflow.md` |
-| 预处理：读 facts → 撰写 plan/global/units/terms/risks/report | `references/preprocessing.md` |
+| 预处理：读 facts → 撰写 todo/capabilities/plan/global/units/terms/risks/report | `references/preprocessing.md` |
 | 文件解析：PDF / 扫描 PDF / EPUB / DOCX / HTML / TXT / MD / OCR | `references/ingest.md` |
 | 四层结构归类、清洗、页眉页脚/页码剔除、溯源 | `references/structure.md` |
 | 分层理解、术语播种、语言/体裁检测 | `references/analysis.md` |
@@ -61,10 +61,11 @@ multimodal / search**（能否看图、有无搜索工具，CLI 无法探测）�
 ```bash
 auto-epublizer doctor --json                              # 能力自检（开工前；multimodal/search 自报）
 auto-epublizer preprocess <input>                         # 预处理：init + 零 token 事实 → preprocessing/facts.*
-#   agent 读 facts.md，撰写 capabilities/plan/global/units/terms/risks/report（见 references/preprocessing.md）
+#   agent 读 facts.md，撰写 todo/capabilities/plan/global/units/terms/risks/report（见 references/preprocessing.md）
 #   理解层 analysis/*.md 同样由 agent 撰写（见 references/analysis.md）
 auto-epublizer import [--unit <id>] [--terms preprocessing/terms.csv]  # 登记 agent 手写翻译产物
-auto-epublizer g0                                         # 静态校验（advisory）
+auto-epublizer import --reviewed                                    # 审校通过后：aligned → reviewed
+auto-epublizer g0                                         # 静态校验（术语命中=真实缺陷须清零；长度比=advisory）
 #   agent 写审校产物 reviews/review-<ts>/（含 result.json，见 references/review.md）
 auto-epublizer build [--bilingual] [--theme standard|compact|spacious]  # 封装 EPUB → output/
 auto-epublizer qa                                         # epubcheck + 解包审计

@@ -113,3 +113,17 @@ def test_g0_check_reports_flags(tmp_path: Path) -> None:
     assert "ch01" in result["checked_units"]
     # 长度比英文→中文可能告警，但结构上不应有 align 断号
     assert all(f["check"] in ("length", "terminology") for f in result["flags"])
+
+
+def test_import_reviewed_marks_aligned_units(tmp_path: Path) -> None:
+    """--reviewed：把 aligned 单元推进为 reviewed（幂等，reviewed/built 不动）。"""
+    store = _workspace(tmp_path)
+    _write_agent_products(store)
+    orch.import_translations(store)  # → aligned
+    result = orch.import_translations(store, mark_reviewed=True)
+    assert result["reviewed"] == ["ch01"]
+    assert store.load_publication().units[0].status == "reviewed"
+    # 幂等：再次 --reviewed 不重复推进
+    result2 = orch.import_translations(store, mark_reviewed=True)
+    assert result2["reviewed"] == []
+    assert store.load_publication().units[0].status == "reviewed"

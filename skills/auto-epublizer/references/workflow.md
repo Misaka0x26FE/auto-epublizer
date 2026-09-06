@@ -31,7 +31,7 @@ doctor（能力自检：工具链 + 自报 multimodal/search）
   -> agent 理解 （读 facts.md 撰写 capabilities/plan/global/units/terms/risks/report；
                  analysis/*.md 也由 agent 撰写）
   -> 翻译      （agent 手写 translation/ + align/，然后 import 登记）
-  -> g0        （静态校验，advisory）
+  -> g0        （静态校验：术语命中=真实缺陷须清零；长度比=advisory）
   -> review    （QC G1–G3，agent 语义审校后写 reviews/review-<ts>/result.json）
   -> build     （EPUB 封装 -> output/）
   -> qa        （epubcheck + 解包审计 + G5 放行 -> report.json）
@@ -55,9 +55,9 @@ auto-epublizer preprocess <input> [--reference <path...>] [--target zh-CN] [--wo
 # init <input> 等价于 preprocess 的建工作区子集（不产 facts；仍可用于仅需拆解的场景）
 
 # agent 手写翻译后的登记入口（G0 结构校验 + 状态推进 + 术语冲突外置）
-auto-epublizer import [--unit <id>] [--terms <csv>] [--workspace <dir>]
+auto-epublizer import [--unit <id>] [--terms <csv>] [--reviewed] [--workspace <dir>]
 
-# G0 零 token 静态校验（翻译/导入后立即跑，advisory 不阻断）
+# G0 零 token 静态校验（翻译/导入后立即跑；术语命中是放行硬门，长度比 advisory）
 auto-epublizer g0 [--unit <id>] [--workspace <dir>]
 
 # 封装（译文缺省回退源文；--bilingual 产出 -bi.epub；--theme 选排版主题）
@@ -101,5 +101,5 @@ auto-epublizer status --workspace <dir> --json
 | `epubcheck errors: -1` | 未装 epubcheck jar（`~/.cache/epubcheck.jar`）；G4 审计仍可跑，`released_reason=epubcheck_not_run` |
 | `导入失败`（import 阻断） | 按 `--unit` 输出的错误清单修 align（断号/空译文/缺文件）后重试 |
 | `pandoc` 缺失 | `doctor` 已提示；装 pandoc 或先把文件转为 PDF/TXT/MD |
-| 扫描 PDF 处理不了 | 按 OCR 路由（`doctor` + multimodal 自报）：tesseract/ocrmypdf → rapidocr（`[ocr]` extra）→ MinerU API → 询问用户；可看图则自行视觉兜底难页 |
+| 扫描 PDF 处理不了 | 按 OCR 路由（`doctor` + multimodal 自报）：**MinerU 外部 API 最优先**（无 key 先询问用户）→ 传统 OCR（tesseract/ocrmypdf）/rapidocr + agent 逐页阅读兜底 |
 | 单元状态停在中间态 / stale | `status --json` 定位，从对应阶段续跑（手写产物跑 `import`） |

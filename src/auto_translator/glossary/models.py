@@ -22,7 +22,7 @@ STATUS_CONFIRMED = "confirmed"
 
 TERM_STATUSES = (STATUS_SEED, STATUS_CANDIDATE, STATUS_CONFLICT, STATUS_CONFIRMED)
 
-# 术语类别白名单（对应出版物规范 1.5 的类别）
+# 术语类别白名单（对应出版物规范 1.5 的类别 + 文体档案 source_only 类型）
 TERM_TYPES = (
     "person",  # 人物
     "place",  # 地名
@@ -32,6 +32,9 @@ TERM_TYPES = (
     "period",  # 历史时期
     "work",  # 作品
     "fixed_expr",  # 固定表达/口头禅
+    "appellation",  # 称谓（文体档案 source-only 类型，仅作分类标注）
+    "honorific",  # 敬称（同上）
+    "speech",  # 口癖/说话方式（同上）
 )
 
 # 人物性别

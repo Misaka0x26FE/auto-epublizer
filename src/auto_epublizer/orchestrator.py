@@ -371,6 +371,7 @@ def import_translations(
     *,
     unit_id: str | None = None,
     terms_path: str | None = None,
+    mark_reviewed: bool = False,
 ) -> dict[str, Any]:
     """把 agent 手写的 translation/ + align/ 登记进工作区（路径 B 一等入口）。
 
@@ -380,6 +381,9 @@ def import_translations(
 
     术语闭环：读取 agent 维护的 glossary.csv（--terms 可再导入新术语提案），
     冲突检测后外置到 analysis/glossary_conflicts.jsonl 供 agent 裁决。
+
+    ``mark_reviewed=True``（--reviewed）：把处于 ``aligned`` 的单元推进为
+    ``reviewed``（审校通过的显式登记入口；reviewed/built 跳过、低于 aligned 不动）。
     """
     from auto_translator.glossary import (
         Glossary,
@@ -412,6 +416,11 @@ def import_translations(
 
     for unit in pub.units:
         if unit_id and unit.id != unit_id:
+            continue
+        # 已完成单元安全跳过（状态与续跑不变量）：reviewed/built 不重导，
+        # 避免把审校结论状态打回 aligned（重导修订稿前须先重走审校）。
+        if unit.status in ("reviewed", "built"):
+            skipped.append(unit.id)
             continue
         rel_path = (unit.meta or {}).get("rel_path")
         if not rel_path:
@@ -451,14 +460,27 @@ def import_translations(
     written = write_conflicts_jsonl(conflicts_path, conflicts)
     new_conflicts = prior + written
 
+    # --reviewed：审校通过的显式登记（aligned → reviewed，幂等）
+    reviewed: list[str] = []
+    if mark_reviewed:
+        for unit in pub.units:
+            if unit_id and unit.id != unit_id:
+                continue
+            if unit.status == "aligned":
+                store.set_unit_status(unit.id, "reviewed")
+                reviewed.append(unit.id)
+
     if imported:
-        store.log_event("import_translated", units=len(imported))
+        store.log_event("import_translated", units=imported)
+    if reviewed:
+        store.log_event("import_reviewed", units=reviewed)
     return {
         "imported": imported,
         "failed": failed,
         "warnings": warned,
         "skipped": skipped,
         "conflicts_open": new_conflicts,
+        "reviewed": reviewed,
     }
 
 

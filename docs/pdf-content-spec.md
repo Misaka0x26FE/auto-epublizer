@@ -130,7 +130,8 @@ structured/raw/inserts/
 
 确定性检测（任一命中即标 `type=formula`）：
 
-1. **符号特征**：文本短（≤200 字）且含 ≥2 个数学符号（`∫∑√∂∓±×÷≠≤≥∞∈∀∃∇⋅∗` 或希腊字母；
+1. **符号特征**：文本短（≤200 字，`MAX_FORMULA_TEXT`）且含 ≥2 个数学符号（代码集 `_MATH_CHARS`：
+   `∫∑√∂∓±×÷≤≥∞∈∉∋∀∃∇⋅∗¬≈≡∏°′″ℓ℘ℑℜ` 等（不含 `≠`）或希腊字母；
    **不含 `·` 间隔号与 `…` 省略号**——中文高频标点，计入会误判正文，dogfooding 实证）；
 2. **字体特征**：span 字体名含 `Math` / `CMMI` / `CMSY` / `CMEX` / `Symbol` 等数学字体
    （**`CMR` 除外**——它是 TeX 正文默认字体，计入会使纯 TeX 排版的书全篇误判），
@@ -156,11 +157,14 @@ structured/raw/inserts/
 
 ## 7. 配置与常量
 
-- 本规范实现不新增 config 段；阈值作为 `ingest/images.py` / `ingest/tables.py` 模块常量
-  （`FULL_PAGE_AREA_RATIO=0.70`、`TEXT_COVERAGE_MAX=0.15`、`MIN_IMAGE_SIZE=32`、
-  `MAX_IMAGE_DIM=1800`、`RENDER_DPI=150`、`BACKGROUND_AREA_RATIO=0.85`、
-  `MAX_TABLE_CELL_CHARS=300`、`TABLE_MAX_AREA_RATIO=0.5`）。
+- 本规范实现不新增 config 段；阈值作为 `ingest/images.py` / `ingest/tables.py` /
+  `ingest/formula.py` 模块常量（`FULL_PAGE_AREA_RATIO=0.70`、`TEXT_COVERAGE_MAX=0.15`、
+  `MIN_IMAGE_SIZE=32`、`MAX_IMAGE_DIM=1800`、`RENDER_DPI=150`、`BACKGROUND_AREA_RATIO=0.85`、
+  `MAX_TABLE_CELL_CHARS=300`、`TABLE_MAX_AREA_RATIO=0.5`、
+  `MAX_FORMULA_TEXT=200`、`MAX_ISOLATED_TEXT=120`、`CENTER_TOLERANCE=0.12`、
+  `MATH_FONT_RATIO=0.5`）。
 - agent 在 `plan.md` 覆盖阈值 = 直接以自身能力处理（不传 CLI 参数）。
+- inserts 记录另含 `extra` 扩展字段（dict，如公式检测的字号中位数等实现细节），schema 未固定。
 
 ## 8. 图片优化
 

@@ -2,7 +2,8 @@
 
 - 非 PDF 一律先走 pandoc → Markdown（纯文本）+ 抽取媒体；
 - PDF 按页切片（pymupdf）→ structured/raw/page-NNN.json + 文字层；
-- 扫描件 OCR（RapidOCR 离线默认）+ 视觉 LLM 兜底（占位，后续实现）。
+- 扫描件：MinerU 外部 API（首选，需 MINERU_API_KEY）或 RapidOCR 离线 OCR；
+  无法识别的页面由 agent 逐页阅读兜底（唯一 LLM 原则：CLI 不调用任何模型）。
 """
 
 from __future__ import annotations

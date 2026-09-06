@@ -216,6 +216,47 @@ def test_generate_report_unconfirmed_blocks_release() -> None:
     assert result.released is False
 
 
+def test_generate_report_provenance_error_finding_blocks_release() -> None:
+    """溯源 error 级发现（E_UNIT_ORDER/E_MEDIA_ORDER/E_INSERT_BAD_SOURCE 等）阻断放行。
+
+    回归：此前 prov_ok 只查标量字段，error 级 findings 不进放行门
+    （units_unexpected/media_order_violations/E_INSERT_BAD_SOURCE 出现时仍 released=True）。
+    """
+    from auto_epublizer.qa import EpubcheckResult
+
+    audit = AuditResult(ok=True)
+    review = {
+        "g1_candidates": 0,
+        "g2_confirmed": 0,
+        "g3_patched": 0,
+        "termination": "clean_confirmed",
+        "rounds": 2,
+    }
+    provenance = {
+        "coverage": 1.0,
+        "units_missing": [],
+        "units_order_ok": True,
+        "media_lost": [],
+        "toc_flat": False,
+        "inserts_missing_files": 0,
+        "findings": [
+            {"level": "error", "code": "E_UNIT_ORDER", "message": "spine 含未知内容文档：extra"},
+            {"level": "warning", "code": "W_TOC_MISSING", "message": "源 TOC 缺失条目：附录"},
+        ],
+    }
+    result = generate_report(
+        "book",
+        audit,
+        EpubcheckResult(available=True, ran=True, errors=0, warnings=0),
+        review=review,
+        g0_flags=[],
+        total_sentences=50,
+        provenance=provenance,
+    )
+    assert result.released is False
+    assert result.released_reason == "provenance_incomplete"
+
+
 def test_generate_report_terminology_blocks_release() -> None:
     """G0 术语命中是真实缺陷：存在即不放行（QC 落实；豆包曾把术语漏检混为 advisory）。"""
     from auto_epublizer.qa import EpubcheckResult

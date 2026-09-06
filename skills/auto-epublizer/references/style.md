@@ -27,8 +27,8 @@ translation_rules: […]  # 文体翻译指引
 
 ## 术语类型白名单（随文体切换）
 
-- 小说：`person/place/org/term/appellation/honorific/speech/fixed_expr`，角色称谓/口癖须
-  source-only 精确匹配。
+- 小说：`person/place/org/term/appellation/honorific/speech/fixed_expr`；称谓/口癖是
+  source-only 分类标注（翻译时保持一致，术语命中检查无特殊分支）。
 - 学术：`term/person/place/org/event/work`，学科术语严格匹配 + 缩略语加注。
 - 论文：`term/abbreviation`，缩略语首现加注。
 
@@ -40,10 +40,11 @@ translation_rules: […]  # 文体翻译指引
 | `en` | 无敬称，Mr./Ms./Sir 统一；据性别定「他/她/它」；长句按中文重组，被动酌情转主动；专名音译 |
 | `ru/ko/fr/de/es…` | 忠实传意，符合中文表达习惯 |
 
-## 注入顺序（静态 → 动态）
+## 上下文组织顺序（静态 → 动态）
 
-`system` 放文体指引 + 语言指引 + 标点规则；`user` 放风格/角色圣经 → 全书概览 → 章梗概 →
-重点 → 术语子集 → 前文译文 → 待译正文。
+agent 自行翻译时的上下文组装顺序（无 prompt 注入机制，全部是你读进上下文的材料）：
+文体指引 + 语言指引 + 标点规则（静态）→ 风格/角色圣经 → 全书概览 → 章梗概 →
+重点 → 术语子集 → 前文译文 → 待译正文（动态，按需携带）。
 
 ## 审校侧重（映射 QC）
 

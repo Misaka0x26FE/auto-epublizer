@@ -8,6 +8,10 @@ language:
   target: zh-CN         # 目标语言，任意可配
   genre: auto           # auto=启发式判定；或显式 novel/academic/paper/poetry/newspaper
 
+# ── 管线开关 ────────────────────────────────────────────────
+pipeline:
+  bilingual: false
+
 # ── 质检 ────────────────────────────────────────────────────
 qc:
   length_ratio:
@@ -19,12 +23,25 @@ qc:
 
 # ── PDF 解析 ────────────────────────────────────────────────
 pdf:
-  backend: auto           # auto | pymupdf | mineru
+  backend: auto           # auto | pymupdf | mineru（auto=扫描件且 MINERU_API_KEY 存在时优先 MinerU）
   ocr: auto               # auto | off | 强制 rapidocr
-  page_dpi: 300
-  mineru_effort: medium
+  page_dpi: 300           # 页渲染分辨率（OCR 兜底）
+  mineru_effort: medium   # 未接线（MinerU v4 API 无此参数）；保留兼容旧配置
+  mineru_model: pipeline  # pipeline（默认，确定性）| vlm（高精度）
+  mineru_language: ch     # MinerU OCR 语言（PaddleOCR 语言码：ch/en/ja/…）
 
 # ── 术语表 ──────────────────────────────────────────────────
 glossary:
-  storage: csv            # csv（默认）| sqlite（可选内部索引）
-  scope: chapter
+  storage: csv            # csv（默认，权威存储）；sqlite 未实现（预留）
+  scope: chapter          # 未接线（预留）
+
+# ── 路径 ─────────────────────────────────────────────────────
+paths:
+  workspaces_dir: .       # 工作区根目录（每本书一个 <book-slug>/）
+
+# ── 输出 ─────────────────────────────────────────────────────
+output:
+  mono: true              # 未接线（预留；mono/bilingual 由 build --bilingual 决定）
+  bilingual: false        # 未接线（同上）
+  about_page: true        # 未接线（预留）
+  theme: standard         # standard | compact | spacious

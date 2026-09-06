@@ -8,7 +8,7 @@
 
 | 关卡 | 做什么 | 谁做 | 产出 |
 |---|---|---|---|
-| G0 | 零 token 静态校验（对照表完整性/句数一致/长度比/术语命中/标点/残留） | CLI（`g0`/`import`） | 静态告警列表 |
+| G0 | 零 token 静态校验（对照表完整性/长度比/术语命中） | CLI（`g0`/`import`） | 静态告警列表 |
 | G1 | 逐段双语审校（漏译/增译/误译/术语/人称） | agent | `issues` 候选 |
 | G2 | 证据取证复核（回源文/上下文确认） | agent | `issues` 确认/驳回 |
 | G3 | 仲裁 + 修订 + 收敛判定 | agent | `patches` + `termination` |
@@ -28,11 +28,10 @@ reviews/review-<ts>/
 └── result.json           # 终局：issue_count / termination / rounds（qa 读取）
 ```
 
-`result.json` 必填键（qa 契约）：
+`result.json` 键（qa 契约；缺省按 0，`issue_count` 是 `g2_confirmed` 的旧回退键）：
 
 ```json
 {
-  "issue_count": 0,
   "g1_candidates": 0,
   "g2_confirmed": 0,
   "g3_patched": 0,
@@ -41,9 +40,10 @@ reviews/review-<ts>/
 }
 ```
 
-审校通过（`termination == "clean_confirmed"`）后，把对应单元状态推进 `reviewed`（经
-`auto-epublizer import` 或 status 对账；若你的修订改动了 `translation/`+`align/`，
-先重新 import 再置 reviewed）。
+审校通过（`termination == "clean_confirmed"`）后，用 `auto-epublizer import --reviewed`
+把处于 `aligned` 的单元推进 `reviewed`（幂等；已 reviewed/built 的单元跳过重导）。
+若你的修订改动了 `translation/`+`align/`，先重新 `import`（回到 aligned）再
+`import --reviewed`。
 
 ## termination（收敛终态）
 
@@ -76,7 +76,10 @@ reviews/review-<ts>/
 
 - G4：`auto-epublizer qa` 跑 epubcheck（零 error）+ 解包逐项审计（mimetype 首位未压缩、
   container 指向 OPF、manifest/spine 可解析、nav 链接可解析、URL 安全、lang 正确、每章一个 h1）。
-- G5 放行条件：`g2_confirmed == 0` 或全部已修订；`g4_epubcheck_errors == 0`；`g4_audit == "pass"`。
+- G5 放行条件：`g2_confirmed == 0` 或全部已修订；`g0_terminology_open == 0`（术语命中清零）；
+  `g4_epubcheck_errors == 0`（且 epubcheck 实际运行）；`g4_audit == "pass"`；
+  溯源完整（`provenance_coverage ≈ 1.0`、三边对账/媒体溯源零缺失、目录层级不扁平、
+  溯源 findings 无 error 级）。
 
 ## 验收阈值（默认）
 
@@ -84,10 +87,9 @@ reviews/review-<ts>/
 |---|---|
 | 长度比 | `0.30 ≤ len(tgt)/len(src) ≤ 3.0`（G0 告警，advisory） |
 | **术语命中** | **0（G0 `terminology` 是真实缺陷，不是 advisory——译文缺了术语表源词；必须逐条核验清零，否则 G5 不放行，`released_reason=terminology_open`）** |
-| 空译文 | 禁止（`import` 直接退回） |
-| 句数一致 | 严格相等（含 `note` 声明例外） |
-| 差错率 | `confirmed_issues / 总句数 ≤ 1e-4` |
-| epubcheck | 0 error |
+| 空译文 | 禁止（`import` 阻断该单元） |
+| 差错率 | `confirmed_issues / 总句数 ≤ 1e-4`（agent 自查参考，非 CLI 硬门） |
+| epubcheck | 0 error（且须实际运行；jar 缺失 → `epubcheck_not_run`） |
 
 > 说明：G0 可独立运行——`auto-epublizer g0` 在翻译/导入后立即校验。
 > **G0 告警分两类，处理方式不同**：

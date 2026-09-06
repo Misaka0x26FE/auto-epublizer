@@ -58,7 +58,9 @@ auto-epublizer preprocess           # 已有工作区：幂等刷新 facts
 
 # 5. 翻译（agent 任务）：agent 读 structured/ 自己翻译，写 translation/ + align/，
 #    然后「import」登记：G0 校验 + 状态推进 + 术语冲突外置（terms.csv 可经 --terms 导入）
-auto-epublizer import [--unit <id>] [--terms preprocessing/terms.csv]
+auto-epublizer import [--unit <id>] [--terms preprocessing/terms.csv] [--reviewed]
+                                 # 登记 agent 手写翻译产物；--reviewed 把 aligned 单元推进
+                                 # reviewed（审校通过的显式登记；reviewed/built 跳过重导）
 auto-epublizer g0                # 翻译/导入后立即静态校验（术语命中为真实缺陷须逐条核验；长度比才是 advisory）
 
 # 6. 审校（agent 任务）：agent 按 G1–G3 语义自行审校，写 reviews/review-<ts>/

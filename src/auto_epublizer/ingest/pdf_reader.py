@@ -17,7 +17,7 @@ import re
 import tempfile
 from pathlib import Path
 
-import fitz  # pymupdf
+import pymupdf as fitz  # pymupdf（fitz 为兼容别名）
 
 from .formula import is_formula_block, is_math_font
 from .images import (

@@ -145,7 +145,7 @@ def _parse_ncx_toc(ncx: str) -> list[dict[str, str]]:
 
 def sniff_pdf(path: Path) -> dict[str, Any]:
     """PDF 嗅探：文字层比例（扫描件判定）/ 乱码率 / 元数据 / bookmark TOC / 页数。"""
-    import fitz  # pymupdf
+    import pymupdf as fitz  # pymupdf（fitz 为兼容别名）
 
     try:
         doc = fitz.open(str(path))

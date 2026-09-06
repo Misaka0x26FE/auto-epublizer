@@ -133,7 +133,7 @@ def collect_capabilities(config: Config, *, ping: bool = False) -> list[Capabili
             "扫描 PDF 无传统 OCR 文字层重建（tesseract 之上的首选）",
             "pip install ocrmypdf（依赖 tesseract）",
         ),
-        _probe_import("fitz", "pymupdf", "PDF 文字层按页切片不可用", "uv sync（自带依赖）"),
+        _probe_import("pymupdf", "pymupdf", "PDF 文字层按页切片不可用", "uv sync（自带依赖）"),
         _probe_import(
             "rapidocr_onnxruntime",
             "rapidocr",

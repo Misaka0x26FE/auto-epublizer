@@ -3,6 +3,12 @@
 输入来自 ``translation/align/<id>.jsonl``、``structured/<id>.md`` 与 ``analysis/glossary.csv``。
 G0 不烧 token、不出"裁决"，只出确定性告警，作为 G1 的输入线索。
 
+**接线状态**：``g0_unit_flags``（import 与 g0 命令的唯一入口）当前执行三类检查——
+align（对照表完整性）/ length（长度比）/ terminology（术语命中）。
+本模块其余函数（标记守恒、注码守恒、标题层级、段落块、断字符修复、排印讹误、
+标点规范化）是历史实践提炼的纯函数工具，供 agent 审校时人工比对使用，
+尚未接入自动校验（后续扩展点）。
+
 历史实践提炼（docs/quality-lessons.md + 旧真实案例）：
 - 插入元素标记数量守恒（``{fig:NNN}`` 32/32）；
 - 注码/脚注引用守恒（1:1）；

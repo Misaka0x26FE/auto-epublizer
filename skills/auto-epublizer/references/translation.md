@@ -85,12 +85,14 @@ PDF ingest 会产出三类非纯文本段（来源见 `references/ingest.md`；�
 - 冲突不自动覆盖已确认译法，保留候选待裁决（对应"译名统一 + 约定俗成"）。
 - `import --terms <csv>` 可批量导入 agent 提取的新术语提案（三态自动判定：新 source→seed，
   与 confirmed 异译→conflict）。
-- 称谓/敬称/口癖/固定表达（source-only 类型）只按完整 source 精确匹配。
+- 称谓/敬称/口癖/固定表达（source-only 类型）是文体档案的分类标注；
+  术语命中检查对所有类型统一按字面/词边界匹配。
 
 ## 状态机与续跑
 
 单元：`split → analyzed → translated → aligned → reviewed → built`。`import` 把完成单元
-置为 `aligned`；重复 import 无害（幂等）。已完成单元可安全跳过。
+置为 `aligned`；重复 import 无害（幂等）。审校通过后 `import --reviewed` 推进为
+`reviewed`（幂等）；`reviewed`/`built` 单元 import 跳过重导（重导修订稿须先重走审校）。
 
 ## 双语
 
