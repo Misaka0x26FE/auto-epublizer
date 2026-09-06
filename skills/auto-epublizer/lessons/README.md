@@ -31,6 +31,7 @@
 | [2026-09-05-agent-translation-workflow.md](2026-09-05-agent-translation-workflow.md) | agent 主进程翻译工作流：每 3–5 单元 build 验证、标题先定稿、Write 工具代替 heredoc、G0 告警不能全当噪声 | 经验留存（GT1/GT2/On Lisp 实测） |
 | [2026-09-05-scanned-pdf-issue-checklist.md](2026-09-05-scanned-pdf-issue-checklist.md) | 扫描件全流程 15 问题清单：主仓库缺口核实（围栏代码块/链接正则/转义）+ epubcheck 错误码速查 + 修复建议 | 经验留存（JS 权威指南实测；缺口待合入） |
 | [2026-09-05-dogfooding-pdf-lessons.md](2026-09-05-dogfooding-pdf-lessons.md) | 真书 dogfooding 5 个 PDF 管线缺陷：公式符号集/字体占比守卫/表格双守卫/qa jar 配置/OCR raw 目录 | 已修复 + 经验留存（来自 plan §6 验证记录） |
+| [2026-09-06-conservation-total-only.md](2026-09-06-conservation-total-only.md) | 守恒类 G0 校验必须做单元级总量比对（行级比对被拆并句误报）；源保真用规范化拼接子串匹配 | 已落地（review/g0.py + review/fidelity.py） |
 
 ## 来源与去向（经验怎么进这里）
 
