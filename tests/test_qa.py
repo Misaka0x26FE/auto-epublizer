@@ -216,6 +216,59 @@ def test_generate_report_unconfirmed_blocks_release() -> None:
     assert result.released is False
 
 
+def test_generate_report_glossary_conflict_blocks_release() -> None:
+    """未决术语冲突阻断放行（S1.1）：同一术语两种译法并存=真实缺陷。"""
+    from auto_epublizer.qa import EpubcheckResult
+
+    audit = AuditResult(ok=True)
+    review = {
+        "g1_candidates": 0,
+        "g2_confirmed": 0,
+        "g3_patched": 0,
+        "termination": "clean_confirmed",
+        "rounds": 2,
+    }
+    result = generate_report(
+        "book",
+        audit,
+        EpubcheckResult(available=True, ran=True, errors=0, warnings=0),
+        review=review,
+        g0_flags=[],
+        total_sentences=50,
+        glossary_conflicts_open=2,
+    )
+    assert result.glossary_conflicts_open == 2
+    assert result.released is False
+    assert result.released_reason == "glossary_conflict_open"
+
+
+def test_generate_report_structure_blocks_release() -> None:
+    """G0 结构违例（marker/footnote/table/fidelity）阻断放行（S1.2）。"""
+    from auto_epublizer.qa import EpubcheckResult
+
+    audit = AuditResult(ok=True)
+    review = {
+        "g1_candidates": 0,
+        "g2_confirmed": 0,
+        "g3_patched": 0,
+        "termination": "clean_confirmed",
+        "rounds": 2,
+    }
+    result = generate_report(
+        "book",
+        audit,
+        EpubcheckResult(available=True, ran=True, errors=0, warnings=0),
+        review=review,
+        g0_flags=[
+            {"unit": "ch01", "check": "marker", "message": "插入标记数量不守恒", "data": {}},
+        ],
+        total_sentences=50,
+    )
+    assert result.g0_structure_open == 1
+    assert result.released is False
+    assert result.released_reason == "structure_open"
+
+
 def test_generate_report_provenance_error_finding_blocks_release() -> None:
     """溯源 error 级发现（E_UNIT_ORDER/E_MEDIA_ORDER/E_INSERT_BAD_SOURCE 等）阻断放行。
 
@@ -288,6 +341,108 @@ def test_generate_report_terminology_blocks_release() -> None:
     assert result.g0_terminology_open == 1
     assert result.released is False
     assert result.released_reason == "terminology_open"
+
+
+def test_audit_zip_duplicate(tmp_path: Path) -> None:
+    """S1.3：zip 条目名重复 → E_ZIP_DUPLICATE（zip 允许同名后者遮蔽前者，内容不可信）。"""
+    import warnings
+
+    bad = tmp_path / "dupe.epub"
+    with warnings.catch_warnings():
+        # zipfile 对重复条目名发 UserWarning——这正是本测试要制造的情形
+        warnings.simplefilter("ignore", UserWarning)
+        with zipfile.ZipFile(bad, "w") as zf:
+            zf.writestr("mimetype", "application/epub+zip")
+            zf.writestr("OEBPS/ch01.xhtml", "<html><body><p>x</p></body></html>")
+            zf.writestr("OEBPS/ch01.xhtml", "<html><body><p>y</p></body></html>")
+    result = audit_epub(bad)
+    assert not result.ok
+    assert any(f.code == "E_ZIP_DUPLICATE" for f in result.findings)
+
+
+def test_audit_remote_img_blocks(tmp_path: Path) -> None:
+    """S1.3：img src 外链（http）→ E_IMG_REMOTE error（媒体必须打包，阅读器离线丢图）。"""
+    pub = _pub()
+    entries = [{"id": "ch01", "region": "body", "title": "第一章"}]
+    content = [
+        (
+            "ch01.xhtml",
+            render_document(
+                "第一章",
+                "# 第一章\n\n正文 ![外链图](https://example.com/x.png) 结束。\n",
+                lang="zh-CN",
+            ),
+        )
+    ]
+    epub = build_epub(
+        pub,
+        entries,
+        content,
+        lang="zh-CN",
+        modified="2026-01-01T00:00:00Z",
+        out_path=tmp_path / "remote.epub",
+    )
+    result = audit_epub(epub)
+    assert not result.ok
+    assert any(f.code == "E_IMG_REMOTE" for f in result.findings)
+
+
+def test_audit_toc_coverage_bidirectional(tmp_path: Path) -> None:
+    """S1.3：spine↔nav 双向覆盖。正常书双向齐；从 nav 移除一章 / nav 塞非 spine 条目均报。"""
+    import shutil
+
+    epub = _make_epub(tmp_path)
+    result = audit_epub(epub)
+    assert not [f for f in result.findings if f.code == "E_TOC_COVERAGE"]
+
+    # 坏书 1：nav toc 区移除一章的 <li> → spine 文档未进目录
+    bad1 = tmp_path / "bad1.epub"
+    shutil.copy(epub, bad1)
+    with zipfile.ZipFile(bad1) as zf:
+        items = {n: zf.read(n) for n in zf.namelist()}
+    nav = items["OEBPS/nav.xhtml"].decode("utf-8")
+    nav = nav.replace('<li><a href="ch01.xhtml">第一章</a></li>', "")
+    items["OEBPS/nav.xhtml"] = nav.encode("utf-8")
+    with zipfile.ZipFile(bad1, "w") as zf:
+        for n, data in items.items():
+            zf.writestr(n, data)
+    result = audit_epub(bad1)
+    assert any(
+        "spine 文档未进目录" in f.message for f in result.findings if f.code == "E_TOC_COVERAGE"
+    )
+
+    # 坏书 2：nav toc 区塞一条指向非 spine 文档的链接
+    bad2 = tmp_path / "bad2.epub"
+    shutil.copy(epub, bad2)
+    with zipfile.ZipFile(bad2) as zf:
+        items = {n: zf.read(n) for n in zf.namelist()}
+    nav = items["OEBPS/nav.xhtml"].decode("utf-8")
+    nav = nav.replace("</ol>", '<li><a href="ghost.xhtml">幽灵章</a></li></ol>', 1)
+    items["OEBPS/nav.xhtml"] = nav.encode("utf-8")
+    with zipfile.ZipFile(bad2, "w") as zf:
+        for n, data in items.items():
+            zf.writestr(n, data)
+    result = audit_epub(bad2)
+    cov = [f for f in result.findings if f.code == "E_TOC_COVERAGE"]
+    assert any("nav 条目不在 spine" in f.message for f in cov)
+
+
+def test_audit_meta_empty_value(tmp_path: Path) -> None:
+    """S1.3：DC 元数据标签存在但内容空白 → W_META_INCOMPLETE 仍告警。"""
+    epub = _make_epub(tmp_path)
+    # 原书无 publisher/rights（build 按需输出）；再验证空 date 标签也报
+    with zipfile.ZipFile(epub) as zf:
+        items = {n: zf.read(n) for n in zf.namelist()}
+    opf_name = next(n for n in items if n.endswith(".opf"))
+    opf = items[opf_name].decode("utf-8")
+    opf = opf.replace("<dc:language>", "<dc:date></dc:date><dc:language>", 1)
+    items[opf_name] = opf.encode("utf-8")
+    with zipfile.ZipFile(epub, "w") as zf:
+        for n, data in items.items():
+            zf.writestr(n, data)
+    result = audit_epub(epub)
+    warnings = [f for f in result.findings if f.code == "W_META_INCOMPLETE"]
+    assert any("dc:date" in f.message for f in warnings)
 
 
 def test_audit_media_warnings(tmp_path: Path) -> None:

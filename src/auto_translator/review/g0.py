@@ -3,9 +3,10 @@
 输入来自 ``translation/align/<id>.jsonl``、``structured/<id>.md`` 与 ``analysis/glossary.csv``。
 G0 不烧 token、不出"裁决"，只出确定性告警，作为 G1 的输入线索。
 
-**接线状态**：``g0_unit_flags``（import 与 g0 命令的唯一入口）当前执行三类检查——
-align（对照表完整性）/ length（长度比）/ terminology（术语命中）。
-本模块其余函数（标记守恒、注码守恒、标题层级、段落块、断字符修复、排印讹误、
+**接线状态**：``g0_unit_flags``（import 与 g0 命令的唯一入口）当前执行五类检查——
+align（对照表完整性）/ length（长度比，advisory）/ terminology（术语命中）/
+marker（插入标记守恒）/ footnote（脚注标记守恒，含 pandoc 与数字式两种表示）。
+本模块其余函数（标题层级、段落块、断字符修复、排印讹误、
 标点规范化）是历史实践提炼的纯函数工具，供 agent 审校时人工比对使用，
 尚未接入自动校验（后续扩展点）。
 
@@ -33,6 +34,9 @@ _MARKER_RE = re.compile(r"\{\w+:\d+\}")
 
 # 近似脚注注码：句末标点后紧跟 1~3 位数字（排除小数如 3.14）
 _FOOTNOTE_REF_RE = re.compile(r"(?<!\d)[.!?…，。；：](\d{1,3})(?!\d)")
+
+# pandoc 脚注标记：[^label] 引用与 [^label]: 定义 统一计数
+_FN_PANDOC_RE = re.compile(r"\[\^[^\]\s]+\]")
 
 _HEADING_RE = re.compile(r"^(#{1,6})\s+", re.MULTILINE)
 
@@ -73,8 +77,13 @@ def markers_conserved(src: str, tgt: str, pattern: re.Pattern[str] = _MARKER_RE)
 
 
 def count_footnote_refs(text: str) -> int:
-    """统计句末注码（脚注引用）数量。"""
+    """统计句末注码（脚注引用）数量（PDF 文字层数字式注码）。"""
     return len(_FOOTNOTE_REF_RE.findall(text or ""))
+
+
+def count_footnote_marks(text: str) -> int:
+    """统计 pandoc 脚注标记（[^label] 引用与定义）数量。"""
+    return len(_FN_PANDOC_RE.findall(text or ""))
 
 
 def count_heading_levels(text: str) -> dict[int, int]:
@@ -204,8 +213,16 @@ def g0_unit_flags(
     too_short: float = 0.30,
     too_long: float = 3.0,
 ) -> list[G0Flag]:
-    """对一个单元执行全部 G0 检查，返回告警列表。"""
+    """对一个单元执行全部 G0 检查，返回告警列表。
+
+    检查项：align（对照表完整性）/ length（长度比，advisory）/ terminology（术语
+    命中）/ marker（插入标记守恒）/ footnote（脚注标记守恒）。守恒类做**单元级
+    总量比对**而非行级——拆句/并句会把标记挪到相邻行，总量守恒恰好对应
+    「一个都不能丢」且不误报。
+    """
     flags = list(check_alignment(rows))
+    sum_marker_src = sum_marker_tgt = 0
+    sum_fn_src = sum_fn_tgt = 0
     for r in rows:
         src = r.get("src") or ""
         tgt = r.get("tgt") or ""
@@ -225,4 +242,24 @@ def g0_unit_flags(
                     {"seq": seq, "source": hit.source, "expected": hit.expected},
                 )
             )
+        sum_marker_src += count_markers(src)
+        sum_marker_tgt += count_markers(tgt)
+        sum_fn_src += count_footnote_refs(src) + count_footnote_marks(src)
+        sum_fn_tgt += count_footnote_refs(tgt) + count_footnote_marks(tgt)
+    if sum_marker_src != sum_marker_tgt:
+        flags.append(
+            G0Flag(
+                "marker",
+                "插入标记数量不守恒",
+                {"src": sum_marker_src, "tgt": sum_marker_tgt},
+            )
+        )
+    if sum_fn_src != sum_fn_tgt:
+        flags.append(
+            G0Flag(
+                "footnote",
+                "脚注标记数量不守恒",
+                {"src": sum_fn_src, "tgt": sum_fn_tgt},
+            )
+        )
     return flags

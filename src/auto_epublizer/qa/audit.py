@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 import zipfile
+from collections import Counter
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -91,6 +92,11 @@ def audit_epub(path: str | Path) -> AuditResult:
             if zf.read("mimetype").decode("utf-8") != "application/epub+zip":
                 result.add("error", "E_MIMETYPE_CONTENT", "mimetype 内容错误")
 
+        # 1b. zip 条目名不得重复（zip 规范允许同名条目后者遮蔽前者，内容即不可信）
+        for dupe, count in Counter(names).items():
+            if count > 1:
+                result.add("error", "E_ZIP_DUPLICATE", f"zip 条目名重复：{dupe}")
+
         # 2. container.xml 指向 OPF
         if "META-INF/container.xml" not in names:
             result.add("error", "E_NO_CONTAINER", "缺少 META-INF/container.xml")
@@ -137,6 +143,36 @@ def audit_epub(path: str | Path) -> AuditResult:
                 if full not in names:
                     result.add("error", "E_NCX_HREF", f"NCX content src 无法解析：{src}")
 
+        # 4a. spine ↔ nav 双向覆盖（S1.3）：每个 spine 内容文档进目录、
+        #     每个 nav 条目指向 spine 文档；nav/landmarks 自身与封面（linear="no"）豁免
+        id2href: dict[str, str] = {}
+        for item in re.findall(r"<item\b[^>]*>", opf):
+            mid = re.search(r'\bid="([^"]+)"', item)
+            mhref = re.search(r'\bhref="([^"]+)"', item)
+            if mid and mhref:
+                id2href[mid.group(1)] = mhref.group(1)
+        spine_docs = {(opf_dir / id2href[ref]).as_posix() for ref in spine_idrefs if ref in id2href}
+        cover_docs: set[str] = set()
+        for ref in re.findall(r'<itemref[^>]+idref="([^"]+)"[^>]*linear="no"', opf):
+            if ref in id2href:
+                cover_docs.add((opf_dir / id2href[ref]).as_posix())
+        nav_doc_hrefs: set[str] = set()
+        for nav in nav_entries:
+            content = zf.read(nav).decode("utf-8")
+            m = re.search(r'<nav[^>]*epub:type="toc"[^>]*>(.*?)</nav>', content, re.DOTALL)
+            if not m:
+                m = re.search(r"<nav\b[^>]*>(.*?)</nav>", content, re.DOTALL)
+            if not m:
+                continue
+            for href in re.findall(r'href="([^"]+\.xhtml)[^"]*"', m.group(1)):
+                nav_doc_hrefs.add((Path(nav).parent / href.split("#")[0]).as_posix())
+        exempt = {n for n in names if n.endswith(("nav.xhtml", "landmarks.xhtml"))} | cover_docs
+        for doc in spine_docs - exempt:
+            if doc not in nav_doc_hrefs:
+                result.add("error", "E_TOC_COVERAGE", f"spine 文档未进目录：{doc}")
+        for doc in nav_doc_hrefs - spine_docs:
+            result.add("error", "E_TOC_COVERAGE", f"nav 条目不在 spine：{doc}")
+
         for lm in (n for n in names if n.endswith("landmarks.xhtml")):
             content = zf.read(lm).decode("utf-8")
             for href in re.findall(r'href="([^"]+\.xhtml)"', content):
@@ -144,13 +180,19 @@ def audit_epub(path: str | Path) -> AuditResult:
                 if full not in names:
                     result.add("error", "E_LANDMARKS_HREF", f"landmarks 链接无法解析：{href}")
 
-        # 4b. 内容文档 <img src> 引用必须存在于包内（媒体悬空检测）
+        # 4b. 内容文档 <img src> 引用必须存在于包内（媒体悬空检测）；
+        #     外链（http/data）为 error——媒体必须打包进 EPUB（阅读器普遍离线，远程资源=丢图）
         for name in names:
             if not name.endswith(".xhtml"):
                 continue
             content = zf.read(name).decode("utf-8")
             for src in re.findall(r'<img\b[^>]*?src="([^"]+)"', content):
                 if _HTTPS.match(src):
+                    result.add(
+                        "error",
+                        "E_IMG_REMOTE",
+                        f"img src 为外部链接（媒体必须打包进 EPUB）：{name} -> {src}",
+                    )
                     continue
                 full = (Path(name).parent / src).as_posix()
                 if full not in names:
@@ -261,16 +303,11 @@ def audit_epub(path: str | Path) -> AuditResult:
                     result.add("warning", "W_RESIDUE", f"markdown 标记残留（{marker}）：{name}")
                     break
 
-        # 10. 元数据完备（postprocessing-spec P2）：次级 DC 项缺失提示（供 agent 补全）
+        # 10. 元数据完备（postprocessing-spec P2）：次级 DC 项缺失**或空白**提示（供 agent 补全）
         missing_meta = [
             tag
-            for tag, needle in (
-                ("dc:creator", "<dc:creator>"),
-                ("dc:date", "<dc:date>"),
-                ("dc:publisher", "<dc:publisher>"),
-                ("dc:rights", "<dc:rights>"),
-            )
-            if needle not in opf
+            for tag in ("dc:creator", "dc:date", "dc:publisher", "dc:rights")
+            if not re.search(rf"<{tag}>\s*\S[^<]*</{tag}>", opf)
         ]
         if missing_meta:
             result.add("warning", "W_META_INCOMPLETE", "DC 元数据缺失：" + "、".join(missing_meta))

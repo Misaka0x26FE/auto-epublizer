@@ -21,6 +21,8 @@ class QaResult:
     # G5 交付验收（聚合 G0–G3）
     g0_flags: list[dict[str, Any]] = field(default_factory=list)
     g0_terminology_open: int = 0  # 术语命中告警数：真实缺陷，必须清零才能放行
+    g0_structure_open: int = 0  # 标记/脚注守恒等结构违例数：真实缺陷，必须清零才能放行
+    glossary_conflicts_open: int = 0  # 术语冲突未裁决数：真实缺陷，必须清零才能放行
     g1_candidates: int = 0
     g2_confirmed: int = 0
     g3_patched: int = 0
@@ -55,13 +57,16 @@ def generate_report(
     total_sentences: int = 0,
     provenance: dict[str, Any] | None = None,
     toc_missing: list[str] | None = None,
+    glossary_conflicts_open: int = 0,
 ) -> QaResult:
     """聚合 G0–G4 + 溯源审计生成放行报告。
 
     ``review`` 是最新一次审校的 result.json（g1_candidates/g2_confirmed/g3_patched/
     termination/rounds）；``g0_flags`` 是 G0 静态校验告警；``total_sentences`` 是全部
     align 句数（用于差错率分母）；``provenance`` 是溯源审计结果
-    （qa/provenance.py）；``toc_missing`` 是 facts 源 TOC 对账缺失标题。
+    （qa/provenance.py）；``toc_missing`` 是 facts 源 TOC 对账缺失标题；
+    ``glossary_conflicts_open`` 是术语冲突未裁决条数（glossary_conflicts.jsonl
+    中 status=open）。
     """
     errors = [f for f in audit.findings if f.level == "error"]
     g4_audit = "pass" if audit.ok else "fail"
@@ -76,6 +81,10 @@ def generate_report(
     g3_rounds = int(rev.get("rounds", 0) or 0)
     flags = list(g0_flags or [])
     g0_terminology_open = sum(1 for f in flags if f.get("check") == "terminology")
+    # 结构违例：标记/脚注守恒（S1.2）+ 表格形状/源保真（S4.1/S4.2 预留）
+    g0_structure_open = sum(
+        1 for f in flags if f.get("check") in ("marker", "footnote", "table", "fidelity")
+    )
     error_rate = (g2_confirmed / total_sentences) if total_sentences else 0.0
 
     # 溯源审计结果映射（postprocessing-spec §5 放行扩展）
@@ -104,12 +113,16 @@ def generate_report(
     # epubcheck 零 error；审计通过；溯源完整（覆盖率≈1.0、三边对账/媒体溯源零缺失、
     # 目录层级不扁平）。G0 长度比告警是 advisory，不作为放行硬条件——英→中等语言对
     # 长度比天然偏低，实测会产生大量误报（豆包实测 994 条均为误报）。
-    # **但 G0 术语命中（terminology）是真实缺陷**：译文中缺失了术语表的源词，
+    # **G0 术语命中（terminology）是真实缺陷**：译文中缺失了术语表的源词，
     # 必须逐条核验清零才可放行（豆包实测曾把术语未命中与长度误报混为一谈而漏检）。
+    # **G0 结构违例（marker/footnote/table/fidelity）与未决术语冲突同属硬门**：
+    # 标记丢失=插图/脚注在成品中丢失；冲突未裁决=同一术语两种译法并存到成品。
     confirmed_resolved = g2_confirmed == 0 or g2_confirmed <= g3_patched
     released = (
         confirmed_resolved
         and g0_terminology_open == 0
+        and g0_structure_open == 0
+        and glossary_conflicts_open == 0
         and epubcheck.ran
         and epubcheck.errors == 0
         and audit.ok
@@ -119,6 +132,10 @@ def generate_report(
         reason = "ok"
     elif g0_terminology_open:
         reason = "terminology_open"
+    elif glossary_conflicts_open:
+        reason = "glossary_conflict_open"
+    elif g0_structure_open:
+        reason = "structure_open"
     elif not confirmed_resolved:
         reason = "unresolved_confirmed"
     elif not audit.ok:
@@ -152,6 +169,8 @@ def generate_report(
         passed=passed,
         g0_flags=[dict(f) for f in flags],
         g0_terminology_open=g0_terminology_open,
+        g0_structure_open=g0_structure_open,
+        glossary_conflicts_open=glossary_conflicts_open,
         g1_candidates=g1_candidates,
         g2_confirmed=g2_confirmed,
         g3_patched=g3_patched,

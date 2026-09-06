@@ -233,14 +233,18 @@ skills 的能力-路由决策表选择 ingest 路由（pandoc / 按页切片 / �
 
 ## 质量检验流程（六道关）
 
-1. **零 token 廉价校验**：对照表完整性、句数一致、长度比异常（<0.30 / >3.0 / 空）、标点/术语命中纯函数。
+1. **零 token 廉价校验**：对照表完整性、长度比异常（<0.30 / >3.0 / 空，advisory）、
+   术语命中（硬）、插入标记/脚注标记守恒（硬，单元级总量比对，含 pandoc `[^N]` 与
+   句末数字两种表示）。
 2. **逐批审校 Agent（cheap）**：missing/added/mistranslation/terminology/pronoun；宁缺毋滥；JSON 协议末尾必须 `reviewed_segments` + `complete:true`，违例整批重试。
 3. **证据取证 Agent Loop（strong）**：候选先取证再裁决，禁止假设未取得的上下文；术语库与影子修订都是待核验材料。
 4. **冲突仲裁 + 影子修订 + 盲复审**：跨块矛盾终局仲裁；Fixer 只在影子 overlay 改；下一轮盲审不传旧说明；连续 clean 确认或 max_rounds 收敛；振荡检测（摘要 SHA-256 循环）。
 5. **EPUB 结构 QA**：epubcheck 零 error + 解包逐项审计（mimetype 首位、manifest/spine/nav 解析、封面、lang、每章一个 h1、脚注双向跳转、无残留）。
 6. **交付验收**：汇总 G0–G4 + 溯源审计生成 `report.json`（g0_flags/g1_issues/g2_confirmed/
    g3_termination/error_rate/provenance_coverage/units_missing/media_lost/released/
-   released_reason），放行条件为 **G0 术语命中清零（`terminology` 是真实缺陷，非 advisory）**、
+   released_reason），放行条件为 **G0 术语命中清零**（`terminology` 是真实缺陷，非 advisory）、
+   **G0 结构违例清零**（`marker`/`footnote` 标记守恒；`g0_structure_open`）、
+   **未决术语冲突清零**（`glossary_conflicts_open`：裁决写回 glossary.csv 前不放行）、
    `g2_confirmed == 0` 或全部已修订、`g4_epubcheck_errors == 0`、
    `g4_audit == "pass"`、溯源完整（`provenance_coverage ≈ 1.0`（无翻译产物为 null）、
    三边对账/媒体溯源零缺失、目录层级不扁平；详见 docs/postprocessing-spec.md §5）。

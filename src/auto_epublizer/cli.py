@@ -159,6 +159,11 @@ def qa(
         f"G2 确认：{report['g2_confirmed']}（已修订 {report['g3_patched']}）；"
         f"差错率：{report['error_rate']}"
     )
+    console.print(
+        f"  硬门：术语命中 {report['g0_terminology_open']}；"
+        f"结构违例 {report.get('g0_structure_open', 0)}；"
+        f"术语冲突未裁决 {report.get('glossary_conflicts_open', 0)}"
+    )
     console.print(f"  G5 放行：{'是' if report['released'] else '否'}")
 
 
@@ -265,18 +270,21 @@ def import_cmd(
         console.print(f"[red]✗ {item['unit']}[/red]")
         for err in item["errors"]:
             console.print(f"    {err}")
+    # 硬缺陷类（术语命中/标记/脚注守恒等）：红色 ✗；advisory（长度比等）：黄色 ⚠
+    _HARD_CHECKS = {"terminology", "marker", "footnote", "table", "fidelity"}
     for w in result["warnings"][:20]:
-        color = "[red]" if w["check"] == "terminology" else "[yellow]"
-        mark = "✗" if w["check"] == "terminology" else "⚠"
+        hard = w["check"] in _HARD_CHECKS
+        color = "[red]" if hard else "[yellow]"
+        mark = "✗" if hard else "⚠"
         console.print(
             f"{color}{mark} {w['unit']} {w['check']}：{w['message']}[/{color.strip('[]')}]"
         )
     if len(result["warnings"]) > 20:
         console.print(f"  … 共 {len(result['warnings'])} 条告警")
-    n_term = sum(1 for w in result["warnings"] if w["check"] == "terminology")
+    n_term = sum(1 for w in result["warnings"] if w["check"] in _HARD_CHECKS)
     if n_term:
         console.print(
-            f"[red]其中术语命中 {n_term} 条是真实缺陷（译文缺术语表源词），"
+            f"[red]其中硬缺陷 {n_term} 条（术语命中/标记/脚注守恒等，真实缺陷），"
             f"须逐条核验清零后才能放行[/red]"
         )
     for sid in result["skipped"]:
@@ -305,17 +313,19 @@ def g0(
         result = orch.g0_check(store, unit_id=unit)
     except (ValueError, OSError, orch.OrchestrationError) as e:
         raise typer.Exit(f"G0 校验失败：{e}") from None
-    n_term = 0
+    # 硬缺陷类（术语命中/标记/脚注守恒等）红色 ✗，须逐条核验；其余 advisory 黄色 ⚠
+    _HARD_CHECKS = {"terminology", "marker", "footnote", "table", "fidelity"}
+    n_hard = 0
     for f in result["flags"]:
-        if f["check"] == "terminology":
-            # 术语命中是真实缺陷（译文缺术语表源词），必须逐条核验；长度比才是 advisory
-            n_term += 1
+        if f["check"] in _HARD_CHECKS:
+            n_hard += 1
             console.print(f"[red]✗ {f['unit']} {f['check']}：{f['message']}[/red]")
         else:
             console.print(f"[yellow]⚠ {f['unit']} {f['check']}：{f['message']}[/yellow]")
     console.print(
         f"G0 完成：校验 {len(result['checked_units'])} 单元，告警 {len(result['flags'])} 条"
-        f"（其中术语命中 {n_term} 条——真实缺陷，须逐条核验清零；其余为 advisory）"
+        f"（其中硬缺陷 {n_hard} 条——术语命中/标记/脚注守恒等真实缺陷，须逐条核验清零；"
+        f"其余为 advisory）"
     )
 
 

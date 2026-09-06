@@ -53,6 +53,8 @@ translator(强档)                 G0 零 token 静态校验 ── 不过则退
 | 检查项 | 规则 | 失败动作 |
 |---|---|---|
 | 对照表完整性 | 每句原文有 `src↔tgt` 映射，`seq` 连续 1..N 无缺号、无重复，无空原文/空译文 | 阻断该单元 import（报错清单），修正后重跑 |
+| 插入标记守恒 | `{fig:NNN}` 等标记 src/tgt **单元级总量**一致（拆并句挪位不误报） | 告警（硬缺陷）；未清零阻断 G5（`structure_open`） |
+| 脚注标记守恒 | pandoc `[^label]`（引用+定义）与句末数字注码两种表示，src/tgt 总量一致 | 同上 |
 | 长度比 | `len(tgt)/len(src)` 落在 `[0.30, 3.0]`；译文非空 | 告警，交 G1 复核 |
 | 术语命中 | 正文出现 glossary `source` 时，译文包含对应 `target`（NFKC 归一化 + 词边界） | 告警，交 G1 定责 |
 | 勘误留痕 | 句 src 命中已知排印讹误先例（IDG→IDF 等）→ align `note` 前缀 `corr:` | 留痕，不告警 |
@@ -144,6 +146,9 @@ Autofix（可选）：先写可恢复索引 `reviews/<ts>/autofix/index.json`，
   `g2_confirmed == 0` 或全部已修订（`g3_patched`）；
   **`g0_terminology_open == 0`**（G0 术语命中是真实缺陷——译文缺失术语表源词，
   必须逐条核验清零，否则 `released_reason=terminology_open`）；
+  **`g0_structure_open == 0`**（标记/脚注守恒违例；`structure_open`）；
+  **`glossary_conflicts_open == 0`**（未决术语冲突；`glossary_conflict_open`——
+  裁决写回 glossary.csv 前不放行）；
   `g4_epubcheck_errors == 0`；`g4_audit == "pass"`；溯源完整
   （`provenance_coverage ≈ 1.0`（无翻译产物为 null）、三边对账/媒体溯源零缺失、
   `toc_flat == false`、溯源 findings 无 error 级）。

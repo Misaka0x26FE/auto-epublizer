@@ -144,6 +144,10 @@
 - ✅ 内部链接：内部锚点可解析（`E_ANCHOR`，含 noteref→footnote）+ 脚注回链（`E_FN_BACKLINK`）
 - ✅ 体积审计：EPUB 总体积（`W_EPUB_SIZE`，50MB）+ 单图未压缩（`W_IMG_UNCOMPRESSED`，2MB）
 - ✅ 命名规范：成品文件名以 slug 为前缀（`W_NAMING`，qa 接线）；spine 顺序 = 源顺序（P0 provenance 已覆盖）
+- ✅ 打包完整性（2026-09-06 S1.3）：zip 条目重复（`E_ZIP_DUPLICATE`）、图片外链
+  （`E_IMG_REMOTE`——媒体必须打包，阅读器离线丢图）、spine↔nav 双向覆盖
+  （`E_TOC_COVERAGE`，nav/landmarks 自身与封面 linear="no" 豁免）、
+  元数据缺失**或空白**（`W_META_INCOMPLETE`）
 - ✅ 图片断页：`page-break-inside: avoid`（功能性样式）
 
 ## 5. 放行条件扩展
