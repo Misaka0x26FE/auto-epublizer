@@ -150,6 +150,7 @@ skills/auto-epublizer/
 ├── references/       ⑦ 参考：user/（用户上传）+ web/（agent 网络检索）+ index.jsonl
 ├── preprocessing/    ⑧ 预处理层：facts.json/facts.md（CLI 零 token 事实）+
 │                       agent 撰写的 todo.md（逐细节任务清单）/ plan/global/units/terms/risks/report
+│                       + catalog.csv（可选源盘点：included/physical/excluded/unresolved）
 ├── publication.json  权威索引（DC 元数据 + 内容树 + 状态机 + 配置快照）
 ├── .progress.json    （预留）批次级断点；当前未落盘，断点=单元级跳过
 ├── glossary.db       术语库内部索引（可选，SQLite）
@@ -250,6 +251,7 @@ skills 的能力-路由决策表选择 ingest 路由（pandoc / 按页切片 / �
    released_reason），放行条件为 **G0 术语命中清零**（`terminology` 是真实缺陷，非 advisory）、
    **G0 结构违例清零**（`marker`/`footnote` 标记守恒；`g0_structure_open`）、
    **未决术语冲突清零**（`glossary_conflicts_open`：裁决写回 glossary.csv 前不放行）、
+   **源盘点未决清零**（`catalog_unresolved_open`，catalog.csv 存在时才检查）、
    `g2_confirmed == 0` 或全部已修订、`g4_epubcheck_errors == 0`、
    `g4_audit == "pass"`、溯源完整（`provenance_coverage ≈ 1.0`（无翻译产物为 null）、
    三边对账/媒体溯源零缺失、目录层级不扁平；详见 docs/postprocessing-spec.md §5）。

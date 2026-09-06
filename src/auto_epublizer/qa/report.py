@@ -23,6 +23,7 @@ class QaResult:
     g0_terminology_open: int = 0  # 术语命中告警数：真实缺陷，必须清零才能放行
     g0_structure_open: int = 0  # 标记/脚注守恒等结构违例数：真实缺陷，必须清零才能放行
     glossary_conflicts_open: int = 0  # 术语冲突未裁决数：真实缺陷，必须清零才能放行
+    catalog_unresolved_open: int = 0  # 源盘点未决项数（catalog.csv 存在时才检查）
     g1_candidates: int = 0
     g2_confirmed: int = 0
     g3_patched: int = 0
@@ -58,6 +59,7 @@ def generate_report(
     provenance: dict[str, Any] | None = None,
     toc_missing: list[str] | None = None,
     glossary_conflicts_open: int = 0,
+    catalog_unresolved_open: int = 0,
 ) -> QaResult:
     """聚合 G0–G4 + 溯源审计生成放行报告。
 
@@ -123,6 +125,7 @@ def generate_report(
         and g0_terminology_open == 0
         and g0_structure_open == 0
         and glossary_conflicts_open == 0
+        and catalog_unresolved_open == 0
         and epubcheck.ran
         and epubcheck.errors == 0
         and audit.ok
@@ -140,6 +143,8 @@ def generate_report(
         reason = "unresolved_confirmed"
     elif not audit.ok:
         reason = "audit_failed"
+    elif catalog_unresolved_open:
+        reason = "catalog_open"
     elif not prov_ok:
         reason = "provenance_incomplete"
     elif not epubcheck.ran:
@@ -171,6 +176,7 @@ def generate_report(
         g0_terminology_open=g0_terminology_open,
         g0_structure_open=g0_structure_open,
         glossary_conflicts_open=glossary_conflicts_open,
+        catalog_unresolved_open=catalog_unresolved_open,
         g1_candidates=g1_candidates,
         g2_confirmed=g2_confirmed,
         g3_patched=g3_patched,
