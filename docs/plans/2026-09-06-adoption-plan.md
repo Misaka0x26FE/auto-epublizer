@@ -534,7 +534,7 @@ agent 整表翻译时改列数/丢分隔行/转义管道符出错，G0/构建/ep
 表格段加「形状必须与源一致（行列数/分隔行），import 会硬校验」；structure.md
 契约行同步。
 
-### 4.3 结构冻结门禁——**暂不做（记录理由与重开条件）**
+### 4.3 结构冻结门禁——**已归档（完整设计留存本节，有需要时照此实现）**
 
 **完整设计（若重开时照此实现）**：`Publication` 加 `structure_frozen: bool = False`
 + `frozen_at: str`；新命令 `freeze`（要求全部单元 ≥ split；写 frozen 标记 +
@@ -548,8 +548,9 @@ log_event）与 `unfreeze`（清标记并提示「structured 改动后受影响�
 会让 import 直接失败——工作流摩擦大于收益，且尚无「翻译中途改 structured 导致
 成品混入新旧结构」的实际事故。
 
-**重开条件**：dogfooding/实战出现上述事故 ≥ 1 次，或引入 agent 可改结构的机制
-（如未来 inserts 重排）时，按上述设计实现。
+**归档理由与重启提示**：当时评估增量价值不足（见上）。若日后 dogfooding/实战
+出现上述事故 ≥ 1 次，或引入 agent 可改结构的机制（如未来 inserts 重排），
+直接按本节设计实现，无需重新设计。
 
 ### 4.4 SourceCatalog 源完整性契约——**做最小形态（排在 4.2 后）**
 
@@ -595,17 +596,18 @@ toc_missing）+ facts 的源 TOC；「源里有但没收录」的**源侧**盘�
 §6；postprocessing-spec.md §5 放行条件加一条；skills preprocessing.md/qa.md/
 invariants.md。
 
-### 4.5 错误码目录 + `{code,severity,path}` 结构化 issue——**暂缓**
+### 4.5 错误码目录 + `{code,severity,path}` 结构化 issue——**已归档（设计草图留存）**
 
 **设计草图**：`G0Flag` 加 `code: str = ""`（如 `G0.TERM_MISSING`/`G0.MARKER_LOST`）
 与 `severity: str = "warning"`；report.json 的 g0_flags/provenance_findings 统一
 `{code, severity, path, message}`；skills 文档给码表。**暂缓理由**：report.json 的
 消费方（skills 文档、CLI 输出、agent 判读）刚在 `ba04880` 全量对齐 check/message
 结构，立刻再改一轮契约的迁移成本 > 收益；错误码化的真实收益（按码自动路由修复）
-要等 4.1/4.2 落地、硬错误类别稳定后再收割。**重开条件**：S4 前两项落地后，
-若 skills 排障文档出现 ≥2 处需要按码索引的表格，或引入自动化修复路由时。
+要等 4.1/4.2 落地、硬错误类别稳定后再收割。**归档理由与重启提示**：当时评估迁移成本 > 收益（见上）。S4.1/S4.2 现已落地、
+硬错误类别已稳定——若日后 skills 排障文档出现多处需按码索引的表格，或引入
+自动化修复路由，按本节草图实施。
 
-### 4.6 inserts 生命周期（draft/reviewed）+ 媒体 sha256 复核——**暂缓**
+### 4.6 inserts 生命周期（draft/reviewed）+ 媒体 sha256 复核——**已归档（设计草图留存）**
 
 **设计草图**：`InsertRecord` 加 `status: str = "draft"`；provenance 统计非
 reviewed 的 formula latex / figure content_desc → 新码 `W_INSERT_NOT_REVIEWED`
@@ -613,15 +615,16 @@ reviewed 的 formula latex / figure content_desc → 新码 `W_INSERT_NOT_REVIEW
 ingest 时在 inserts index 或 media 目录记 sha256，qa 复核比对（`E_ASSET_HASH`）。
 **暂缓理由**：`inserts_missing_files` 已进放行门，desc/latex 的空值已有 W 级提醒
 + translation.md 补全指引；生命周期门禁的增量是「确认 agent 审过」而非「填过」，
-当前单 agent 工作流下二者几乎等价。**重开条件**：出现 content_desc 已填但质量
-不合格流入成品的事故，或工作流引入多轮独立审校时。
+当前单 agent 工作流下二者几乎等价。**归档理由与重启提示**：当时评估单 agent 工作流下增量等价（见上）。若日后
+出现 desc 已填但质量不合格流入成品的事故，或工作流引入多轮独立审校，
+按本节草图实施。
 
 ---
 
 ## 实施顺序与提交约定
 
 S1（一次提交）→ S2（一次提交）→ S3（一次提交）→ S4.1 → S4.2 → S4.4（各一次提交）
-→ 4.3/4.5/4.6 维持暂缓记录。每批：Conventional Commits、回归测试先行（能失败的
+→ 4.3/4.5/4.6 归档（设计留存各节，需要时再做）。每批：Conventional Commits、回归测试先行（能失败的
 最小测试）、`uv run pytest -q` + `ruff check .` + `ruff format --check .` 三绿、
 受影响 skills 文档同步（AGENTS.md 契约）。S3 虽纯文档也单独成提交，便于回溯。
 
@@ -650,10 +653,10 @@ S1（一次提交）→ S2（一次提交）→ S3（一次提交）→ S4.1 →
 | S3 skills 文档批 | ✅ 已完成 | `729b120` |
 | S4.1 align 源绑定校验 | ✅ 已完成 | `f8255fb` |
 | S4.2 表格形状守恒 | ✅ 已完成 | `3b4a82a` |
-| S4.3 结构冻结 | 暂缓（理由与重开条件见 §4.3，维持） | — |
+| S4.3 结构冻结 | 已归档（理由见 §4.3，设计留存） | — |
 | S4.4 SourceCatalog 最小形态 | ✅ 已完成 | `33b4beb` |
-| S4.5 错误码目录 | 暂缓（见 §4.5，维持） | — |
-| S4.6 inserts 生命周期 | 暂缓（见 §4.6，维持） | — |
+| S4.5 错误码目录 | 已归档（理由见 §4.5，设计留存） | — |
+| S4.6 inserts 生命周期 | 已归档（理由见 §4.6，设计留存） | — |
 
 ## 实施备注（与设计的偏差）
 
