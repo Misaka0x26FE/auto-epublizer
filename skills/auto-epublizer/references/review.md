@@ -1,5 +1,7 @@
 # Review（六道关 QC 操作指引）
 
+> 排障与放行判读速查（错误码全集/条件全集）见 `references/invariants.md`。
+
 六道关按成本分层：G0/G4/G5 是 CLI 确定性校验（零 token）；G1–G3 的**语义审校是 agent
 任务**（唯一 LLM 原则）——你用自身能力读双语对照找问题、裁决、修订，并把产物按契约写进
 `reviews/review-<ts>/`，`qa` 从 `result.json` 读 g1/g2/g3 计数与收敛状态。
@@ -53,6 +55,12 @@ reviews/review-<ts>/
 | `max_rounds` | 达轮数上限仍未收敛 | 人工检查遗留 issue |
 | `no_progress` | 修订摘要出现 A↔B 循环 | 振荡，人工介入裁决 |
 | `unresolved_fixes` | 无法修订的句子积压 | 人工处理 |
+
+## G1 抽样策略
+
+小书（≤10 单元）全审。大部头按**章节类型 × 高风险特征**分层抽样，高风险必审：
+论证密集/表格、脚注、引文密集/多语材料/OCR 存疑段（对齐 `risks.md` 与
+`preprocessing/units/<id>.md` 的风险标注）/复杂版式/**每章首尾单元**；其余随机抽查。
 
 ## G1 问题类型（宁缺毋滥）
 

@@ -82,6 +82,9 @@ PDF ingest 会产出三类非纯文本段（来源见 `references/ingest.md`；�
 裁决(resolve) ── agent 读冲突文件终局裁决，写回 glossary.csv（权威）
 ```
 
+**裁决写回 glossary.csv 后，对全部已译单元重跑 `g0`**——旧译法违例（terminology）
+当场清零，不要只查新译单元；未决冲突未写回前 `qa` 不放行（`glossary_conflict_open`）。
+
 - 冲突不自动覆盖已确认译法，保留候选待裁决（对应"译名统一 + 约定俗成"）。
 - `import --terms <csv>` 可批量导入 agent 提取的新术语提案（三态自动判定：新 source→seed，
   与 confirmed 异译→conflict）。
