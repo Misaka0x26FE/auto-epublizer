@@ -1,5 +1,7 @@
 # QA（epubcheck + 解包审计）
 
+> 排障与放行判读速查（错误码全集/条件全集）见 `references/invariants.md`。
+
 `qa` 命令对成品 EPUB 做结构 QA（G4），写 `report.json`。
 
 ## 命令

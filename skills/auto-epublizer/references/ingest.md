@@ -98,6 +98,8 @@ structured/raw/
 - OCR 引擎懒加载：文字层 PDF 不付模型加载成本；`init` 遇扫描页自动调 RapidOCR。
 - 难页视觉兜底是你的能力（multimodal 自报）：可自行渲染难页看图理解，结果按页写回
   `structured/raw/page-NNN.json`（`ocr:true`）。
+- **批量改写后抽查**：对 `structured/` 做批量清洗/OCR 修正后，抽首/中/尾代表页与
+  `raw/` 页证据（page-NNN.json 或页图）对照，防批量清洗静默吞内容。
 - 常见错误：`不支持的格式`（换扩展名）、`该 PDF 没有可抽取的文字层`（扫描件，
   装 OCR extra / 配 MinerU key / 用逐页阅读兜底）、`未配置 MINERU_API_KEY`（强制
   mineru 后端但缺 key——询问用户）。

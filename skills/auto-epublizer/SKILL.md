@@ -17,9 +17,27 @@ metadata:
 裁决、公式 LaTeX、内容描述、修复与放行决策**全部由使用本 Skill 的 agent 用自身能力
 （读文件、判断、写文件）完成。agent 只需基础能力，无需 MCP/子代理。
 
+## 不可协商红线
+
+1. **不手编 `publication.json`**——状态只经 CLI 命令推进（import/g0/qa/meta）。
+2. **`source/` 与 `references/user/` 绝不改动**。
+3. **结构（切章/标题层级）翻译前定稿**；中途改动必须重走受影响单元（重 ingest +
+   重译），旧译文不作数。
+4. **G0 术语命中/标记守恒/脚注守恒/源保真/表格形状是缺陷不是建议**，放行前必须
+   清零；长度比才是 advisory。
+5. **EPUB 不是真相源**——发现成品问题改 `translation/` + `align/` 后重新 build，
+   不手补成品文件。
+6. **`qa` released ≠ 可发布**：发布前必须过 `references/publishing.md` 的
+   权属+隐私 gate。
+7. **唯一 LLM 原则**：CLI 零 token；语义判断全由你完成，禁止引入任何 LLM API 调用。
+8. **译者署名默认=你的 agent 框架名**（OpenCode/DouBao…），用户指定名优先
+   （经 `meta --translator` 写入）。
+
 ## Route Before Acting
 
-先跑 `auto-epublizer doctor --json` 做能力自检（工具链/依赖/MinerU/网络），并**自报
+先跑 `auto-epublizer version`，若低于本目录 `manifest.json` 的
+`minimum_cli_version`，停止并提示用户升级 CLI（skill 与 CLI 契约不兼容）。
+再跑 `auto-epublizer doctor --json` 做能力自检（工具链/依赖/MinerU/网络），并**自报
 multimodal / search**（能否看图、有无搜索工具，CLI 无法探测）——据此选择 ingest 路由
 （见 `references/ingest.md` 的能力-路由决策表）。然后读本 Skill 目录的 `manifest.json`，
 按当前阶段只读需要的 reference。
@@ -36,7 +54,15 @@ multimodal / search**（能否看图、有无搜索工具，CLI 无法探测）�
 | EPUB 封装、确定性构建 | `references/build.md` |
 | epubcheck + 解包审计、质量报告 | `references/qa.md` |
 | 文体档案（novel/academic/paper/poetry/newspaper）应用 | `references/style.md` |
+| 放行条件全集 / 错误码速查 / 排障判读 | `references/invariants.md` |
+| 发布/分发成品（GitHub release / 私有分发）、权属与隐私 | `references/publishing.md` |
 | 源站/脏源/边界情况的实战经验（Baka-Tsuki 插图段、epubcheck 离线等） | `lessons/`（按主题匹配，仅命中才读） |
+
+> **传统工作区指纹**：目录含 `split/`、`split_translated/`、`.progress`、根
+> `GLOSSARY.csv`、`_analysis.md`、`_understanding.md` 等 → **停下**：这是
+> traditional-translation skill 的文件式工作区；换用该 skill 续跑，或与用户确认
+> 迁移。迁移 = 以 `source/` 原文件重新 `init`/`preprocess` 的**语义重做**；legacy
+> 译文只作对照证据，**禁止**拷进本工作区或当 canonical ID 使用。
 
 ## Boundary（不可违背）
 

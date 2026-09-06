@@ -13,6 +13,8 @@
     "review",
     "build",
     "qa",
-    "style"
+    "style",
+    "invariants",
+    "publishing"
   ]
 }
