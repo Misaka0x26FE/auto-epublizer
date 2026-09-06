@@ -11,6 +11,7 @@ G1–G3 的语义审校由操作 CLI 的 agent 完成：agent 按 G0–G3 语义
 from __future__ import annotations
 
 from .convergence import ConvergenceResult, ConvergenceState, advance, summarize
+from .fidelity import all_lines, content_blocks, fidelity_flags, norm_text
 from .g0 import (
     G0Flag,
     annotate_correction_notes,
@@ -38,18 +39,22 @@ __all__ = [
     "Issue",
     "Patch",
     "advance",
+    "all_lines",
     "annotate_correction_notes",
     "apply_corrections",
     "check_alignment",
+    "content_blocks",
     "count_footnote_marks",
     "count_footnote_refs",
     "count_heading_levels",
     "count_markers",
     "count_paragraph_blocks",
     "detect_corrections",
+    "fidelity_flags",
     "g0_unit_flags",
     "length_ratio",
     "markers_conserved",
+    "norm_text",
     "normalize_punctuation",
     "repair_missing_hyphens",
     "strip_copyright_boilerplate",

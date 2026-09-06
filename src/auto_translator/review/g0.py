@@ -212,6 +212,7 @@ def g0_unit_flags(
     *,
     too_short: float = 0.30,
     too_long: float = 3.0,
+    structured_md: str | None = None,
 ) -> list[G0Flag]:
     """对一个单元执行全部 G0 检查，返回告警列表。
 
@@ -219,6 +220,9 @@ def g0_unit_flags(
     命中）/ marker（插入标记守恒）/ footnote（脚注标记守恒）。守恒类做**单元级
     总量比对**而非行级——拆句/并句会把标记挪到相邻行，总量守恒恰好对应
     「一个都不能丢」且不误报。
+
+    ``structured_md`` 非空时追加**源保真（fidelity）双向检查**（见 fidelity.py）：
+    前向缺块=advisory、反向 src 失配=硬缺陷（import 阻断）。
     """
     flags = list(check_alignment(rows))
     sum_marker_src = sum_marker_tgt = 0
@@ -262,4 +266,8 @@ def g0_unit_flags(
                 {"src": sum_fn_src, "tgt": sum_fn_tgt},
             )
         )
+    if structured_md is not None:
+        from .fidelity import fidelity_flags
+
+        flags.extend(fidelity_flags(structured_md, rows))
     return flags

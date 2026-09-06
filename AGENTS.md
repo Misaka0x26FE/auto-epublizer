@@ -239,7 +239,8 @@ skills 的能力-路由决策表选择 ingest 路由（pandoc / 按页切片 / �
 
 1. **零 token 廉价校验**：对照表完整性、长度比异常（<0.30 / >3.0 / 空，advisory）、
    术语命中（硬）、插入标记/脚注标记守恒（硬，单元级总量比对，含 pandoc `[^N]` 与
-   句末数字两种表示）。
+   句末数字两种表示）、源保真（align src ↔ structured 双向块级绑定；反向失配
+   =src 被改写/杜撰，import 阻断；前向缺块=advisory）。
 2. **逐批审校 Agent（cheap）**：missing/added/mistranslation/terminology/pronoun；宁缺毋滥；JSON 协议末尾必须 `reviewed_segments` + `complete:true`，违例整批重试。
 3. **证据取证 Agent Loop（strong）**：候选先取证再裁决，禁止假设未取得的上下文；术语库与影子修订都是待核验材料。
 4. **冲突仲裁 + 影子修订 + 盲复审**：跨块矛盾终局仲裁；Fixer 只在影子 overlay 改；下一轮盲审不传旧说明；连续 clean 确认或 max_rounds 收敛；振荡检测（摘要 SHA-256 循环）。

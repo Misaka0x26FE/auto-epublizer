@@ -127,3 +127,21 @@ def test_import_reviewed_marks_aligned_units(tmp_path: Path) -> None:
     result2 = orch.import_translations(store, mark_reviewed=True)
     assert result2["reviewed"] == []
     assert store.load_publication().units[0].status == "reviewed"
+
+
+def test_import_blocks_on_rewritten_src(tmp_path: Path) -> None:
+    """S4.1：align src 与 structured 原文失配（改写/抄错）→ 阻断该单元登记。"""
+    store = _workspace(tmp_path)
+    _write_agent_products(store)
+    # 把 align 的 src 改成源文里没有的句子
+    rows = [
+        {"seq": 1, "src": "First sentence here, buddy.", "tgt": "第一句话，伙计。"},
+        {"seq": 2, "src": "Second sentence here.", "tgt": "第二句话。"},
+    ]
+    with open(store.unit_align_path("ch01"), "w", encoding="utf-8") as f:
+        for row in rows:
+            f.write(json.dumps(row, ensure_ascii=False) + "\n")
+    result = orch.import_translations(store)
+    assert result["imported"] == []
+    assert any("不在源文中" in e for e in result["failed"][0]["errors"])
+    assert store.load_publication().units[0].status == "split"

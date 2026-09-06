@@ -116,3 +116,54 @@ def test_detect_and_annotate_corrections() -> None:
     assert out[0]["note"] == "corr:IDG→IDF"
     assert out[0]["src"] == rows[0]["src"] and out[0]["tgt"] == rows[0]["tgt"]
     assert out[1]["note"] == "split"  # 未命中保持原 note
+
+
+def test_fidelity_flags_clean() -> None:
+    """双向干净：块全进对照表、src 全在源文 → 0 flag（标题作 src 也不误报）。"""
+    from auto_translator.review import fidelity_flags
+
+    md = "# 第一章\n\nFirst sentence here.\n\nSecond sentence here.\n"
+    rows = [
+        {"seq": 1, "src": "# 第一章", "tgt": "第一章"},
+        {"seq": 2, "src": "First sentence here.", "tgt": "第一句话。"},
+        {"seq": 3, "src": "Second sentence here.", "tgt": "第二句话。"},
+    ]
+    assert fidelity_flags(md, rows) == []
+
+
+def test_fidelity_flags_reverse_catches_rewrite() -> None:
+    """反向：src 被改写/杜撰（不在源文中）→ fidelity flag（head 含原文片段）。"""
+    from auto_translator.review import fidelity_flags
+
+    md = "# C1\n\nFirst sentence here.\n"
+    rows = [{"seq": 1, "src": "First sentence here, friend!", "tgt": "第一句话，朋友！"}]
+    flags = fidelity_flags(md, rows)
+    reverse = [f for f in flags if "不在源文中" in f.message]
+    assert reverse and all(f.data.get("seq") == 1 for f in reverse)
+
+
+def test_fidelity_flags_forward_missing_block() -> None:
+    """前向：structured 有块未进对照表（合法剔除场景）→ 缺块 flag（advisory 语义）。"""
+    from auto_translator.review import fidelity_flags
+
+    md = "# C1\n\nPara one.\n\nPara two.\n\nAll rights reserved. Printed in USA.\n"
+    rows = [
+        {"seq": 1, "src": "Para one.", "tgt": "段一。"},
+        {"seq": 2, "src": "Para two.", "tgt": "段二。"},
+    ]
+    flags = fidelity_flags(md, rows)
+    assert any("未进对照表" in f.message for f in flags)
+    # 合法剔除：版权残句不留反向失配（src 都在源文中）
+    assert not any("不在源文中" in f.message for f in flags)
+
+
+def test_fidelity_tolerates_split_merge() -> None:
+    """拆并句容忍：拼接子串匹配，句序调整/拆分不误报。"""
+    from auto_translator.review import fidelity_flags
+
+    md = "# C1\n\nAlpha beta gamma. Delta epsilon.\n"
+    rows = [
+        {"seq": 1, "src": "Alpha beta gamma.", "tgt": "甲乙丙。"},
+        {"seq": 2, "src": "Delta epsilon.", "tgt": "丁戊。"},
+    ]
+    assert fidelity_flags(md, rows) == []
