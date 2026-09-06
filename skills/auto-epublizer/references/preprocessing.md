@@ -142,6 +142,14 @@ translation + align → import → g0）、每 3–5 单元一项 build 校验�
 以上各件的提炼合并，是「翻译前输入锚点」：一张表回答
 「用什么方案、全书讲什么、风格怎么定、术语怎么统一、风险在哪、规模多大」。
 
+### 2.7 `catalog.csv`（可选：源内容盘点）
+
+目录完整性契约：逐项声明源内容去向——`included`（已收录，unit_id 必填）、
+`physical`（护封/腰封/书脊等实体元素，有意不进 EPUB）、`excluded`（有意排除，
+note 必填理由）、`unresolved`（未决，**qa 阻断放行**）。与 provenance 互补：
+catalog 管「源侧有没有漏收」，provenance 管「译侧有没有漏译」。
+facts 待办有该项时建议写；不写则全部检查跳过。
+
 ## 3. 完成判据
 
 - `auto-epublizer status --json` 的 `preprocessing_complete == true`

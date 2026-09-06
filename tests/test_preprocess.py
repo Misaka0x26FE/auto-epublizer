@@ -236,10 +236,11 @@ def test_collect_facts_and_write(tmp_path: Path) -> None:
     # 体检与建议
     assert facts["checks"]["drm"] is False
     assert any("纯文本" in s for s in facts["suggestions"])
-    # agent 待办（首位=元数据核对（S2.2），次位 todo.md 逐细节清单，共 9 项）
-    assert len(facts["agent_todo"]) == 9
+    # agent 待办（首位=元数据核对（S2.2），次位=源盘点（S4.4），再 todo.md，共 10 项）
+    assert len(facts["agent_todo"]) == 10
     assert facts["agent_todo"][0].startswith("元数据核对")
-    assert "todo.md" in facts["agent_todo"][1]
+    assert facts["agent_todo"][1].startswith("源盘点")
+    assert "todo.md" in facts["agent_todo"][2]
     # 落盘
     json_path = Path(result["facts_json"])
     md_path = Path(result["facts_md"])

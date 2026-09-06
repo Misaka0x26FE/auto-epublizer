@@ -25,6 +25,7 @@
 | `g0_terminology_open == 0`（术语命中=真实缺陷） | `terminology_open` |
 | `glossary_conflicts_open == 0`（术语冲突未裁决；裁决写回 glossary.csv 前不放行） | `glossary_conflict_open` |
 | `g0_structure_open == 0`（marker/footnote/table/fidelity 违例） | `structure_open` |
+| `catalog_unresolved_open == 0`（源盘点未决项；catalog.csv 存在时才检查） | `catalog_open` |
 | `audit.ok`（G4 解包审计零 error） | `audit_failed` |
 | `prov_ok`（coverage≈1.0 或 null、units_missing/media_lost/inserts_missing_files/toc_flat、findings 无 error 级） | `provenance_incomplete` |
 | `epubcheck.ran`（jar 缺失=未验证不放行） | `epubcheck_not_run` |

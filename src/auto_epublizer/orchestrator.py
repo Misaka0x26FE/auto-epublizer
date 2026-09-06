@@ -663,6 +663,13 @@ def qa(
         for c in read_conflicts_jsonl(store.analysis_dir / "glossary_conflicts.jsonl")
         if c.get("status") == "open"
     )
+    # 源盘点未决项（S4.4）：catalog.csv 存在时 unresolved 阻断放行
+    catalog_rows = read_catalog(store)
+    catalog_unresolved_open = (
+        sum(1 for r in catalog_rows if r["status"] == "unresolved")
+        if catalog_rows is not None
+        else 0
+    )
     report = generate_report(
         pub.slug,
         audit,
@@ -674,6 +681,7 @@ def qa(
         provenance=provenance.to_dict(),
         toc_missing=toc_missing,
         glossary_conflicts_open=glossary_conflicts_open,
+        catalog_unresolved_open=catalog_unresolved_open,
     )
     if toc_missing:
         report.provenance_findings.append(
@@ -694,6 +702,43 @@ def qa(
         )
     store.save_qa(report.to_dict())
     return report.to_dict()
+
+
+def read_catalog(store: RunStore) -> list[dict[str, Any]] | None:
+    """读取源内容盘点（preprocessing/catalog.csv；S4.4 SourceCatalog 最小形态）。
+
+    文件不存在 → None（全部检查跳过，零破坏）。列契约：
+    ``item,kind,status,locator,unit_id,note``——kind ∈ toc|figure|table|footnote|
+    section|physical；status ∈ included|physical|excluded|unresolved；
+    included 行 unit_id 必填。取值非法/列缺失 → OrchestrationError（带行号）。
+    """
+    import csv
+
+    path = store.preprocessing_dir / "catalog.csv"
+    if not path.is_file():
+        return None
+    kinds = {"toc", "figure", "table", "footnote", "section", "physical"}
+    statuses = {"included", "physical", "excluded", "unresolved"}
+    required = ["item", "kind", "status", "locator", "unit_id", "note"]
+    rows: list[dict[str, Any]] = []
+    with open(path, encoding="utf-8-sig", newline="") as f:
+        reader = csv.DictReader(f)
+        if reader.fieldnames is None or not set(required).issubset(reader.fieldnames):
+            raise OrchestrationError(f"catalog.csv 列契约不符（要求 {','.join(required)}）：{path}")
+        for i, row in enumerate(reader, start=2):
+            if not (row.get("item") or "").strip():
+                raise OrchestrationError(f"catalog.csv 第 {i} 行：item 为空")
+            if (row.get("kind") or "") not in kinds:
+                raise OrchestrationError(f"catalog.csv 第 {i} 行：kind 非法（{row.get('kind')}）")
+            status_val = row.get("status") or ""
+            if status_val not in statuses:
+                raise OrchestrationError(f"catalog.csv 第 {i} 行：status 非法（{status_val}）")
+            if status_val == "included" and not (row.get("unit_id") or "").strip():
+                raise OrchestrationError(f"catalog.csv 第 {i} 行：included 项缺 unit_id")
+            if status_val == "excluded" and not (row.get("note") or "").strip():
+                raise OrchestrationError(f"catalog.csv 第 {i} 行：excluded 项 note 必填理由")
+            rows.append({k: (row.get(k) or "").strip() for k in required})
+    return rows
 
 
 def status(store: RunStore, *, as_json: bool = False) -> dict[str, Any]:
@@ -739,6 +784,23 @@ def status(store: RunStore, *, as_json: bool = False) -> dict[str, Any]:
                 "reason": "preprocessing_plan_missing",
             }
         )
+    # 源内容盘点对账（S4.4）：catalog.csv 存在时校验 included 绑定与未决项
+    catalog_rows = read_catalog(store)
+    catalog: dict[str, Any] = {"present": False}
+    if catalog_rows is not None:
+        unit_ids = {u.id for u in pub.units}
+        catalog = {
+            "present": True,
+            "items": len(catalog_rows),
+            "included_bound": all(
+                r["status"] != "included" or r["unit_id"] in unit_ids for r in catalog_rows
+            ),
+            "unresolved": sum(1 for r in catalog_rows if r["status"] == "unresolved"),
+        }
+        if not catalog["included_bound"]:
+            stale.append(
+                {"id": "catalog", "status": "included_unbound", "reason": "catalog_binding_broken"}
+            )
     data = {
         "slug": pub.slug,
         "title": pub.meta.title,
@@ -747,6 +809,7 @@ def status(store: RunStore, *, as_json: bool = False) -> dict[str, Any]:
         "units": units_out,
         "has_preprocessing": has_preprocessing,
         "preprocessing_complete": preprocessing_complete,
+        "catalog": catalog,
         "stale": stale,
     }
     return data
