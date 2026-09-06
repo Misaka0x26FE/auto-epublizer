@@ -541,3 +541,45 @@ def test_markdown_semantic_tags() -> None:
     assert '<p class="verse">诗行一<br/>诗行二</p>' in out
     assert "<ul><li>甲</li><li>乙</li></ul>" in out
     assert "<ol><li>第一</li><li>第二</li></ol>" in out
+
+
+def test_build_epub_translator_creator_role(tmp_path: Path) -> None:
+    """S2.1：translator 非空 → OPF 输出第二个 dc:creator（id=creator-trl）+ role trl；
+    原作者带 creator-aut + role aut；translator 为空则整段不输出。"""
+    pub_trl = Publication(
+        slug="book",
+        meta=PublicationMeta(
+            title="测试书", creator="作者", translator="OpenCode", target_language="zh-CN"
+        ),
+    )
+    entries = [{"id": "ch01", "region": "body", "title": "第一章"}]
+    content = [("ch01.xhtml", render_document("第一章", "正文。\n", lang="zh-CN"))]
+    out = build_epub(
+        pub_trl,
+        entries,
+        content,
+        lang="zh-CN",
+        modified="2026-01-01T00:00:00Z",
+        out_path=tmp_path / "trl.epub",
+    )
+    with zipfile.ZipFile(out) as zf:
+        opf = zf.read("OEBPS/content.opf").decode("utf-8")
+    assert '<dc:creator id="creator-aut">作者</dc:creator>' in opf
+    assert '<dc:creator id="creator-trl">OpenCode</dc:creator>' in opf
+    assert 'refines="#creator-aut" property="role" scheme="marc:relators">aut<' in opf
+    assert 'refines="#creator-trl" property="role" scheme="marc:relators">trl<' in opf
+
+    pub_no = Publication(
+        slug="book", meta=PublicationMeta(title="测试书", creator="作者", target_language="zh-CN")
+    )
+    out2 = build_epub(
+        pub_no,
+        entries,
+        content,
+        lang="zh-CN",
+        modified="2026-01-01T00:00:00Z",
+        out_path=tmp_path / "notrl.epub",
+    )
+    with zipfile.ZipFile(out2) as zf:
+        opf2 = zf.read("OEBPS/content.opf").decode("utf-8")
+    assert "creator-trl" not in opf2

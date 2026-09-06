@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 from typer.testing import CliRunner
@@ -62,3 +63,32 @@ def test_llm_commands_removed(tmp_path: Path) -> None:
         result = runner.invoke(app, [name, "--workspace", str(tmp_path)])
         assert result.exit_code != 0
         assert "No such command" in result.output
+
+
+def test_meta_command_updates_fields(tmp_path: Path) -> None:
+    """S2.1：meta 命令更新元数据 + events 账本；空串清空；无参数报错。"""
+    src = tmp_path / "book.md"
+    src.write_text("# 第一章\n\n正文。\n", encoding="utf-8")
+    ws = tmp_path / "ws"
+    _invoke("init", str(src), "--workspace", str(ws))
+    pub_path = ws / "book" / "publication.json"
+
+    result = _invoke(
+        "meta", "--translator", "OpenCode", "--publisher", "Test Press", "--workspace", str(ws)
+    )
+    assert "已更新" in result.output
+    data = json.loads(pub_path.read_text(encoding="utf-8"))
+    assert data["meta"]["translator"] == "OpenCode"
+    assert data["meta"]["publisher"] == "Test Press"
+    events = (ws / "book" / "events.jsonl").read_text(encoding="utf-8")
+    assert '"meta_update"' in events and "translator" in events
+
+    # 空串清空
+    _invoke("meta", "--translator", "", "--workspace", str(ws))
+    data = json.loads(pub_path.read_text(encoding="utf-8"))
+    assert data["meta"]["translator"] == ""
+
+    # 无任何字段 → 明确报错（helper 断言成功，这里要失败，直接 invoke）
+    result = runner.invoke(app, ["meta", "--workspace", str(ws)])
+    assert result.exit_code != 0
+    assert "未指定" in result.output

@@ -163,7 +163,15 @@ def _render_opf(
         f"    <dc:title>{escape(meta.title)}</dc:title>",
     ]
     if meta.creator:
-        m.append(f"    <dc:creator>{escape(meta.creator)}</dc:creator>")
+        m.append(f'    <dc:creator id="creator-aut">{escape(meta.creator)}</dc:creator>')
+        m.append(
+            '    <meta refines="#creator-aut" property="role" scheme="marc:relators">aut</meta>'
+        )
+    if meta.translator:
+        m.append(f'    <dc:creator id="creator-trl">{escape(meta.translator)}</dc:creator>')
+        m.append(
+            '    <meta refines="#creator-trl" property="role" scheme="marc:relators">trl</meta>'
+        )
     m.append(f"    <dc:language>{escape(lang)}</dc:language>")
     if meta.date:
         m.append(f"    <dc:date>{escape(meta.date)}</dc:date>")

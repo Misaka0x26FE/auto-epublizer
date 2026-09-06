@@ -212,6 +212,41 @@ def preprocess(
 
 
 @app.command()
+def meta(
+    title: str | None = typer.Option(
+        None, "--title", help="书名（译名用 --title，源名不动则不传）"
+    ),
+    creator: str | None = typer.Option(None, "--creator", help="原作者"),
+    translator: str | None = typer.Option(
+        None,
+        "--translator",
+        help="译者（agent 自报框架名，如 OpenCode/DouBao；用户指定名优先；空串清空）",
+    ),
+    publisher: str | None = typer.Option(None, "--publisher", help="出版社"),
+    date: str | None = typer.Option(None, "--date", help="出版日期"),
+    rights: str | None = typer.Option(None, "--rights", help="版权/许可声明"),
+    workspace: str | None = typer.Option(None, "--workspace", help="工作区目录"),
+    config: str | None = typer.Option(None, "--config", help="配置文件路径"),
+) -> None:
+    """更新 DC 元数据（元数据核对与译者署名的写入口）。"""
+    cfg = load_config(config or _CONFIG_PATH)
+    store = _store_from(workspace, cfg)
+    try:
+        result = orch.set_meta(
+            store,
+            title=title,
+            creator=creator,
+            translator=translator,
+            publisher=publisher,
+            date=date,
+            rights=rights,
+        )
+    except (ValueError, OSError, orch.OrchestrationError) as e:
+        raise typer.Exit(f"元数据更新失败：{e}") from None
+    console.print(f"[green]元数据已更新：[/green]{', '.join(result['updated'])}")
+
+
+@app.command()
 def doctor(
     json_output: bool = typer.Option(False, "--json", help="输出 JSON 能力报告"),
     ping: bool = typer.Option(False, "--ping", help="实际请求外部站点验证网络连通性（有超时风险）"),

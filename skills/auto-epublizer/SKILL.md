@@ -63,6 +63,7 @@ auto-epublizer doctor --json                              # 能力自检（开�
 auto-epublizer preprocess <input>                         # 预处理：init + 零 token 事实 → preprocessing/facts.*
 #   agent 读 facts.md，撰写 todo/capabilities/plan/global/units/terms/risks/report（见 references/preprocessing.md）
 #   理解层 analysis/*.md 同样由 agent 撰写（见 references/analysis.md）
+auto-epublizer meta --translator OpenCode                             # 元数据核对写回 + 译者署名（默认=agent 框架名）
 auto-epublizer import [--unit <id>] [--terms preprocessing/terms.csv]  # 登记 agent 手写翻译产物
 auto-epublizer import --reviewed                                    # 审校通过后：aligned → reviewed
 auto-epublizer g0                                         # 静态校验（术语命中=真实缺陷须清零；长度比=advisory）

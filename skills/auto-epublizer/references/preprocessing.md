@@ -42,6 +42,26 @@ CLI 探测不到的五维能力边界，由你（agent）开工前自报，写 `
 
 ## 2. 按待办依次撰写（全部写在 `preprocessing/`）
 
+### 1.2 元数据核对（facts 待办首项；`meta` 命令写回）
+
+facts 嗅探的元数据（title/creator/publisher/date/rights）只是**推断**——源文件自带
+metadata 常错、常缺、常乱码。开工第一步：对照源文版权页/题录逐项核实（存疑处
+询问用户），确认/补全后写回：
+
+```bash
+auto-epublizer meta --publisher "..." --date "..." --rights "..."
+```
+
+**译者署名默认规则**：用户无特殊说明时，译者 = 你的 agent 框架名称
+（opencode 处理写 `OpenCode`，豆包处理写 `DouBao`，以此类推）；用户指定名优先。
+
+```bash
+auto-epublizer meta --translator OpenCode
+```
+
+署名随 build 进入 EPUB 元数据（`dc:creator` + `role=trl`）；QA 期的
+`W_META_INCOMPLETE` 应在预处理期已被本步骤消化。
+
 ### 2.0 `todo.md`（任务细化清单——开工第一件，贯穿全程）
 
 **要求**：读 facts 后、动手翻译前，把「处理这本书要做的每一个动作」细化成可勾选

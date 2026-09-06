@@ -26,6 +26,7 @@ uv run auto-epublizer convert <input> -o output/book.epub
 
 # 4. 完整翻译流程（agent 主进程翻译 → import 登记 → 构建 → 质检）
 uv run auto-epublizer preprocess <input>   # 预处理：init + 事实收集 → preprocessing/facts.*
+uv run auto-epublizer meta --translator OpenCode  # 元数据核对写回 + 译者署名
 uv run auto-epublizer import               # 登记 agent 手写的译文/对照表
 uv run auto-epublizer build                # 封装 EPUB（纯译文 / --bilingual 双语）
 uv run auto-epublizer qa                   # 结构审计 + epubcheck + 放行报告

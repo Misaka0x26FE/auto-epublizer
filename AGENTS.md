@@ -53,6 +53,10 @@ auto-epublizer preprocess <input>   # 新书：init + 嗅探/元数据/TOC/体�
 #    terms.csv / risks.md / report.md
 auto-epublizer preprocess           # 已有工作区：幂等刷新 facts
 
+# 3.5 元数据核对与译者署名（agent 任务）：对照源文版权页核实 facts 嗅探值，
+#    经 meta 命令写回；译者署名默认=agent 框架名（OpenCode/DouBao…）
+auto-epublizer meta [--translator OpenCode] [--publisher ...] [--date ...] [--rights ...]
+
 # 4. 理解（agent 任务）：analysis/*.md 与术语表由 agent 自身能力撰写
 #    （概述/全局/每单元/重点；上下文也可只来自 preprocessing/）
 

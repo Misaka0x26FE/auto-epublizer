@@ -55,6 +55,7 @@ auto-epublizer preprocess <input> [--reference <path...>] [--target zh-CN] [--wo
 # init <input> 等价于 preprocess 的建工作区子集（不产 facts；仍可用于仅需拆解的场景）
 
 # agent 手写翻译后的登记入口（G0 结构校验 + 状态推进 + 术语冲突外置）
+auto-epublizer meta [--translator X] [--publisher P] [--date D] [--rights R] [--workspace <dir>]
 auto-epublizer import [--unit <id>] [--terms <csv>] [--reviewed] [--workspace <dir>]
 
 # G0 零 token 静态校验（翻译/导入后立即跑；术语命中是放行硬门，长度比 advisory）
