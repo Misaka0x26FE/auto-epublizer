@@ -167,3 +167,33 @@ def test_fidelity_tolerates_split_merge() -> None:
         {"seq": 2, "src": "Delta epsilon.", "tgt": "丁戊。"},
     ]
     assert fidelity_flags(md, rows) == []
+
+
+def test_parse_md_tables() -> None:
+    """S4.2 解析器：基本表/无分隔行不算表/围栏内跳过/转义管道不增列。"""
+    from auto_translator.review import parse_md_tables
+
+    good = "| a | b |\n| --- | --- |\n| 1 | 2 |\n"
+    assert parse_md_tables(good) == [{"rows": 3, "cols": 2}]
+    # 无分隔行 → 不算表
+    assert parse_md_tables("| a | b |\n| 1 | 2 |\n") == []
+    # 围栏内的表跳过
+    fenced = "```\n| a | b |\n| --- | --- |\n```\n" + good
+    assert parse_md_tables(fenced) == [{"rows": 3, "cols": 2}]
+    # 转义管道不增列
+    escaped = "| a | b \\| c |\n| --- | --- |\n"
+    assert parse_md_tables(escaped) == [{"rows": 2, "cols": 2}]
+
+
+def test_table_shape_flags() -> None:
+    """S4.2 守恒：同形 0 flag；少行/多表各 1 条含形状数据。"""
+    from auto_translator.review import table_shape_flags
+
+    src = "| a | b |\n| --- | --- |\n| 1 | 2 |\n| 3 | 4 |\n"
+    assert table_shape_flags(src, src) == []
+    tgt_short = "| a | b |\n| --- | --- |\n| 1 | 2 |\n"
+    flags = table_shape_flags(src, tgt_short)
+    assert len(flags) == 1 and flags[0].data == {"index": 1, "src": "4x2", "tgt": "3x2"}
+    tgt_extra = src + "\n| x | y |\n| --- | --- |\n| 9 | 9 |\n"
+    flags2 = table_shape_flags(src, tgt_extra)
+    assert len(flags2) == 1 and "数量" in flags2[0].message

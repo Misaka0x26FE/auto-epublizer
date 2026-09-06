@@ -366,6 +366,22 @@ def _latest_review_result(store: RunStore) -> dict[str, Any] | None:
     return read_json(candidates[-1])
 
 
+def _unit_doc_flags(store: RunStore, rel_path: str) -> list[Any]:
+    """单元级文档结构检查（structured vs translation 全文）：表格形状守恒。
+
+    两侧文件都存在才比对；返回 G0Flag 列表（check="table"）。
+    """
+    from auto_translator.review import table_shape_flags
+
+    src_path = store.structured_dir / rel_path
+    tgt_path = store.translation_dir / rel_path
+    if not (src_path.is_file() and tgt_path.is_file()):
+        return []
+    src_md = src_path.read_text(encoding="utf-8")
+    tgt_md = tgt_path.read_text(encoding="utf-8")
+    return table_shape_flags(src_md, tgt_md)
+
+
 def import_translations(
     store: RunStore,
     *,
@@ -443,15 +459,19 @@ def import_translations(
                 # 结构性错误：断号/空原文/空译文；「对照表为空」已在上面覆盖
                 if f.message != "对照表为空":
                     errors.append(f"对照表 {f.message}")
-            for f in g0_unit_flags(rows, glossary, structured_md=structured_md):
-                # 源保真反向违例（src 不在源文中）= 对照表不可信，阻断登记；
-                # 其余硬缺陷类（terminology/marker/footnote）与前向缺块（fidelity）、
-                # advisory（length）收进告警：import 期不阻断，漏修被 G5 放行门兜底
-                if f.check == "fidelity" and "不在源文中" in f.message:
-                    errors.append(f"源保真：{f.message}（seq={f.data.get('seq')}）")
-                    continue
-                if f.check in ("length", "terminology", "marker", "footnote", "fidelity"):
-                    warned.append({"unit": unit.id, "check": f.check, "message": f.message})
+        # 表格形状守恒（S4.2）：译文文档结构性损坏，阻断登记（严于 marker/fidelity
+        # 的 advisory——坏表格会直接进 build 产物）
+        for f in _unit_doc_flags(store, rel_path):
+            errors.append(f"表格形状：{f.message}（{f.data}）")
+        for f in g0_unit_flags(rows, glossary, structured_md=structured_md):
+            # 源保真反向违例（src 不在源文中）= 对照表不可信，阻断登记；
+            # 其余硬缺陷类（terminology/marker/footnote）与前向缺块（fidelity）、
+            # advisory（length）收进告警：import 期不阻断，漏修被 G5 放行门兜底
+            if f.check == "fidelity" and "不在源文中" in f.message:
+                errors.append(f"源保真：{f.message}（seq={f.data.get('seq')}）")
+                continue
+            if f.check in ("length", "terminology", "marker", "footnote", "fidelity"):
+                warned.append({"unit": unit.id, "check": f.check, "message": f.message})
         if errors:
             failed.append({"unit": unit.id, "errors": errors})
             continue
@@ -556,6 +576,8 @@ def g0_check(store: RunStore, *, unit_id: str | None = None) -> dict[str, Any]:
             structured_md=structured_md,
         ):
             flags.append({"unit": unit.id, "check": f.check, "message": f.message, "data": f.data})
+        for f in _unit_doc_flags(store, rel_path) if rel_path else []:
+            flags.append({"unit": unit.id, "check": f.check, "message": f.message, "data": f.data})
     return {"checked_units": checked, "flags": flags}
 
 
@@ -585,6 +607,8 @@ def _collect_g0_flags(store: RunStore, config: Config | None = None) -> list[dic
             too_long=float(cfg.qc.length_ratio.get("too_long", 3.0)),
             structured_md=structured_md,
         ):
+            flags.append({"unit": unit.id, "check": f.check, "message": f.message, "data": f.data})
+        for f in _unit_doc_flags(store, rel_path) if rel_path else []:
             flags.append({"unit": unit.id, "check": f.check, "message": f.message, "data": f.data})
     return flags
 

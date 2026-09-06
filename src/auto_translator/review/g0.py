@@ -271,3 +271,78 @@ def g0_unit_flags(
 
         flags.extend(fidelity_flags(structured_md, rows))
     return flags
+
+
+# ── 表格形状守恒（S4.2；学 epub-builder table.Validate 的不变量，不学其交换格式）──
+
+# md 分隔行：| --- | :---: | ...
+_SEP_LINE = re.compile(r"^\s*\|?\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)*\|?\s*$")
+
+# 非转义管道符（\| 是字面竖线，不计列）
+_UNESCAPED_PIPE = re.compile(r"(?<!\\)\|")
+
+
+def _count_cols(line: str) -> int:
+    """统计一行表格的列数（剥首尾 | 后按非转义 | 切分）。"""
+    body = (line or "").strip().strip("|")
+    if not body:
+        return 0
+    return len(_UNESCAPED_PIPE.split(body))
+
+
+def parse_md_tables(md: str) -> list[dict[str, int]]:
+    """解析 md 管道表格 → ``[{"rows": R, "cols": C}]``（按出现顺序）。
+
+    表 = ≥2 个连续「含 | 的非空行」且第 2 行是分隔行；行数含表头与分隔行；
+    跳过 ``` 围栏内的行；转义管道 ``\\|`` 不计列。
+    """
+    tables: list[dict[str, int]] = []
+    lines = (md or "").splitlines()
+    in_fence = False
+    i = 0
+    while i < len(lines):
+        line = lines[i]
+        if line.strip().startswith("```"):
+            in_fence = not in_fence
+            i += 1
+            continue
+        if not in_fence and "|" in line:
+            block: list[str] = []
+            while i < len(lines) and "|" in lines[i] and lines[i].strip():
+                block.append(lines[i])
+                i += 1
+            if len(block) >= 2 and _SEP_LINE.match(block[1]):
+                tables.append({"rows": len(block), "cols": _count_cols(block[0])})
+            continue
+        i += 1
+    return tables
+
+
+def table_shape_flags(src_md: str, tgt_md: str) -> list[G0Flag]:
+    """表格形状守恒：表数一致、逐表 rows/cols 一致；差异即硬缺陷级 flag。"""
+    flags: list[G0Flag] = []
+    src_tables = parse_md_tables(src_md)
+    tgt_tables = parse_md_tables(tgt_md)
+    if len(src_tables) != len(tgt_tables):
+        flags.append(
+            G0Flag(
+                "table",
+                "表格数量不守恒",
+                {"src": len(src_tables), "tgt": len(tgt_tables)},
+            )
+        )
+        return flags
+    for i, (s, t) in enumerate(zip(src_tables, tgt_tables, strict=False), start=1):
+        if s != t:
+            flags.append(
+                G0Flag(
+                    "table",
+                    "表格形状不守恒",
+                    {
+                        "index": i,
+                        "src": f"{s['rows']}x{s['cols']}",
+                        "tgt": f"{t['rows']}x{t['cols']}",
+                    },
+                )
+            )
+    return flags

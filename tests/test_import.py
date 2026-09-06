@@ -145,3 +145,24 @@ def test_import_blocks_on_rewritten_src(tmp_path: Path) -> None:
     assert result["imported"] == []
     assert any("不在源文中" in e for e in result["failed"][0]["errors"])
     assert store.load_publication().units[0].status == "split"
+
+
+def test_import_blocks_on_broken_table(tmp_path: Path) -> None:
+    """S4.2：译文表格行列数与源不一致 → import 阻断（表格形状）。"""
+    store = _workspace(tmp_path)
+    # 源文加一张 3 行表
+    src_path = store.structured_dir / "body" / "ch01.md"
+    src_path.write_text(
+        "# Chapter I\n\nFirst sentence here.\n\nSecond sentence here.\n\n"
+        "| a | b |\n| --- | --- |\n| 1 | 2 |\n| 3 | 4 |\n",
+        encoding="utf-8",
+    )
+    _write_agent_products(store)
+    # 译文表格少一行
+    (store.translation_dir / "body" / "ch01.md").write_text(
+        "# 第一章\n\n第一句话。\n\n第二句话。\n\n| 甲 | 乙 |\n| --- | --- |\n| 一 | 二 |\n",
+        encoding="utf-8",
+    )
+    result = orch.import_translations(store)
+    assert result["imported"] == []
+    assert any("表格形状" in e for e in result["failed"][0]["errors"])
