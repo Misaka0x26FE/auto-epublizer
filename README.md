@@ -12,6 +12,55 @@
 
 ---
 
+## 使用方式（Agent 协作模式）
+
+本项目**不面向命令行人类用户**，而面向 **AI 编程 agent**：你只需把本仓库地址发给
+你的 agent（支持联网的执行型 agent，如 OpenCode / DouBao / Cursor 等），告诉它待处理
+的文件，它会在你的工作目录下把本项目**拉取为一个新的子目录**，然后按仓库内
+`skills/auto-epublizer/SKILL.md` 的指引自行完成预处理、理解、翻译、审校、封装与质检。
+
+你需要做的只有三件事：
+
+1. 把本地址发给 agent（或用 Git UI / 命令行让任何 agent 能访问到本项目：
+   `https://github.com/Misaka0x26FE/auto-epublizer.git`，Gitee 镜像：
+   `https://gitee.com/misaka0x26fe/auto-epublizer.git`）。
+2. 提供待处理文件（书源 PDF/EPUB/DOCX/HTML/TXT/MD 等）。
+3. 可选：提供目标语言、元数据（标题/作者/版权页信息）、参考材料或备注。
+
+> **扫描件 PDF 提示**：如果待处理文件是扫描件 PDF（无文字层），agent 会优先走
+> MinerU 外部解析 API（版式/插图识别最好）。此时请配合提供 **MinerU API Key**
+> （`MINERU_API_KEY` 环境变量，只在运行时读取，不写入任何文件）；无 key 时，
+> agent 会改用传统 OCR + 逐页阅读兜底，效果略差但可用。
+
+### 提示词（复制粘贴给你的 agent）
+
+```text
+你是译书助手。请严格按以下步骤工作：
+
+1. 在当前工作目录下把本项目拉取为一个新子目录并安装：
+   git clone https://github.com/Misaka0x26FE/auto-epublizer.git
+   cd auto-epublizer && uv sync
+2. 运行 uv run auto-epublizer doctor --ping 自检环境（pandoc/pymupdf/OCR/epubcheck/
+   MinerU/网络），并告知我你的 multimodal（能否看图）与 search（有无搜索工具）能力。
+3. 向我收集：待处理文件路径、目标语言（可选，默认 zh-CN）、元数据（标题/作者/版权页字段）。
+   - 若文件是扫描件 PDF：请我提供 MINERU_API_KEY（写入环境变量，仅运行时读取，
+     不写入源码/配置文件/提交历史）；无 key 则说明你会改走传统 OCR 兜底。
+4. 严格按仓库内 skills/auto-epublizer/SKILL.md 的路由表执行：
+   doctor → preprocess（CLI 零 token 事实收集）→ 我撰写理解/计划/术语 →
+   meta（元数据核对写回）→ 我逐单元翻译+句对齐 → import/g0 登记查验 →
+   我审校（G1–G3）→ build → qa（G4+epubcheck+G5 放行）。遵守其中的全部红线与协议。
+5. 完成后，把成品 EPUB 路径告诉我，并询问我：是否将本次工作中遇到的技术问题
+   与建议解决方案发送到开发者邮箱 feedback@0x26fe.top？若我同意：
+   - 先检查你的环境有无现成邮件工具与已配置的邮件账户（如 send-email 类 skill）；
+     有则直接使用。
+   - 没有则请我提供支持 SMTP 的邮箱账户（推荐使用腾讯邮箱的 Agent Mail 服务，
+     只给 SMTP 授权码，不给登录密码）。
+   - 同时提醒我注意隐私：仅在「agent 运行环境可信、模型提供商可信、且该邮箱
+     不涉及任何个人隐私信息」时才提供。
+```
+
+---
+
 ## 快速开始
 
 ```bash
