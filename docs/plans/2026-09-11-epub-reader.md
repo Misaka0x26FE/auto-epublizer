@@ -62,3 +62,11 @@
    而 `qa/audit.py` 用 `<dc:creator>` 无属性正则检测，导致每本书都误报
    `W_META_INCOMPLETE：dc:creator`。已改为允许属性（`<dc:creator(?:\s[^>]*)?>`），
    测试 `test_qa.py::test_audit_meta_creator_with_attributes`。
+
+## 追加（同日）：目录层级推导
+
+真书阅读器校验发现 nav 目录全平铺：`read_epub` 最初把所有 spine 单元写死
+`heading_level=1`。已改为按「部（PART x）→ 编号章」状态机推导层级
+（`_derive_heading_levels`）：PART 为 1 级，部内 `N.` 章为 2 级，部外标题回到 1 级；
+无分部结构的书保持扁平。测试 `test_derive_heading_levels_*`；真书重建后
+nav 为「第一部 > 2/3 章」等正确嵌套，qa 仍 released。

@@ -414,6 +414,34 @@ def _reindex(unit: SourceUnit) -> None:
         seg.index = i
 
 
+_PART_TITLE_RE = re.compile(r"^PART\s+[IVXLCD\d]+\.?\s*$", re.IGNORECASE)
+_NUMBERED_TITLE_RE = re.compile(r"^\d+\s*\.")
+
+
+def _derive_heading_levels(titles: list[str]) -> list[int]:
+    """从 spine 顺序的单元标题推导目录层级（纯函数）。
+
+    规则：分部标题（PART I/II/…）为 1 级并开启「部内」状态；其后的编号章
+    （``2.`` ``10.`` 等）为 2 级（部之子章）；其余标题回到 1 级并关闭该状态。
+    例：``PART I, 2., 3., PART II, 4.`` → ``1,2,2,1,2``；``结论`` 与其后的
+    ``10.``（部已结束）仍为 1 级。纯启发式，但与常见书籍结构一致；
+    无分部结构的书全部落 1 级（扁平目录），行为与旧版一致。
+    """
+    levels: list[int] = []
+    in_part = False
+    for title in titles:
+        if _PART_TITLE_RE.match(title.strip()):
+            levels.append(1)
+            in_part = True
+            continue
+        if in_part and _NUMBERED_TITLE_RE.match(title.strip()):
+            levels.append(2)
+            continue
+        levels.append(1)
+        in_part = False
+    return levels
+
+
 def read_epub(path: str | Path, *, media_dir: str | Path | None = None) -> SourceDocument:
     """读取 EPUB：按 spine 切分单元 + 内联非线性项 + 清洗残留。
 
@@ -463,6 +491,9 @@ def read_epub(path: str | Path, *, media_dir: str | Path | None = None) -> Sourc
             )
 
     _inline_nonlinear(units, package, path)
+    levels = _derive_heading_levels([u.title for u in units])
+    for unit, level in zip(units, levels, strict=True):
+        unit.meta["heading_level"] = level
     return SourceDocument(
         title=package.metadata.get("title") or path.stem,
         source_path=str(path.resolve()),
