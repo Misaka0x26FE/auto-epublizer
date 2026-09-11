@@ -62,6 +62,16 @@ blockquote {
 section.footnotes {
   margin-top: 2em;
 }
+table.data {
+  border-collapse: collapse;
+  margin: 1em auto; /* 表格居中，只缩不放大由单元格换行控制 */
+}
+table.data th,
+table.data td {
+  border: 1px solid #999; /* 功能性边框：保证表格可读 */
+  padding: 0.2em 0.5em;
+  text-align: left;
+}
 """
 
 # 主题层（epub-template-spec §5）：预置三套极简主题，只控排版微调——

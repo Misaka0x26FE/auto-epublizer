@@ -24,7 +24,8 @@
 | 输入 | 条件 | 路由 |
 |---|---|---|
 | TXT / MD | — | 直接读（`read_text`） |
-| EPUB / DOCX / HTML | `pandoc` ✓ | pandoc → Markdown + 抽媒体 |
+| EPUB | `pandoc` ✓ | **按 OPF spine 切分**：线性项一项一单元，非线性项（表格等）转 md 在引用处内联；失败回退通用 pandoc（见下「EPUB 按 spine 切分」） |
+| DOCX / HTML | `pandoc` ✓ | pandoc → Markdown + 抽媒体 |
 | EPUB / DOCX / HTML | `pandoc` ✗ | 请用户先转 PDF/TXT/MD |
 | PDF 文字层 | `pymupdf` ✓ | 按页切片抽文字层（离线、零成本；auto 模式下即使有 MinerU key 也走此路径） |
 
@@ -59,12 +60,33 @@ agent 在 plan.md 记录最终路由与依据（含「是否已询问用户 Mine
 | 格式 | 处理 |
 |---|---|
 | `.txt` `.md` `.markdown` | 直接读文本，识别章节标题、按空行切段 |
-| `.html` `.htm` `.xhtml` `.docx` `.epub` | 走 pandoc → Markdown 纯文本 + `--extract-media` 抽媒体 |
+| `.epub` | **按 OPF spine 切分**（线性项一项一单元 + 非线性项内联）；结构异常回退通用 pandoc |
+| `.html` `.htm` `.xhtml` `.docx` | 走 pandoc → Markdown 纯文本 + `--extract-media` 抽媒体 |
 | `.pdf`（有文字层） | pymupdf 按页切片抽文字层，逐页写 `structured/raw/page-NNN.json` |
 | `.pdf`（扫描件，MinerU） | MinerU API 整本解析：`raw/media/` 插图 + `raw/mineru/`（content_list.json + full.md 审计产物）+ `raw/inserts/` 记录；正文按 MinerU 标题层级切章 |
 | `.pdf`（扫描件，无 key） | OCR 兜底：逐页渲染为图片 → OCR → 作为该页文本块（`ocr:true`）；渲染页图持久化 `raw/pages/pNNN.png` |
 
 不支持的其他格式：先转 PDF/TXT/Markdown，或 `pandoc` 处理后转 PDF 兜底。
+
+## EPUB 按 spine 切分（2026-09 修复）
+
+`read_epub` 不再按 ATX 标题切分，而是**按 OPF spine 切分**——pandoc 对每个线性 spine 项
+恰好输出一行独立锚点 `[]{#<href basename>.xhtml}`，以它为边界即「一个 spine 项 = 一个单元」，
+标题取自 nav/NCX 标签 → 清洗后的 `<h1>` → `<title>` → 顶层 `<div class>` → 「正文」。
+同时清理 `[]{#id}` 锚点、`{#id}` 属性、`[text]{.class}` 类属性、`<br>`。
+
+**非线性 spine 项**（`linear="no"`，通常是表格/图表文件）pandoc 默认跳过、正文只剩链接：
+读取器会单独转 md，并在正文中**恰好是该项表题/图题的独立链接段**处内联（正文内嵌的普通
+交叉引用不动）；无引用时追加到最末单元。
+
+入库后自查（写入 `plan.md`）：
+- 单元数 ≈ 线性 spine 项数（`facts.md` 结构清单应与 NCX/目录条目数量级一致）；
+- 标题无 `[]{#`、`{.small}` 等残留；
+- 抽样 grep 原书表格中的数值/表头，确认非线性项表体确实进了 `structured/`；
+- 前置辅文（版权页/献词等）归入 `frontmatter/`，而非碎成多个 `body/chNN`。
+
+若发现非线性项未被内联或标题仍有残留：核对 OPF `spine` 的 `linear` 属性与 `manifest` href，
+并参考 `lessons/2026-09-11-epub-nonlinear-spine-tables.md`。
 
 ## PDF 按页切片
 
