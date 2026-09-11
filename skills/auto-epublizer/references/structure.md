@@ -37,6 +37,9 @@ structured/
 
 - **页码剔除**：独立成段的页码（`12`、`- 8 -`、`第3页`）。
 - **页眉页脚剔除**：按 `source_page` 分组，同一短文本在 ≥50% 页首/页末出现即剔除（`min_pages` 保护）。
+- **EPUB 锚点/属性残留**：`read_epub` 在入库时已清除 `[]{#id}` 锚点、`{#id}` 属性、
+  `[text]{.class}` 类属性与 `<br>`；若 `structured/` 仍见此类残留在标题里，说明走了
+  pandoc 通用回退路径，按 `references/ingest.md`「EPUB 按 spine 切分」排查。
 - **溯源**：每个 `Segment` 带 `meta.source_page`，PDF 每页有 `page-NNN.json` 对应。
 
 ## 契约

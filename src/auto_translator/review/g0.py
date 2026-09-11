@@ -32,8 +32,10 @@ from ..glossary import Glossary, terminology_hits
 # 插入元素标记，如 {fig:NNN}、{table:NNN}
 _MARKER_RE = re.compile(r"\{\w+:\d+\}")
 
-# 近似脚注注码：句末标点后紧跟 1~3 位数字（排除小数如 3.14）
-_FOOTNOTE_REF_RE = re.compile(r"(?<!\d)[.!?…，。；：](\d{1,3})(?!\d)")
+# 近似脚注注码：**句末**标点后紧跟 1~3 位数字（排除小数如 3.14）。
+# 只认句末标点（. ! ? … 。 ！ ？）；引证里的冒号/分号/逗号（如 1992:110、「；1 公顷」）
+# 不是注码，否则会把统计数字误判为脚注标记而触发守恒硬缺陷。
+_FOOTNOTE_REF_RE = re.compile(r"(?<!\d)[.!?…。！？](\d{1,3})(?!\d)")
 
 # pandoc 脚注标记：[^label] 引用与 [^label]: 定义 统一计数
 _FN_PANDOC_RE = re.compile(r"\[\^[^\]\s]+\]")

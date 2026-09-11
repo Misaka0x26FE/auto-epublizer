@@ -6,6 +6,7 @@ from pathlib import Path
 
 from auto_common.workspace import RunStore
 
+from .epub_reader import EpubError, read_epub
 from .mineru import MineruClient, MineruError, read_mineru
 from .models import SourceDocument
 from .pandoc_reader import PandocError, read_pandoc
@@ -70,10 +71,17 @@ def load_document(
             return read_pdf(path, raw_dir=raw_dir, ocr_backend=ocr_backend)
         except PdfError as e:
             raise IngestError(str(e)) from e
+    # EPUB：按 OPF spine 切分并内联非线性项（表格等）；结构异常回退通用 pandoc 路径
+    media = raw_dir / "media" if raw_dir else None
+    if ext == ".epub":
+        try:
+            return read_epub(path, media_dir=media)
+        except EpubError:
+            pass
     # 非 PDF 走 pandoc
     fmt = _PANDOC_FORMATS[ext]
     try:
-        return read_pandoc(path, fmt=fmt, media_dir=raw_dir / "media" if raw_dir else None)
+        return read_pandoc(path, fmt=fmt, media_dir=media)
     except PandocError as e:
         raise IngestError(str(e)) from e
 

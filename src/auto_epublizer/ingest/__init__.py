@@ -8,6 +8,7 @@
 
 from __future__ import annotations
 
+from .epub_reader import EpubError, read_epub
 from .load import IngestError, load_document, normalize_to_workspace
 from .models import (
     KIND_HEADING,
@@ -18,6 +19,7 @@ from .models import (
 )
 
 __all__ = [
+    "EpubError",
     "IngestError",
     "KIND_HEADING",
     "KIND_TEXT",
@@ -26,4 +28,5 @@ __all__ = [
     "SourceUnit",
     "load_document",
     "normalize_to_workspace",
+    "read_epub",
 ]

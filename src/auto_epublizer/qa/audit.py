@@ -307,7 +307,7 @@ def audit_epub(path: str | Path) -> AuditResult:
         missing_meta = [
             tag
             for tag in ("dc:creator", "dc:date", "dc:publisher", "dc:rights")
-            if not re.search(rf"<{tag}>\s*\S[^<]*</{tag}>", opf)
+            if not re.search(rf"<{tag}(?:\s[^>]*)?>\s*\S[^<]*</{tag}>", opf)
         ]
         if missing_meta:
             result.add("warning", "W_META_INCOMPLETE", "DC 元数据缺失：" + "、".join(missing_meta))

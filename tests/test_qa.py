@@ -427,6 +427,17 @@ def test_audit_toc_coverage_bidirectional(tmp_path: Path) -> None:
     assert any("nav 条目不在 spine" in f.message for f in cov)
 
 
+def test_audit_meta_creator_with_attributes(tmp_path: Path) -> None:
+    """S2 回归：build 输出的 <dc:creator id="creator-aut">（带属性）不得被误报缺失。"""
+    epub = _make_epub(tmp_path)
+    with zipfile.ZipFile(epub) as zf:
+        opf = next(zf.read(n).decode("utf-8") for n in zf.namelist() if n.endswith(".opf"))
+    assert 'id="creator-aut"' in opf  # build 实际写法（带属性）
+    result = audit_epub(epub)
+    warnings = [f for f in result.findings if f.code == "W_META_INCOMPLETE"]
+    assert not any("dc:creator" in f.message for f in warnings)
+
+
 def test_audit_meta_empty_value(tmp_path: Path) -> None:
     """S1.3：DC 元数据标签存在但内容空白 → W_META_INCOMPLETE 仍告警。"""
     epub = _make_epub(tmp_path)
