@@ -56,6 +56,13 @@ def test_count_footnote_refs() -> None:
     assert count_footnote_refs("no footnote here") == 0
 
 
+def test_count_footnote_refs_ignores_citation_punct() -> None:
+    """引证/统计里的冒号分号数字不是注码（避免 conservation 误报硬缺陷）。"""
+    assert count_footnote_refs("（USDHHS 1992:110—11）") == 0
+    assert count_footnote_refs("每 300 支香烟砍一棵树；1 公顷烟草需 0.5 公顷林地") == 0
+    assert count_footnote_refs("（Goodin 1989a:588）") == 0
+
+
 def test_count_footnote_marks() -> None:
     from auto_translator.review import count_footnote_marks
 

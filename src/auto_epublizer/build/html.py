@@ -180,6 +180,98 @@ _VERSE_LINE = re.compile(r"^\s*\|\s?(.*)$")
 _UL_LINE = re.compile(r"^\s*[-*]\s+(.*)$")
 _OL_LINE = re.compile(r"^\s*\d{1,3}[.、)]\s+(.*)$")
 
+# 表格：pandoc 简单/网格表（成排的 `---` 列界 + 内容行）与 md 管道表
+_TABLE_DASH_ROW = re.compile(r"^\s*-{3,}(?:\s+-{3,})+\s*$")
+_TABLE_EQ_ROW = re.compile(r"^\s*={3,}(?:\s+={3,})+\s*$")
+_TABLE_DASH_SPAN = re.compile(r"-{3,}")
+_PIPE_SEP_ROW = re.compile(r"^\s*\|?\s*:?-{3,}:?\s*(?:\|\s*:?-{3,}:?\s*)*\|?\s*$")
+
+
+def _split_pipe_row(line: str) -> list[str]:
+    body = line.strip().strip("|")
+    return [c.strip() for c in re.split(r"(?<!\\)\|", body)]
+
+
+def _render_pipe_table(lines: list[str]) -> str:
+    """md 管道表 → XHTML table（首行为表头，第二行为分隔行）。"""
+    head = "".join(f"<th>{_inline(escape(c))}</th>" for c in _split_pipe_row(lines[0]))
+    rows = []
+    for line in lines[2:]:
+        if not line.strip() or "|" not in line:
+            continue
+        cells = _split_pipe_row(line)
+        rows.append("<tr>" + "".join(f"<td>{_inline(escape(c))}</td>" for c in cells) + "</tr>")
+    return (
+        '<table class="data"><thead><tr>'
+        + head
+        + "</tr></thead><tbody>"
+        + "".join(rows)
+        + "</tbody></table>"
+    )
+
+
+def _dash_spans(line: str) -> list[tuple[int, int]]:
+    return [(m.start(), m.end()) for m in _TABLE_DASH_SPAN.finditer(line)]
+
+
+def _split_span_row(line: str, spans: list[tuple[int, int]]) -> list[str]:
+    cells: list[str] = []
+    for i, (start, _end) in enumerate(spans):
+        end = spans[i + 1][0] if i + 1 < len(spans) else len(line)
+        cells.append(line[start:end].strip())
+    return cells
+
+
+def _render_simple_table(lines: list[str]) -> str | None:
+    """pandoc 简单/网格表 → XHTML table。
+
+    列界由首个 ``---`` 行的各段起止列位置确定；``===`` 行前为表头（无则首行作表头）。
+    """
+    borders = [i for i, ln in enumerate(lines) if _TABLE_DASH_ROW.match(ln)]
+    if not borders:
+        return None
+    spans = _dash_spans(lines[borders[0]])
+    if len(spans) < 2:
+        return None
+    eq_idx = next((i for i, ln in enumerate(lines) if _TABLE_EQ_ROW.match(ln)), None)
+    content = [
+        (i, ln)
+        for i, ln in enumerate(lines)
+        if not _TABLE_DASH_ROW.match(ln) and not _TABLE_EQ_ROW.match(ln) and ln.strip()
+    ]
+    if not content:
+        return None
+    if eq_idx is not None:
+        header = [ln for i, ln in content if i < eq_idx]
+        body = [ln for i, ln in content if i > eq_idx]
+    else:
+        header = [content[0][1]]
+        body = [ln for _i, ln in content[1:]]
+
+    def head_cells(line: str) -> str:
+        return "".join(f"<th>{_inline(escape(c))}</th>" for c in _split_span_row(line, spans))
+
+    def body_cells(line: str) -> str:
+        return "".join(f"<td>{_inline(escape(c))}</td>" for c in _split_span_row(line, spans))
+
+    return (
+        '<table class="data"><thead>'
+        + "".join(f"<tr>{head_cells(ln)}</tr>" for ln in header)
+        + "</thead><tbody>"
+        + "".join(f"<tr>{body_cells(ln)}</tr>" for ln in body)
+        + "</tbody></table>"
+    )
+
+
+def _maybe_render_table(block: str) -> str | None:
+    """块级表格渲染：管道表或 pandoc 简单/网格表；非表格返回 None。"""
+    lines = block.splitlines()
+    if len(lines) >= 2 and "|" in lines[0] and _PIPE_SEP_ROW.match(lines[1]) and "|" in lines[1]:
+        return _render_pipe_table(lines)
+    if any(_TABLE_DASH_ROW.match(ln) for ln in lines):
+        return _render_simple_table(lines)
+    return None
+
 
 def markdown_to_xhtml(md: str, *, unit_id: str = "", fn_state: FootnoteState | None = None) -> str:
     """把 markdown 正文转换为 XHTML 片段（h1–h6 / p / figure，文本统一转义）。
@@ -207,6 +299,10 @@ def markdown_to_xhtml(md: str, *, unit_id: str = "", fn_state: FootnoteState | N
     for block in re.split(r"\n\s*\n", md):
         block = block.strip("\n")
         if not block.strip():
+            continue
+        table = _maybe_render_table(block)
+        if table is not None:
+            out.append(table)
             continue
         m_img = _IMG_ONLY_BLOCK.match(block.strip())
         if m_img:
