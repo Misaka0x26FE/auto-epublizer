@@ -100,6 +100,30 @@ def test_split_by_spine_anchors_missing_or_out_of_order_returns_none() -> None:
     assert split_by_spine_anchors(md, ["b.xhtml", "a.xhtml"]) is None
 
 
+def test_derive_heading_levels_part_chapter_nesting() -> None:
+    """部（PART x）为 1 级，部内编号章为 2 级；部结束（结论等）后回到 1 级。"""
+    from auto_epublizer.ingest.epub_reader import _derive_heading_levels
+
+    titles = [
+        "1. WHAT IS TOBACCO?",
+        "PART I",
+        "2. FOOD OF THE SPIRITS",
+        "3. WHY TOBACCO?",
+        "PART II",
+        "4. RITUALS",
+        "CONCLUSION",
+        "10. TO DIE BY SMOKE",
+        "GLOSSARY",
+    ]
+    assert _derive_heading_levels(titles) == [1, 1, 2, 2, 1, 2, 1, 1, 1]
+
+
+def test_derive_heading_levels_no_parts_stays_flat() -> None:
+    from auto_epublizer.ingest.epub_reader import _derive_heading_levels
+
+    assert _derive_heading_levels(["Intro", "1. A", "2. B"]) == [1, 1, 1]
+
+
 # ── EPUB 包解析 ───────────────────────────────────────────────────────────
 
 
