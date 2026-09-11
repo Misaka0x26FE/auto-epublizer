@@ -52,4 +52,7 @@ DC 元数据来自 `publication.json.meta`：`dc:title`、`dc:creator`、`dc:lan
 - **图片**：只缩不放大居中 + 断页（`page-break-inside: avoid`）；独立图段（alt 非空）→
   `figure+figcaption` 图注。
 - **语义标签**：引用 `>` → `blockquote`；诗行块 `|` → `p.verse`；`- `/`1. ` → `ul/ol`。
+- **表格**：md 管道表（`| a | b |` + 分隔行）与 pandoc 简单/网格表（成排 `---` 列界）
+  渲染为 `<table class="data">`（`th`/`td` + 功能性边框）；单元格文字正常翻译，
+  结构保持不变。**翻译时不要改动列界与分隔线**（G0 表格形状守恒）。
 - 原图优先+补充层为后续扩展点。

@@ -320,6 +320,32 @@ def test_markdown_to_xhtml_cleans_pandoc_markers() -> None:
     assert "&gt;" not in out2
 
 
+def test_markdown_to_xhtml_renders_simple_table() -> None:
+    """pandoc 简单/网格表（成排 --- 列界）→ XHTML table（表格渲染回归）。"""
+    md = (
+        "*Table 1.1* World tobacco crop 1990\n\n"
+        "  --------------- ------------ -----------\n"
+        "                  Production   Share (%)\n"
+        "  North America   911          13\n"
+        "  Asia            4,235        60\n"
+        "  --------------- ------------ -----------\n"
+    )
+    out = markdown_to_xhtml(md)
+    assert '<table class="data">' in out
+    assert "<th>Production</th>" in out
+    assert "<td>4,235</td>" in out
+    assert "North America" in out
+    assert "----" not in out  # 分隔线不得作为正文文本出现
+
+
+def test_markdown_to_xhtml_renders_pipe_table() -> None:
+    """md 管道表 → XHTML table。"""
+    out = markdown_to_xhtml("| a | b |\n| --- | --- |\n| 1 | 2 |\n")
+    assert '<table class="data">' in out
+    assert "<th>a</th>" in out
+    assert "<td>2</td>" in out
+
+
 def test_render_document_links_stylesheet() -> None:
     """内容文档引用内置 style.css（豆包实测 P16 回归）。"""
     out = render_document("T", "正文。", lang="zh-CN")
