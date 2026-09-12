@@ -22,6 +22,10 @@ _IMG_RE = re.compile(r"!\[([^\]]*)\]\(([^)]+)\)")
 # 归一为标准 markdown 图片（src 保留），避免内层 <img> 被外层链接二次转义。
 _PANDOC_LINKED_IMG = re.compile(r"\[\[!\[([^\]]*)\]\(([^)]+)\)[^\]]*\]\([^)]*\)[^\]]*\]\{[^}]*\}")
 _LINK_RE = re.compile(r"\[([^\]]+)\]\(([^)]+)\)")
+# 正文导航锚点：[]{#page_15}（ingest 保留的源 <a id>）→ 空锚点元素，供内部链接跳转
+_ANCHOR_INLINE_RE = re.compile(r"\[\]\{#([\w:.-]+)\}")
+# 标题上的 id 属性：``标题 {#ch01}`` → (标题, ch01)
+_HEADING_ID_RE = re.compile(r"\s*\{#([\w:.-]+)\}\s*$")
 _BOLD_RE = re.compile(r"\*\*([^*]+)\*\*")
 _ITALIC_RE = re.compile(r"(?<!\*)\*([^*]+)\*(?!\*)")
 _CODE_RE = re.compile(r"`([^`]+)`")
@@ -152,6 +156,14 @@ def _fallback_alt(src: str) -> str:
     return PurePath(src.split("?", 1)[0]).name.rsplit(".", 1)[0] or src
 
 
+def _split_heading_id(text: str) -> tuple[str, str | None]:
+    """拆分标题末尾的 ``{#id}`` 属性，返回 (纯标题, id|None)。"""
+    m = _HEADING_ID_RE.search(text)
+    if not m:
+        return text, None
+    return text[: m.start()].rstrip(), m.group(1)
+
+
 def _inline(text: str) -> str:
     """行内 markdown → XHTML；危险 URL（javascript:/data:）降级为纯文本。"""
 
@@ -164,6 +176,8 @@ def _inline(text: str) -> str:
             return escape(label)
         return f'<a href="{escape(href, quote=True)}">{escape(label)}</a>'
 
+    # 正文导航锚点 []{#id} → <a id="id"></a>（id 已由白名单正则约束，无需转义）
+    text = _ANCHOR_INLINE_RE.sub(r'<a id="\1"></a>', text)
     text = _IMG_RE.sub(_img, text)
     text = _LINK_RE.sub(_link, text)
     text = _BOLD_RE.sub(r"<strong>\1</strong>", text)
@@ -349,7 +363,9 @@ def markdown_to_xhtml(md: str, *, unit_id: str = "", fn_state: FootnoteState | N
         m = _HEADING_RE.match(lines[0])
         if m:
             level = min(len(m.group(1)), 6)
-            out.append(f"<h{level}>{_inline(escape(m.group(2)))}</h{level}>")
+            heading, hid = _split_heading_id(m.group(2))
+            id_attr = f' id="{hid}"' if hid else ""
+            out.append(f'<h{level}{id_attr}>{_inline(escape(heading))}</h{level}>')
             rest = "\n".join(lines[1:]).strip()
             if rest:
                 out.append(f"<p>{_inline(escape(rest))}</p>")
