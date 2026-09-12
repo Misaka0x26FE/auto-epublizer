@@ -229,6 +229,16 @@ def _dash_spans(line: str) -> list[tuple[int, int]]:
 
 
 def _split_span_row(line: str, spans: list[tuple[int, int]]) -> list[str]:
+    r"""按列切开一个表格数据行。
+
+    pandoc 按**原始**单元格宽度排版：清洗去掉 ``[text]{.class}`` 等属性会缩短
+    单元格文本，使其后的列整体左移、固定列位错位（多列并成一列）。此时列间空白
+    会变大（≥2 空格），故优先按 ``\s{2,}`` 切分恢复各列；若切分数与列数不符
+    （例如单元格恰好填满列宽、列间只剩 1 空格），退回按 dash 行的固定列位切分。
+    """
+    parts = [c.strip() for c in re.split(r"\s{2,}", line.strip())]
+    if len(parts) == len(spans):
+        return parts
     cells: list[str] = []
     for i, (start, _end) in enumerate(spans):
         end = spans[i + 1][0] if i + 1 < len(spans) else len(line)
