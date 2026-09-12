@@ -30,6 +30,27 @@ def test_markdown_to_xhtml_escapes() -> None:
     assert "&lt;script&gt;" in out
 
 
+def test_markdown_to_xhtml_renders_inline_anchor() -> None:
+    # ingest 保留的正文导航锚点 []{#page_15} 渲染为空锚点元素（跳转目标）
+    out = markdown_to_xhtml("a []{#page_15}b\n")
+    assert '<a id="page_15"></a>' in out
+    # 锚点标记本身不得作为字面文本残留
+    assert "[]{#" not in out
+
+
+def test_markdown_to_xhtml_heading_id_attr() -> None:
+    # 标题末尾的 {#ch01} 渲染为 hN 的 id 属性（front-toc 章锚点跳转目标）
+    out = markdown_to_xhtml("## 第一章 {#ch01}\n")
+    assert '<h2 id="ch01">第一章</h2>' in out
+    assert "{#ch01}" not in out
+
+
+def test_markdown_to_xhtml_internal_link() -> None:
+    # 重写后的成品内部链接正常渲染为 <a href>
+    out = markdown_to_xhtml("see [311](ch19.xhtml#page_311) now\n")
+    assert '<a href="ch19.xhtml#page_311">311</a>' in out
+
+
 def test_render_document() -> None:
     html = render_document("T", "para", lang="zh-CN")
     assert 'xml:lang="zh-CN"' in html
