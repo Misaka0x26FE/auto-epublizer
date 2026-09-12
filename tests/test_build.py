@@ -630,3 +630,16 @@ def test_build_epub_translator_creator_role(tmp_path: Path) -> None:
     with zipfile.ZipFile(out2) as zf:
         opf2 = zf.read("OEBPS/content.opf").decode("utf-8")
     assert "creator-trl" not in opf2
+
+
+def test_markdown_to_xhtml_simple_table_columns_after_attr_cleanup() -> None:
+    """回归：pandoc 按含属性原文排版，清洗缩短单元格后不得把两列并成一列。"""
+    md = (
+        "  ---------------- -------\n"
+        "  Item   Value\n"
+        "  Foo              42\n"
+        "  ---------------- -------\n"
+    )
+    out = markdown_to_xhtml(md)
+    assert "<th>Item</th><th>Value</th>" in out
+    assert "<td>Foo</td><td>42</td>" in out
