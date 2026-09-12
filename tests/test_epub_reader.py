@@ -111,7 +111,9 @@ def test_strip_self_file_prefix() -> None:
 
 
 def test_parse_heading_line_extracts_id_and_leading_anchors() -> None:
-    title, hid, leading = _parse_heading_line("[]{#page_20 .calibre5}**2 Confrontation** {#ch02 .h1}")
+    title, hid, leading = _parse_heading_line(
+        "[]{#page_20 .calibre5}**2 Confrontation** {#ch02 .h1}"
+    )
     assert title == "2 Confrontation"
     assert hid == "ch02"
     assert leading == "[]{#page_20}"
@@ -189,3 +191,26 @@ def test_read_epub_spine_units_and_table_inlined(tmp_path: Path) -> None:
     # 非线性表格项的表体被内联（caption 链接段 → caption + 表格 + 表源）
     assert "Foo" in body and "42" in body
     assert "See [Table 1.1](tbl1.xhtml) for data." in body
+
+
+@pytest.mark.skipif(not pandoc_available(), reason="需要 pandoc")
+def test_inlined_nonlinear_content_is_cleaned(tmp_path: Path) -> None:
+    """非线性项内联内容与线性路径同样清洗：pandoc 类属性不得进成品。"""
+    p = tmp_path / "residue.epub"
+    tbl = (
+        '<?xml version="1.0" encoding="utf-8"?>'
+        '<html xmlns="http://www.w3.org/1999/xhtml"><body>'
+        "<p><i>Table 1.1</i> Data table</p>"
+        '<table><tr><td><span class="small">Item</span></td>'
+        "<td>Value</td></tr></table></body></html>"
+    )
+    with zipfile.ZipFile(p, "w") as zf:
+        zf.writestr("mimetype", "application/epub+zip")
+        zf.writestr("META-INF/container.xml", _CONTAINER)
+        zf.writestr("OEBPS/content.opf", _OPF)
+        zf.writestr("OEBPS/ch1.xhtml", _CH1)
+        zf.writestr("OEBPS/tbl1.xhtml", tbl)
+    doc = read_epub(p, media_dir=tmp_path / "media")
+    body = "\n".join(s.source for u in doc.units for s in u.segments)
+    assert "{." not in body  # pandoc 类属性残留已清洗
+    assert "Item" in body  # 文本本身保留

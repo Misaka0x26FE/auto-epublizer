@@ -365,7 +365,7 @@ def markdown_to_xhtml(md: str, *, unit_id: str = "", fn_state: FootnoteState | N
             level = min(len(m.group(1)), 6)
             heading, hid = _split_heading_id(m.group(2))
             id_attr = f' id="{hid}"' if hid else ""
-            out.append(f'<h{level}{id_attr}>{_inline(escape(heading))}</h{level}>')
+            out.append(f"<h{level}{id_attr}>{_inline(escape(heading))}</h{level}>")
             rest = "\n".join(lines[1:]).strip()
             if rest:
                 out.append(f"<p>{_inline(escape(rest))}</p>")
