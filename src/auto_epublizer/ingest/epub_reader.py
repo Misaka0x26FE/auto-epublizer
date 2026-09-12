@@ -30,8 +30,12 @@ _DC = "http://purl.org/dc/elements/1.1/"
 _XHTML_TYPES = {"application/xhtml+xml", "text/html"}
 _HEADING_RE = re.compile(r"^(#{1,6})\s+(.*)$")
 _ANCHOR_LINE_RE = re.compile(r"^\[\]\{(#[^}]*)\}$")
-_ANCHOR_SPAN_RE = re.compile(r"\[\]\{#[^}]*\}")
-_ATTR_ONLY_RE = re.compile(r"\{[.#][^}]*\}")
+# spine 边界文件锚点：独立成行的 ``[]{#xx.xhtml}``（id 整体是文件名、无 #fragment）
+# 已由 _strip_anchor_lines 删除，这里兜底行内残留。带 fragment 的正文锚点
+# ``[]{#ch02.html#page_21}`` 必须保留（id 内含第二个 #），用 [^}#] 排除 fragment，
+# 其文件前缀在 structure/links.py 按 spine 映射重写为纯锚点。
+_SPINE_FILE_ANCHOR_RE = re.compile(r"\[\]\{#[^}#]*\.(?:x?html)[^}#]*\}")
+_ATTR_ONLY_RE = re.compile(r"\{\.[^}]*\}")  # 裸类属性 {.class}（{#id} 锚点保留）
 _SPAN_CLASS_RE = re.compile(r"\[([^\[\]]*)\]\{\.[^}]*\}")
 _BR_RE = re.compile(r"<br\s*/?>", re.IGNORECASE)
 
@@ -85,12 +89,17 @@ class EpubPackage:
 def clean_pandoc_residue(text: str) -> str:
     """清理 pandoc 转出的行内残留（确定性纯函数）。
 
-    删除 ``[]{#id}`` 锚点、``{#id}`` 属性、``[text]{.class}`` 的类属性（保留文本）、
-    ``<br>`` 变体转空格。**不改动行首空白**（避免破坏网格表格缩进），仅去行尾空白。
+    - 删除指向文件的 spine 边界锚点 ``[]{#xx.xhtml}``（独立成行的已由
+      ``_strip_anchor_lines`` 删除，这里兜底行内残留）；
+    - **保留正文导航锚点** ``[]{#page_15}`` / ``[]{#ch01}``（源 XHTML 的
+      ``<a id>``，是索引/目录跳转目标，删除会让成品内部链接全部失效）；
+    - 删除 ``[text]{.class}`` 的类属性（保留文本）与裸类属性 ``{.class}``
+      （``{#id}`` 标题锚点保留）；``<br>`` 变体转空格。
+    - **不改动行首空白**（避免破坏网格表格缩进），仅去行尾空白。
     """
     if not text:
         return text
-    text = _ANCHOR_SPAN_RE.sub("", text)
+    text = _SPINE_FILE_ANCHOR_RE.sub("", text)
     text = _SPAN_CLASS_RE.sub(r"\1", text)
     text = _ATTR_ONLY_RE.sub("", text)
     text = _BR_RE.sub(" ", text)
@@ -289,6 +298,73 @@ def _strip_anchor_lines(lines: list[str]) -> list[str]:
     return [ln for ln in lines if not _ANCHOR_LINE_RE.match(ln.strip())]
 
 
+def strip_self_file_prefix(text: str, self_basename: str) -> str:
+    """去掉引用中**当前 spine 文件自身**的文件名前缀（切块时当前 href 已知）。
+
+    pandoc -f epub 会给当前文件内的锚点/链接也带上源文件名：
+    ``[]{#ch1.xhtml#ncx_1}`` → ``[]{#ncx_1}``、``[x](#ch1.xhtml#p2)`` → ``[x](#p2)``、
+    ``{#ch1.xhtml#h .h1}`` → ``{#h}``。指向**其他** spine 文件的引用不在此处理，
+    交给 structure/links.py 按全局 spine 映射重写。无 fragment 的纯文件锚点
+    （``[]{#ch1.xhtml}``）是边界标记，直接删除。
+    """
+    if not self_basename:
+        return text
+    q = re.escape(self_basename)
+
+    def _anchor(m: re.Match[str]) -> str:
+        frag = m.group(1)
+        return f"[]{{#{frag}}}" if frag else ""
+
+    def _attr(m: re.Match[str]) -> str:
+        frag = m.group(1)
+        return f"{{#{frag}}}" if frag else m.group(0)
+
+    text = re.sub(r"\[\]\{#" + q+r"(?:#([^}\s]*))?[^}]*\}", _anchor, text)
+    text = re.sub(r"\{#" + q+r"(?:#([^}\s]*))?[^}]*\}", _attr, text)
+    text = re.sub(
+        r"(\]\(\s*<?)#?" + q+r"(?:#([^)>]*))?(>?\s*\))",
+        lambda m: f"{m.group(1)}#{m.group(2)}{m.group(3)}" if m.group(2) else m.group(0),
+        text,
+    )
+    return text
+
+
+def _parse_heading_line(raw: str) -> tuple[str, str | None, str]:
+    """解析首个标题行，返回 (纯标题文本, 标题 id|None, 前导空锚点文本)。
+
+    pandoc 标题形如 ``[]{#page_20 .calibre5}**2 Title** {#ch02 .h1}``（文件名前缀
+    已由 strip_self_file_prefix 去除）：前导空锚点是章节首页页码锚点（须保留为正文
+    首个锚点），末尾 ``{#id}`` 是标题锚点（成品 h1 的 id，供目录跳转），其余去
+    markdown 行内标记后为纯标题。
+    """
+    text = raw
+    leading: list[str] = []
+
+    def _take_anchor(m: re.Match[str]) -> str:
+        if m.group(1):
+            leading.append(f"[]{{#{m.group(1)}}}")
+        return ""
+
+    # 反复摘除行首前导空锚点（可能多个）
+    prev = None
+    while prev != text:
+        prev = text
+        text = re.sub(r"^\s*\[\]\{#([^}\s]+)(?:\s+[^}]*)?\}", _take_anchor, text)
+    # 末尾标题 id 属性
+    heading_id = None
+    m_id = re.search(r"\{#([^}\s]+)(?:\s+[^}]*)?\}\s*$", text)
+    if m_id:
+        heading_id = m_id.group(1)
+        text = text[: m_id.start()] + text[m_id.end():]
+    # 去行内 markdown 标记 → 纯标题
+    clean = re.sub(r"\[([^\]]+)\]\([^)]*\)", r"\1", text)
+    clean = clean.replace("**", "").replace("__", "")
+    clean = re.sub(r"(?<!\*)\*([^*]+)\*(?!\*)", r"\1", clean)
+    clean = re.sub(r"`([^`]+)`", r"\1", clean)
+    clean = re.sub(r"\s+", " ", clean).strip()
+    return clean, heading_id, "".join(leading)
+
+
 def _first_heading_line(lines: list[str]) -> tuple[int, str] | None:
     for i, line in enumerate(lines):
         m = _HEADING_RE.match(line.rstrip())
@@ -466,11 +542,14 @@ def read_epub(path: str | Path, *, media_dir: str | Path | None = None) -> Sourc
     units: list[SourceUnit] = []
     with zipfile.ZipFile(path) as zf:
         for seq, (item, block) in enumerate(zip(linear, blocks, strict=False), start=1):
-            lines = _strip_anchor_lines(block)
+            self_base = posixpath.basename(item.zip_path)
+            lines = [strip_self_file_prefix(ln, self_base) for ln in _strip_anchor_lines(block)]
             heading = _first_heading_line(lines)
+            heading_id: str | None = None
+            leading_anchors = ""
             heading_text = ""
             if heading is not None:
-                heading_text = _clean_heading(heading[1])
+                heading_text, heading_id, leading_anchors = _parse_heading_line(heading[1])
                 del lines[heading[0]]
             label = package.href_labels.get(unquote(item.href).lstrip("./"), "")
             title = (
@@ -480,13 +559,23 @@ def read_epub(path: str | Path, *, media_dir: str | Path | None = None) -> Sourc
                 or _xhtml_div_class(zf, item.zip_path)
                 or "正文"
             )
+            segments = _blocks_to_segments(lines)
+            if leading_anchors:
+                # 章节首页页码锚点：作为正文第一个锚点段保留（内部跳转落点）
+                segments.insert(0, SourceSegment(index=0, source=leading_anchors, kind=KIND_TEXT))
+                for i, seg in enumerate(segments):
+                    seg.index = i
             units.append(
                 SourceUnit(
                     id=f"spine{seq:03d}",
                     kind="chapter",
                     title=_clean_heading(title),
-                    segments=_blocks_to_segments(lines),
-                    meta={"heading_level": 1, "spine_href": item.href},
+                    segments=segments,
+                    meta={
+                        "heading_level": 1,
+                        "spine_href": item.href,
+                        **({"heading_id": heading_id} if heading_id else {}),
+                    },
                 )
             )
 

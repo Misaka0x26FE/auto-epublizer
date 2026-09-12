@@ -73,7 +73,10 @@ agent 在 plan.md 记录最终路由与依据（含「是否已询问用户 Mine
 `read_epub` 不再按 ATX 标题切分，而是**按 OPF spine 切分**——pandoc 对每个线性 spine 项
 恰好输出一行独立锚点 `[]{#<href basename>.xhtml}`，以它为边界即「一个 spine 项 = 一个单元」，
 标题取自 nav/NCX 标签 → 清洗后的 `<h1>` → `<title>` → 顶层 `<div class>` → 「正文」。
-同时清理 `[]{#id}` 锚点、`{#id}` 属性、`[text]{.class}` 类属性、`<br>`。
+只清理**边界标记**（独立成行、无 fragment 的 `[]{#xx.xhtml}`）、`[text]{.class}` 类属性、`<br>`；
+**正文导航锚点 `[]{#xx.html#page_N}`、标题 id `{#id}` 必须保留**（去自身文件前缀后，
+由 `structure/links.py` 按 spine 重映射为成品锚点），详见
+`lessons/2026-09-12-epub-internal-links-anchors.md`。
 
 **非线性 spine 项**（`linear="no"`，通常是表格/图表文件）pandoc 默认跳过、正文只剩链接：
 读取器会单独转 md，并在正文中**恰好是该项表题/图题的独立链接段**处内联（正文内嵌的普通
@@ -81,7 +84,9 @@ agent 在 plan.md 记录最终路由与依据（含「是否已询问用户 Mine
 
 入库后自查（写入 `plan.md`）：
 - 单元数 ≈ 线性 spine 项数（`facts.md` 结构清单应与 NCX/目录条目数量级一致）；
-- 标题无 `[]{#`、`{.small}` 等残留；
+- 标题无 `{.small}` 等**类属性**残留（但 `{#id}` 标题锚点、`[]{#page_N}` 页码锚点应保留）；
+- 内部链接/锚点无 `.html/.xhtml` 源文件名残留、无 `#xx.html#frag` 双 #（links 重写后为
+  `chNN.xhtml#frag` 或纯 `#frag`）；
 - 抽样 grep 原书表格中的数值/表头，确认非线性项表体确实进了 `structured/`；
 - 前置辅文（版权页/献词等）归入 `frontmatter/`，而非碎成多个 `body/chNN`。
 

@@ -8,6 +8,7 @@ from auto_common.workspace import Publication, RunStore
 
 from ..ingest.models import SourceDocument
 from .classify import classify_units, clean_unit
+from .links import rewrite_internal_links
 
 _HEADING_RE = re.compile(r"^(#{1,6})\s+(.*)$")
 
@@ -48,8 +49,9 @@ class StructureError(RuntimeError):
     """结构重建失败。"""
 
 
-def _render_markdown(title: str, segments) -> str:
-    lines = [f"# {title}", ""]
+def _render_markdown(title: str, segments, heading_id: str | None = None) -> str:
+    head = f"# {title}" + (f" {{#{heading_id}}}" if heading_id else "")
+    lines = [head, ""]
     for s in segments:
         if s.kind == "heading":
             if s.source.strip() == title.strip():
@@ -70,6 +72,9 @@ def rebuild_structure(doc: SourceDocument, pub: Publication) -> list[dict]:
     同级平铺、层级递增嵌套（ch 的 h2 子节嵌套在其下）。
     """
     classified = classify_units(doc)
+    # pandoc -f epub 会把内部链接写成非法的「#源文件.html#锚点」，且源文件名与成品
+    # 单元 id 存在 spine 偏移；归类拿到最终单元 id 后，按 spine 映射重写全部内部链接。
+    rewrite_internal_links(doc, classified)
     entries: list[dict] = []
     for index, cls in enumerate(classified):
         cleaned = clean_unit(cls.unit)
@@ -98,4 +103,7 @@ def write_structured(store: RunStore, doc: SourceDocument, entries: list[dict]) 
         unit = units[index]
         target = structured / entry["rel_path"]
         target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_text(_render_markdown(unit.title, unit.segments), encoding="utf-8")
+        target.write_text(
+            _render_markdown(unit.title, unit.segments, unit.meta.get("heading_id")),
+            encoding="utf-8",
+        )

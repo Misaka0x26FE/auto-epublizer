@@ -11,10 +11,12 @@ from pathlib import Path
 import pytest
 
 from auto_epublizer.ingest.epub_reader import (
+    _parse_heading_line,
     clean_pandoc_residue,
     read_epub,
     read_epub_package,
     split_by_spine_anchors,
+    strip_self_file_prefix,
 )
 from auto_epublizer.ingest.pandoc_reader import pandoc_available
 
@@ -69,20 +71,55 @@ def _make_epub(tmp_path: Path) -> Path:
 # ── 纯函数 ────────────────────────────────────────────────────────────────
 
 
-def test_clean_pandoc_residue_removes_anchors_and_attrs() -> None:
-    raw = "[]{#f.xhtml#a}Hello []{#g}[Sub]{.small} *keep* <br/>world"
+def test_clean_pandoc_residue_removes_file_anchors_and_attrs() -> None:
+    # 无 fragment 的 spine 边界文件锚点删除；类属性清除；<br> 转空格
+    raw = "[]{#f.xhtml}Hello [Sub]{.small} *keep* <br/>world"
     out = clean_pandoc_residue(raw)
     assert out == "Hello Sub *keep*  world"
-    assert "[]{#" not in out
+    assert ".xhtml" not in out
     assert "{.small}" not in out
     assert "<br" not in out
     # 裸类属性（非 [text]{.class} 形式，如 `*Name* {.author}`）也要清除
     assert clean_pandoc_residue("*Jordan Goodman* {.author}") == "*Jordan Goodman*"
 
 
+def test_clean_pandoc_residue_keeps_inline_nav_anchors() -> None:
+    # 正文导航锚点 []{#page_15} / 带 fragment 的文件锚点 []{#f.xhtml#a}（源 <a id>）
+    # 必须保留：它们是索引/目录跳转目标，删除会让成品内部链接全部失效。
+    assert "[]{#page_15}" in clean_pandoc_residue("a []{#page_15}b")
+    assert "[]{#f.xhtml#a}" in clean_pandoc_residue("pre []{#f.xhtml#a} post")
+    # 标题 id 属性 {#ch01} 同样保留（供 build 渲染 <h id>）
+    assert "{#ch01}" in clean_pandoc_residue("Heading {#ch01}")
+    # 无 fragment 的纯文件锚点仍应清除
+    assert "[]{#a.xhtml}" not in clean_pandoc_residue("pre []{#a.xhtml} post")
+
+
 def test_clean_pandoc_residue_preserves_grid_table_indent() -> None:
     md = "  --- ---\n  a   b\n  --- ---"
     assert clean_pandoc_residue(md) == md
+
+
+def test_strip_self_file_prefix() -> None:
+    # 当前 spine 文件自身的文件名前缀去除（锚点/链接/标题属性）
+    assert strip_self_file_prefix("[]{#ch1.xhtml#ncx_1}Title", "ch1.xhtml") == "[]{#ncx_1}Title"
+    assert strip_self_file_prefix("see [x](#ch1.xhtml#p2)", "ch1.xhtml") == "see [x](#p2)"
+    assert strip_self_file_prefix("T {#ch1.xhtml#h1 .h1}", "ch1.xhtml") == "T {#h1}"
+    # 无 fragment 的纯文件锚点删除
+    assert strip_self_file_prefix("a []{#ch1.xhtml} b", "ch1.xhtml") == "a  b"
+    # 指向其他文件的引用保留（交给 links 全局重映射）
+    assert strip_self_file_prefix("[y](ch2.xhtml#q)", "ch1.xhtml") == "[y](ch2.xhtml#q)"
+
+
+def test_parse_heading_line_extracts_id_and_leading_anchors() -> None:
+    title, hid, leading = _parse_heading_line("[]{#page_20 .calibre5}**2 Confrontation** {#ch02 .h1}")
+    assert title == "2 Confrontation"
+    assert hid == "ch02"
+    assert leading == "[]{#page_20}"
+    # 无属性的普通标题
+    t2, h2, l2 = _parse_heading_line("[]{#ncx_1}1 A TEST CHAPTER")
+    assert t2 == "1 A TEST CHAPTER"
+    assert h2 is None
+    assert l2 == "[]{#ncx_1}"
 
 
 def test_split_by_spine_anchors_in_order() -> None:
