@@ -319,10 +319,10 @@ def strip_self_file_prefix(text: str, self_basename: str) -> str:
         frag = m.group(1)
         return f"{{#{frag}}}" if frag else m.group(0)
 
-    text = re.sub(r"\[\]\{#" + q+r"(?:#([^}\s]*))?[^}]*\}", _anchor, text)
-    text = re.sub(r"\{#" + q+r"(?:#([^}\s]*))?[^}]*\}", _attr, text)
+    text = re.sub(r"\[\]\{#" + q + r"(?:#([^}\s]*))?[^}]*\}", _anchor, text)
+    text = re.sub(r"\{#" + q + r"(?:#([^}\s]*))?[^}]*\}", _attr, text)
     text = re.sub(
-        r"(\]\(\s*<?)#?" + q+r"(?:#([^)>]*))?(>?\s*\))",
+        r"(\]\(\s*<?)#?" + q + r"(?:#([^)>]*))?(>?\s*\))",
         lambda m: f"{m.group(1)}#{m.group(2)}{m.group(3)}" if m.group(2) else m.group(0),
         text,
     )
@@ -355,7 +355,7 @@ def _parse_heading_line(raw: str) -> tuple[str, str | None, str]:
     m_id = re.search(r"\{#([^}\s]+)(?:\s+[^}]*)?\}\s*$", text)
     if m_id:
         heading_id = m_id.group(1)
-        text = text[: m_id.start()] + text[m_id.end():]
+        text = text[: m_id.start()] + text[m_id.end() :]
     # 去行内 markdown 标记 → 纯标题
     clean = re.sub(r"\[([^\]]+)\]\([^)]*\)", r"\1", text)
     clean = clean.replace("**", "").replace("__", "")
@@ -463,7 +463,11 @@ def _inline_nonlinear(units: list[SourceUnit], package: EpubPackage, path: str |
             md = _pandoc_html_to_markdown(html).strip()
             if not md:
                 continue
-            blocks = [b for b in re.split(r"\n\s*\n", md) if b.strip()]
+            # 与线性路径一致地清洗 pandoc html→md 残留（[text]{.class} 等），
+            # 否则非线性项（表格等）的类属性会作为字面文本进入成品。
+            blocks = [
+                cleaned for b in re.split(r"\n\s*\n", md) if (cleaned := clean_pandoc_residue(b))
+            ]
             placed = False
             for unit in units:
                 for idx, seg in enumerate(unit.segments):

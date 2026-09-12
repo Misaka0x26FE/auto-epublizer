@@ -124,7 +124,7 @@ def rewrite_internal_links(doc, classified) -> int:
         for seg in cls.unit.segments:
             if not seg.source:
                 continue
-            if not any(tok in seg.source for tok in ("](" , "{#")):
+            if not any(tok in seg.source for tok in ("](", "{#")):
                 continue
             new_source = rewrite_links_in_text(seg.source, cls.unit_id, src_map)
             if new_source != seg.source:

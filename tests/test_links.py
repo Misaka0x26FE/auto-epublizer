@@ -19,7 +19,9 @@ def _cls(unit_id: str, spine_href: str, segments: list[SourceSegment]) -> Classi
         segments=segments,
         meta={"spine_href": spine_href},
     )
-    return ClassifiedUnit(unit=unit, region="body", kind="chapter", unit_id=unit_id, rel_path=f"body/{unit_id}.md")
+    return ClassifiedUnit(
+        unit=unit, region="body", kind="chapter", unit_id=unit_id, rel_path=f"body/{unit_id}.md"
+    )
 
 
 def test_strip_pandoc_leading_hash_and_remap() -> None:
@@ -31,11 +33,20 @@ def test_strip_pandoc_leading_hash_and_remap() -> None:
 
 def test_plain_internal_link_also_remapped() -> None:
     src_map = {"ch17": "ch19"}
-    assert rewrite_links_in_text("[x](ch17.html#page_1)", "back-index", src_map) == "[x](ch19.xhtml#page_1)"
+    assert (
+        rewrite_links_in_text("[x](ch17.html#page_1)", "back-index", src_map)
+        == "[x](ch19.xhtml#page_1)"
+    )
     # 尖括号包裹
-    assert rewrite_links_in_text("[x](<ch17.html#page_1>)", "back-index", src_map) == "[x](ch19.xhtml#page_1)"
+    assert (
+        rewrite_links_in_text("[x](<ch17.html#page_1>)", "back-index", src_map)
+        == "[x](ch19.xhtml#page_1)"
+    )
     # 带相对路径
-    assert rewrite_links_in_text("[x](../Text/ch17.html#page_1)", "back-index", src_map) == "[x](ch19.xhtml#page_1)"
+    assert (
+        rewrite_links_in_text("[x](../Text/ch17.html#page_1)", "back-index", src_map)
+        == "[x](ch19.xhtml#page_1)"
+    )
     # 无 fragment
     assert rewrite_links_in_text("[x](ch17.html)", "back-index", src_map) == "[x](ch19.xhtml)"
 
@@ -48,8 +59,13 @@ def test_same_unit_link_becomes_pure_fragment() -> None:
 
 def test_external_and_unmapped_links_untouched() -> None:
     src_map = {"ch17": "ch19"}
-    assert rewrite_links_in_text("[web](https://example.com/a#b)", "ch19", src_map) == "[web](https://example.com/a#b)"
-    assert rewrite_links_in_text("[mail](mailto:a@b.com)", "ch19", src_map) == "[mail](mailto:a@b.com)"
+    assert (
+        rewrite_links_in_text("[web](https://example.com/a#b)", "ch19", src_map)
+        == "[web](https://example.com/a#b)"
+    )
+    assert (
+        rewrite_links_in_text("[mail](mailto:a@b.com)", "ch19", src_map) == "[mail](mailto:a@b.com)"
+    )
     # 源文件不在 spine 映射中：保留原样（不猜测）
     assert rewrite_links_in_text("[x](unknown.html#y)", "ch19", src_map) == "[x](unknown.html#y)"
 
