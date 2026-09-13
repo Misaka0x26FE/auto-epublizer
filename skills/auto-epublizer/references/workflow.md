@@ -35,6 +35,9 @@ doctor（能力自检：工具链 + 自报 multimodal/search）
   -> review    （QC G1–G3，agent 语义审校后写 reviews/review-<ts>/result.json）
   -> build     （EPUB 封装 -> output/）
   -> qa        （epubcheck + 解包审计 + G5 放行 -> report.json）
+  -> delivery  （交付审计：按 references/delivery.md 全量校验 + 写
+                 reviews/delivery-<ts>.md；强制，全部单元 built 后 qa 会以
+                 W_DELIVERY_AUDIT_MISSING 提示）
 ```
 
 仅转换不翻译：

@@ -550,3 +550,26 @@ def test_silent_media_drop_blocks_via_epub_reconciliation(tmp_path: Path) -> Non
     report = orch.qa(store, epub_path=str(epub))
     assert any(f["code"] == "E_MEDIA_EPUB_LOST" for f in report["provenance_findings"])
     assert report["released"] is False and report["released_reason"] == "provenance_incomplete"
+
+
+def test_delivery_audit_missing_warning(tmp_path: Path) -> None:
+    """交付审计 S1.4：全部单元 built 且无交付记录 → W_DELIVERY_AUDIT_MISSING；有记录消失。"""
+    from auto_epublizer import orchestrator as orch
+
+    src = tmp_path / "book.md"
+    src.write_text("# Chapter I\n\nBody text.\n", encoding="utf-8")
+    store = orch.init(str(src), workspace_dir=str(tmp_path / "ws"))
+    rel = store.load_publication().units[0].meta["rel_path"]
+    (store.translation_dir / rel).parent.mkdir(parents=True, exist_ok=True)
+    (store.translation_dir / rel).write_text("# 第一章\n\n正文。\n", encoding="utf-8")
+    write_align(
+        store.unit_align_path("ch01"),
+        [{"seq": 1, "src": "Body text.", "tgt": "正文。", "note": None}],
+    )
+    assert orch.import_translations(store)["imported"] == ["ch01"]
+    epub = orch.build(store)
+    report = orch.qa(store, epub_path=str(epub))
+    assert any(f["code"] == "W_DELIVERY_AUDIT_MISSING" for f in report["provenance_findings"])
+    (store.reviews_dir / "delivery-20260913-000000.md").write_text("# 交付审计\n", encoding="utf-8")
+    report2 = orch.qa(store, epub_path=str(epub))
+    assert not any(f["code"] == "W_DELIVERY_AUDIT_MISSING" for f in report2["provenance_findings"])

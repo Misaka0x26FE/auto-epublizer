@@ -76,6 +76,9 @@ auto-epublizer build          # 纯译文 / 双语 EPUB → output/（--theme �
 # 8. 质检（G0 静态校验 + G4 审计 + G5 汇总放行 → report.json）
 auto-epublizer qa             # 结构审计 + epubcheck
 auto-epublizer status --json  # 查看进度/状态机/产物-状态对账
+
+# 9. 交付审计（agent 任务，强制）：按 skills/auto-epublizer/references/delivery.md
+#    做全量独立对账 + 抽样验证 + 人肉核对 → 写 reviews/delivery-<ts>.md
 ```
 
 仅转换不翻译：`auto-epublizer convert <input> -o output/book.epub`。
@@ -110,6 +113,7 @@ skills/auto-epublizer/
     ├── review.md          # 六道关 QC 操作指引（G0–G5 何时跑、怎么看报告、怎么修）
     ├── build.md           # EPUB 封装 + 确定性
     ├── qa.md              # epubcheck + 解包审计
+    ├── delivery.md        # 交付审计：qa 后强制全量校验（独立对账 + 抽查 + 交付记录）
     └── style.md           # 文体档案（novel/academic/paper/poetry/newspaper）+ langprofile
 ```
 
@@ -255,6 +259,14 @@ skills 的能力-路由决策表选择 ingest 路由（pandoc / 按页切片 / �
    `g2_confirmed == 0` 或全部已修订、`g4_epubcheck_errors == 0`、
    `g4_audit == "pass"`、溯源完整（`provenance_coverage ≈ 1.0`（无翻译产物为 null）、
    三边对账/媒体溯源零缺失、目录层级不扁平；详见 docs/postprocessing-spec.md §5）。
+   成品呈现对账同样清零：`epub_media_missing`/`epub_footnotes_missing`/`align_md_drift` 为 0、
+   `epub_coverage ≈ 1.0`（交付审计 S1；md 是 build 输入、align 是校验基准，二者与成品独立对账）。
+7. **交付审计（agent 门，qa released 之后强制执行）**：按
+   `skills/auto-epublizer/references/delivery.md` 做独立对账 + 解包抽查（首/中/尾 +
+   高风险章：正文探针/看图/脚注内容）+ 人肉核对（目录/封面/元数据）+ inserts 描述
+   处置 + 产物同步字节核对，写 `reviews/delivery-<ts>.md`；发现缺陷走修复循环
+   （修 → import → build → qa → 重新审计）。全部单元 built 后 qa 以
+   `W_DELIVERY_AUDIT_MISSING` 提示缺记录（warning 不阻断）。
 
 > 翻译期间的过程校验（QC 落实，豆包实测教训）：每译 3–5 个单元 build 一次，格式契约
 > 问题当轮暴露（图片段缺 `<img>` 行、空行破坏）；每单元写完 `import --unit <id>` +

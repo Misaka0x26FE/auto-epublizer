@@ -13,6 +13,7 @@
     "review",
     "build",
     "qa",
+    "delivery",
     "style",
     "invariants",
     "publishing"

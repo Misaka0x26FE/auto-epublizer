@@ -65,11 +65,18 @@ auto-epublizer qa [--epub <path>] [--workspace <dir>]
   null，不适用）、`units_missing == 0`、`units_order_ok`、`media_lost == 0`、
   `toc_flat == false`、`inserts_missing_files == 0`（插图/表格/公式可回溯原始地址且文件在，
   pdf-content-spec §9）
+- 成品呈现对账清零（交付审计 S1）：`epub_media_missing == 0`、
+  `epub_footnotes_missing == 0`、`align_md_drift == 0`、`epub_coverage ≈ 1.0`
+  （成品实际包含 ↔ 译文正文/对照表）
+
+> `qa released=True` 只代表已知契约全绿；**交付前还须执行 `references/delivery.md`
+> 的交付审计清单**（独立对账 + 人工抽查 + 写交付记录），两者都完成才算交付。
 
 `released` 为 False 时看 `released_reason` 判定原因：
 `unresolved_confirmed`（G2 确认未修订）/ `audit_failed` / `provenance_incomplete`
 （溯源不完整：看 `provenance_findings` 里的 E_UNIT_MISSING/E_UNIT_ORDER/E_MEDIA_LOST/
-E_MEDIA_ORDER/E_TOC_FLAT/E_INSERT_MISSING_FILE/E_INSERT_BAD_SOURCE 定位）/
+E_MEDIA_ORDER/E_MEDIA_EPUB_LOST/E_FN_EPUB_LOST/E_EPUB_PARA_LOST/E_ALIGN_MD_DRIFT/
+E_TOC_FLAT/E_INSERT_MISSING_FILE/E_INSERT_BAD_SOURCE 定位）/
 `epubcheck_not_run`（jar 缺失，装 jar 重跑）/ `epubcheck_errors`。
 G0 **长度比**类告警是 advisory 线索，不阻断放行；**术语命中**（`g0_terminology_open`）
 是放行硬门，未清零 → `released_reason=terminology_open`。
@@ -102,6 +109,17 @@ report.json 落盘的计数字段只有 `inserts_missing_files`（进放行门�
 - `E_TOC_COVERAGE` → spine↔nav 双向覆盖缺口（章节缺 nav 条目 / nav 幽灵条目）；
   注意**目录深度投影**（`output.nav_depth`）剔除的超深单元是预期豁免，不算缺口；
   其他情况查该单元 translation md 的标题层级，重 build。
+- `E_MEDIA_EPUB_LOST` → 译文引用的图片未进成品（构建静默丢弃/渲染缺失）：
+  查 `structured/raw/media/` 是否有该文件、`events.jsonl` 的 `media_dropped` 事件；
+  补文件后重 build。
+- `E_FN_EPUB_LOST` → 成品脚注数与译文不一致：查译文 md 的 `[^label]:` 定义是否完整、
+  重 build；`W_RESIDUE` 提示字面 `[^` 残留时即定义缺失。
+- `E_EPUB_PARA_LOST` → 成品缺失译文段落（正文探针 `epub_coverage` < 1.0）：
+  从报告中定位 `unit:段`，核对 translation md 与 structured 后重 build。
+- `E_ALIGN_MD_DRIFT` → 译文正文与对照表不一致（一侧缺内容）：以 align 为准核对并
+  重写 md，重跑 `import`。
+- `W_DELIVERY_AUDIT_MISSING` → 全部单元已构建但无交付记录：按
+  `references/delivery.md` 执行交付审计并写 `reviews/delivery-<ts>.md`。
 - `W_NAMING` → 成品文件名与 slug 前缀不符；`-o` 重命名或按 `<slug>.epub`/`<slug>-bi.epub` 输出。
 - `W_STRUCT_MISSING` → structured/ 源文文件缺失（被误删）；从源文件重跑该单元 ingest。
 - `provenance_incomplete` →
