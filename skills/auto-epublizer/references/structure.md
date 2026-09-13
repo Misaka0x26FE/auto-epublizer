@@ -52,6 +52,23 @@ structured/
   **md 表格形状守恒已接线**（表数/行列数，import 硬校验）；
   脚注/尾注引用↔定义配对与回链由 G4 审计（`E_FN_BACKLINK`/`E_ANCHOR`）覆盖。
 
+## 单元边界重建（restructure 登记）
+
+修复/重切导致**单元集合变化**（拆分、合并、新增、删除）时，内容级修改无需登记
+（build/provenance 直接读 `structured/`），但边界级变更必须登记，否则
+`publication.json.units` 与磁盘脱节：
+
+1. 按真实章节手动重写 `structured/`（每个单元一个 md，首行 `# 标题`）；
+2. 写 `preprocessing/structure.csv`（列 `id,region,kind,title,level,rel_path`；
+   每行一个单元，`title` 必须等于该文件首行标题、`rel_path` 与 region 前缀一致）；
+3. 运行 `auto-epublizer restructure`：校验（文件在、无孤儿 md、无重复 id）后更新
+   `publication.json.units`；
+4. 状态语义：同 id 且内容未变 → 保留状态；有变 → 回退 `split`（需重译重 import）；
+   消失的 id → 输出孤儿产物提示（旧 translation/align 可清理）。
+
+> 何时用：MinerU/OCR 层级混乱需重切、碎片单元合并、单单元丢 nav 需拆分。
+> 详见 `references/repair.md` 与 `docs/semantic-repair.md` §3.3。
+
 ## 说明
 
 分栏阅读顺序、复杂表格保形、脚注/尾注专项提取是复杂 PDF 场景，当前为后续扩展点；

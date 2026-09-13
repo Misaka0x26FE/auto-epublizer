@@ -85,6 +85,9 @@ auto-epublizer preprocess <input> [--reference <path...>] [--target zh-CN] [--wo
 auto-epublizer meta [--translator X] [--publisher P] [--date D] [--rights R] [--workspace <dir>]
 auto-epublizer import [--unit <id>] [--terms <csv>] [--reviewed] [--workspace <dir>]
 
+# 单元边界重建登记（agent 重切/合并后；preprocessing/structure.csv → publication.json）
+auto-epublizer restructure [--workspace <dir>]
+
 # G0 零 token 静态校验（翻译/导入后立即跑；术语命中是放行硬门，长度比 advisory）
 auto-epublizer g0 [--unit <id>] [--workspace <dir>]
 

@@ -105,12 +105,13 @@ summary, method?, evidence?, status}`；`status ∈ done|unresolved`；`unit` �
 （`repairs_total`/`repairs_unresolved`）并触发 `W_REPAIR_UNRESOLVED` 提示
 （W 级，不阻断放行）。
 
-### 3.3 结构重建登记（S3 落地）
+### 3.3 结构重建登记（已接线）
 
 agent 重切/合并单元后写 `preprocessing/structure.csv`（`id,region,kind,title,level,
-rel_path`），运行 `auto-epublizer restructure` 登记：CLI 校验（文件在、每 md 恰一 h1、
-无孤儿、region 与路径一致）后更新 `publication.json.units`；同 id 未变保留状态、
-变更单元回退 `split` 待重译。
+rel_path`），运行 `auto-epublizer restructure` 登记：CLI 校验（文件在、每 md 恰一 h1
+且 title 一致、无孤儿、region 与路径一致、id 唯一合法）后更新
+`publication.json.units`；同 id 未变保留状态、变更单元回退 `split` 待重译；消失 id
+输出孤儿产物提示。契约与操作见 `references/repair.md` / `references/structure.md`。
 
 ## 4. 与既有机制的关系
 

@@ -743,6 +743,153 @@ def read_repairs(store: RunStore) -> list[dict[str, Any]] | None:
     return rows
 
 
+def restructure(store: RunStore) -> dict[str, Any]:
+    """登记 agent 重建的单元结构（preprocessing/structure.csv → publication.json）。
+
+    契约（docs/semantic-repair.md §3.3）：列 ``id,region,kind,title,level,rel_path``
+    （utf-8-sig 容 BOM）；id 唯一合法、region 与路径前缀一致、kind/level 枚举、
+    文件存在且首行 ``# title`` 与清单一致、structured/（除 raw/）无孤儿 md。
+    状态语义：同 id 且 (rel_path,title,level,kind,region) 未变 → 保留原状态；
+    有变 → 回退 ``split``（重译重 import）；新 id → ``split``；消失 id → 提示孤儿。
+    """
+    import csv
+
+    from auto_common.workspace.models import Unit
+
+    path = store.preprocessing_dir / "structure.csv"
+    if not path.is_file():
+        raise OrchestrationError(f"缺少结构清单：{path}（先写 preprocessing/structure.csv）")
+    required = ["id", "region", "kind", "title", "level", "rel_path"]
+    regions = {"cover", "frontmatter", "body", "backmatter"}
+    kinds = {
+        "cover",
+        "titlepage",
+        "copyright",
+        "dedication",
+        "foreword",
+        "preface",
+        "toc",
+        "afterword",
+        "appendix",
+        "notes",
+        "bibliography",
+        "index",
+        "glossary",
+        "chapter",
+    }
+    id_re = re.compile(r"^[A-Za-z][A-Za-z0-9_-]*$")
+    heading_re = re.compile(r"^#\s+(.*)$")
+    rows: list[dict[str, Any]] = []
+    seen_ids: set[str] = set()
+    with open(path, encoding="utf-8-sig", newline="") as f:
+        reader = csv.DictReader(f)
+        if reader.fieldnames is None or list(reader.fieldnames) != required:
+            raise OrchestrationError(
+                f"structure.csv 列契约不符（要求 {','.join(required)}）：{path}"
+            )
+        for lineno, row in enumerate(reader, start=2):
+            uid = (row.get("id") or "").strip()
+            region = (row.get("region") or "").strip()
+            kind = (row.get("kind") or "").strip()
+            title = (row.get("title") or "").strip()
+            rel = (row.get("rel_path") or "").strip()
+            try:
+                level = int((row.get("level") or "").strip())
+            except ValueError:
+                raise OrchestrationError(
+                    f"structure.csv 第 {lineno} 行 level 非法：{row.get('level')!r}"
+                ) from None
+            if not id_re.match(uid):
+                raise OrchestrationError(f"structure.csv 第 {lineno} 行 id 非法：{uid!r}")
+            if uid in seen_ids:
+                raise OrchestrationError(f"structure.csv 第 {lineno} 行 id 重复：{uid}")
+            seen_ids.add(uid)
+            if region not in regions:
+                raise OrchestrationError(f"structure.csv 第 {lineno} 行 region 非法：{region!r}")
+            if kind not in kinds:
+                raise OrchestrationError(f"structure.csv 第 {lineno} 行 kind 非法：{kind!r}")
+            if not 1 <= level <= 6:
+                raise OrchestrationError(f"structure.csv 第 {lineno} 行 level 越界（1–6）：{level}")
+            rel_path = Path(rel)
+            if rel_path.is_absolute() or ".." in rel_path.parts or not rel.endswith(".md"):
+                raise OrchestrationError(f"structure.csv 第 {lineno} 行 rel_path 非法：{rel!r}")
+            if region == "cover":
+                if rel != "cover.md":
+                    raise OrchestrationError(
+                        f"structure.csv 第 {lineno} 行 cover 的 rel_path 必须是 cover.md：{rel!r}"
+                    )
+            elif not rel.startswith(f"{region}/"):
+                raise OrchestrationError(
+                    f"structure.csv 第 {lineno} 行 rel_path 与 region 不符（应 {region}/ 前缀）：{rel!r}"
+                )
+            f_path = store.structured_dir / rel
+            if not f_path.is_file():
+                raise OrchestrationError(f"structure.csv 第 {lineno} 行文件不存在：{rel}")
+            first = next(
+                (ln for ln in f_path.read_text(encoding="utf-8").splitlines() if ln.strip()), ""
+            )
+            m = heading_re.match(first)
+            if not m:
+                raise OrchestrationError(
+                    f"structure.csv 第 {lineno} 行文件首行必须是 `# 标题`：{rel}"
+                )
+            head = re.sub(r"\s*\{#[^}]*\}\s*$", "", m.group(1)).strip()
+            if head != title:
+                raise OrchestrationError(
+                    f"structure.csv 第 {lineno} 行 title 与文件首行不一致：{title!r} vs {head!r}"
+                )
+            rows.append(
+                {
+                    "id": uid,
+                    "region": region,
+                    "kind": kind,
+                    "title": title,
+                    "level": level,
+                    "rel_path": rel,
+                }
+            )
+
+    known = {r["rel_path"] for r in rows}
+    actual = {
+        p.relative_to(store.structured_dir).as_posix()
+        for p in store.structured_dir.rglob("*.md")
+        if "raw" not in p.relative_to(store.structured_dir).parts
+    }
+    orphans = sorted(actual - known)
+    if orphans:
+        raise OrchestrationError(
+            "structured/ 存在未登记的 md（会从 spine 静默丢出）：" + "、".join(orphans[:8])
+        )
+    pub = store.load_publication()
+    existing = {u.id: u for u in pub.units}
+    units: list[Unit] = []
+    reset: list[str] = []
+    added: list[str] = []
+    for r in rows:
+        prior = existing.get(r["id"])
+        meta = dict(prior.meta) if prior else {}
+        meta.update({"rel_path": r["rel_path"], "region": r["region"], "level": r["level"]})
+        if prior is None:
+            status = "split"
+            added.append(r["id"])
+        else:
+            unchanged = (
+                (prior.meta or {}).get("rel_path") == r["rel_path"]
+                and prior.title == r["title"]
+                and int((prior.meta or {}).get("level") or 1) == r["level"]
+                and prior.kind == r["kind"]
+                and (prior.meta or {}).get("region") == r["region"]
+            )
+            status = prior.status if unchanged else "split"
+            if not unchanged:
+                reset.append(r["id"])
+        units.append(Unit(id=r["id"], kind=r["kind"], title=r["title"], status=status, meta=meta))
+    removed = sorted(set(existing) - {r["id"] for r in rows})
+    store.replace_units(units)
+    store.log_event("restructured", units=len(units), reset=reset, added=added, removed=removed)
+    return {"units": len(units), "reset": reset, "added": added, "removed": removed}
+
+
 def qa(
     store: RunStore, *, epub_path: str | None = None, config: Config | None = None
 ) -> dict[str, Any]:
