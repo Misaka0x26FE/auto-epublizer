@@ -46,6 +46,9 @@ class QaResult:
     epub_media_missing: int = 0
     epub_footnotes_missing: int = 0
     epub_coverage: float | None = None
+    # 语义整备（S2）：修复留痕计数（unresolved 仅 W 级提示，不阻断）
+    repairs_total: int = 0
+    repairs_unresolved: int = 0
     provenance_findings: list[dict[str, Any]] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
@@ -65,6 +68,8 @@ def generate_report(
     toc_missing: list[str] | None = None,
     glossary_conflicts_open: int = 0,
     catalog_unresolved_open: int = 0,
+    repairs_total: int = 0,
+    repairs_unresolved: int = 0,
 ) -> QaResult:
     """聚合 G0–G4 + 溯源审计生成放行报告。
 
@@ -210,5 +215,7 @@ def generate_report(
         epub_media_missing=epub_media_missing,
         epub_footnotes_missing=epub_footnotes_missing,
         epub_coverage=round(epub_coverage, 6) if epub_coverage is not None else None,
+        repairs_total=repairs_total,
+        repairs_unresolved=repairs_unresolved,
         provenance_findings=prov_findings,
     )

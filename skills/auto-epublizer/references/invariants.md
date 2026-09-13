@@ -94,6 +94,7 @@ reason 判定优先级 = 上表自上而下（先 g0 硬缺陷 → 冲突 → �
 | W_TOC_DEPTH | W | nav 深度序列与源不一致（按 `output.nav_depth` 投影后对账） |
 | W_TOC_MISSING / W_NAMING | W | facts 源 TOC 缺条目 / 成品命名与 slug 不符 |
 | W_DELIVERY_AUDIT_MISSING | W | 全单元 built 但无交付记录 → 按 references/delivery.md 执行交付审计 |
+| W_REPAIR_UNRESOLVED | W | 语义整备有未决修复（repairs.jsonl unresolved）→ 能修则修，存疑的记录在交付记录 |
 
 ## 5. 工作区契约压缩版
 
