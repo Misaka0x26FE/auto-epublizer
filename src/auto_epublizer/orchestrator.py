@@ -731,6 +731,17 @@ def qa(
                 "message": f"成品命名与 slug 不符：{epub.name}（期望前缀 {pub.slug}）",
             }
         )
+    # 交付审计（S1.4）：全部单元构建完成但无交付记录 → 提示按清单执行（不阻断）
+    all_built = bool(pub.units) and all(u.status == "built" for u in pub.units)
+    if all_built and not list(store.reviews_dir.glob("delivery-*.md")):
+        report.provenance_findings.append(
+            {
+                "level": "warning",
+                "code": "W_DELIVERY_AUDIT_MISSING",
+                "message": "全部单元已构建但缺少交付审计记录（reviews/delivery-*.md）；"
+                "交付前按 references/delivery.md 执行全量校验并写记录",
+            }
+        )
     store.save_qa(report.to_dict())
     return report.to_dict()
 

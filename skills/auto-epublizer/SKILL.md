@@ -51,6 +51,7 @@ multimodal / search**（能否看图、有无搜索工具，CLI 无法探测）�
 | 分层理解、术语播种、语言/体裁检测 | `references/analysis.md` |
 | 切片翻译、句级对齐、术语三态闭环、agent 手写翻译路径 | `references/translation.md` |
 | 六道关 QC（G0–G5）操作指引 | `references/review.md` |
+| 交付前全量校验（qa 之后、交付之前，强制） | `references/delivery.md` |
 | EPUB 封装、确定性构建 | `references/build.md` |
 | epubcheck + 解包审计、质量报告 | `references/qa.md` |
 | 文体档案（novel/academic/paper/poetry/newspaper）应用 | `references/style.md` |

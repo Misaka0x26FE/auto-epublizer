@@ -81,6 +81,10 @@ reason 判定优先级 = 上表自上而下（先 g0 硬缺陷 → 冲突 → �
 |---|---|---|
 | E_UNIT_MISSING / E_UNIT_ORDER | E | structured↔translation↔spine 三边缺口/乱序 → 补译或重 build |
 | E_MEDIA_LOST / E_MEDIA_ORDER | E | 译文丢图/图序乱 → 对齐源文图片引用 |
+| E_MEDIA_EPUB_LOST | E | 译文引用的图未进成品（构建静默丢弃）→ 查 raw/media 与 `media_dropped` 事件 |
+| E_FN_EPUB_LOST | E | 成品脚注数与译文不一致 → 查 `[^label]:` 定义后重 build |
+| E_EPUB_PARA_LOST | E | 成品缺译文段落（`epub_coverage` < 1.0）→ 按 `unit:段` 定位重 build |
+| E_ALIGN_MD_DRIFT | E | 译文正文与对照表不一致（一侧缺内容）→ 以 align 为准修 md 后重 import |
 | E_TOC_FLAT | E | 有层级源的 nav 扁平 → 查单元 level 与标题 |
 | E_INSERT_MISSING_FILE | E | inserts 指向的媒体缺失 → 重跑该单元 ingest |
 | E_INSERT_BAD_SOURCE | E | inserts source 非法 → 修该 `<id>.json` |
@@ -89,6 +93,7 @@ reason 判定优先级 = 上表自上而下（先 g0 硬缺陷 → 冲突 → �
 | W_STRUCT_MISSING | W | structured 源文文件缺失 → 重 ingest |
 | W_TOC_DEPTH | W | nav 深度序列与源不一致（按 `output.nav_depth` 投影后对账） |
 | W_TOC_MISSING / W_NAMING | W | facts 源 TOC 缺条目 / 成品命名与 slug 不符 |
+| W_DELIVERY_AUDIT_MISSING | W | 全单元 built 但无交付记录 → 按 references/delivery.md 执行交付审计 |
 
 ## 5. 工作区契约压缩版
 
