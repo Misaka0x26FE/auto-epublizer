@@ -48,6 +48,7 @@ class PDFConfig(BaseModel):
     mineru_effort: str = "medium"  # 未接线（MinerU v4 API 无此参数）；保留兼容旧配置
     mineru_model: str = "pipeline"  # pipeline（默认，确定性）| vlm（高精度，内部为 VLM）
     mineru_language: str = "ch"  # MinerU OCR 语言（PaddleOCR 语言码：ch/en/ja/…）
+    mineru_batch_pages: int = 200  # >此页数自动分批（MinerU 单文件 ≤200 页限制；≤0 关闭）
 
 
 class GlossaryConfig(BaseModel):

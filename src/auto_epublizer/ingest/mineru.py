@@ -97,11 +97,27 @@ class MineruClient:
         pdf = Path(path)
         if not pdf.is_file():
             raise MineruError(f"源 PDF 不存在：{pdf}")
+        return self.parse_bytes(
+            pdf.name,
+            pdf.read_bytes(),
+            model_version=model_version,
+            language=language,
+            is_ocr=is_ocr,
+        )
+
+    def parse_bytes(
+        self,
+        name: str,
+        data: bytes,
+        *,
+        model_version: str = "pipeline",
+        language: str = "ch",
+        is_ocr: bool = True,
+    ) -> MineruParseResult:
+        """解析内存 PDF 字节（分批路径复用单文件 API 契约）。"""
         with self._client() as client:
-            batch_id, file_url = self._create_batch(
-                client, pdf.name, model_version, language, is_ocr
-            )
-            self._upload(client, file_url, pdf.read_bytes())
+            batch_id, file_url = self._create_batch(client, name, model_version, language, is_ocr)
+            self._upload(client, file_url, data)
             zip_url = self._poll_done(client, batch_id)
             zip_bytes = self._download(client, zip_url)
         return _unpack_zip(zip_bytes)
@@ -401,6 +417,104 @@ def aggregate_mineru_chapters(
     return units
 
 
+def _pdf_page_count(path: str | Path) -> int:
+    """PDF 页数（pymupdf）；读取失败返回 0（调用方回退不分批，由 MinerU 报错）。"""
+    import pymupdf as fitz
+
+    try:
+        with fitz.open(str(path)) as doc:
+            return doc.page_count
+    except Exception:  # pymupdf 异常类型随版本变化；页数仅用于分批决策
+        return 0
+
+
+def _split_pdf(path: str | Path, pages_per_part: int) -> list[tuple[str, bytes]]:
+    """按页数阈值切分 PDF：返回 ``[(part_name, pdf_bytes)]``（part_name 带序号）。"""
+    import pymupdf as fitz
+
+    src = fitz.open(str(path))
+    try:
+        total = src.page_count
+        stem = Path(str(path)).stem
+        parts: list[tuple[str, bytes]] = []
+        for start in range(0, total, pages_per_part):
+            end = min(start + pages_per_part, total)  # to_page 含端点
+            part = fitz.open()
+            try:
+                part.insert_pdf(src, from_page=start, to_page=end - 1)
+                parts.append((f"{stem}-part{len(parts) + 1:02d}.pdf", part.tobytes()))
+            finally:
+                part.close()
+        return parts
+    finally:
+        src.close()
+
+
+def _merge_results(results: list[MineruParseResult], page_counts: list[int]) -> MineruParseResult:
+    """多批解析结果合并（纯函数）：全局页序偏移 + 图片改名防撞 + markdown 拼接。
+
+    - ``page_idx`` 按本批起始偏移（前序批次页数之和）加全局偏移；
+    - ``img_path`` 与 ``images`` key 同步加 ``b{批号}/`` 前缀——各批 zip 内图片名
+      可能重复（如 ``images/0.jpg``），不改名会互相覆盖；
+    - ``markdown`` 以空行拼接；header/footer 已在单批内剔除。
+    """
+    content_list: list[dict[str, Any]] = []
+    images: dict[str, bytes] = {}
+    markdown_parts: list[str] = []
+    offset = 0
+    for part_no, (result, pages) in enumerate(zip(results, page_counts, strict=True), start=1):
+        prefix = f"b{part_no}/"
+        for name, data in result.images.items():
+            images[prefix + name] = data
+        for item in result.content_list:
+            merged = dict(item)
+            page_idx = item.get("page_idx")
+            if isinstance(page_idx, int):
+                merged["page_idx"] = page_idx + offset
+            img_path = item.get("img_path")
+            if isinstance(img_path, str) and img_path:
+                merged["img_path"] = prefix + img_path
+            content_list.append(merged)
+        if result.markdown:
+            markdown_parts.append(result.markdown)
+        offset += pages
+    return MineruParseResult(
+        content_list=content_list,
+        markdown="\n\n".join(markdown_parts),
+        images=images,
+    )
+
+
+def _parse_maybe_batched(
+    client: MineruClient,
+    path: str | Path,
+    *,
+    model_version: str,
+    language: str,
+    batch_pages: int,
+) -> MineruParseResult:
+    """> ``batch_pages`` 页时顺序分批解析并合并（MinerU 单文件 ≤200 页限制）。"""
+    pdf = Path(path)
+    total = _pdf_page_count(pdf)
+    if batch_pages <= 0 or total <= batch_pages:
+        return client.parse_file(pdf, model_version=model_version, language=language)
+    parts = _split_pdf(pdf, batch_pages)
+    if len(parts) <= 1:
+        return client.parse_file(pdf, model_version=model_version, language=language)
+    results: list[MineruParseResult] = []
+    for name, data in parts:
+        try:
+            results.append(
+                client.parse_bytes(name, data, model_version=model_version, language=language)
+            )
+        except MineruError as e:
+            raise MineruError(
+                f"MinerU 分批解析第 {len(results) + 1}/{len(parts)} 批失败：{e}"
+            ) from e
+    page_counts = [min(batch_pages, total - i * batch_pages) for i in range(len(parts))]
+    return _merge_results(results, page_counts)
+
+
 def read_mineru(
     path: str | Path,
     *,
@@ -409,8 +523,12 @@ def read_mineru(
     model_version: str = "pipeline",
     language: str = "ch",
     client: MineruClient | None = None,
+    batch_pages: int = 200,
 ) -> SourceDocument:
     """MinerU 解析 PDF → SourceDocument（扫描件最优先路径）。
+
+    ``batch_pages`` 页数阈值（默认 200，MinerU 单文件上限）：超过时按阈值切批、
+    顺序解析后合并（全局页序/图片名防撞/块完整拼接）；≤0 关闭分批。
 
     落盘（``raw_dir`` 提供时）：``raw/media/`` 插图、``raw/inserts/`` 描述文件、
     ``raw/mineru/``（content_list.json + full.md，审查对账的 ground truth）。
@@ -425,7 +543,9 @@ def read_mineru(
                 "请向用户询问 API key 后 export）"
             )
         resolved = MineruClient(key)
-    result = resolved.parse_file(path, model_version=model_version, language=language)
+    result = _parse_maybe_batched(
+        resolved, path, model_version=model_version, language=language, batch_pages=batch_pages
+    )
 
     raw_path = Path(raw_dir) if raw_dir is not None else None
     media_dir = (raw_path / "media") if raw_path is not None else None
