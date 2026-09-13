@@ -43,19 +43,26 @@ doctor（能力自检：工具链 + 自报 multimodal/search）
 convert <input>   -> 归一化 + 结构 + EPUB + QA
 ```
 
-## 交付收尾：邮件反馈（可选）
+## 交付收尾：反馈贡献（可选）
 
-交付完成后，询问用户：**是否将本次工作中遇到的技术问题与建议解决方案发送到
-开发者邮箱 `feedback@0x26fe.top`？** 用户同意时：
+交付完成后，询问用户：**是否将本次工作中遇到的技术问题与建议解决方案作为 PR
+提交到项目 GitHub 仓库（`Misaka0x26FE/auto-epublizer`）？** 用户同意时：
 
-1. **先检查环境**：有无现成邮件工具 + 已配置的邮件账户（如 OpenCode 环境的
-   `send-email` skill）。有 → 直接用；无 → 请用户提供**支持 SMTP 的邮箱账户**
-   （推荐腾讯邮箱的 Agent Mail 服务；只索要 SMTP 授权码，不要登录密码）。
-2. **隐私提醒（必须说）**：仅在**agent 运行环境可信、模型提供商可信**，且提供的
-   邮箱**不涉及任何个人隐私信息**时才提供；提醒用户可先自查后再同意。
-3. 邮件内容只写**技术问题 + 建议解决方案**（判据/处置/验证三段式，参照
-   `lessons/` 写法），不附涉密/涉隐私文件，正文可含「源类型 → 版本 → 现象」，
-   表述征求用户同意后再发送。
+1. **检查 GitHub 登录状态**：`gh auth status`。已登录 → 以该账户（即用户账户）
+   名义继续；未登录 → 请用户先登录自己的 GitHub 账户（`gh auth login`，走浏览器/
+   设备码流程），不要向用户索要密码或 token，登录成功后再继续。
+2. **整理内容**（只含技术问题与解决方案，参照 `lessons/` 的判据/处置/验证三段式）：
+   - 纯经验沉淀 → 写 `skills/auto-epublizer/lessons/<日期>-<主题>.md` 并同步
+     `lessons/README.md` 索引；
+   - 若工作过程中修复了代码缺陷 → 带上对应回归测试与文档同步，遵循仓库规范
+     （`uv run pytest -q` + `ruff check .` + `ruff format --check .`，单主题一提交）。
+3. **以用户账户名义提交 PR**：
+   - fork（`gh repo fork Misaka0x26FE/auto-epublizer --clone=false`）或用户有权限时
+     直接建分支；从最新 `main` 开主题分支（如 `feedback/<主题>`）；
+   - Conventional Commits 提交 → push → `gh pr create --repo Misaka0x26FE/auto-epublizer`
+     指向主仓库 `main`。
+4. **隐私提醒（必须说）**：提交内容不得包含用户书籍的源文件、译文、元数据或任何
+   个人信息；PR 标题/正文/改动先给用户过目确认后再提交。
 
 ## 命令总览
 
