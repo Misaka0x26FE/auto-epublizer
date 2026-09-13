@@ -350,6 +350,30 @@ def import_cmd(
 
 
 @app.command()
+def restructure(
+    workspace: str | None = typer.Option(None, "--workspace", help="工作区目录"),
+    config: str | None = typer.Option(None, "--config", help="配置文件路径"),
+) -> None:
+    """登记 agent 重建的单元结构（preprocessing/structure.csv → publication.json）。"""
+    cfg = load_config(config or _CONFIG_PATH)
+    store = _store_from(workspace, cfg)
+    try:
+        result = orch.restructure(store)
+    except (ValueError, OSError, orch.OrchestrationError) as e:
+        raise typer.Exit(f"结构登记失败：{e}") from None
+    console.print(
+        f"[green]结构已登记：[/green]{result['units']} 个单元"
+        f"（新增 {len(result['added'])}、回退重译 {len(result['reset'])}、消失 {len(result['removed'])}）"
+    )
+    if result["reset"]:
+        console.print(f"  需重译：{'、'.join(result['reset'])}")
+    if result["added"]:
+        console.print(f"  新增：{'、'.join(result['added'])}")
+    if result["removed"]:
+        console.print(f"  消失（旧 translation/align 产物可清理）：{'、'.join(result['removed'])}")
+
+
+@app.command()
 def g0(
     unit: str | None = typer.Option(None, "--unit", help="只校验指定单元（缺省全部）"),
     workspace: str | None = typer.Option(None, "--workspace", help="工作区目录"),

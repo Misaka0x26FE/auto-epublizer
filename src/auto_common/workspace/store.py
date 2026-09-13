@@ -219,7 +219,17 @@ class RunStore:
                 )
             atomic_write_json(self.publication_path, pub.model_dump(mode="json"))
 
+    def replace_units(self, units: list[Any]) -> None:
+        """整体替换单元清单（restructure 专用）：状态由调用方给定，原子写。"""
+        from .models import Unit
+
+        with self.state_lock():
+            pub = Publication.model_validate(read_json(self.publication_path))
+            pub.units = [u if isinstance(u, Unit) else Unit(**u) for u in units]
+            atomic_write_json(self.publication_path, pub.model_dump(mode="json"))
+
     # ── 源身份 ────────────────────────────────────────────────────────────
+
     def ensure_source_identity(
         self,
         source_path: str | Path,
