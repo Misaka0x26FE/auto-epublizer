@@ -1,6 +1,6 @@
 # 2026-09-13 语义整备（Agent 语义任务）：信号层 + 修复留痕 + 结构重建登记
 
-状态：规划中
+状态：已完成（841dedc / 4e83420 / 190e27b + 收尾回写）
 
 ## 背景与问题
 
@@ -336,6 +336,32 @@ build。两条路径都以 repairs.jsonl 留痕（kind=`boundary`/`heading`）�
 每批：`uv run pytest -q` 全绿 + `ruff check .` + `ruff format --check .` +
 Conventional Commits 单批一提交。S4 全链路 CLI 冒烟（信号 → 修复留痕 → qa 字段 →
 重切登记 → 状态语义）。
+
+## 验证记录
+
+- `uv run pytest -q`：**323 passed**（较立项前 287 净增 36：S1 signals 纯函数 4 +
+  facts 集成 1、S2 repairs 契约与 qa 集成 12、S3 restructure 与 CLI 6，其余为
+  既有批次连带）；`ruff check .` / `ruff format --check .` 通过。
+- **全链路 CLI 冒烟**（`/tmp/opencode/sr-smoke`，含硬换行/重复段/乱码样本书）：
+  1. `preprocess` → facts.md「可疑信号」表（`hard_wrap_lines=1`、`duplicate_paras=1`）
+     + agent 待办条件追加「语义整备（信号触发）」；
+  2. 手写 translation/align → `import`（单元=1 失败=0）；
+  3. `preprocessing/repairs.jsonl`（unresolved）→ `build` → `qa`：
+     report.json `repairs_total=1/repairs_unresolved=1` + `W_REPAIR_UNRESOLVED`
+     提示（W 级不阻断，G5 released=是）；
+  4. 写 `preprocessing/structure.csv`（原样）→ `restructure`：未变单元状态保留
+     （built），新增/回退/消失均为 0；
+  5. `status --json`：单元 built，与状态机一致。
+- 提交切分：S0+S1 = `841dedc`；S2 = `4e83420`；S3 = `190e27b`。
+
+### 实施偏差与备注
+
+1. 「六道关」品牌保留（见交付审计计划偏差 2）；本计划的留痕/登记与交付审计的
+   `E_ALIGN_MD_DRIFT`/成品对账互补：语义整备管输入侧修复，交付审计管输出侧验证。
+2. `restructure` 的孤儿校验（`structured/**/*.md` 除 raw/ 必须登记）防「文件在盘上
+   但不在 spine 中静默丢内容」；实现中发现并修正解析循环漏收集行的问题（测试锁定）。
+3. 信号检测的 `hard_wrap_lines` 对标题/列表/引文/诗行/表格/纯图片块豁免（结构块
+   换行是刻意的）；阈值保守，全部 advisory。
 
 ## 已知边界与后续扩展点
 
