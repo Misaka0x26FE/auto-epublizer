@@ -304,3 +304,32 @@ def test_status_reports_preprocessing_state(tmp_path: Path) -> None:
     data = orch.status(store)
     assert data["preprocessing_complete"] is True
     assert not any(s["id"] == "preprocessing" for s in data["stale"])
+
+
+def test_preprocess_repair_signals_and_todo(tmp_path: Path) -> None:
+    """语义整备 S1：可疑信号进 facts（字段/表/条件待办），干净书无该待办。"""
+    src = tmp_path / "book.md"
+    src.write_text(
+        "# Chapter I\n\nline one without end punct\nline two continues.\n\n"
+        "Ã© garbled text here.\n\n重复段。\n\n重复段。\n",
+        encoding="utf-8",
+    )
+    store = orch.init(str(src), workspace_dir=str(tmp_path / "ws"))
+    facts = orch.preprocess(store, config=Config())["facts"]
+    unit_signals = facts["structure"]["units"][0]["signals"]
+    assert unit_signals["hard_wrap_lines"] >= 1
+    assert unit_signals["garbled_marks"] >= 1
+    assert unit_signals["duplicate_paras"] == 1
+    assert facts["repair_signals"]["units"] == 1
+    assert len(facts["agent_todo"]) == 11 and facts["agent_todo"][2].startswith("语义整备")
+    md_text = (store.preprocessing_dir / "facts.md").read_text(encoding="utf-8")
+    assert "可疑信号" in md_text and "语义整备" in md_text
+
+    # 干净书：信号全零、无整备待办
+    clean = tmp_path / "clean.md"
+    clean.write_text("# Chapter I\n\n完整的一句话。\n\n另一段完整文字。\n", encoding="utf-8")
+    store2 = orch.init(str(clean), workspace_dir=str(tmp_path / "ws2"))
+    facts2 = orch.preprocess(store2, config=Config())["facts"]
+    assert facts2["repair_signals"]["units"] == 0
+    assert all(v == 0 for v in facts2["repair_signals"]["kinds"].values())
+    assert len(facts2["agent_todo"]) == 10

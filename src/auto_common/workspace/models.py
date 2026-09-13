@@ -65,7 +65,6 @@ class PublicationMeta(BaseModel):
     creator: str | None = None
     translator: str | None = None  # 译者（默认由 agent 按框架名自报，如 OpenCode/DouBao）
     contributors: list[str] = Field(default_factory=list)
-    translator: str | None = None
     language: str = ""  # 源语言（auto 时构建 EPUB 用确定性启发式判定，不写回本字段）
     target_language: str = "zh-CN"
     genre: str | None = None  # 体裁（文体档案由 agent 依据源文自行判定并在 style.md 声明）

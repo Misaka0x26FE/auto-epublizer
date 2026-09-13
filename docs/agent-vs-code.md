@@ -38,6 +38,7 @@ CLI 是 agent 的手，不是 agent 的脑。
 | 判读与处置 | g0 告警怎么修、`report.json` 怎么判、未收敛（max_rounds / 振荡 / unresolved_fixes）怎么办、放不放行 |
 | 术语终局裁决 | `glossary_conflicts.jsonl` → 裁决写回 `glossary.csv` |
 | 插入内容语义 | `raw/inserts/<id>.json` 的 `content_desc`（内容描述）与 `latex`（公式手写 LaTeX） |
+| **语义整备** | 解析缺陷/OCR 噪声/结构判断的修复（换行重断、误识校正、页眉脚归属、单元重切）——信号由 facts 给出，修复与留痕归 agent，见 [semantic-repair.md](semantic-repair.md) |
 | 源文勘误 | 按先例修正（如 IDG→IDF 类） |
 | agent 元能力自报 | multimodal（能否看图）、search（有无搜索工具）——CLI 原理上探测不到，只能 agent 自己说 |
 

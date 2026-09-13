@@ -85,6 +85,11 @@ translation + align → import → g0）、每 3–5 单元一项 build 校验�
 - [ ] terms.csv：术语预提取 + import --terms
 - [ ] risks.md + report.md
 
+## 0.5 语义整备（信号触发；OCR/扫描件路径必做）
+- [ ] 读 facts.md「可疑信号」表，逐单元核对/修复 structured/（references/repair.md）
+- [ ] 写 preprocessing/repairs.jsonl（每项修复留痕；无法确定写 unresolved）
+- [ ] 重切/合并单元时写 preprocessing/structure.csv + 跑 restructure
+
 ## 1. 单元翻译（每单元：读 structured → 写 translation + align → import --unit → g0 --unit）
 - [ ] ch01 <标题>（约 N 段）
 - [ ] ch02 <标题>
@@ -105,6 +110,16 @@ translation + align → import → g0）、每 3–5 单元一项 build 校验�
 - [ ] 核对 status --json 无 stale、目录层级与源文一致
 - [ ] 交付：产物落 output/ + 记录 events
 ```
+
+### 2.0b `repairs.jsonl` + 语义整备（条件触发）
+
+facts.md「可疑信号（语义整备线索）」表命中时（OCR/扫描件路径无论有无信号都应做），
+按 `references/repair.md` 对照 `raw/` 证据修复 `structured/`，并把每个修复动作写入
+`preprocessing/repairs.jsonl`（契约见 repair.md；`unresolved` 项 qa 会提示）。
+信号是线索不是缺陷——判断与处置由你（agent）完成，**不要写启发式修复脚本**。
+
+若修复伴随单元边界重切/合并：写 `preprocessing/structure.csv` 后运行
+`auto-epublizer restructure` 登记（状态机回退语义见 `references/structure.md`）。
 
 ### 2.1 `plan.md`（方案决策）
 
