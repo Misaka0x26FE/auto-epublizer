@@ -31,4 +31,4 @@
 | [2026-09-13-toc-depth-footnotes.md](2026-09-13-toc-depth-footnotes.md) | 已完成（73b2230） | 标准输出模板：注释 `[N]` 章内编号 + 导航深度投影（`output.nav_depth`） |
 | [2026-09-13-semantic-repair.md](2026-09-13-semantic-repair.md) | 已完成（841dedc / 4e83420 / 190e27b） | 语义整备（agent 语义任务）：信号层（facts 可疑指标）+ 修复留痕（repairs.jsonl）+ 结构重建登记（restructure 命令） |
 | [2026-09-13-delivery-audit.md](2026-09-13-delivery-audit.md) | 已完成（7041126 / ece1790 / c9ae1ba） | 交付审计：交付前全量完整性与可靠性校验（md↔align 一致性 + EPUB 媒体/脚注/段落呈现对账 + delivery.md 强制清单与记录） |
-| [2026-09-13-issue-triage.md](2026-09-13-issue-triage.md) | 规划中 | Issue 清理（#3–#6）：术语命中 NFKC 归一化 + 句末注码排除集 + MinerU >200 页自动分批 + #6 验证关闭 |
+| [2026-09-13-issue-triage.md](2026-09-13-issue-triage.md) | 已完成（320201a / 13240bd / 9a58459 / 5bacc1d） | Issue 清理（#3–#6）：术语命中 NFKC 归一化 + 句末注码排除集 + MinerU >200 页自动分批 + #6 验证关闭 |
