@@ -51,7 +51,7 @@ convert <input>   -> 归一化 + 结构 + EPUB + QA
 
 ## 交付收尾：反馈贡献（可选）
 
-交付完成后，询问用户：**是否将本次工作中遇到的技术问题与建议解决方案作为 PR
+交付完成后，询问用户：**是否将本次工作中遇到的技术问题与建议解决方案作为 issue
 提交到项目 GitHub 仓库（`Misaka0x26FE/auto-epublizer`）？** 用户同意时：
 
 1. **检查 GitHub 登录状态**：`gh auth status`。已登录 → 以该账户（即用户账户）
@@ -61,14 +61,18 @@ convert <input>   -> 归一化 + 结构 + EPUB + QA
    - 纯经验沉淀 → 写 `skills/auto-epublizer/lessons/<日期>-<主题>.md` 并同步
      `lessons/README.md` 索引；
    - 若工作过程中修复了代码缺陷 → 带上对应回归测试与文档同步，遵循仓库规范
-     （`uv run pytest -q` + `ruff check .` + `ruff format --check .`，单主题一提交）。
-3. **以用户账户名义提交 PR**：
-   - fork（`gh repo fork Misaka0x26FE/auto-epublizer --clone=false`）或用户有权限时
-     直接建分支；从最新 `main` 开主题分支（如 `feedback/<主题>`）；
-   - Conventional Commits 提交 → push → `gh pr create --repo Misaka0x26FE/auto-epublizer`
-     指向主仓库 `main`。
+     （`uv run pytest -q` + `ruff check .` + `ruff format --check .`），
+     在本地以 Conventional Commits 单主题提交（issue 流程不要求 fork/建分支/push）。
+3. **以用户账户名义提交 issue，并附参考代码**：
+   - `gh issue create --repo Misaka0x26FE/auto-epublizer --title <主题>
+     --body-file <临时文件>`（正文较长，用 `--body-file` 而非 `--body`）；
+   - issue 正文 = 问题现象 + 根因 + 建议方案 + 验证结果（三段式）+ **参考代码**
+     （即原可作为 PR 的改动，供维护者直接采用）：
+     - 代码修复 → `git format-patch -<N> <commit>`（或 `git diff`）的完整补丁，
+       贴进 ```diff 围栏代码块（维护者可 `git am` / `git apply` 直接合入）；
+     - 纯经验沉淀 → lesson 文件全文贴进 ```markdown 围栏代码块。
 4. **隐私提醒（必须说）**：提交内容不得包含用户书籍的源文件、译文、元数据或任何
-   个人信息；PR 标题/正文/改动先给用户过目确认后再提交。
+   个人信息；issue 标题/正文/参考代码先给用户过目确认后再提交。
 
 ## 命令总览
 
