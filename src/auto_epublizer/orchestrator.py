@@ -668,6 +668,81 @@ def _toc_missing_from_facts(store: RunStore, entries: list[dict[str, Any]]) -> l
     return missing
 
 
+def read_repairs(store: RunStore) -> list[dict[str, Any]] | None:
+    """读取语义整备留痕（preprocessing/repairs.jsonl；S2 契约）。
+
+    文件不存在 → None（全部检查跳过，零破坏）。每行一个修复动作：
+    ``unit`` 必填且必须存在于 publication.units；``kind``（见下）/``status``
+    （done|unresolved）枚举；``summary`` 必填非空；``evidence`` 为工作区相对
+    路径且必须存在（防杜撰）；``pages``/``count`` 非法类型报错。
+    违反 → OrchestrationError（中文提示，带行号）。
+    """
+    import json
+
+    path = store.preprocessing_dir / "repairs.jsonl"
+    if not path.is_file():
+        return None
+    kinds = {
+        "line_join",
+        "hyphen",
+        "ocr_char",
+        "mojibake",
+        "punct",
+        "header_footer",
+        "footnote",
+        "order",
+        "heading",
+        "boundary",
+        "classification",
+        "garbage",
+        "media",
+        "metadata",
+        "other",
+    }
+    statuses = {"done", "unresolved"}
+    unit_ids = {u.id for u in store.load_publication().units}
+    rows: list[dict[str, Any]] = []
+    for lineno, raw in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
+        line = raw.strip()
+        if not line:
+            continue
+        try:
+            row = json.loads(line)
+        except json.JSONDecodeError as e:
+            raise OrchestrationError(f"repairs.jsonl 第 {lineno} 行不是合法 JSON：{e}") from None
+        if not isinstance(row, dict):
+            raise OrchestrationError(f"repairs.jsonl 第 {lineno} 行必须是 JSON 对象")
+        unit = str(row.get("unit") or "")
+        kind = str(row.get("kind") or "")
+        status = str(row.get("status") or "")
+        summary = str(row.get("summary") or "").strip()
+        if not unit or unit not in unit_ids:
+            raise OrchestrationError(f"repairs.jsonl 第 {lineno} 行 unit 不存在：{unit!r}")
+        if kind not in kinds:
+            raise OrchestrationError(f"repairs.jsonl 第 {lineno} 行 kind 非法：{kind!r}")
+        if status not in statuses:
+            raise OrchestrationError(f"repairs.jsonl 第 {lineno} 行 status 非法：{status!r}")
+        if not summary:
+            raise OrchestrationError(f"repairs.jsonl 第 {lineno} 行 summary 必填")
+        evidence = row.get("evidence")
+        if evidence:
+            ev = Path(str(evidence))
+            if ev.is_absolute() or ".." in ev.parts or not (store.dir / ev).is_file():
+                raise OrchestrationError(
+                    f"repairs.jsonl 第 {lineno} 行 evidence 不存在或非法：{evidence!r}"
+                )
+        pages = row.get("pages")
+        if pages is not None and (
+            not isinstance(pages, list) or not all(isinstance(p, int) for p in pages)
+        ):
+            raise OrchestrationError(f"repairs.jsonl 第 {lineno} 行 pages 必须是整数数组")
+        count = row.get("count")
+        if count is not None and not isinstance(count, int):
+            raise OrchestrationError(f"repairs.jsonl 第 {lineno} 行 count 必须是整数")
+        rows.append(row)
+    return rows
+
+
 def qa(
     store: RunStore, *, epub_path: str | None = None, config: Config | None = None
 ) -> dict[str, Any]:
@@ -701,6 +776,9 @@ def qa(
         if catalog_rows is not None
         else 0
     )
+    # 语义整备留痕（S2）：unresolved 仅 W 级提示（文本疑点，非内容缺失）
+    repairs = read_repairs(store)
+    repairs_unresolved = sum(1 for r in repairs or [] if r.get("status") == "unresolved")
     report = generate_report(
         pub.slug,
         audit,
@@ -713,7 +791,18 @@ def qa(
         toc_missing=toc_missing,
         glossary_conflicts_open=glossary_conflicts_open,
         catalog_unresolved_open=catalog_unresolved_open,
+        repairs_total=len(repairs or []),
+        repairs_unresolved=repairs_unresolved,
     )
+    if repairs_unresolved:
+        report.provenance_findings.append(
+            {
+                "level": "warning",
+                "code": "W_REPAIR_UNRESOLVED",
+                "message": f"语义整备有 {repairs_unresolved} 项未决修复（见 "
+                "preprocessing/repairs.jsonl）；能修则修，确属存疑的记入交付记录",
+            }
+        )
     if toc_missing:
         report.provenance_findings.append(
             {

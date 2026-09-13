@@ -120,6 +120,8 @@ report.json 落盘的计数字段只有 `inserts_missing_files`（进放行门�
   重写 md，重跑 `import`。
 - `W_DELIVERY_AUDIT_MISSING` → 全部单元已构建但无交付记录：按
   `references/delivery.md` 执行交付审计并写 `reviews/delivery-<ts>.md`。
+- `W_REPAIR_UNRESOLVED` → 语义整备有未决修复（`preprocessing/repairs.jsonl`
+  中 status=unresolved）：能修则修后复跑 qa；确属存疑的在交付记录中说明。
 - `W_NAMING` → 成品文件名与 slug 前缀不符；`-o` 重命名或按 `<slug>.epub`/`<slug>-bi.epub` 输出。
 - `W_STRUCT_MISSING` → structured/ 源文文件缺失（被误删）；从源文件重跑该单元 ingest。
 - `provenance_incomplete` →

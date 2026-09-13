@@ -95,13 +95,15 @@ facts 可疑信号（每单元）   →     读 raw 证据（页图/页 JSON/   
 聚合）、`facts.md`「可疑信号」表；有信号时 `agent_todo` 追加「语义整备」项。
 **信号是线索不是缺陷**，不进任何放行门。
 
-### 3.2 修复留痕契约（S2 落地）
+### 3.2 修复留痕契约（已接线）
 
 `preprocessing/repairs.jsonl`（agent 手写，操作级）：`{unit, kind, pages?, count?,
 summary, method?, evidence?, status}`；`status ∈ done|unresolved`；`unit` 必须存在、
-`kind` 枚举见 `references/repair.md`、`evidence` 为工作区相对路径且必须存在。
-CLI 校验（`orchestrator.read_repairs`，非法 → 报错）；`unresolved` 进 qa 报告为
-W 级提示（不阻断）。
+`kind` 枚举见 `references/repair.md`、`summary` 非空、`evidence` 为工作区相对路径
+且必须存在（防杜撰）。CLI 校验（`orchestrator.read_repairs`，文件不存在零破坏；
+非法 → `OrchestrationError` 带行号）；`unresolved` 进 `report.json`
+（`repairs_total`/`repairs_unresolved`）并触发 `W_REPAIR_UNRESOLVED` 提示
+（W 级，不阻断放行）。
 
 ### 3.3 结构重建登记（S3 落地）
 
