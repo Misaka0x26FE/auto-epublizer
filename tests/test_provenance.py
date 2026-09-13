@@ -22,7 +22,10 @@ def _pub() -> Publication:
 
 
 def _align_rows(src_md: str) -> list[dict[str, Any]]:
-    """把 structured md 的每个正文段落作为一行 src（tgt 为占位译文）。"""
+    """把 structured md 的每个正文段落作为一行 src/tgt（测试夹具：译文=原文）。
+
+    tgt 与段落同文，保证 md↔align 一致性检查（S1.1）在「无缺陷」夹具中成立。
+    """
     rows: list[dict[str, Any]] = []
     seq = 0
     for block in src_md.strip().split("\n\n"):
@@ -30,7 +33,7 @@ def _align_rows(src_md: str) -> list[dict[str, Any]]:
         if not block or block.startswith("#"):
             continue
         seq += 1
-        rows.append({"seq": seq, "src": block, "tgt": f"译{seq}", "note": None})
+        rows.append({"seq": seq, "src": block, "tgt": block, "note": None})
     return rows
 
 
@@ -414,3 +417,24 @@ def test_report_blocks_release_on_missing_insert_files() -> None:
     assert report.released is False
     assert report.released_reason == "provenance_incomplete"
     assert report.inserts_missing_files == 2
+
+
+def test_provenance_align_md_drift(tmp_path: Path) -> None:
+    """交付审计 S1.1 兜底：md 缺段而 align 完整 → align_md_drift + E_ALIGN_MD_DRIFT。"""
+    md = "# 一\n\n第一段。\n\n第二段。\n\n![图](media/x.png)\n"
+    store, entries = _make_workspace(
+        tmp_path,
+        [
+            {
+                "id": "ch01",
+                "rel": "body/ch01.md",
+                "md": md,
+                "tgt_md": "# 一\n\n第一段。\n",  # md 缺段（align 仍完整）
+                "align_rows": _align_rows(md),
+            },
+        ],
+    )
+    epub = _build(store, entries)
+    result = audit_provenance(store, entries, epub)
+    assert result.align_md_drift and "ch01" in result.align_md_drift[0]
+    assert any(f["code"] == "E_ALIGN_MD_DRIFT" for f in result.findings)

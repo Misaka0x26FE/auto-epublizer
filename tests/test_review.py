@@ -204,3 +204,54 @@ def test_table_shape_flags() -> None:
     tgt_extra = src + "\n| x | y |\n| --- | --- |\n| 9 | 9 |\n"
     flags2 = table_shape_flags(src, tgt_extra)
     assert len(flags2) == 1 and "数量" in flags2[0].message
+
+
+def test_md_align_drift_clean() -> None:
+    """交付审计 S1.1：md 与 align tgt 一致（含标题行/脚注定义/标记差异可归一化）。"""
+    from auto_translator.review import md_align_drift
+
+    md = "# 第一章\n\n正文一句[^1]。\n\n![图](media/x.png)\n\n[^1]: 注释文本。\n"
+    rows = [
+        {"seq": 1, "src": "Source one[^1].", "tgt": "正文一句[^1]。"},
+        {"seq": 2, "src": "![img](media/x.png)", "tgt": "![图](media/x.png)"},
+    ]
+    assert md_align_drift(md, rows) == []
+
+
+def test_md_align_drift_detects_missing_content() -> None:
+    """交付审计 S1.1：md 丢图片段/脚注句（align 完整）→ 报告「align 有而 md 缺」。"""
+    from auto_translator.review import md_align_drift
+
+    md = "# 第一章\n\n正文一句[^1]。\n"  # 丢图片段与注释
+    rows = [
+        {"seq": 1, "src": "Source one[^1].", "tgt": "正文一句[^1]。"},
+        {"seq": 2, "src": "![img](media/x.png)", "tgt": "![图](media/x.png)"},
+    ]
+    drift = md_align_drift(md, rows)
+    assert len(drift) == 1
+    assert "align 有而 md 缺" in drift[0] and "seq=2" in drift[0]
+
+
+def test_md_align_drift_strict_defs_when_align_has_defs() -> None:
+    """align 含脚注定义行时严格比对定义文本：md 丢定义 → 报告缺内容。"""
+    from auto_translator.review import md_align_drift
+
+    md = "# 第一章\n\n正文[^1]。\n"  # 丢定义
+    rows = [
+        {"seq": 1, "src": "text[^1]", "tgt": "正文[^1]。"},
+        {"seq": 2, "src": "note src", "tgt": "[^1]: 注释文本。"},
+    ]
+    drift = md_align_drift(md, rows)
+    assert drift and "align 有而 md 缺" in drift[0]
+
+
+def test_md_align_drift_title_row_tolerated() -> None:
+    """align 含标题行（与单元 title 对应）→ 剔除后比对通过。"""
+    from auto_translator.review import md_align_drift
+
+    md = "# 第一章\n\n正文。\n"
+    rows = [
+        {"seq": 1, "src": "Chapter I", "tgt": "第一章"},
+        {"seq": 2, "src": "Body.", "tgt": "正文。"},
+    ]
+    assert md_align_drift(md, rows, title="Chapter I") == []

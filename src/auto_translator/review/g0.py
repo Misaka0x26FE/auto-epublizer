@@ -103,6 +103,102 @@ def count_paragraph_blocks(text: str) -> int:
     return len([p for p in parts if p.strip()])
 
 
+# ── 交付审计（S1.1）：translation md ↔ align tgt 全文一致性 ────────────────
+
+# 标题行（h1/h2：build 的 h1 来自 publication title，不在 align 行内）
+_HEADING_LINE = re.compile(r"(?m)^\s*#{1,6}\s+.*$")
+# 脚注定义前缀（[^label]:）
+_FN_DEF_PREFIX = re.compile(r"\[\^[^\]]+\]:")
+
+
+def _drift_norm(text: str) -> str:
+    """漂移比对归一化：去标题行/脚注定义前缀/脚注与插入标记，再去全部空白。"""
+    out = _HEADING_LINE.sub("", text or "")
+    out = _FN_DEF_PREFIX.sub("", out)
+    out = _FN_PANDOC_RE.sub("", out)
+    out = _MARKER_RE.sub("", out)
+    return re.sub(r"\s+", "", out)
+
+
+def _strip_def_blocks(text: str) -> str:
+    """整段剔除脚注定义块（定义行 + 其非空续行）——align 不含定义行时的容错模式。"""
+    out: list[str] = []
+    in_def = False
+    for line in (text or "").splitlines():
+        if _FN_DEF_PREFIX.match(line.lstrip()):
+            in_def = True
+            continue
+        if in_def:
+            if line.strip():
+                continue  # 定义续行
+            in_def = False
+        out.append(line)
+    return "\n".join(out)
+
+
+def md_align_drift(
+    md_text: str, rows: list[dict[str, Any]], *, title: str | None = None
+) -> list[str]:
+    """translation md ↔ align tgt 全文一致性（交付审计 S1.1，纯函数）。
+
+    ``translation/<rel>.md`` 是 build 的输入，``align/<id>.jsonl`` 是 import 校验的
+    基准，二者由同一翻译动作产生：归一化（去标题行/脚注定义/标记/空白）后应完全
+    一致。不一致 = 一侧缺内容——真实案例：md 丢 38 处图片引用段与部分脚注，align
+    完整，工具守恒（align 级）全过，缺陷直达成品。
+
+    容错：``title`` 非空时剔除与单元标题对应的一条 align 行（align 常含标题行，
+    而 md 的标题由 build 从单元 title 渲染）；align 不含脚注定义行时，md 侧定义块
+    整段忽略（「align 只收句级正文」的约定）；align 含定义行时严格比对定义文本。
+
+    返回差异摘要列表（空列表 = 一致）。只描述「哪侧缺内容」，不改文本。
+    """
+    ordered = sorted(rows, key=lambda r: int(r.get("seq") or 0))
+    if title:
+        tn = _drift_norm(title)
+        if tn:
+            for idx, r in enumerate(ordered):
+                if tn in (
+                    _drift_norm(str(r.get("tgt") or "")),
+                    _drift_norm(str(r.get("src") or "")),
+                ):
+                    ordered.pop(idx)
+                    break
+    align_has_defs = any(_FN_DEF_PREFIX.match(str(r.get("tgt") or "").lstrip()) for r in ordered)
+    md_input = md_text if align_has_defs else _strip_def_blocks(md_text)
+    md_norm = _drift_norm(md_input)
+    tgt_norm = _drift_norm("".join(str(r.get("tgt") or "") for r in ordered))
+    if md_norm == tgt_norm:
+        return []
+    missing_in_md = [
+        str(r.get("seq"))
+        for r in ordered
+        if _drift_norm(str(r.get("tgt") or ""))
+        and _drift_norm(str(r.get("tgt") or "")) not in md_norm
+    ]
+    md_blocks = [
+        b.strip()
+        for b in re.split(r"\n\s*\n", (md_input or "").strip("\n"))
+        if b.strip() and not b.strip().startswith("#")
+    ]
+    missing_in_align = [
+        b[:40] for b in md_blocks if _drift_norm(b) and _drift_norm(b) not in tgt_norm
+    ]
+    parts = [
+        f"translation md 与 align tgt 不一致（md {len(md_norm)} 字符 / align {len(tgt_norm)} 字符）"
+    ]
+    if missing_in_md:
+        parts.append(
+            f"align 有而 md 缺 {len(missing_in_md)} 处（seq={','.join(missing_in_md[:8])}）"
+        )
+    if missing_in_align:
+        parts.append(
+            f"md 有而 align 缺 {len(missing_in_align)} 处（{'；'.join(missing_in_align[:3])}）"
+        )
+    if not missing_in_md and not missing_in_align:
+        parts.append("差异为顺序或重复（非缺内容），请以 align 为准核对")
+    return ["；".join(parts)]
+
+
 def length_ratio(src: str, tgt: str) -> float:
     """译文/源文长度比；空源文返回 0。"""
     s = len((src or "").strip())
