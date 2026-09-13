@@ -41,6 +41,11 @@ class QaResult:
     toc_missing: list[str] = field(default_factory=list)
     toc_flat: bool = False
     inserts_missing_files: int = 0
+    # 交付审计 S1：md↔align 一致性 + EPUB 呈现对账（error 级发现已在 provenance_findings）
+    align_md_drift: int = 0
+    epub_media_missing: int = 0
+    epub_footnotes_missing: int = 0
+    epub_coverage: float | None = None
     provenance_findings: list[dict[str, Any]] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
@@ -98,6 +103,11 @@ def generate_report(
     toc_flat = bool(prov.get("toc_flat"))
     prov_findings = list(prov.get("findings") or [])
     inserts_missing_files = int(prov.get("inserts_missing_files") or 0)
+    # 交付审计 S1：md↔align 一致性 + EPUB 媒体/脚注/段落呈现对账
+    align_md_drift = len(prov.get("align_md_drift") or [])
+    epub_media_missing = len(prov.get("epub_media_missing") or [])
+    epub_footnotes_missing = len(prov.get("epub_footnotes_missing") or [])
+    epub_coverage = prov.get("epub_coverage")
     # error 级溯源发现必须清零：E_UNIT_ORDER（spine 含未知文档）、E_MEDIA_ORDER
     # （图片相对顺序错乱）、E_INSERT_BAD_SOURCE 等均为真实缺陷（与 provenance.ok 一致）
     prov_error_findings = [f for f in prov_findings if f.get("level") == "error"]
@@ -108,6 +118,9 @@ def generate_report(
         and media_lost == 0
         and not toc_flat
         and inserts_missing_files == 0
+        and align_md_drift == 0
+        and epub_media_missing == 0
+        and epub_footnotes_missing == 0
         and not prov_error_findings
     )
 
@@ -193,5 +206,9 @@ def generate_report(
         toc_missing=list(toc_missing or []),
         toc_flat=toc_flat,
         inserts_missing_files=inserts_missing_files,
+        align_md_drift=align_md_drift,
+        epub_media_missing=epub_media_missing,
+        epub_footnotes_missing=epub_footnotes_missing,
+        epub_coverage=round(epub_coverage, 6) if epub_coverage is not None else None,
         provenance_findings=prov_findings,
     )

@@ -409,16 +409,21 @@ def _render_landmarks(
     )
 
 
-def collect_media(md_text: str, media_root: str | Path) -> tuple[str, list[tuple[str, bytes]]]:
+def collect_media(
+    md_text: str, media_root: str | Path
+) -> tuple[str, list[tuple[str, bytes]], list[str]]:
     """改写 md 中图片引用为 EPUB 内路径（``media/…``）并收集媒体字节。
 
     ``media_root`` 为源媒体目录（pandoc 抽取的 ``structured/raw/media``）。
     引用优先按原相对路径解析（保留子目录，避免同名不同目录错配），
-    其次按 basename 兜底；找不到的文件对应引用被移除，避免悬空图片引用。
-    文件名含括号等特殊字符时 URL 引用按需百分号编码。
+    其次按 basename 兜底；找不到的文件对应引用被移除，避免悬空图片引用——
+    被移除的引用清单一并返回（交付审计：构建期静默丢弃留痕，主对账由
+    provenance 的 ``E_MEDIA_EPUB_LOST`` 兜底）。文件名含括号等特殊字符时
+    URL 引用按需百分号编码。
     """
     media_root = Path(media_root).resolve()
     seen: dict[str, bytes] = {}
+    dropped: list[str] = []
 
     def _resolve(rel: str) -> tuple[str, bytes] | None:
         """按候选顺序解析媒体文件，返回 (media_root 相对路径, 字节)。
@@ -448,6 +453,7 @@ def collect_media(md_text: str, media_root: str | Path) -> tuple[str, list[tuple
         rel = src.strip().lstrip("/")
         resolved = _resolve(rel)
         if resolved is None:
+            dropped.append(rel)
             return ""
         inner, data = resolved
         epub_path = f"media/{inner}"
@@ -466,7 +472,7 @@ def collect_media(md_text: str, media_root: str | Path) -> tuple[str, list[tuple
     rewritten = _HTML_FIG_IMG.sub(_html_img, rewritten)
     rewritten = _HTML_IMG.sub(_html_img, rewritten)
     rewritten = _IMG_REF.sub(_sub, rewritten)
-    return rewritten, list(seen.items())
+    return rewritten, list(seen.items()), dropped
 
 
 def _placeholder(m: re.Match[str]) -> str:
