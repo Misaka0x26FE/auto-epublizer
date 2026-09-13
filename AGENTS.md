@@ -107,6 +107,7 @@ skills/auto-epublizer/
     ├── workflow.md        # 阶段路由 + 命令总览 + status --json 判读 + 故障排查
     ├── preprocessing.md   # 预处理：读 facts → agent 撰写 plan/global/units/terms/risks/report
     ├── ingest.md          # 文件解析（pandoc / PDF 按页切片 / OCR 兜底）
+    ├── repair.md          # 语义整备：解析缺陷/OCR 修正/结构重切（信号→修复→留痕）
     ├── structure.md       # 四层结构归类 + 清洗 + 溯源
     ├── analysis.md        # 分层理解（overview/global/units/keypoints）+ 术语播种
     ├── translation.md     # 切片翻译 + 句对齐 + 术语三态闭环
@@ -129,7 +130,7 @@ skills/auto-epublizer/
 
 | 目录 | 定位 | 内容 | 何时新增/更新 |
 |---|---|---|---|
-| `docs/` 根 | **规范 / 交接 / 参考 / 测试指南** | 设计规范（`pdf-content-spec` / `epub-template-spec` / `postprocessing-spec`）、交叉文档（`agent-vs-code` / `quality-control` / `quality-lessons` 规范表 / `configuration` / `translation-flow` / `publishing-workflow`）、参考项目（`reference-projects`）、交接（`workstate`、历史进度快照 `progress-snapshot-2026-09-01`）、豆包环境测试指南（`testing-doubao`） | 改设计/接交流程时 |
+| `docs/` 根 | **规范 / 交接 / 参考 / 测试指南** | 设计规范（`pdf-content-spec` / `epub-template-spec` / `postprocessing-spec` / `semantic-repair`）、交叉文档（`agent-vs-code` / `quality-control` / `quality-lessons` 规范表 / `configuration` / `translation-flow` / `publishing-workflow`）、参考项目（`reference-projects`）、交接（`workstate`、历史进度快照 `progress-snapshot-2026-09-01`）、豆包环境测试指南（`testing-doubao`） | 改设计/接交流程时 |
 | `docs/plans/` | **每次任务的计划文档** | `YYYY-MM-DD-<主题>.md`，立项→实施→回写状态（完成标提交号）；README 索引 | 每轮开发任务立项时 |
 | `skills/auto-epublizer/references/` | **面向「用 CLI 处理书」的 agent 常规操作指引** | 每个阶段一份（workflow/preprocessing/ingest/…/style） | 改 CLI 命令/工作区契约/QC 行为时 |
 | `skills/auto-epublizer/lessons/` | **真实工作沉淀的特定情况经验** | 判据/处置/验证三段式，每篇一主题；索引含来源与去向 | 遇到并解决一个特定源站/脏源/边界情况时 |
@@ -155,6 +156,8 @@ skills/auto-epublizer/
 ├── preprocessing/    ⑧ 预处理层：facts.json/facts.md（CLI 零 token 事实）+
 │                       agent 撰写的 todo.md（逐细节任务清单）/ plan/global/units/terms/risks/report
 │                       + catalog.csv（可选源盘点：included/physical/excluded/unresolved）
+│                       + repairs.jsonl（可选语义整备留痕：done/unresolved）
+│                       + structure.csv（可选结构重建清单，restructure 登记用）
 ├── publication.json  权威索引（DC 元数据 + 内容树 + 状态机 + 配置快照）
 ├── .progress.json    （预留）批次级断点；当前未落盘，断点=单元级跳过
 ├── glossary.db       术语库内部索引（可选，SQLite）

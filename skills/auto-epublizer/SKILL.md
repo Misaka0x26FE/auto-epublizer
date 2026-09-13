@@ -47,6 +47,7 @@ multimodal / search**（能否看图、有无搜索工具，CLI 无法探测）�
 | 全新任务 / 状态路由 / 多阶段请求 / 命令总览 | `references/workflow.md` |
 | 预处理：读 facts → 撰写 todo/capabilities/plan/global/units/terms/risks/report | `references/preprocessing.md` |
 | 文件解析：PDF / 扫描 PDF / EPUB / DOCX / HTML / TXT / MD / OCR | `references/ingest.md` |
+| 语义整备：解析缺陷修复 / OCR 修正 / 结构重切（信号触发；OCR 必做） | `references/repair.md` |
 | 四层结构归类、清洗、页眉页脚/页码剔除、溯源 | `references/structure.md` |
 | 分层理解、术语播种、语言/体裁检测 | `references/analysis.md` |
 | 切片翻译、句级对齐、术语三态闭环、agent 手写翻译路径 | `references/translation.md` |

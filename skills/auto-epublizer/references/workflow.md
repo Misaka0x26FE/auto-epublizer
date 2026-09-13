@@ -30,6 +30,9 @@ doctor（能力自检：工具链 + 自报 multimodal/search）
   -> preprocess （CLI：嗅探/元数据/TOC/体检/规模 -> preprocessing/facts.*，零 token）
   -> agent 理解 （读 facts.md 撰写 capabilities/plan/global/units/terms/risks/report；
                  analysis/*.md 也由 agent 撰写）
+  -> 语义整备 （可选/条件：facts 可疑信号触发；OCR/扫描件路径必做——按
+                 references/repair.md 对照 raw 证据修复 structured/ 并写
+                 preprocessing/repairs.jsonl 留痕）
   -> 翻译      （agent 手写 translation/ + align/，然后 import 登记）
   -> g0        （静态校验：术语命中=真实缺陷须清零；长度比=advisory）
   -> review    （QC G1–G3，agent 语义审校后写 reviews/review-<ts>/result.json）

@@ -15,6 +15,7 @@ from auto_common.workspace import RunStore, atomic_write_json
 from ..doctor import capabilities_summary, collect_capabilities
 from ..structure import count_empty_units
 from . import sniff as sniff_mod
+from .signals import SIGNAL_KEYS, repair_signals
 from .sniff import SniffError  # noqa: F401  (re-export 供调用方)
 
 # 版权残句特征（与 g0 strip_copyright_boilerplate 同源，供体检引用）
@@ -36,7 +37,7 @@ def _count_words(text: str) -> int:
 
 
 def _unit_facts(store: RunStore) -> list[dict[str, Any]]:
-    """逐单元统计：region/kind/标题/字符数/词数/段数/句数（读 structured md）。"""
+    """逐单元统计：region/kind/标题/字符数/词数/段数/句数 + 可疑信号（读 structured md）。"""
     from auto_translator.translation.align import split_sentences
 
     pub = store.load_publication()
@@ -45,12 +46,14 @@ def _unit_facts(store: RunStore) -> list[dict[str, Any]]:
         rel = (u.meta or {}).get("rel_path")
         p = store.structured_dir / rel if rel else None
         chars = words = paras = sents = 0
+        signals = dict.fromkeys(SIGNAL_KEYS, 0)
         if p and p.is_file():
             text = p.read_text(encoding="utf-8")
             chars = len(text)
             words = _count_words(text)
             paras = len([b for b in re.split(r"\n\s*\n", text) if b.strip()])
             sents = len(split_sentences(text))
+            signals = repair_signals(text)
         units.append(
             {
                 "id": u.id,
@@ -62,6 +65,7 @@ def _unit_facts(store: RunStore) -> list[dict[str, Any]]:
                 "words": words,
                 "paragraphs": paras,
                 "sentences": sents,
+                "signals": signals,
             }
         )
     return units
@@ -127,6 +131,31 @@ def collect_facts(store: RunStore, config) -> dict[str, Any]:
     capabilities = capabilities_summary(collect_capabilities(config, ping=False))
 
     suggestions = _route_suggestions(sniff_facts, capabilities)
+    signal_units = [u for u in units if any(u["signals"].values())]
+    repair_signal_facts = {
+        "units": len(signal_units),
+        "kinds": {k: sum(u["signals"][k] for u in units) for k in SIGNAL_KEYS},
+    }
+    agent_todo = [
+        "元数据核对：对照源文版权页/题录核实 facts 嗅探的 title/creator/publisher/date/rights（嗅探值仅是推断，常错常缺；存疑处询问用户；确认/补全后用 auto-epublizer meta 写回 publication.json；译者署名默认=你的 agent 框架名（如 OpenCode/DouBao），用户指定名优先）",
+        "源盘点（可选，目录完整性）：撰写 preprocessing/catalog.csv（列 item,kind,status,locator,unit_id,note），逐项声明源内容去向——included（已收录到某单元）/physical（护封腰封等实体元素，有意不进 EPUB）/excluded（有意排除，note 必填理由）/unresolved（未决，qa 阻断放行）",
+        "preprocessing/todo.md：把全书处理细化到每个可执行动作的逐项任务清单（覆盖理解/翻译/审校/封装/质检全流程，含每单元翻译项与每 3-5 单元 build 校验项），见 references/preprocessing.md §2.0",
+        "preprocessing/capabilities.md：自报五维能力边界（multimodal/search/模型/外部 API/工作量），见 references/preprocessing.md §1.1",
+        "preprocessing/plan.md：结合 capabilities 与 suggestions 写处理方案决策（路由+依据）",
+        "preprocessing/global.md：主要内容/中心思想/语言风格/叙事结构",
+        "preprocessing/units/<id>.md：每章梗概/思想/登场人物/术语注意",
+        "preprocessing/terms.csv：术语预提取（列格式=glossary.csv；翻译前可经 import --terms 导入）",
+        "preprocessing/risks.md：难段落/多语/文化梗/术语冲突预判",
+        "preprocessing/report.md：汇总报告（翻译前输入锚点）",
+    ]
+    if signal_units:
+        # 语义整备（repair）信号触发：指路 agent 用语言能力修复解析/OCR 缺陷
+        agent_todo.insert(
+            2,
+            "语义整备（信号触发）：体检检出可疑信号（见 facts.md「可疑信号」表；信号是线索非缺陷）"
+            "——按 references/repair.md 对照 raw 证据核对/修复 structured/，写 preprocessing/repairs.jsonl"
+            "留痕；OCR/扫描件路径无论有无信号都应做一遍",
+        )
     return {
         "source": {
             "file": pub.meta.source,
@@ -138,19 +167,9 @@ def collect_facts(store: RunStore, config) -> dict[str, Any]:
         "structure": {"units": units, "totals": totals},
         "media": _media_facts(store),
         "checks": _checks_facts(store, sniff_facts),
+        "repair_signals": repair_signal_facts,
         "suggestions": suggestions,
-        "agent_todo": [
-            "元数据核对：对照源文版权页/题录核实 facts 嗅探的 title/creator/publisher/date/rights（嗅探值仅是推断，常错常缺；存疑处询问用户；确认/补全后用 auto-epublizer meta 写回 publication.json；译者署名默认=你的 agent 框架名（如 OpenCode/DouBao），用户指定名优先）",
-            "源盘点（可选，目录完整性）：撰写 preprocessing/catalog.csv（列 item,kind,status,locator,unit_id,note），逐项声明源内容去向——included（已收录到某单元）/physical（护封腰封等实体元素，有意不进 EPUB）/excluded（有意排除，note 必填理由）/unresolved（未决，qa 阻断放行）",
-            "preprocessing/todo.md：把全书处理细化到每个可执行动作的逐项任务清单（覆盖理解/翻译/审校/封装/质检全流程，含每单元翻译项与每 3-5 单元 build 校验项），见 references/preprocessing.md §2.0",
-            "preprocessing/capabilities.md：自报五维能力边界（multimodal/search/模型/外部 API/工作量），见 references/preprocessing.md §1.1",
-            "preprocessing/plan.md：结合 capabilities 与 suggestions 写处理方案决策（路由+依据）",
-            "preprocessing/global.md：主要内容/中心思想/语言风格/叙事结构",
-            "preprocessing/units/<id>.md：每章梗概/思想/登场人物/术语注意",
-            "preprocessing/terms.csv：术语预提取（列格式=glossary.csv；翻译前可经 import --terms 导入）",
-            "preprocessing/risks.md：难段落/多语/文化梗/术语冲突预判",
-            "preprocessing/report.md：汇总报告（翻译前输入锚点）",
-        ],
+        "agent_todo": agent_todo,
     }
 
 
@@ -282,6 +301,36 @@ def render_facts_md(facts: dict[str, Any]) -> str:
         ]
     ):
         lines.append("- 无异常")
+
+    # 可疑信号（语义整备线索；信号是线索非缺陷，处置见 references/repair.md）
+    signals = facts.get("repair_signals") or {}
+    lines += ["", "## 可疑信号（语义整备线索）", ""]
+    if signals.get("units"):
+        lines.append(
+            f"- 命中单元 {signals['units']}；全书计数："
+            + "、".join(f"{k}={signals['kinds'].get(k, 0)}" for k in signals["kinds"])
+        )
+        lines += [
+            "",
+            "| id | 硬换行 | 断词 | 重复段 | 乱码 | 中西标点 | 拉丁长串 |",
+            "|---|---|---|---|---|---|---|",
+        ]
+        for u in facts["structure"]["units"]:
+            s = u.get("signals") or {}
+            if not any(s.values()):
+                continue
+            lines.append(
+                f"| {u['id']} | {s['hard_wrap_lines']} | {s['hyphen_eol']} | "
+                f"{s['duplicate_paras']} | {s['garbled_marks']} | "
+                f"{s['ascii_punct_cjk']} | {s['long_latin_run']} |"
+            )
+        lines.append("")
+        lines.append(
+            "> 信号 = 值得看一眼的线索，不是缺陷判定；按 `references/repair.md` "
+            "对照 raw 证据核对修复，并写 `preprocessing/repairs.jsonl` 留痕。"
+        )
+    else:
+        lines.append("- 无（解析质量未见明显异常；OCR/扫描件路径仍建议按 repair.md 过一遍）")
 
     media = facts["media"]
     lines += [
