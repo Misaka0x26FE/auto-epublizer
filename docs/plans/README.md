@@ -28,4 +28,4 @@
 | [2026-09-05-scanned-pdf-mineru.md](2026-09-05-scanned-pdf-mineru.md) | 已完成 | 扫描件 PDF 处理方式更新：MinerU 最优先（后端落地）+ 传统 OCR 逐页阅读兜底 |
 | [2026-09-06-adoption-plan.md](2026-09-06-adoption-plan.md) | 已完成 | 跨项目审查借鉴吸收：S1 放行门加固+守恒接线 / S2 meta 命令+译者署名 / S3 发布 gate+invariants 速查卡+红线 / S4 源保真+表格守恒+SourceCatalog（4.3/4.5/4.6 归档，设计留存） |
 | [2026-09-11-epub-reader.md](2026-09-11-epub-reader.md) | 已完成 | EPUB 读取器：按 OPF spine 切分 + 非线性 spine 项（表格）内联 + 标题锚点清洗 |
-| [2026-09-13-toc-depth-footnotes.md](2026-09-13-toc-depth-footnotes.md) | 实施中 | 标准输出模板：注释 `[N]` 章内编号 + 导航深度投影（`output.nav_depth`） |
+| [2026-09-13-toc-depth-footnotes.md](2026-09-13-toc-depth-footnotes.md) | 已完成（73b2230） | 标准输出模板：注释 `[N]` 章内编号 + 导航深度投影（`output.nav_depth`） |
