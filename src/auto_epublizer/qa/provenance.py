@@ -13,6 +13,7 @@ postprocessing-spec §2/§3 的实现，四类检查全部只出信号不出裁�
 from __future__ import annotations
 
 import math
+import posixpath
 import re
 import zipfile
 from collections import Counter
@@ -58,6 +59,11 @@ class ProvenanceResult:
     nav_exempt: list[str] = field(default_factory=list)
     # md↔align 全文一致性违例（交付审计 S1.1：md 是 build 输入、align 是校验基准）
     align_md_drift: list[str] = field(default_factory=list)
+    # EPUB 呈现对账（交付审计 S1.2：md 引用/定义 ↔ 成品实际包含）
+    epub_media_missing: list[str] = field(default_factory=list)  # "unit:图片名"
+    epub_footnotes_missing: list[str] = field(default_factory=list)  # "unit（md N / EPUB M）"
+    epub_coverage: float | None = None  # 段落探针覆盖率（无探针为 None）
+    epub_coverage_missing: list[str] = field(default_factory=list)  # "unit:段序"
     # 插入内容（插图/表格/公式）溯源（pdf-content-spec §9）
     inserts_total: int = 0
     inserts_missing_files: int = 0
@@ -111,6 +117,48 @@ def _spine_docs(zf: zipfile.ZipFile) -> list[str]:
         if href:
             spine.append(href)
     return spine
+
+
+def _opf_dir(zf: zipfile.ZipFile) -> str:
+    """OPF 所在目录（zip 内路径；根目录返回空串）。"""
+    try:
+        container = zf.read("META-INF/container.xml").decode("utf-8")
+        m = re.search(r'full-path="([^"]+)"', container)
+    except KeyError:
+        return ""
+    return posixpath.dirname(m.group(1)) if m else ""
+
+
+def _strip_tags(html: str) -> str:
+    """剥 XHTML 标签取 body 文本（实体原样保留；md/EPUB 两侧同函数保证可比较）。"""
+    body = re.search(r"<body[^>]*>(.*?)</body>", html or "", re.DOTALL)
+    inner = body.group(1) if body else (html or "")
+    return re.sub(r"<[^>]+>", "", inner)
+
+
+def _probe_missing(md_text: str, doc_text_norm: str) -> tuple[list[str], int]:
+    """EPUB 正文段落探针：md 每段（用 build 同款渲染器渲染）应出现在成品文档中。
+
+    与 build 共用 ``markdown_to_xhtml``，变换（标记清理/内联/表格/verse）天然一致；
+    跳过标题行与脚注定义块（各有专责校验）。返回（未命中段落头列表, 探针段总数）。
+    """
+    from ..build.html import markdown_to_xhtml
+
+    missing: list[str] = []
+    total = 0
+    for block in re.split(r"\n\s*\n", (md_text or "").strip("\n")):
+        stripped = block.strip()
+        if not stripped or stripped.startswith("#") or stripped.startswith("[^"):
+            continue
+        rendered = _strip_tags(markdown_to_xhtml(block))
+        rendered = re.sub(r"\[\^[^\]]+\]", "", rendered)  # build 会替换为 [N] 上标
+        probe = re.sub(r"\s+", "", rendered)
+        if not probe:
+            continue
+        total += 1
+        if probe not in doc_text_norm:
+            missing.append(stripped[:40])
+    return missing, total
 
 
 def _nav_declared_depth(zf: zipfile.ZipFile) -> int | None:
@@ -236,6 +284,7 @@ def audit_provenance(
             continue
         expected.append(e)
     result.units_total = len(expected)
+    expected_names = [f"{slug_file(e['id'])}.xhtml" for e in expected]
 
     try:
         zf = zipfile.ZipFile(epub_path)
@@ -248,9 +297,30 @@ def audit_provenance(
         nav_depths = _nav_depths(zf)
         declared_depth = _nav_declared_depth(zf)
         opf_has_cover = _opf_has_cover(zf)
+        # EPUB 呈现对账（交付审计 S1.2）：按 spine 收集每文档的呈现数据
+        opf_dir = _opf_dir(zf)
+        zip_names = set(zf.namelist())
+        doc_path: dict[str, str] = {}
+        for href in spine:
+            doc_path[Path(unquote(href)).name] = (Path(opf_dir) / unquote(href)).as_posix()
+        doc_text: dict[str, str] = {}
+        doc_imgs: dict[str, Counter[str]] = {}
+        doc_fn: dict[str, int] = {}
+        doc_bilingual: dict[str, bool] = {}
+        for name in expected_names:
+            zpath = doc_path.get(name)
+            if not zpath or zpath not in zip_names:
+                continue
+            html = zf.read(zpath).decode("utf-8")
+            doc_text[name] = re.sub(r"\s+", "", _strip_tags(html))
+            doc_imgs[name] = Counter(
+                Path(unquote(src)).name
+                for src in re.findall(r'<img\b[^>]*?src="([^"]+)"', html, re.IGNORECASE)
+            )
+            doc_fn[name] = len(re.findall(r"<aside[^>]*epub:type=\"footnote\"", html))
+            doc_bilingual[name] = 'class="src"' in html
 
     spine_docs = [Path(unquote(h)).name for h in spine]
-    expected_names = [f"{slug_file(e['id'])}.xhtml" for e in expected]
     spine_set = set(spine_docs)
     expected_set = set(expected_names)
 
@@ -303,6 +373,63 @@ def audit_provenance(
             "error",
             "E_MEDIA_ORDER",
             "译文图片相对顺序与源文不一致：" + "、".join(result.media_order_violations),
+        )
+
+    # ── EPUB 呈现对账（交付审计 S1.2）：构建用 md ↔ 成品实际包含 ───────────
+    # 真实案例：md 引用 72 张图但成品仅 34 张（collect_media 静默丢弃/渲染缺失）。
+    probe_total = 0
+    probe_covered = 0
+    for e, name in zip(expected, expected_names, strict=False):
+        text = doc_text.get(name)
+        if text is None:
+            continue  # 文档缺失已由 units_missing 覆盖
+        rel = e.get("rel_path") or ""
+        tgt_path = translation_dir / rel
+        md_path = (
+            tgt_path if (prefer_translation and tgt_path.is_file()) else (structured_dir / rel)
+        )
+        if not md_path.is_file():
+            continue
+        md_text = md_path.read_text(encoding="utf-8")
+        bilingual = doc_bilingual.get(name, False)
+        if not bilingual:
+            # 媒体呈现：md 图片引用 ↔ 成品 <img>（双语文档不渲染图，跳过）
+            for ref, cnt in Counter(_img_refs(md_text)).items():
+                if doc_imgs.get(name, Counter()).get(ref, 0) < cnt:
+                    result.epub_media_missing.append(f"{e['id']}:{ref}")
+            # 脚注呈现：md 定义数 ↔ 成品 aside 数（双语不渲染脚注，跳过）
+            md_defs = len(re.findall(r"(?m)^\s*\[\^[^\]]+\]:", md_text))
+            epub_defs = doc_fn.get(name, 0)
+            if md_defs != epub_defs:
+                result.epub_footnotes_missing.append(
+                    f"{e['id']}（md {md_defs} / EPUB {epub_defs}）"
+                )
+        # 正文段落探针：md 每段（build 同款渲染）应出现在成品文档中
+        missing, n = _probe_missing(md_text, text)
+        probe_total += n
+        probe_covered += n - len(missing)
+        for head in missing:
+            result.epub_coverage_missing.append(f"{e['id']}:{head}")
+    if probe_total:
+        result.epub_coverage = probe_covered / probe_total
+    if result.epub_media_missing:
+        result.add(
+            "error",
+            "E_MEDIA_EPUB_LOST",
+            "成品缺失译文引用的图片：" + "、".join(result.epub_media_missing[:8]),
+        )
+    if result.epub_footnotes_missing:
+        result.add(
+            "error",
+            "E_FN_EPUB_LOST",
+            "成品脚注数与译文不一致：" + "、".join(result.epub_footnotes_missing[:8]),
+        )
+    if result.epub_coverage_missing:
+        result.add(
+            "error",
+            "E_EPUB_PARA_LOST",
+            f"成品缺失译文段落 {len(result.epub_coverage_missing)} 处："
+            + "；".join(result.epub_coverage_missing[:5]),
         )
 
     # ── 逐段覆盖率：structured 每段都能在 align src 侧找到 ────────────────

@@ -255,6 +255,7 @@ def _render_and_pack(
     media_root = store.structured_dir / "raw" / "media"
     content = []
     media: dict[str, bytes] = {}
+    media_dropped: dict[str, list[str]] = {}
     cover_media: str | None = None
     for e in entries:
         rel = e.get("rel_path")
@@ -288,7 +289,9 @@ def _render_and_pack(
         heading = unit_heading(md_text)
         if heading:
             e["title"] = heading
-        md_text, unit_media = collect_media(md_text, media_root)
+        md_text, unit_media, dropped = collect_media(md_text, media_root)
+        if dropped:
+            media_dropped[e["id"]] = dropped
         for epub_path, data in unit_media:
             media[epub_path] = data
         if e.get("kind") == "cover" and unit_media and cover_media is None:
@@ -305,6 +308,9 @@ def _render_and_pack(
                 ),
             )
         )
+    if media_dropped:
+        # 构建期静默丢弃留痕（交付审计 S1.3）：主对账由 provenance E_MEDIA_EPUB_LOST 兜底
+        store.log_event("media_dropped", refs=media_dropped)
     build_epub(
         pub,
         entries,

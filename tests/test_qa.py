@@ -644,3 +644,34 @@ def test_audit_volume_warnings(tmp_path: Path, monkeypatch) -> None:
     codes = {f.code for f in audit_epub(out).findings}
     assert "W_IMG_UNCOMPRESSED" in codes
     assert "W_EPUB_SIZE" in codes
+
+
+def test_generate_report_delivery_audit_fields() -> None:
+    """交付审计 S1：provenance 新字段聚合进报告并阻断放行（provenance_incomplete）。"""
+    audit = AuditResult(ok=True)
+    from auto_epublizer.qa import EpubcheckResult
+
+    provenance = {
+        "coverage": 1.0,
+        "units_missing": [],
+        "units_order_ok": True,
+        "media_lost": [],
+        "toc_flat": False,
+        "inserts_missing_files": 0,
+        "align_md_drift": ["ch01: md 与 align 不一致"],
+        "epub_media_missing": ["ch02:img.png"],
+        "epub_footnotes_missing": ["ch03（md 2 / EPUB 1）"],
+        "epub_coverage": 0.97,
+        "findings": [{"level": "error", "code": "E_MEDIA_EPUB_LOST", "message": "成品缺图"}],
+    }
+    result = generate_report(
+        "book",
+        audit,
+        EpubcheckResult(available=True, ran=True, errors=0, warnings=0),
+        provenance=provenance,
+    )
+    assert result.align_md_drift == 1
+    assert result.epub_media_missing == 1
+    assert result.epub_footnotes_missing == 1
+    assert result.epub_coverage == 0.97
+    assert result.released is False and result.released_reason == "provenance_incomplete"

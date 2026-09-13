@@ -265,25 +265,27 @@ def test_collect_media_rewrites_and_collects(tmp_path: Path) -> None:
     (media_root / "x.png").write_bytes(b"PNGDATA")
 
     md = "前文\n\n![插图](raw/media/x.png)\n\n后文"
-    rewritten, files = collect_media(md, media_root)
+    rewritten, files, dropped = collect_media(md, media_root)
     assert "![插图](media/x.png)" in rewritten
     assert files == [("media/x.png", b"PNGDATA")]
+    assert dropped == []
 
     # pandoc 孤立图片占位语法 → 标准引用
     md2 = '[alt]{.image .placeholder original-image-src="raw/media/x.png"}'
-    rewritten2, files2 = collect_media(md2, media_root)
+    rewritten2, files2, _dropped2 = collect_media(md2, media_root)
     assert "![alt](media/x.png)" in rewritten2
     assert files2 == [("media/x.png", b"PNGDATA")]
 
     # HTML <img>（含 figure/a 包裹）→ 标准引用
     md3 = '<figure><a href="x"><img src="raw/media/x.png"/></a></figure>'
-    rewritten3, files3 = collect_media(md3, media_root)
+    rewritten3, files3, _dropped3 = collect_media(md3, media_root)
     assert "![](media/x.png)" in rewritten3
 
-    # 找不到的文件：引用被移除，避免悬空
-    rewritten4, files4 = collect_media("![nope](raw/media/missing.png)", media_root)
+    # 找不到的文件：引用被移除，避免悬空；丢弃清单进事件（交付审计 S1.3）
+    rewritten4, files4, dropped4 = collect_media("![nope](raw/media/missing.png)", media_root)
     assert "![" not in rewritten4
     assert files4 == []
+    assert dropped4 == ["raw/media/missing.png"]
 
 
 def test_collect_media_subdir_and_paren_paths(tmp_path: Path) -> None:
@@ -298,15 +300,15 @@ def test_collect_media_subdir_and_paren_paths(tmp_path: Path) -> None:
     (media_root / "a (1).png").write_bytes(b"PAREN")
 
     # 1. 子目录引用：包内路径保留 sub/，字节取 sub 下的
-    out, files = collect_media("![x](sub/x.png)", media_root)
+    out, files, _d1 = collect_media("![x](sub/x.png)", media_root)
     assert "![x](media/sub/x.png)" in out
     assert ("media/sub/x.png", b"SUB") in files
     # 顶层引用不受影响（同名不冲突）
-    out2, files2 = collect_media("![x](x.png)", media_root)
+    out2, files2, _d2 = collect_media("![x](x.png)", media_root)
     assert ("media/x.png", b"TOP") in files2
 
     # 2. 括号文件名：引用不丢、字节收集到、href 百分号编码
-    out3, files3 = collect_media("![x](a (1).png)", media_root)
+    out3, files3, _d3 = collect_media("![x](a (1).png)", media_root)
     assert "![](media/a%20%281%29.png)" in out3 or "![x](media/a%20%281%29.png)" in out3
     assert ("media/a (1).png", b"PAREN") in files3
 

@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
+import re
 import zipfile
 from pathlib import Path
 from typing import Any
 
 from auto_common.workspace import Publication, PublicationMeta, RunStore
 from auto_epublizer.build import build_epub
-from auto_epublizer.build.html import render_document
+from auto_epublizer.build.html import FootnoteState, render_document
 from auto_epublizer.qa.provenance import audit_provenance
 from auto_epublizer.qa.report import EpubcheckResult, generate_report
 from auto_translator.translation.align import write_align
@@ -94,7 +95,11 @@ def _build(
             (
                 f"{e['id']}.xhtml",
                 render_document(
-                    e["title"], md_path.read_text(encoding="utf-8"), lang="zh-CN", unit_id=e["id"]
+                    e["title"],
+                    md_path.read_text(encoding="utf-8"),
+                    lang="zh-CN",
+                    unit_id=e["id"],
+                    fn_state=FootnoteState(),  # 每单元一份：与 orchestrator 构建一致
                 ),
             )
         )
@@ -438,3 +443,110 @@ def test_provenance_align_md_drift(tmp_path: Path) -> None:
     result = audit_provenance(store, entries, epub)
     assert result.align_md_drift and "ch01" in result.align_md_drift[0]
     assert any(f["code"] == "E_ALIGN_MD_DRIFT" for f in result.findings)
+
+
+def _rewrite_epub(src: Path, dst: Path, transform) -> Path:
+    """重写 zip 的指定条目内容（测试用：模拟成品内呈现缺失）。"""
+    with zipfile.ZipFile(src) as zin, zipfile.ZipFile(dst, "w") as zout:
+        for item in zin.infolist():
+            zout.writestr(item, transform(item.filename, zin.read(item.filename)))
+    return dst
+
+
+def test_provenance_epub_media_lost(tmp_path: Path) -> None:
+    """交付审计 S1.2：md 引用图片但成品无 <img>（构建静默丢弃）→ E_MEDIA_EPUB_LOST。"""
+    md = "# 一\n\n看图 ![图](raw/media/missing.png)。\n"
+    store, entries = _make_workspace(tmp_path, [{"id": "ch01", "rel": "body/ch01.md", "md": md}])
+    epub = _build(store, entries)
+    bad = _rewrite_epub(
+        epub,
+        tmp_path / "no-img.epub",
+        lambda name, data: (
+            re.sub(rb"<img\b[^>]*>", b"", data) if name.endswith("ch01.xhtml") else data
+        ),
+    )
+    result = audit_provenance(store, entries, bad)
+    assert result.epub_media_missing == ["ch01:missing.png"]
+    assert any(f["code"] == "E_MEDIA_EPUB_LOST" for f in result.findings)
+
+
+def test_provenance_epub_footnote_lost(tmp_path: Path) -> None:
+    """交付审计 S1.2：md 有脚注定义但成品 aside 被删 → E_FN_EPUB_LOST。"""
+    md = "# 一\n\n正文[^1]。\n\n[^1]: 注释文本。\n"
+    store, entries = _make_workspace(tmp_path, [{"id": "ch01", "rel": "body/ch01.md", "md": md}])
+    epub = _build(store, entries)
+    clean = audit_provenance(store, entries, epub)
+    assert clean.epub_footnotes_missing == []  # 正常情况下定义数 ↔ aside 数一致
+
+    bad = _rewrite_epub(
+        epub,
+        tmp_path / "no-fn.epub",
+        lambda name, data: (
+            data.replace(b"<aside", b"<div").replace(b"</aside>", b"</div>")
+            if name.endswith("ch01.xhtml")
+            else data
+        ),
+    )
+    result = audit_provenance(store, entries, bad)
+    assert result.epub_footnotes_missing and "ch01" in result.epub_footnotes_missing[0]
+    assert any(f["code"] == "E_FN_EPUB_LOST" for f in result.findings)
+
+
+def test_provenance_epub_para_lost_and_coverage(tmp_path: Path) -> None:
+    """交付审计 S1.2：删掉成品一段 → E_EPUB_PARA_LOST + epub_coverage < 1.0。"""
+    md = "# 一\n\n第一段。\n\n第二段。\n"
+    store, entries = _make_workspace(tmp_path, [{"id": "ch01", "rel": "body/ch01.md", "md": md}])
+    epub = _build(store, entries)
+    clean = audit_provenance(store, entries, epub)
+    assert clean.epub_coverage == 1.0 and clean.epub_coverage_missing == []
+
+    bad = _rewrite_epub(
+        epub,
+        tmp_path / "no-para.epub",
+        lambda name, data: (
+            data.replace("<p>第二段。</p>".encode(), b"") if name.endswith("ch01.xhtml") else data
+        ),
+    )
+    result = audit_provenance(store, entries, bad)
+    assert result.epub_coverage is not None and result.epub_coverage < 1.0
+    assert result.epub_coverage_missing and "ch01" in result.epub_coverage_missing[0]
+    assert any(f["code"] == "E_EPUB_PARA_LOST" for f in result.findings)
+
+
+def test_silent_media_drop_blocks_via_epub_reconciliation(tmp_path: Path) -> None:
+    """端到端（案例主缺口）：raw/media 缺文件 → build 静默丢弃（事件留痕）→ qa 报错。
+
+    真实案例：md 引用 72 张图但成品仅 34 张，工具 QA 全过。此测试封堵该路径：
+    collect_media 丢弃 → events.jsonl media_dropped → provenance E_MEDIA_EPUB_LOST
+    → released=False（provenance_incomplete）。
+    """
+    from auto_epublizer import orchestrator as orch
+
+    src = tmp_path / "book.md"
+    src.write_text("# Chapter I\n\nBody text.\n\n![fig](raw/media/ghost.png)\n", encoding="utf-8")
+    store = orch.init(str(src), workspace_dir=str(tmp_path / "ws"))
+    rel = store.load_publication().units[0].meta["rel_path"]
+    (store.translation_dir / rel).parent.mkdir(parents=True, exist_ok=True)
+    (store.translation_dir / rel).write_text(
+        "# 第一章\n\n正文。\n\n![图](raw/media/ghost.png)\n", encoding="utf-8"
+    )
+    write_align(
+        store.unit_align_path("ch01"),
+        [
+            {"seq": 1, "src": "Body text.", "tgt": "正文。", "note": None},
+            {
+                "seq": 2,
+                "src": "![fig](raw/media/ghost.png)",
+                "tgt": "![图](raw/media/ghost.png)",
+                "note": None,
+            },
+        ],
+    )
+    imported = orch.import_translations(store)
+    assert imported["imported"] == ["ch01"], imported["failed"]
+    epub = orch.build(store)
+    events = (store.dir / "events.jsonl").read_text(encoding="utf-8")
+    assert "media_dropped" in events and "ghost.png" in events
+    report = orch.qa(store, epub_path=str(epub))
+    assert any(f["code"] == "E_MEDIA_EPUB_LOST" for f in report["provenance_findings"])
+    assert report["released"] is False and report["released_reason"] == "provenance_incomplete"
