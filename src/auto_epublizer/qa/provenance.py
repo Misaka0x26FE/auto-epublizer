@@ -6,7 +6,8 @@ postprocessing-spec §2/§3 的实现，四类检查全部只出信号不出裁�
 - 媒体溯源：源文图片引用 vs 译文（数量与相对顺序，E_MEDIA_LOST / E_MEDIA_ORDER）
 - 逐段覆盖率：structured 正文段落都能在 align 的 src 侧找到 → ``provenance_coverage``
   （无翻译产物时为 None——convert 路径不适用该门）
-- 目录层级：EPUB nav 嵌套深度 vs 源文 level 序列（E_TOC_FLAT / W_TOC_DEPTH）
+- 目录层级：EPUB nav 嵌套深度 vs 源文 level 序列（按 nav_depth 投影后对账；
+  E_TOC_FLAT / W_TOC_DEPTH）
 """
 
 from __future__ import annotations
@@ -24,7 +25,7 @@ from auto_translator.review.fidelity import content_blocks as _paragraphs
 from auto_translator.review.fidelity import norm_text as _norm
 from auto_translator.translation.align import read_align
 
-from ..build import slug_file, toc_depths
+from ..build import nav_toc_entries, slug_file, toc_depths
 from ..ingest.inserts import read_inserts
 from ..structure import skip_empty_unit
 
@@ -51,6 +52,9 @@ class ProvenanceResult:
     toc_depths_nav: list[int] = field(default_factory=list)
     toc_flat: bool = False
     toc_depth_mismatch: bool = False
+    # 目录深度投影：被 nav_depth 剔除（或封面）而不进目录的 spine 文档名，
+    # 供 audit_epub 豁免 E_TOC_COVERAGE（内容仍在 spine 阅读顺序，非缺失）
+    nav_exempt: list[str] = field(default_factory=list)
     # 插入内容（插图/表格/公式）溯源（pdf-content-spec §9）
     inserts_total: int = 0
     inserts_missing_files: int = 0
@@ -104,6 +108,23 @@ def _spine_docs(zf: zipfile.ZipFile) -> list[str]:
         if href:
             spine.append(href)
     return spine
+
+
+def _nav_declared_depth(zf: zipfile.ZipFile) -> int | None:
+    """读 nav.xhtml head 的 ``<meta name="nav-depth" content="K">`` 投影深度声明。
+
+    构建期由 `_render_nav` 写入；以此为准可避免「build --nav-depth N 后 qa 用
+    默认配置」造成的投影/豁免错位（旧书或外部工具产物无声明 → None 走兜底）。
+    """
+    navs = [n for n in zf.namelist() if n.endswith("nav.xhtml")]
+    if not navs:
+        return None
+    html = zf.read(navs[0]).decode("utf-8")
+    m = re.search(r'<meta\s+name="nav-depth"\s+content="(\d+)"', html)
+    if not m:
+        return None
+    depth = int(m.group(1))
+    return depth if 1 <= depth <= 6 else None
 
 
 def _nav_depths(zf: zipfile.ZipFile) -> list[int]:
@@ -181,11 +202,14 @@ def audit_provenance(
     epub_path: str | Path,
     *,
     prefer_translation: bool = True,
+    nav_depth: int = 3,
 ) -> ProvenanceResult:
     """对成品 EPUB 执行溯源审计（构建期跳过逻辑与本函数期望集保持一致）。
 
     ``prefer_translation`` 与 _render_and_pack 语义一致：译文存在时以译文为
     构建/审计基准（媒体对账才有意义），否则源↔源恒等跳过媒体检查。
+    ``nav_depth`` 与 build 的目录投影一致：目录层级对账按投影后的序列进行，
+    被投影剔除的文档记录到 ``nav_exempt``。
     """
     result = ProvenanceResult()
     structured_dir = store.structured_dir
@@ -219,6 +243,7 @@ def audit_provenance(
     with zf:
         spine = _spine_docs(zf)
         nav_depths = _nav_depths(zf)
+        declared_depth = _nav_declared_depth(zf)
         opf_has_cover = _opf_has_cover(zf)
 
     spine_docs = [Path(unquote(h)).name for h in spine]
@@ -297,10 +322,19 @@ def audit_provenance(
     if has_align and total_paras:
         result.coverage = covered_paras / total_paras
 
-    # ── 目录层级：nav 嵌套深度 vs 源文 level 序列 ─────────────────────────
+    # ── 目录层级：nav 嵌套深度 vs 源文 level 序列（按 nav_depth 投影后对账）──
+    # 投影深度以产物声明为准（构建期写入 nav.xhtml），配置/参数仅兜底旧产物。
+    effective_depth = declared_depth if declared_depth is not None else nav_depth
     name2entry = dict(zip(expected_names, expected, strict=False))
     spine_entries = [name2entry[n] for n in spine_docs if n in name2entry]
-    result.toc_depths_expected = toc_depths(spine_entries)
+    nav_candidates = nav_toc_entries(spine_entries, effective_depth)
+    nav_names = {f"{slug_file(e['id'])}.xhtml" for e in nav_candidates}
+    result.nav_exempt = [
+        f"{slug_file(e['id'])}.xhtml"
+        for e in spine_entries
+        if f"{slug_file(e['id'])}.xhtml" not in nav_names
+    ]
+    result.toc_depths_expected = toc_depths(nav_candidates)
     result.toc_depths_nav = nav_depths
     if (
         result.toc_depths_expected

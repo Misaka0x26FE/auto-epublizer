@@ -79,6 +79,7 @@
   "toc_depths_nav": [1, 2],
   "toc_flat": false,
   "toc_depth_mismatch": false,
+  "nav_exempt": [],
   "inserts_total": 3,
   "inserts_missing_files": 0,
   "inserts_no_desc": 0,
@@ -89,6 +90,12 @@
   ]
 }
 ```
+
+> 目录层级对账按 `output.nav_depth` 投影后进行（与 build 同一算法）；投影深度以产物
+> 声明为准（`nav.xhtml` 的 `<meta name="nav-depth">`，配置参数仅兜底旧产物），避免
+> 配置漂移误报。`toc_depths_expected` 是投影后的期望序列；被投影剔除的 spine 文档名
+> 记录在 `nav_exempt`，交给 `audit_epub` 豁免 `E_TOC_COVERAGE`（内容仍在 spine
+> 阅读顺序，非缺失）。
 
 ### 3.2 report.json 扩展（G5）
 

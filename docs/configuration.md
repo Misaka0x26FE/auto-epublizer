@@ -52,6 +52,8 @@ output:
   about_page: true        # 未接线（预留；"关于此翻译"页未实现）
   theme: standard         # 排版主题：standard | compact | spacious（docs/epub-template-spec.md §5）
                           # 仅排版微调（泛化字族/行距/缩进/对齐），无具体字体名/颜色/字号
+  nav_depth: 3            # 目录最大嵌套深度（1–6，docs/epub-template-spec.md §3 投影）
+                          # 超深单元不进 nav/NCX，但保留在 spine 阅读顺序与锚点中
 ```
 
 ## 配置快照与续跑

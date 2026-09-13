@@ -64,6 +64,7 @@ class OutputConfig(BaseModel):
     bilingual: bool = False
     about_page: bool = True
     theme: str = "standard"  # standard | compact | spacious（epub-template-spec §5）
+    nav_depth: int = Field(3, ge=1, le=6)  # 目录最大嵌套深度（epub-template-spec §3 投影）
 
 
 class Config(BaseModel):

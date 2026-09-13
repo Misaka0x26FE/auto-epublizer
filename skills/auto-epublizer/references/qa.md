@@ -100,7 +100,8 @@ report.json 落盘的计数字段只有 `inserts_missing_files`（进放行门�
 - `E_ZIP_DUPLICATE` → zip 条目名重复（手改包/损坏）；从译文重新 build，不修成品。
 - `E_IMG_REMOTE` → 图片外链；把图下载进 raw/media/、译文改本地引用后重 build。
 - `E_TOC_COVERAGE` → spine↔nav 双向覆盖缺口（章节缺 nav 条目 / nav 幽灵条目）；
-  查该单元 translation md 的标题层级，重 build。
+  注意**目录深度投影**（`output.nav_depth`）剔除的超深单元是预期豁免，不算缺口；
+  其他情况查该单元 translation md 的标题层级，重 build。
 - `W_NAMING` → 成品文件名与 slug 前缀不符；`-o` 重命名或按 `<slug>.epub`/`<slug>-bi.epub` 输出。
 - `W_STRUCT_MISSING` → structured/ 源文文件缺失（被误删）；从源文件重跑该单元 ingest。
 - `provenance_incomplete` →

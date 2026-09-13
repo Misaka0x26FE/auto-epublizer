@@ -232,6 +232,17 @@ def toc_depths(entries: list[dict[str, Any]]) -> list[int]:
     return _toc_depths(entries)
 
 
+def nav_toc_entries(entries: list[dict[str, Any]], nav_depth: int) -> list[dict[str, Any]]:
+    """nav/NCX 目录候选：排除封面单元（linear="no"），并按 ``nav_depth`` 投影截断。
+
+    深度用 ``_toc_depths`` 归一化（首条为 1）。超深节点不进目录，但仍保留在
+    spine 阅读顺序与锚点中（epub-template-spec §3 目录深度投影）。
+    """
+    visible = [e for e in entries if e.get("kind") != "cover"]
+    depths = _toc_depths(visible)
+    return [e for e, d in zip(visible, depths, strict=False) if d <= nav_depth]
+
+
 def _toc_tree(entries: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """按嵌套深度把单元清单组织成目录树：[{entry, children: […]}]。"""
     tree: list[dict[str, Any]] = []
@@ -265,18 +276,26 @@ def _render_nav_items(nodes: list[dict[str, Any]]) -> str:
 
 def _render_nav(
     pub: Publication,
-    entries: list[dict[str, Any]],
     content_entries: list[dict[str, Any]],
     lang: str,
+    *,
+    nav_depth: int = 3,
 ) -> str:
-    """渲染 EPUB 3 导航文档（nav.xhtml，epub:type=toc），层级按源文标题层级嵌套。"""
-    items = _render_nav_items(_toc_tree(content_entries))
+    """渲染 EPUB 3 导航文档（nav.xhtml，epub:type=toc）。
+
+    层级按源文标题层级嵌套；封面单元不进目录，``nav_depth`` 之外不渲染
+    （epub-template-spec §3 目录深度投影）。
+    """
+    items = _render_nav_items(_toc_tree(nav_toc_entries(content_entries, nav_depth)))
     return (
         '<?xml version="1.0" encoding="utf-8"?>\n'
         f'<html xmlns="{_NS_XHTML}" xmlns:epub="{_NS_EPUB}" '
         f'xml:lang="{escape(lang, quote=True)}">\n'
         "<head>\n"
         '<meta charset="utf-8"/>\n'
+        # 目录投影深度声明：qa 的溯源/覆盖审计以此为准（否则 build --nav-depth 与
+        # 后续 qa 默认配置漂移会误报 E_TOC_COVERAGE）
+        f'<meta name="nav-depth" content="{nav_depth}"/>\n'
         f"<title>{escape(pub.meta.title)}</title>\n"
         "</head>\n"
         "<body>\n"
@@ -315,12 +334,15 @@ def _render_ncx_points(nodes: list[dict[str, Any]], counter: list[int]) -> str:
 def _render_ncx(
     pub: Publication,
     content_entries: list[dict[str, Any]],
+    *,
+    nav_depth: int = 3,
 ) -> str:
-    """渲染 NCX（toc.ncx，向后兼容）；层级嵌套，只引用实际生成的内容文档防悬空。"""
+    """渲染 NCX（toc.ncx，向后兼容）；层级嵌套（同 nav 投影），只引用实际内容文档防悬空。"""
     uid = pub.slug
-    depths = _toc_depths(content_entries)
+    entries = nav_toc_entries(content_entries, nav_depth)
+    depths = _toc_depths(entries)
     depth = max(depths) if depths else 1
-    body = _render_ncx_points(_toc_tree(content_entries), [0]) or "    <!-- 无目录条目 -->"
+    body = _render_ncx_points(_toc_tree(entries), [0]) or "    <!-- 无目录条目 -->"
     return (
         '<?xml version="1.0" encoding="utf-8"?>\n'
         '<ncx xmlns="http://www.daisy.org/z3986/2005/ncx/" version="2005-1">\n'
@@ -463,6 +485,7 @@ def build_epub(
     media_files: list[tuple[str, bytes]] | None = None,
     theme: str = "standard",
     cover_media: str | None = None,
+    nav_depth: int = 3,
 ) -> Path:
     """把内容文档 + 媒体资源封装为确定性标准 EPUB 3，返回输出路径。
 
@@ -473,6 +496,8 @@ def build_epub(
     ``cover_media``：封面媒体 EPUB 内路径（如 "media/cover.png"）→ manifest
     ``properties="cover-image"`` + ``<meta name="cover">``；cover 单元内容文档
     spine 标 ``linear="no"``（不进正文阅读顺序）。
+    ``nav_depth``：目录最大嵌套深度（epub-template-spec §3 投影），超深单元
+    保留在 spine 但不出现在 nav/NCX。
     """
     out_path = Path(out_path)
     out_path.parent.mkdir(parents=True, exist_ok=True)
@@ -513,8 +538,8 @@ def build_epub(
     opf = _render_opf(
         pub, lang, modified, items, spine_ids, cover_item_id=cover_item_id, cover_docs=cover_docs
     )
-    nav = _render_nav(pub, entries, content_entries, lang)
-    ncx = _render_ncx(pub, content_entries)
+    nav = _render_nav(pub, content_entries, lang, nav_depth=nav_depth)
+    ncx = _render_ncx(pub, content_entries, nav_depth=nav_depth)
     landmarks = _render_landmarks(content_entries, lang)
     container = (
         '<?xml version="1.0" encoding="utf-8"?>\n'

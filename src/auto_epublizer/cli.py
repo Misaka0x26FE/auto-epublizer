@@ -73,6 +73,9 @@ def convert(
     output: str | None = typer.Option(None, "-o", "--output", help="输出 EPUB 路径"),
     workspace: str | None = typer.Option(None, "--workspace", help="工作区目录"),
     theme: str | None = typer.Option(None, "--theme", help="排版主题（standard/compact/spacious）"),
+    nav_depth: int | None = typer.Option(
+        None, "--nav-depth", help="目录最大嵌套深度（1–6，默认取配置 output.nav_depth）"
+    ),
     config: str | None = typer.Option(None, "--config", help="配置文件路径"),
 ) -> None:
     """仅转换（不翻译）：归一化 + 结构 + EPUB + QA。"""
@@ -84,7 +87,9 @@ def convert(
             )
         else:
             store = _store_from(workspace, cfg)
-        out = orch.convert(store, output=output, theme=theme or cfg.output.theme)
+        out = orch.convert(
+            store, output=output, theme=theme or cfg.output.theme, nav_depth=nav_depth
+        )
         console.print(f"[green]EPUB 已生成：[/green]{out}")
         report = orch.qa(store, epub_path=str(out))
         console.print(
@@ -125,13 +130,22 @@ def build(
     output: str | None = typer.Option(None, "-o", "--output", help="输出 EPUB 路径"),
     bilingual: bool = typer.Option(False, "--bilingual", help="产出双语 EPUB"),
     theme: str | None = typer.Option(None, "--theme", help="排版主题（standard/compact/spacious）"),
+    nav_depth: int | None = typer.Option(
+        None, "--nav-depth", help="目录最大嵌套深度（1–6，默认取配置 output.nav_depth）"
+    ),
     config: str | None = typer.Option(None, "--config", help="配置文件路径"),
 ) -> None:
     """从译文（缺省回退源文）封装 EPUB。"""
     cfg = load_config(config or _CONFIG_PATH)
     store = _store_from(workspace, cfg)
     try:
-        out = orch.build(store, bilingual=bilingual, output=output, theme=theme or cfg.output.theme)
+        out = orch.build(
+            store,
+            bilingual=bilingual,
+            output=output,
+            theme=theme or cfg.output.theme,
+            nav_depth=nav_depth,
+        )
     except (ValueError, OSError, orch.OrchestrationError) as e:
         raise typer.Exit(f"封装失败：{e}") from None
     console.print(f"[green]EPUB 已生成：[/green]{out}")

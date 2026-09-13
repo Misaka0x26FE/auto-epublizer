@@ -6,8 +6,8 @@
 
 脚注语义化（epub-template-spec §6）：pandoc 脚注语法 ``[^label]`` 引用 →
 ``<a epub:type="noteref">``，``[^label]: 文本`` 定义 → 章末
-``<aside epub:type="footnote">``；编号经 ``FootnoteState`` 跨单元全局连续，
-注码/注释双向跳转。呈现样式不设（字体/颜色/字号交阅读器）。
+``<aside epub:type="footnote">``；注码 ``[N]`` 按章独立编号（每单元一份
+``FootnoteState``，从 1 起），注码/注释双向跳转。呈现样式不设（字体/颜色/字号交阅读器）。
 """
 
 from __future__ import annotations
@@ -41,14 +41,14 @@ _SLASH_LINE = re.compile(r"^\s*\\\s*$")
 
 
 class FootnoteState:
-    """跨单元全局脚注编号器（构建期共享；按文中首次出现顺序连续编号）。"""
+    """脚注编号器（每单元新建一份；按章内首次出现顺序从 1 起连续编号）。"""
 
     def __init__(self) -> None:
         self._numbers: dict[tuple[str, str], int] = {}
         self._next = 0
 
     def number(self, unit_id: str, label: str) -> int:
-        """取（或分配）某单元某标签的全局序号。"""
+        """取（或分配）某单元某标签的章内序号。"""
         key = (unit_id, label)
         if key not in self._numbers:
             self._next += 1
@@ -99,20 +99,21 @@ def _substitute_noterefs(
             return m.group(0)
         n = fn_state.number(unit_id, label)
         return (
-            f'<sup class="noteref"><a epub:type="noteref" id="ref-{n}" href="#fn-{n}">{n}</a></sup>'
+            f'<sup class="noteref"><a epub:type="noteref" role="doc-noteref" '
+            f'id="ref-{n}" href="#fn-{n}">[{n}]</a></sup>'
         )
 
     return _FN_REF.sub(_sub, xhtml)
 
 
 def _render_footnote_section(items: list[tuple[int, str]]) -> str:
-    """渲染章末脚注区：``[(全局序号, 定义文本)]`` → aside（epub:type=footnote，带回链）。"""
+    """渲染章末脚注区：``[(章内序号, 定义文本)]`` → aside（epub:type=footnote，带回链）。"""
     asides: list[str] = []
     for n, text in items:
         body = _inline(escape(text))
         asides.append(
             f'<aside epub:type="footnote" id="fn-{n}" role="doc-footnote">'
-            f'<p>{body} <a epub:type="backlink" href="#ref-{n}">↩</a></p></aside>'
+            f'<p>[{n}] {body} <a epub:type="backlink" href="#ref-{n}">↩</a></p></aside>'
         )
     return (
         '<section class="footnotes" epub:type="footnotes">\n' + "\n".join(asides) + "\n</section>"
@@ -301,7 +302,7 @@ def markdown_to_xhtml(md: str, *, unit_id: str = "", fn_state: FootnoteState | N
     """把 markdown 正文转换为 XHTML 片段（h1–h6 / p / figure，文本统一转义）。
 
     ``unit_id`` + ``fn_state`` 提供时启用脚注语义化：``[^label]`` → noteref、
-    定义块 → 章末 aside，全局序号跨单元连续。
+    定义块 → 章末 aside，章内序号从 1 起独立编号。
     """
     md = _clean_pandoc_markers(md)
     md = _PANDOC_LINKED_IMG.sub(lambda m: f"![{m.group(1)}]({m.group(2).strip()})", md)
