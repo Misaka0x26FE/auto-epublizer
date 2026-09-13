@@ -28,8 +28,9 @@
 | 结构守恒 | ✅ G0（段落块/标记/脚注/标题 1:1） | — |
 | **三边对账**（structured↔translation↔output） | ⬜ | 新增：逐单元三边存在、顺序一致、无遗漏/多余 |
 | **媒体溯源**（图片数量/顺序与源文一致） | ⬜ | 新增：译文图片引用 vs 源文，防丢图/多图/错位 |
-| **逐段溯源覆盖率** | ⬜ | 新增：structured 每段 ↔ align 全覆盖，产出 `provenance_coverage` |
-| **源文勘误留痕** | ⬜ | `apply_corrections` 命中项写入 align `note`（如 `corr:IDG→IDF`），区分译错/源错 |
+| **逐段溯源覆盖率** | ✅ | structured 每段 ↔ align 全覆盖，产出 `provenance_coverage` |
+| **成品呈现对账**（build 输入 ↔ EPUB 实际包含） | ✅ | md 图片引用 ↔ 成品 `<img>`（`E_MEDIA_EPUB_LOST`）、md 脚注定义数 ↔ 成品 `<aside>` 数（`E_FN_EPUB_LOST`）、正文段落全量探针（`E_EPUB_PARA_LOST` + `epub_coverage`）；md↔align 一致性（`E_ALIGN_MD_DRIFT`） |
+| **源文勘误留痕** | ✅ | `apply_corrections` 命中项写入 align `note`（如 `corr:IDG→IDF`），区分译错/源错 |
 
 ### 2.2 媒体位置与样式
 
@@ -80,6 +81,11 @@
   "toc_flat": false,
   "toc_depth_mismatch": false,
   "nav_exempt": [],
+  "align_md_drift": [],
+  "epub_media_missing": [],
+  "epub_footnotes_missing": [],
+  "epub_coverage": 1.0,
+  "epub_coverage_missing": [],
   "inserts_total": 3,
   "inserts_missing_files": 0,
   "inserts_no_desc": 0,
@@ -106,7 +112,11 @@
   "units_order_ok": true,
   "media_lost": 0,
   "toc_missing": [],
-  "toc_flat": false
+  "toc_flat": false,
+  "align_md_drift": 0,
+  "epub_media_missing": 0,
+  "epub_footnotes_missing": 0,
+  "epub_coverage": 1.0
 }
 ```
 
@@ -167,6 +177,9 @@
   （`E_UNIT_ORDER`/`E_MEDIA_ORDER`/`E_INSERT_BAD_SOURCE` 等均阻断放行）
 - `inserts_missing_files == 0`（插入内容文件不缺失）
 - 目录层级零 `E_TOC_FLAT`（有层级源）
+- 成品呈现对账清零（交付审计 S1）：`align_md_drift == 0`、`epub_media_missing == 0`、
+  `epub_footnotes_missing == 0`、`epub_coverage ≈ 1.0`（md↔align 一致、成品实际包含
+  与 build 输入对账无缺）；构建期媒体丢弃写 `events.jsonl` `media_dropped` 事件留痕
 
 > 实现见 `qa/report.py::generate_report`（`prov_ok` 聚合判定 + `released_reason` 细分）。
 - 插入内容文件零缺失（`inserts_missing_files == 0`，pdf-content-spec §9：
