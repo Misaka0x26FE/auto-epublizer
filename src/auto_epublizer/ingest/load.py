@@ -37,6 +37,7 @@ def load_document(
     mineru_client: MineruClient | None = None,
     mineru_model: str = "pipeline",
     mineru_language: str = "ch",
+    mineru_batch_pages: int = 200,
 ) -> SourceDocument:
     """按扩展名读取源文件并归一化为 SourceDocument。
 
@@ -64,6 +65,7 @@ def load_document(
                     client=mineru_client,
                     model_version=mineru_model,
                     language=mineru_language,
+                    batch_pages=mineru_batch_pages,
                 )
             except MineruError as e:
                 raise IngestError(str(e)) from e

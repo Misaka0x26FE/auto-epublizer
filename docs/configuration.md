@@ -35,6 +35,7 @@ pdf:
   mineru_effort: medium   # 未接线（MinerU v4 API 无此参数）；保留兼容旧配置
   mineru_model: pipeline  # pipeline（默认，确定性、零幻觉）| vlm（高精度，内部为 VLM）
   mineru_language: ch     # MinerU OCR 语言（PaddleOCR 语言码：ch/en/ja/…）
+  mineru_batch_pages: 200 # >此页数自动分批（MinerU 单文件 ≤200 页限制；≤0 关闭）
 
 # ── 术语表 ──────────────────────────────────────────────────
 glossary:

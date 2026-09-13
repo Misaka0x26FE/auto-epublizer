@@ -100,6 +100,71 @@ def _pdf(tmp_path: Path) -> Path:
     return p
 
 
+def _pdf_pages(tmp_path: Path, n: int) -> Path:
+    """生成 n 页小 PDF（分批测试用）。"""
+    import fitz
+
+    doc = fitz.open()
+    for i in range(n):
+        doc.new_page().insert_text((72, 100), f"page {i + 1}", fontsize=12)
+    p = tmp_path / "book.pdf"
+    doc.save(str(p))
+    doc.close()
+    return p
+
+
+def _multi_batch_transport(zips: list[bytes], log: list | None = None) -> httpx.MockTransport:
+    """模拟多批顺序解析：每批独立 batch_id / 上传 / 轮询 / 下载（按批序返回 zip）。"""
+    order: dict[str, int] = {}
+    state = {"n": 0}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if log is not None:
+            log.append(request)
+        url = str(request.url)
+        if url.endswith("/file-urls/batch"):
+            n = state["n"]
+            state["n"] += 1
+            batch_id = f"b-{n + 1}"
+            order[batch_id] = n
+            return httpx.Response(
+                200,
+                json={
+                    "code": 0,
+                    "data": {
+                        "batch_id": batch_id,
+                        "file_urls": [f"https://oss/upload/{n + 1}"],
+                    },
+                },
+            )
+        if url.startswith("https://oss/upload/"):
+            return httpx.Response(200)
+        if "/extract-results/batch/" in url:
+            batch_id = url.rsplit("/", 1)[-1]
+            n = order[batch_id]
+            return httpx.Response(
+                200,
+                json={
+                    "code": 0,
+                    "data": {
+                        "extract_result": [
+                            {
+                                "state": "done",
+                                "full_zip_url": f"https://cdn/z{n + 1}.zip",
+                                "err_msg": "",
+                            }
+                        ]
+                    },
+                },
+            )
+        if url.startswith("https://cdn/z") and url.endswith(".zip"):
+            n = int(url[len("https://cdn/z") : -4])
+            return httpx.Response(200, content=zips[n - 1])
+        return httpx.Response(404, json={"code": 1, "msg": "unknown"})
+
+    return httpx.MockTransport(handler)
+
+
 # ── 客户端流程 ───────────────────────────────────────────────────────────
 
 
@@ -141,6 +206,116 @@ def test_client_api_error_msg(tmp_path: Path) -> None:
 
     with pytest.raises(MineruError, match="配额不足"):
         _client(httpx.MockTransport(handler)).parse_file(_pdf(tmp_path))
+
+
+# ── >200 页自动分批（issue #5）───────────────────────────────────────────
+
+
+def test_split_pdf_by_pages(tmp_path: Path) -> None:
+    """按阈值切页：5 页 / 每批 2 页 → 3 份、页数 [2,2,1]，份名带序号。"""
+    import fitz
+
+    from auto_epublizer.ingest.mineru import _split_pdf
+
+    parts = _split_pdf(_pdf_pages(tmp_path, 5), 2)
+    assert [name for name, _ in parts] == [
+        "book-part01.pdf",
+        "book-part02.pdf",
+        "book-part03.pdf",
+    ]
+    counts = []
+    for _, data in parts:
+        with fitz.open(stream=data, filetype="pdf") as doc:
+            counts.append(doc.page_count)
+    assert counts == [2, 2, 1]
+
+
+def test_merge_results_offsets_and_image_prefix() -> None:
+    """合并纯函数：全局页偏移 + 同名图片前缀防撞 + markdown 拼接。"""
+    from auto_epublizer.ingest.mineru import MineruParseResult, _merge_results
+
+    p1 = MineruParseResult(
+        content_list=[
+            {"type": "text", "text": "a", "page_idx": 0},
+            {"type": "image", "img_path": "images/0.jpg", "page_idx": 1},
+        ],
+        markdown="m1",
+        images={"images/0.jpg": b"ONE"},
+    )
+    p2 = MineruParseResult(
+        content_list=[
+            {"type": "image", "img_path": "images/0.jpg", "page_idx": 0},
+            {"type": "text", "text": "b", "page_idx": 1},
+        ],
+        markdown="m2",
+        images={"images/0.jpg": b"TWO"},
+    )
+    merged = _merge_results([p1, p2], [2, 3])
+    assert [i["page_idx"] for i in merged.content_list] == [0, 1, 2, 3]
+    assert [i["img_path"] for i in merged.content_list if i.get("img_path")] == [
+        "b1/images/0.jpg",
+        "b2/images/0.jpg",
+    ]
+    assert merged.images == {"b1/images/0.jpg": b"ONE", "b2/images/0.jpg": b"TWO"}
+    assert merged.markdown == "m1\n\nm2"
+
+
+def test_read_mineru_auto_batches_large_pdf(tmp_path: Path) -> None:
+    """>阈值：自动切批 + 全局页序 + 图片零丢失防撞 + 审计产物合并（全离线）。"""
+    zips = [
+        _result_zip(
+            [
+                {"type": "text", "text": "Chapter", "text_level": 1, "page_idx": 0},
+                {
+                    "type": "image",
+                    "img_path": "images/0.jpg",
+                    "image_caption": ["P1"],
+                    "page_idx": 1,
+                },
+            ],
+            markdown="p1",
+            images={"images/0.jpg": b"ONE"},
+        ),
+        _result_zip(
+            [
+                {
+                    "type": "image",
+                    "img_path": "images/0.jpg",
+                    "image_caption": ["P2"],
+                    "page_idx": 0,
+                },
+                {"type": "text", "text": "middle", "page_idx": 1},
+            ],
+            markdown="p2",
+            images={"images/0.jpg": b"TWO"},
+        ),
+        _result_zip([{"type": "text", "text": "tail", "page_idx": 0}], markdown="p3"),
+    ]
+    log: list = []
+    client = _client(_multi_batch_transport(zips, log))
+    raw_dir = tmp_path / "raw"
+
+    doc = read_mineru(_pdf_pages(tmp_path, 5), raw_dir=raw_dir, client=client, batch_pages=2)
+
+    assert doc.meta["pages"] == 5  # 全局页序连续（max page_idx+1）
+    ch = next(u for u in doc.units if u.title == "Chapter")
+    img_refs = [s.source for s in ch.segments if s.source.startswith("![")]
+    assert len(img_refs) == 2
+    assert "(raw/media/p002-img01.jpg)" in img_refs[0]
+    assert "(raw/media/p003-img01.jpg)" in img_refs[1]
+    # 各批同名图片（images/0.jpg）互不覆盖
+    assert (raw_dir / "media" / "p002-img01.jpg").read_bytes() == b"ONE"
+    assert (raw_dir / "media" / "p003-img01.jpg").read_bytes() == b"TWO"
+    # 合并后的 ground truth：全局页序 + 图片路径重映射
+    merged = json.loads((raw_dir / "mineru" / "content_list.json").read_text())
+    assert [i["page_idx"] for i in merged] == [0, 1, 2, 3, 4]
+    assert [i["img_path"] for i in merged if i.get("img_path")] == [
+        "b1/images/0.jpg",
+        "b2/images/0.jpg",
+    ]
+    assert (raw_dir / "mineru" / "full.md").read_text() == "p1\n\np2\n\np3"
+    # 三批各自一次 batch 申请（顺序逐批）
+    assert sum(1 for r in log if str(r.url).endswith("/file-urls/batch")) == 3
 
 
 # ── content_list → SourceDocument ────────────────────────────────────────

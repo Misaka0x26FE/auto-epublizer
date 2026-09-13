@@ -63,7 +63,7 @@ agent 在 plan.md 记录最终路由与依据（含「是否已询问用户 Mine
 | `.epub` | **按 OPF spine 切分**（线性项一项一单元 + 非线性项内联）；结构异常回退通用 pandoc |
 | `.html` `.htm` `.xhtml` `.docx` | 走 pandoc → Markdown 纯文本 + `--extract-media` 抽媒体 |
 | `.pdf`（有文字层） | pymupdf 按页切片抽文字层，逐页写 `structured/raw/page-NNN.json` |
-| `.pdf`（扫描件，MinerU） | MinerU API 整本解析：`raw/media/` 插图 + `raw/mineru/`（content_list.json + full.md 审计产物）+ `raw/inserts/` 记录；正文按 MinerU 标题层级切章 |
+| `.pdf`（扫描件，MinerU） | MinerU API 整本解析（>200 页自动分批，`pdf.mineru_batch_pages`）：`raw/media/` 插图 + `raw/mineru/`（content_list.json + full.md 审计产物）+ `raw/inserts/` 记录；正文按 MinerU 标题层级切章 |
 | `.pdf`（扫描件，无 key） | OCR 兜底：逐页渲染为图片 → OCR → 作为该页文本块（`ocr:true`）；渲染页图持久化 `raw/pages/pNNN.png` |
 
 不支持的其他格式：先转 PDF/TXT/Markdown，或 `pandoc` 处理后转 PDF 兜底。
@@ -120,8 +120,10 @@ structured/raw/
 ## 注意事项
 
 - `source/` 原样，绝不改动；源内容身份以 `publication.json.meta.source_sha256` 绑定。
-- MinerU 是**外部解析 API（非 LLM）**：整本上传（≤200MB/200 页）、异步轮询，
-  每天有免费高优先级页数额度；网络失败会以中文错误明确报出。
+- MinerU 是**外部解析 API（非 LLM）**：整本上传（≤200MB/≤200 页）、异步轮询，
+  每天有免费高优先级页数额度；>200 页自动按 `pdf.mineru_batch_pages`（默认 200）
+  切批顺序解析后合并（全局页序连续、图片名防撞、块完整拼接），网络失败会以
+  中文错误明确报出。
 - OCR 引擎懒加载：文字层 PDF 不付模型加载成本；`init` 遇扫描页自动调 RapidOCR。
 - 难页视觉兜底是你的能力（multimodal 自报）：可自行渲染难页看图理解，结果按页写回
   `structured/raw/page-NNN.json`（`ocr:true`）。
