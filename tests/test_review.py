@@ -63,6 +63,41 @@ def test_count_footnote_refs_ignores_citation_punct() -> None:
     assert count_footnote_refs("（Goodin 1989a:588）") == 0
 
 
+def test_count_footnote_refs_ignores_cjk_and_percent_adjacent() -> None:
+    """回归（issue #3）：句末标点后 1~3 位数字紧跟中文/百分号 = 统计数字，非注码。
+
+    4 位年份本就被 ``(?!\\d)`` 回溯排除（issue 列出的 1881/1888 等样例不复现）；
+    实际误报类是「。82个」「。95年」「。46%」。
+    """
+    assert count_footnote_refs("全俄铁路网扩张。82个车站投入运营") == 0
+    assert count_footnote_refs("起义爆发。95年运动失败") == 0
+    assert count_footnote_refs("燃料被取代。46%的机车改用石油") == 0
+    assert count_footnote_refs("占比过半。50％来自顿巴斯") == 0
+
+
+def test_count_footnote_refs_keeps_true_marker_forms() -> None:
+    """真注码形态不受排除集影响：行尾 / 空格 / 英文粘连（此为已知残余风险边界）。"""
+    assert count_footnote_refs("whole villages.1") == 1
+    assert count_footnote_refs("proved decisive.2 And more") == 1
+    assert count_footnote_refs("a long sentence.1The next one") == 1
+
+
+def test_g0_footnote_conservation_tolerates_stats_numbers() -> None:
+    """统计数字（句末标点后紧跟中文/%）不触发守恒硬缺陷；真注码仍守恒（回归 #3）。"""
+    g = Glossary()
+    rows = [
+        {
+            "seq": 1,
+            "src": "The network expanded. 82 stations opened",
+            "tgt": "路网扩张。82个车站投入运营",
+        },
+        {"seq": 2, "src": "Fuel was replaced. 46% switched", "tgt": "燃料被取代。46%改用石油"},
+        {"seq": 3, "src": "It was decisive.1 The end", "tgt": "这是决定性的。1"},
+    ]
+    flags = g0_unit_flags(rows, g)
+    assert not [f for f in flags if f.check == "footnote" and "不守恒" in f.message]
+
+
 def test_count_footnote_marks() -> None:
     from auto_translator.review import count_footnote_marks
 
