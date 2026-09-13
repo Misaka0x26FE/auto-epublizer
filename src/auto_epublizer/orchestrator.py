@@ -479,6 +479,13 @@ def import_translations(
         # 的 advisory——坏表格会直接进 build 产物）
         for f in _unit_doc_flags(store, rel_path):
             errors.append(f"表格形状：{f.message}（{f.data}）")
+        # md↔align 全文一致性（交付审计 S1.1）：md 是 build 输入、align 是校验基准，
+        # 一侧缺内容（图片段/脚注/段落）即阻断登记——防缺陷直达成品
+        if tgt_path.is_file() and rows:
+            from auto_translator.review import md_align_drift
+
+            for d in md_align_drift(tgt_path.read_text(encoding="utf-8"), rows, title=unit.title):
+                errors.append(f"文档一致性：{d}")
         for f in g0_unit_flags(rows, glossary, structured_md=structured_md):
             # 源保真反向违例（src 不在源文中）= 对照表不可信，阻断登记；
             # 其余硬缺陷类（terminology/marker/footnote）与前向缺块（fidelity）、

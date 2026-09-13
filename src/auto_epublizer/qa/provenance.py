@@ -23,6 +23,7 @@ from urllib.parse import unquote
 
 from auto_translator.review.fidelity import content_blocks as _paragraphs
 from auto_translator.review.fidelity import norm_text as _norm
+from auto_translator.review.g0 import md_align_drift
 from auto_translator.translation.align import read_align
 
 from ..build import nav_toc_entries, slug_file, toc_depths
@@ -55,6 +56,8 @@ class ProvenanceResult:
     # 目录深度投影：被 nav_depth 剔除（或封面）而不进目录的 spine 文档名，
     # 供 audit_epub 豁免 E_TOC_COVERAGE（内容仍在 spine 阅读顺序，非缺失）
     nav_exempt: list[str] = field(default_factory=list)
+    # md↔align 全文一致性违例（交付审计 S1.1：md 是 build 输入、align 是校验基准）
+    align_md_drift: list[str] = field(default_factory=list)
     # 插入内容（插图/表格/公式）溯源（pdf-content-spec §9）
     inserts_total: int = 0
     inserts_missing_files: int = 0
@@ -312,6 +315,14 @@ def audit_provenance(
             continue
         has_align = True
         rel = e.get("rel_path") or ""
+        # md↔align 一致性（交付审计 S1.1 兜底复核）：防 import 后 md 被单独改动
+        # （如丢图片段/脚注）而 align 未同步——防缺陷直达成品
+        tgt_path = translation_dir / rel
+        if tgt_path.is_file():
+            for d in md_align_drift(
+                tgt_path.read_text(encoding="utf-8"), rows, title=str(e.get("title") or "") or None
+            ):
+                result.align_md_drift.append(f"{e['id']}: {d}")
         src_concat = _norm("".join(r.get("src") or "" for r in rows))
         for i, para in enumerate(_paragraphs((structured_dir / rel).read_text(encoding="utf-8"))):
             total_paras += 1
@@ -321,6 +332,12 @@ def audit_provenance(
                 result.coverage_missing.append(f"{e['id']}:{i + 1}")
     if has_align and total_paras:
         result.coverage = covered_paras / total_paras
+    if result.align_md_drift:
+        result.add(
+            "error",
+            "E_ALIGN_MD_DRIFT",
+            "译文文档与对照表不一致（疑缺内容）：" + "；".join(result.align_md_drift[:3]),
+        )
 
     # ── 目录层级：nav 嵌套深度 vs 源文 level 序列（按 nav_depth 投影后对账）──
     # 投影深度以产物声明为准（构建期写入 nav.xhtml），配置/参数仅兜底旧产物。

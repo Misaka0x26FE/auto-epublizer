@@ -166,3 +166,37 @@ def test_import_blocks_on_broken_table(tmp_path: Path) -> None:
     result = orch.import_translations(store)
     assert result["imported"] == []
     assert any("表格形状" in e for e in result["failed"][0]["errors"])
+
+
+def test_import_blocks_on_md_align_drift(tmp_path: Path) -> None:
+    """交付审计 S1.1：md 与 align tgt 不一致（一侧缺内容）→ 阻断登记。"""
+    store = _workspace(tmp_path)
+    _write_agent_products(store)
+    # md 删掉第二句（align 仍完整）——真实案例：md 丢图片段/脚注直达成品
+    (store.translation_dir / "body" / "ch01.md").write_text(
+        "# 第一章\n\n第一句话。\n", encoding="utf-8"
+    )
+    result = orch.import_translations(store)
+    assert result["imported"] == []
+    assert result["failed"] and result["failed"][0]["unit"] == "ch01"
+    assert any("文档一致性" in e for e in result["failed"][0]["errors"])
+
+
+def test_import_passes_md_align_consistent_with_footnote(tmp_path: Path) -> None:
+    """交付审计 S1.1 回归：md 含标题/脚注、align 对应 → 正常登记（不误报漂移）。"""
+    src = tmp_path / "book.md"
+    src.write_text("# Chapter I\n\nFirst sentence[^1].\n\n[^1]: Source note.\n", encoding="utf-8")
+    store = orch.init(str(src), workspace_dir=str(tmp_path / "ws"))
+    (store.translation_dir / "body").mkdir(parents=True, exist_ok=True)
+    (store.translation_dir / "body" / "ch01.md").write_text(
+        "# 第一章\n\n第一句话[^1]。\n\n[^1]: 注释文本。\n", encoding="utf-8"
+    )
+    rows = [
+        {"seq": 1, "src": "First sentence[^1].", "tgt": "第一句话[^1]。", "note": None},
+        {"seq": 2, "src": "[^1]: Source note.", "tgt": "[^1]: 注释文本。", "note": None},
+    ]
+    with open(store.unit_align_path("ch01"), "w", encoding="utf-8") as f:
+        for row in rows:
+            f.write(json.dumps(row, ensure_ascii=False) + "\n")
+    result = orch.import_translations(store)
+    assert result["imported"] == ["ch01"], result["failed"]
