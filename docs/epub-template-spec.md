@@ -31,10 +31,11 @@
 |---|---|---|
 | mimetype / container / OPF | ✅ | mimetype 首位未压缩、内容恰为 `application/epub+zip` |
 | nav.xhtml + toc.ncx | ✅ | 目录层级符合源文件层级（level 链路已通，嵌套渲染已落地） |
+| **目录深度投影** | ✅ | nav/NCX 最多嵌套 `output.nav_depth` 层（默认 3，1–6）；超深单元不进目录，但保留在 spine 阅读顺序与锚点；封面单元不进目录 |
 | 语义地标 landmarks | ✅ | frontmatter/bodymatter/backmatter 各取首个落地标 |
 | 每文档 `xml:lang` + 恰好一个 `h1` | ✅ | 全文档一致 |
 | 标题层级 h1–h6 语义 + 无跳级 | ✅ | `E_HEADING_SKIP` 校验（P2） |
-| **脚注语义化** | ✅ | `noteref`/`footnote` + 全局序号 + 双向跳转（§6，已落地） |
+| **脚注语义化** | ✅ | `noteref`/`footnote` + `[N]` 注码 + 章内独立编号 + 双向跳转（§6） |
 | 封面 `cover-image` | ✅ | `properties="cover-image"` + `<meta name="cover">` + spine `linear="no"` |
 | 封面/目录页 `linear="no"` | ✅ | cover 单元内容文档不进正文阅读顺序 |
 | 目录锚点 | ✅ | 单元级嵌套（源文标题已切分为单元，h1–h6 锚点随层级实现覆盖） |
@@ -91,12 +92,15 @@ spacious  → serif + 2.0 行距 + 缩进 + 两端对齐 + 标题居中
 每套主题仅派生「排版微调」几个 CSS 属性，不引入字体名、颜色、字号；
 audit 拦截违规（`E_THEME_FONT`：具体字体名/字号；`E_THEME_COLOR`：颜色）。
 
-## 6. 注释标准化（标准弹窗 + 全局序号）
+## 6. 注释标准化（标准弹窗 + 章内序号）
 
-- 正文注码（句末数字注码）→ `<a epub:type="noteref" id="nr-N" href="#fn-N">N</a>`
-- 注释正文 → `<aside epub:type="footnote" id="fn-N" role="doc-footnote">`
-- **全局序号**：全书跨章连续编号（1, 2, 3, …），不按章重排。
-- **双向跳转**：注码 → 注释（前进），注释回链（`#nr-N`）→ 注码（后退）。
+- 正文注码（句末注码）→ `<a epub:type="noteref" role="doc-noteref" id="ref-N" href="#fn-N">[N]</a>`（上标）
+- 注释正文 → 章末集中区 `<section epub:type="footnotes">`，条目
+  `<aside epub:type="footnote" id="fn-N" role="doc-footnote"><p>[N] … <a epub:type="backlink" href="#ref-N">↩</a></p></aside>`
+- **章内序号**：每章从 `[1]` 起独立编号（构建期为每单元新建 `FootnoteState`）；
+  id 在各自 XHTML 文档内作用域唯一。
+- **双向跳转**：注码 → 注释（前进），注释回链（`#ref-N`）→ 注码（后退）；
+  回链是通用兜底（Kindle KDP 要求，不支持弹窗的阅读器靠它返回）。
 - **降级**：支持弹窗的阅读器弹窗显示，不支持的退化为章末列表（`<aside>` 本就位于章节末尾）。
 - 与 `{fig:NNN}`/`{table:NNN}` 区分：后者是**图/表占位标记**（插入元素），不走脚注语义。
 
@@ -104,36 +108,42 @@ audit 拦截违规（`E_THEME_FONT`：具体字体名/字号；`E_THEME_COLOR`�
 
 ### 7.1 配置
 
-`config.output` 扩展 `theme` 字段：
+`config.output` 的呈现与结构开关：
 
 ```yaml
 output:
   theme: standard        # standard | compact | spacious
+  nav_depth: 3           # 目录最大嵌套深度（1–6，投影：超深单元不进目录）
   mono: true
   bilingual: false
 ```
 
 ### 7.2 实现影响清单（✅ 全部落地）
 
-1. ✅ `build/__init__.py`：`_STYLE_CSS` 瘦身为功能性样式 + `_THEMES` 主题表；`build_epub` 接受 `theme`/`cover_media`。
+1. ✅ `build/__init__.py`：`_STYLE_CSS` 瘦身为功能性样式 + `_THEMES` 主题表；`build_epub` 接受 `theme`/`cover_media`/`nav_depth`。
 2. ✅ `build/html.py`：`render_document` 只产出语义 XHTML（含 blockquote/verse/ul/ol），CSS 从模板/主题注入（解耦）。
-3. ✅ 脚注语义化：`FootnoteState` 全局编号器 + noteref/footnote 渲染。
+3. ✅ 脚注语义化：`FootnoteState` 章内编号 + `[N]` 注码 + noteref/footnote 渲染 + 回链。
 4. ✅ 封面 `cover-image`：cover 单元首个图片自动识别 + `<meta name="cover">` + `linear="no"`。
 5. ✅ 语义标签保留 + 断页/图注样式（目录为单元级嵌套，无单元内子标题锚点需求）。
 6. ✅ `qa/audit.py`：`E_THEME_FONT`/`E_THEME_COLOR`/`E_COVER_META`/`E_HEADING_SKIP`/
    `E_RESIDUE`/`W_RESIDUE`/`W_META_INCOMPLETE`/`E_ANCHOR`/`E_FN_BACKLINK`/`E_BI_PAIRS`/
    `W_EPUB_SIZE`/`W_IMG_UNCOMPRESSED`；溯源审计 `W_NO_COVER`/`W_NAMING`。
+7. ✅ 目录深度投影：`nav_toc_entries`（封面排除 + `nav_depth` 截断）→ nav/NCX；
+   `dtb:depth` 为投影后深度；nav.xhtml 声明 `<meta name="nav-depth" content="K"/>`
+   （qa 审计以此为准）；`nav_exempt` 豁免 `E_TOC_COVERAGE`。
 
 ## 8. 后续实现清单（按优先级）
 
 | 优先级 | 项 | 归属 |
 |---|---|---|
-| P0 ✅ | 脚注语义化（弹窗 + 全局序号 + 双向跳转） | 结构层 |
+| P0 ✅ | 脚注语义化（弹窗 + 双向跳转；2026-09-13 起为 `[N]` 章内序号） | 结构层 |
 | P0 ✅ | 目录层级（嵌套 nav/NCX + `dtb:depth`，level 链路补全） | 结构层 |
 | P0 ✅ | `_STYLE_CSS` 瘦身（去字体/颜色/字号，回归测试锁定） | 呈现层 |
 | P1 ✅ | 主题机制（预置三套 + `--theme` + `output.theme` + audit 校验） | 主题层 |
 | P1 ✅ | 封面 `cover-image` + `linear="no"` + `W_NO_COVER` 对账 | 结构层 |
 | P2 ✅ | 语义标签保留（blockquote/verse/ul/ol） | 结构层 |
 | P2 ✅ | audit 补强（标题跳级/残留/锚点回链/双语成对/元数据完备/体积） | 结构层 |
+| P2 ✅ | 目录深度投影（`output.nav_depth` + 封面不进目录 + 覆盖审计豁免） | 结构层 |
 
-> P0/P1/P2 已于 2026-09-04 全部落地（详见 `docs/postprocessing-spec.md` §4）。
+> P0/P1/P2 已于 2026-09-04 全部落地（详见 `docs/postprocessing-spec.md` §4）；
+> 目录深度投影与 `[N]` 章内序号于 2026-09-13 落地（`docs/plans/2026-09-13-toc-depth-footnotes.md`）。

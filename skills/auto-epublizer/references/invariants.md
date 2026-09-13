@@ -59,7 +59,7 @@ reason 判定优先级 = 上表自上而下（先 g0 硬缺陷 → 冲突 → �
 | E_NO_CONTAINER / E_CONTAINER_OPF / E_OPF_MISSING | E | 容器或 OPF 缺失 → 重 build |
 | E_SPINE_REF / E_MANIFEST_HREF | E | manifest↔spine 不一致 → 重 build |
 | E_NAV_HREF / E_NCX_HREF / E_LANDMARKS_HREF | E | 导航链接悬空 → 查对应文档是否存在 |
-| E_TOC_COVERAGE | E | spine↔nav 双向覆盖缺口 → 查章节标题层级 |
+| E_TOC_COVERAGE | E | spine↔nav 双向覆盖缺口 → 查章节标题层级（`output.nav_depth` 投影剔除的超深单元为预期豁免） |
 | E_IMG_SRC | E | 本地图悬空 → 补 raw/media/ 后重 build |
 | E_IMG_REMOTE | E | 图片外链 → 下载进包改本地引用 |
 | E_UNSAFE_URL | E | javascript:/data: 注入 → 排查译文 HTML |
@@ -87,7 +87,7 @@ reason 判定优先级 = 上表自上而下（先 g0 硬缺陷 → 冲突 → �
 | W_INSERT_NO_DESC / W_INSERT_NO_LATEX | W | 图注描述/公式 LaTeX 未补 → agent 补全后复跑 |
 | W_NO_COVER | W | 无封面（权属不明可接受，见 publishing.md §2） |
 | W_STRUCT_MISSING | W | structured 源文文件缺失 → 重 ingest |
-| W_TOC_DEPTH | W | nav 深度序列与源不一致 |
+| W_TOC_DEPTH | W | nav 深度序列与源不一致（按 `output.nav_depth` 投影后对账） |
 | W_TOC_MISSING / W_NAMING | W | facts 源 TOC 缺条目 / 成品命名与 slug 不符 |
 
 ## 5. 工作区契约压缩版

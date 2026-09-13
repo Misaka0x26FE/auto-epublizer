@@ -70,8 +70,13 @@ def _image_size(data: bytes, ext: str) -> tuple[int, int] | None:
         return None
 
 
-def audit_epub(path: str | Path) -> AuditResult:
-    """解包 EPUB 并逐项审计结构。"""
+def audit_epub(path: str | Path, *, nav_exempt: set[str] | None = None) -> AuditResult:
+    """解包 EPUB 并逐项审计结构。
+
+    ``nav_exempt``：目录深度投影（``output.nav_depth``）剔除而不进 nav 的 spine
+    文档 basename 集合（orchestrator 由 provenance 的同一投影算得）——这些文档仍在
+    spine 阅读顺序中，豁免 E_TOC_COVERAGE；集合中出现非 spine 文档名则报错。
+    """
     result = AuditResult(ok=True)
     try:
         zf = zipfile.ZipFile(path)
@@ -167,8 +172,12 @@ def audit_epub(path: str | Path) -> AuditResult:
             for href in re.findall(r'href="([^"]+\.xhtml)[^"]*"', m.group(1)):
                 nav_doc_hrefs.add((Path(nav).parent / href.split("#")[0]).as_posix())
         exempt = {n for n in names if n.endswith(("nav.xhtml", "landmarks.xhtml"))} | cover_docs
+        projected = nav_exempt or set()
+        spine_names = {Path(doc).name for doc in spine_docs}
+        for name in sorted(projected - spine_names):
+            result.add("error", "E_TOC_COVERAGE", f"目录投影豁免集含非 spine 文档：{name}")
         for doc in spine_docs - exempt:
-            if doc not in nav_doc_hrefs:
+            if doc not in nav_doc_hrefs and Path(doc).name not in projected:
                 result.add("error", "E_TOC_COVERAGE", f"spine 文档未进目录：{doc}")
         for doc in nav_doc_hrefs - spine_docs:
             result.add("error", "E_TOC_COVERAGE", f"nav 条目不在 spine：{doc}")

@@ -427,6 +427,39 @@ def test_audit_toc_coverage_bidirectional(tmp_path: Path) -> None:
     assert any("nav 条目不在 spine" in f.message for f in cov)
 
 
+def test_audit_toc_projection_exempt(tmp_path: Path) -> None:
+    """目录投影：nav_depth 剔除的 spine 文档经 nav_exempt 豁免；非 spine 豁免名报错。"""
+    pub = _pub()
+    entries = [
+        {"id": "ch01", "region": "body", "kind": "chapter", "title": "一", "level": 1},
+        {"id": "ch02", "region": "body", "kind": "chapter", "title": "二", "level": 2},
+        {"id": "ch03", "region": "body", "kind": "chapter", "title": "三", "level": 3},
+        {"id": "ch04", "region": "body", "kind": "chapter", "title": "四", "level": 4},
+    ]
+    content = [
+        (f"{e['id']}.xhtml", render_document(e["title"], "正文。", lang="zh-CN")) for e in entries
+    ]
+    epub = build_epub(
+        pub,
+        entries,
+        content,
+        lang="zh-CN",
+        modified="2026-01-01T00:00:00Z",
+        out_path=tmp_path / "p.epub",
+        nav_depth=2,
+    )
+    # 未声明投影：ch03/ch04 未进目录 → 两条 E_TOC_COVERAGE
+    result = audit_epub(epub)
+    cov = [f for f in result.findings if f.code == "E_TOC_COVERAGE"]
+    assert len(cov) == 2 and all("未进目录" in f.message for f in cov)
+    # 声明投影豁免：通过；nav 幽灵条目检查不受影响
+    result2 = audit_epub(epub, nav_exempt={"ch03.xhtml", "ch04.xhtml"})
+    assert not [f for f in result2.findings if f.code == "E_TOC_COVERAGE"]
+    # 豁免集含非 spine 文档 → 报错（防止豁免集写错）
+    result3 = audit_epub(epub, nav_exempt={"ghost.xhtml"})
+    assert any("非 spine 文档" in f.message for f in result3.findings if f.code == "E_TOC_COVERAGE")
+
+
 def test_audit_meta_creator_with_attributes(tmp_path: Path) -> None:
     """S2 回归：build 输出的 <dc:creator id="creator-aut">（带属性）不得被误报缺失。"""
     epub = _make_epub(tmp_path)

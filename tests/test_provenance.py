@@ -74,7 +74,13 @@ def _make_workspace(
     return store, entries
 
 
-def _build(store: RunStore, entries: list[dict[str, Any]], *, drop: set[str] | None = None) -> Path:
+def _build(
+    store: RunStore,
+    entries: list[dict[str, Any]],
+    *,
+    drop: set[str] | None = None,
+    nav_depth: int = 3,
+) -> Path:
     content = []
     for e in entries:
         if drop and e["id"] in drop:
@@ -97,6 +103,7 @@ def _build(store: RunStore, entries: list[dict[str, Any]], *, drop: set[str] | N
         lang="zh-CN",
         modified="2026-01-01T00:00:00Z",
         out_path=out,
+        nav_depth=nav_depth,
     )
     return out
 
@@ -215,6 +222,26 @@ def test_provenance_toc_flat(tmp_path: Path) -> None:
     assert result.toc_flat
     assert any(f["code"] == "E_TOC_FLAT" for f in result.findings)
     assert result.toc_depths_expected == [1, 2] and result.toc_depths_nav == [1, 1]
+
+
+def test_provenance_nav_depth_projection(tmp_path: Path) -> None:
+    """目录投影：nav_depth 外的单元记入 nav_exempt，目录层级按投影后序列对账。"""
+    store, entries = _make_workspace(
+        tmp_path,
+        [
+            {"id": "ch01", "rel": "body/ch01.md", "md": "# 部\n\n甲。\n", "level": 1},
+            {"id": "ch02", "rel": "body/ch02.md", "md": "# 章\n\n乙。\n", "level": 2},
+            {"id": "ch03", "rel": "body/ch03.md", "md": "# 节\n\n丙。\n", "level": 3},
+        ],
+    )
+    epub = _build(store, entries, nav_depth=2)
+    # 不传 nav_depth：审计读产物内声明（build 写入 nav.xhtml 的 nav-depth meta）
+    result = audit_provenance(store, entries, epub)
+    assert result.nav_exempt == ["ch03.xhtml"]  # 投影剔除，交给 audit 豁免
+    assert result.toc_depths_expected == [1, 2]
+    assert result.toc_depths_nav == [1, 2]
+    assert not result.toc_depth_mismatch
+    assert not [f for f in result.findings if f["code"] in ("E_TOC_FLAT", "W_TOC_DEPTH")]
 
 
 def _audit_ok() -> Any:

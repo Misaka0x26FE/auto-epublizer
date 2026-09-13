@@ -562,20 +562,65 @@ def test_flat_toc_for_flat_source(tmp_path: Path) -> None:
     assert 'dtb:depth" content="1"' in ncx
 
 
-def test_footnote_semantics_global_numbering() -> None:
-    """脚注语义化：noteref/footnote + 跨单元全局连续编号 + 双向跳转（epub-template-spec §6）。"""
-    state = FootnoteState()
+def test_nav_depth_projection_and_cover_exclusion(tmp_path: Path) -> None:
+    """目录投影：nav_depth 之外的单元不进 nav/NCX（仍在 spine），封面单元不进目录。"""
+    pub = _pub()
+    entries = [
+        {"id": "cover", "region": "cover", "kind": "cover", "title": "封面", "level": 1},
+        {"id": "ch01", "region": "body", "kind": "chapter", "title": "第一部", "level": 1},
+        {"id": "ch02", "region": "body", "kind": "chapter", "title": "第一章", "level": 2},
+        {"id": "ch03", "region": "body", "kind": "chapter", "title": "第一节", "level": 3},
+        {"id": "ch04", "region": "body", "kind": "chapter", "title": "第一小节", "level": 4},
+        {"id": "ch05", "region": "body", "kind": "chapter", "title": "更深层", "level": 6},
+    ]
+    content = [
+        (f"{e['id']}.xhtml", render_document(e["title"], "正文。", lang="zh-CN")) for e in entries
+    ]
+    out = build_epub(
+        pub,
+        entries,
+        content,
+        lang="zh-CN",
+        modified="2026-01-01T00:00:00Z",
+        out_path=tmp_path / "p.epub",
+        nav_depth=3,
+    )
+    with zipfile.ZipFile(out) as zf:
+        nav = zf.read("OEBPS/nav.xhtml").decode("utf-8")
+        ncx = zf.read("OEBPS/toc.ncx").decode("utf-8")
+        opf = zf.read("OEBPS/content.opf").decode("utf-8")
+    # 投影内三级进目录；封面与超深单元（ch04/ch05）不进
+    assert "ch01.xhtml" in nav and "ch02.xhtml" in nav and "ch03.xhtml" in nav
+    assert "ch04.xhtml" not in nav and "ch05.xhtml" not in nav and "cover.xhtml" not in nav
+    assert "ch04.xhtml" not in ncx and "ch05.xhtml" not in ncx
+    assert 'dtb:depth" content="3"' in ncx
+    # 投影深度声明进 nav（qa 审计以此为准，避免配置漂移误报）
+    assert '<meta name="nav-depth" content="3"/>' in nav
+    # 深层单元仍在 spine 阅读顺序（投影只影响目录，不丢内容）
+    assert '<itemref idref="ch04.xhtml"' in opf and '<itemref idref="ch05.xhtml"' in opf
+
+
+def test_footnote_semantics_chapter_numbering() -> None:
+    """脚注语义化：noteref/footnote + [N] 注码 + 章内独立编号 + 双向跳转（epub-template-spec §6）。"""
     d1 = render_document(
-        "C1", "第一句[^1]。\n\n[^1]: 注甲", lang="zh-CN", unit_id="ch01", fn_state=state
+        "C1",
+        "第一句[^1]。第二句[^2]。\n\n[^1]: 注甲\n[^2]: 注乙",
+        lang="zh-CN",
+        unit_id="ch01",
+        fn_state=FootnoteState(),
     )
+    # 每章一份 FootnoteState：ch02 的 [^1] 从本章 1 起（不是全书第 3 条）
     d2 = render_document(
-        "C2", "第二句[^1]。\n\n[^1]: 注乙", lang="zh-CN", unit_id="ch02", fn_state=state
+        "C2", "第三句[^1]。\n\n[^1]: 注丙", lang="zh-CN", unit_id="ch02", fn_state=FootnoteState()
     )
-    # 章内：noteref → fn-1；章末 aside(footnote) 带 id 与回链
-    assert 'epub:type="noteref"' in d1 and 'href="#fn-1"' in d1
+    # 注码 [N] + 弹窗语义 + 回链
+    assert '<a epub:type="noteref" role="doc-noteref" id="ref-1" href="#fn-1">[1]</a>' in d1
+    assert '<a epub:type="noteref" role="doc-noteref" id="ref-2" href="#fn-2">[2]</a>' in d1
     assert 'epub:type="footnote"' in d1 and 'id="fn-1"' in d1 and 'href="#ref-1"' in d1
-    # 跨单元全局连续：ch02 的 [^1] 是全局第 2 条
-    assert 'href="#fn-2"' in d2 and 'id="fn-2"' in d2 and 'href="#ref-2"' in d2
+    assert "<p>[1] 注甲" in d1 and "<p>[2] 注乙" in d1
+    # 章内独立编号：ch02 同样是 fn-1/ref-1
+    assert 'href="#fn-1"' in d2 and 'id="fn-1"' in d2 and 'href="#ref-1"' in d2
+    assert "#fn-2" not in d2 and "<p>[1] 注丙" in d2
     # 字面标记不得残留
     assert "[^1]" not in d1 and "[^1]" not in d2
 

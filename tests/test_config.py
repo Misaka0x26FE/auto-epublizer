@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import pytest
+from pydantic import ValidationError
+
 from auto_common.config import Config, load_config
 
 
@@ -49,3 +52,14 @@ def test_snapshot_roundtrip() -> None:
     assert snap["language"]["target"] == "zh-CN"
     assert snap["qc"]["epubcheck"]["jar"].endswith("epubcheck.jar")
     assert "llm" not in snap
+
+
+def test_nav_depth_default_and_bounds() -> None:
+    """目录深度投影默认 3，合法范围 1–6（越界报配置错误）。"""
+    assert Config().output.nav_depth == 3
+    assert Config(output={"nav_depth": 1}).output.nav_depth == 1
+    assert Config(output={"nav_depth": 6}).output.nav_depth == 6
+    with pytest.raises(ValidationError):
+        Config(output={"nav_depth": 0})
+    with pytest.raises(ValidationError):
+        Config(output={"nav_depth": 7})

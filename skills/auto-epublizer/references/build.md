@@ -47,8 +47,12 @@ DC 元数据来自 `publication.json.meta`：`dc:title`、`dc:creator`、`dc:lan
   无具体字体名/颜色/字号（audit 会拦：`E_THEME_FONT`/`E_THEME_COLOR`）。
 - **封面**：cover 单元的首个图片自动成为 `cover-image`（`<meta name="cover">` +
   spine `linear="no"`）；无封面源图时 audit 提示 `W_NO_COVER`（provenance）。
-- **脚注**：`[^label]` → 标准弹窗注释（noteref/footnote），全书跨章全局连续编号 + 双向跳转。
-- **目录层级**：源文标题层级（`level`）→ nav 嵌套 `<ol>` + NCX 嵌套 navPoint（`dtb:depth`）。
+- **脚注**：`[^label]` → 标准弹窗注释（noteref/footnote），注码 `[N]`、**每章从 1 起**
+  独立编号 + 双向回链（不支持弹窗的阅读器退化为章末注释区）。
+- **目录层级**：源文标题层级（`level`）→ nav 嵌套 `<ol>` + NCX 嵌套 navPoint；
+  **目录深度投影**（`--nav-depth` / `config.output.nav_depth`，默认 3，1–6）：超出
+  深度的单元不进 nav/NCX（仍在 spine 阅读顺序、锚点保留），封面单元不进目录；
+  `dtb:depth` 为投影后实际深度。
 - **图片**：只缩不放大居中 + 断页（`page-break-inside: avoid`）；独立图段（alt 非空）→
   `figure+figcaption` 图注。
 - **语义标签**：引用 `>` → `blockquote`；诗行块 `|` → `p.verse`；`- `/`1. ` → `ul/ol`。

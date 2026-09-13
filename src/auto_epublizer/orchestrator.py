@@ -196,7 +196,13 @@ def _source_language(store: RunStore, pub: Any, entries: list[dict[str, Any]]) -
     return detected
 
 
-def convert(store: RunStore, *, output: str | None = None, theme: str | None = None) -> Path:
+def convert(
+    store: RunStore,
+    *,
+    output: str | None = None,
+    theme: str | None = None,
+    nav_depth: int | None = None,
+) -> Path:
     """仅转换：ingest + structure + build（源语言正文）。"""
     entries = ensure_structure(store)
     if not entries:
@@ -215,6 +221,7 @@ def convert(store: RunStore, *, output: str | None = None, theme: str | None = N
         event="convert_built",
         prefer_translation=False,
         theme=theme or Config().output.theme,
+        nav_depth=nav_depth,
     )
 
 
@@ -230,20 +237,22 @@ def _render_and_pack(
     event: str,
     prefer_translation: bool,
     theme: str = "standard",
+    nav_depth: int | None = None,
 ) -> Path:
     """构建内核（convert/build 共用）：渲染内容文档 + 收集媒体 + 打包 EPUB。
 
-    脚注语义化（epub-template-spec §6）：全书共享一个 FootnoteState，
-    ``[^label]`` 引用与定义渲染为标准弹窗注释（noteref/footnote），跨单元全局连续编号。
+    脚注语义化（epub-template-spec §6）：每单元一份 FootnoteState（章内独立编号，
+    注码 ``[N]``），``[^label]`` 引用与定义渲染为标准弹窗注释（noteref/footnote）。
     主题层（epub-template-spec §5）：``theme`` 选择预置排版主题。
+    目录投影（epub-template-spec §3）：``nav_depth`` 限制 nav/NCX 嵌套深度。
     封面：cover 单元的首个图片 → ``cover-image`` 属性 + spine ``linear="no"``。
     """
     from .build.html import FootnoteState
 
+    nav_depth = nav_depth if nav_depth is not None else Config().output.nav_depth
     out_path = Path(output) if output else store.output_dir / f"{pub.slug}{suffix}.epub"
     src_lang = _source_language(store, pub, entries)
     media_root = store.structured_dir / "raw" / "media"
-    fn_state = FootnoteState()
     content = []
     media: dict[str, bytes] = {}
     cover_media: str | None = None
@@ -292,7 +301,7 @@ def _render_and_pack(
                     md_text,
                     lang=lang,
                     unit_id=e["id"],
-                    fn_state=fn_state,
+                    fn_state=FootnoteState(),  # 每单元一份：章内独立编号
                 ),
             )
         )
@@ -306,6 +315,7 @@ def _render_and_pack(
         media_files=list(media.items()),
         theme=theme,
         cover_media=cover_media,
+        nav_depth=nav_depth,
     )
     for e in entries:
         store.set_unit_status(e["id"], "built")
@@ -334,7 +344,12 @@ def preprocess(store: RunStore, *, config: Config | None = None) -> dict[str, An
 
 
 def build(
-    store: RunStore, *, bilingual: bool = False, output: str | None = None, theme: str | None = None
+    store: RunStore,
+    *,
+    bilingual: bool = False,
+    output: str | None = None,
+    theme: str | None = None,
+    nav_depth: int | None = None,
 ) -> Path:
     """从译文（缺省回退源文）构建 EPUB；双语时输出 -bi.epub。"""
     pub = store.load_publication()
@@ -353,6 +368,7 @@ def build(
         event="built",
         prefer_translation=True,
         theme=theme or Config().output.theme,
+        nav_depth=nav_depth,
     )
 
 
@@ -648,11 +664,13 @@ def qa(
     epub = Path(epub_path) if epub_path else store.output_dir / f"{pub.slug}.epub"
     if not epub.is_file():
         raise OrchestrationError(f"成品不存在：{epub}；请先 build/convert")
-    audit = audit_epub(epub)
     jar = (config.qc.epubcheck.jar or None) if config is not None else None
     epubcheck = run_epubcheck(epub, jar_path=jar)
+    nav_depth = config.output.nav_depth if config is not None else Config().output.nav_depth
     entries = structure_entries(store)
-    provenance = audit_provenance(store, entries, epub)
+    # 先跑溯源审计拿到目录投影豁免集（与 build 同一 nav_depth），再解包结构审计
+    provenance = audit_provenance(store, entries, epub, nav_depth=nav_depth)
+    audit = audit_epub(epub, nav_exempt=set(provenance.nav_exempt))
     review_result = _latest_review_result(store)
     g0_flags = _collect_g0_flags(store, config)
     toc_missing = _toc_missing_from_facts(store, entries)
