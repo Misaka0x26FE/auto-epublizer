@@ -29,5 +29,5 @@
 | [2026-09-06-adoption-plan.md](2026-09-06-adoption-plan.md) | 已完成 | 跨项目审查借鉴吸收：S1 放行门加固+守恒接线 / S2 meta 命令+译者署名 / S3 发布 gate+invariants 速查卡+红线 / S4 源保真+表格守恒+SourceCatalog（4.3/4.5/4.6 归档，设计留存） |
 | [2026-09-11-epub-reader.md](2026-09-11-epub-reader.md) | 已完成 | EPUB 读取器：按 OPF spine 切分 + 非线性 spine 项（表格）内联 + 标题锚点清洗 |
 | [2026-09-13-toc-depth-footnotes.md](2026-09-13-toc-depth-footnotes.md) | 已完成（73b2230） | 标准输出模板：注释 `[N]` 章内编号 + 导航深度投影（`output.nav_depth`） |
-| [2026-09-13-semantic-repair.md](2026-09-13-semantic-repair.md) | 规划中 | 语义整备（agent 语义任务）：信号层（facts 可疑指标）+ 修复留痕（repairs.jsonl）+ 结构重建登记（restructure 命令） |
+| [2026-09-13-semantic-repair.md](2026-09-13-semantic-repair.md) | 已完成（841dedc / 4e83420 / 190e27b） | 语义整备（agent 语义任务）：信号层（facts 可疑指标）+ 修复留痕（repairs.jsonl）+ 结构重建登记（restructure 命令） |
 | [2026-09-13-delivery-audit.md](2026-09-13-delivery-audit.md) | 已完成（7041126 / ece1790 / c9ae1ba） | 交付审计：交付前全量完整性与可靠性校验（md↔align 一致性 + EPUB 媒体/脚注/段落呈现对账 + delivery.md 强制清单与记录） |
