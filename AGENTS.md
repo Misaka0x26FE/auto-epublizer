@@ -67,6 +67,11 @@ auto-epublizer import [--unit <id>] [--terms preprocessing/terms.csv] [--reviewe
                                  # reviewed（审校通过的显式登记；reviewed/built 跳过重导）
 auto-epublizer g0                # 翻译/导入后立即静态校验（术语命中为真实缺陷须逐条核验；长度比才是 advisory）
 
+# 5.5 语义整备（agent 任务，条件触发）：facts 有可疑信号、或 OCR/扫描件路径时，
+#     按 references/repair.md 对照 raw 证据修复 structured/ 并写 preprocessing/repairs.jsonl；
+#     单元边界重切/合并另写 preprocessing/structure.csv 后登记（S3）
+auto-epublizer restructure [--workspace <dir>]   # 登记重建的单元结构（同 id 未变保留状态）
+
 # 6. 审校（agent 任务）：agent 按 G1–G3 语义自行审校，写 reviews/review-<ts>/
 #    （issues/patches/summary/result.json；qa 从 result.json 读 g1/g2/g3 计数）
 
@@ -84,7 +89,8 @@ auto-epublizer status --json  # 查看进度/状态机/产物-状态对账
 仅转换不翻译：`auto-epublizer convert <input> -o output/book.epub`。
 
 **状态不变式**：语义产物由 agent 手写，`publication.json` 状态只经 CLI 命令推进
-（`import` 登记入口；审校产物 `result.json` 由 agent 手写、状态推进参照其契约），
+（`import` 登记翻译产物、`restructure` 登记单元边界重建——agent 手写产物进 CLI 的
+两个入口；审校产物 `result.json` 由 agent 手写、状态推进参照其契约），
 agent 不手工编辑；所有产物汇入同一套 G0 校验、状态机、术语闭环、构建与质检。
 
 ## skills/ 目录（面向下游 agent 的可安装指引）

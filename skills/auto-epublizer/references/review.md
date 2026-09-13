@@ -88,6 +88,9 @@ reviews/review-<ts>/
   `g4_epubcheck_errors == 0`（且 epubcheck 实际运行）；`g4_audit == "pass"`；
   溯源完整（`provenance_coverage ≈ 1.0`、三边对账/媒体溯源零缺失、目录层级不扁平、
   溯源 findings 无 error 级）。
+- **放行 ≠ 交付**：`qa released` 只代表已知契约全绿；交付前还须按
+  `references/delivery.md` 完成交付审计（独立对账 + 解包抽检 + 人肉核对 →
+  `reviews/delivery-<ts>.md` 记录）。
 
 ## 验收阈值（默认）
 
