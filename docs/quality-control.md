@@ -33,6 +33,9 @@ translator(强档)                 G0 零 token 静态校验 ── 不过则退
                                             │
                                             ▼
                                 G5 交付验收(质量报告 + 发布清单)
+                                            │
+                                            ▼
+                          交付审计(agent 门：独立对账 + 抽查 → delivery 记录)
 ```
 
 | 关 | 名称 | 时机 | 成本 | 可跳过 | 产出 |
@@ -43,6 +46,7 @@ translator(强档)                 G0 零 token 静态校验 ── 不过则退
 | G3 | 冲突仲裁 + 影子修订 + 盲复审 | G2 后循环 | strong | 是 | `patches` + 收敛判定 |
 | G4 | EPUB 结构 QA | `build` 后 | 0（epubcheck 本地） | 否 | 结构审计报告 |
 | G5 | 交付验收 | 发布前 | 0 | 否 | `report.json` + 发布清单 |
+| （附加） | 交付审计 | `qa released` 后、交付前 | 低（对账 + 抽样） | 否 | `reviews/delivery-<ts>.md` |
 
 ## 2. 关卡详细规格
 
@@ -57,6 +61,7 @@ translator(强档)                 G0 零 token 静态校验 ── 不过则退
 | 脚注标记守恒 | pandoc `[^label]`（引用+定义）与句末数字注码两种表示，src/tgt 总量一致 | 同上 |
 | 表格形状守恒 | structured 与 translation 的 md 管道表格：表数一致、逐表行列数一致（跳围栏、转义管道不计列） | 阻断该单元 import（坏表格直接进 build 产物） |
 | 源保真（fidelity） | align 每行 src 的规范化串必在 structured 全部非空行中（反向=硬，import 阻断）；structured 正文块必在 align src 拼接中（前向=advisory，合法剔除如版权残句不阻断） | 反向失配阻断；前向缺块告警 |
+| md↔align 一致性 | translation md（build 输入）与 align tgt（校验基准）归一化后一致（去标题/脚注定义/标记/空白；容错约定见 g0） | 不一致 = 一侧缺内容 → 阻断该单元 import（交付审计 S1.1） |
 | 长度比 | `len(tgt)/len(src)` 落在 `[0.30, 3.0]`；译文非空 | 告警，交 G1 复核 |
 | 术语命中 | 正文出现 glossary `source` 时，译文包含对应 `target`（NFKC 归一化 + 词边界） | 告警，交 G1 定责 |
 | 勘误留痕 | 句 src 命中已知排印讹误先例（IDG→IDF 等）→ align `note` 前缀 `corr:` | 留痕，不告警 |
@@ -123,6 +128,11 @@ Autofix（可选）：先写可恢复索引 `reviews/<ts>/autofix/index.json`，
   - DC 元数据缺失提示（`W_META_INCOMPLETE`）。
 - 溯源审计（`qa/provenance.py`，postprocessing-spec §2）：三边对账、媒体溯源、逐段覆盖率、
   目录层级——见 G5。
+- **成品呈现对账**（交付审计 S1.2，`qa/provenance.py`）：md 图片引用 ↔ 成品 `<img>`
+  （`E_MEDIA_EPUB_LOST`，封堵构建静默丢弃）、md 脚注定义数 ↔ 成品 `<aside>` 数
+  （`E_FN_EPUB_LOST`）、正文段落全量探针（`E_EPUB_PARA_LOST` + `epub_coverage`，
+  复用 build 同款渲染器）；md↔align 一致性兜底（`E_ALIGN_MD_DRIFT`）。构建期丢弃
+  引用写 `events.jsonl` 的 `media_dropped` 事件留痕。
 
 ### G5 交付验收（发布前）
 
@@ -153,9 +163,24 @@ Autofix（可选）：先写可恢复索引 `reviews/<ts>/autofix/index.json`，
   裁决写回 glossary.csv 前不放行）；
   `g4_epubcheck_errors == 0`；`g4_audit == "pass"`；溯源完整
   （`provenance_coverage ≈ 1.0`（无翻译产物为 null）、三边对账/媒体溯源零缺失、
-  `toc_flat == false`、溯源 findings 无 error 级）。
+  `toc_flat == false`、溯源 findings 无 error 级）；
+  成品呈现对账清零（**`align_md_drift == 0`、`epub_media_missing == 0`、
+  `epub_footnotes_missing == 0`、`epub_coverage ≈ 1.0`**，交付审计 S1）。
   G0 **长度比**告警是 advisory，不阻断（英→中长度比天然偏低，实测大量误报）；
   epubcheck 未运行（jar 缺失）视为未验证，不放行。
+
+### 交付审计（agent 门，qa released 后强制）
+
+`qa released=True` 只代表**已知契约**全绿。交付前按
+`skills/auto-epublizer/references/delivery.md` 执行独立全量校验并写
+`reviews/delivery-<ts>.md`：工具对账复核 → 解包抽查（首/中/尾 + 高风险章：正文
+探针/看图/脚注内容）→ 目录/封面/元数据人肉核对 → inserts 描述与未决项处置 →
+产物同步字节核对。发现缺陷走修复循环（修 → import → build → qa → 重新审计）。
+全部单元 built 后 qa 以 `W_DELIVERY_AUDIT_MISSING` 提示缺记录（warning 不阻断）。
+
+> 依据：真实交付案例——《俄国铁路史》工具 QA 全过，成品 72 张引用图仅收录 34 张
+> （译文正文丢图片段，工具守恒只查对照表）。成品校验必须独立做「源引用 ↔ 成品
+> 包含」对账，不能只依赖工具 QA。
 
 ## 3. 数据契约（落 `reviews/`）
 

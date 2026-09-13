@@ -1,6 +1,6 @@
 # 2026-09-13 交付审计：交付前全量完整性与可靠性校验
 
-状态：规划中
+状态：已完成（7041126 / ece1790 / c9ae1ba + 收尾回写）
 
 ## 背景：一次真实交付的手动完整性检验（案例复盘）
 
@@ -224,6 +224,33 @@ Conventional Commits。
   repairs.jsonl）；两者共同构成「修有痕、验有据」的闭环；
 - 建议实施顺序：**先本计划 S1**（对账自动化，立刻封堵成品缺口类缺陷），语义整备
   随后。
+
+## 验证记录
+
+- `uv run pytest -q`：**300 passed**（较立项前 287 净增 13：S1.1 md↔align 一致性
+  5 例、S1.2 EPUB 三对账 3 例 + 静默丢弃端到端 1 例、S1.4 交付提示 1 例、
+  report 聚合 1 例，其余为夹具修正）；
+- `uv run ruff check .` / `ruff format --check .`：通过；
+- 端到端封堵证明：`test_silent_media_drop_blocks_via_epub_reconciliation`——译文 md
+  引用 `raw/media/ghost.png` 但文件缺失 → build 丢弃（`events.jsonl` 记
+  `media_dropped`）→ `qa` 报 `E_MEDIA_EPUB_LOST` 且 `released=False`
+  （`released_reason=provenance_incomplete`）；
+- 提交切分：S1.1 = `7041126`；S1.2+S1.3 = `ece1790`；S1.4+S2 = `c9ae1ba`。
+
+### 实施偏差与备注
+
+1. **一致性校验增加容错约定**（计划外细化）：`md_align_drift` 剔除与单元 title 对应
+   的 align 行（align 常含标题行，而 md 的 h1 由 build 从单元 title 渲染）；align
+   不含脚注定义行时 md 定义块整段忽略（「align 只收句级正文」的约定），align 含
+   定义行时严格比对定义文本。防误阻断。
+2. **交付审计不编入 G6**：项目「六道关 G0–G5」是既有品牌（README/AGENTS 多处引用），
+   交付审计定位为「G5 之后、交付之前的 agent 门（附加）」；`quality-control.md`
+   总览表标注「（附加）」。
+3. **段落探针复用 build 渲染器**：`_probe_missing` 直接调用 `markdown_to_xhtml`
+   逐块渲染后剥标签比对，保证 md→XHTML 的一切变换（标记清理/内联/表格/verse）与
+   build 完全一致，避免自行实现归一化造成的假阳性。
+4. 经验沉淀：`skills/auto-epublizer/lessons/2026-09-13-delivery-integrity.md`
+   （判据/处置/验证三段式）+ lessons 索引。
 
 ## 已知边界与后续扩展点
 

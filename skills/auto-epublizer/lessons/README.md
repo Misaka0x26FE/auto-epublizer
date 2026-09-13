@@ -34,6 +34,7 @@
 | [2026-09-06-conservation-total-only.md](2026-09-06-conservation-total-only.md) | 守恒类 G0 校验必须做单元级总量比对（行级比对被拆并句误报）；源保真用规范化拼接子串匹配 | 已落地（review/g0.py + review/fidelity.py） |
 | [2026-09-11-epub-nonlinear-spine-tables.md](2026-09-11-epub-nonlinear-spine-tables.md) | EPUB 非线性 spine 项（表格）被 pandoc 跳过 + 标题锚点残留 + 前置辅文切碎 → 按 OPF spine 切分并内联非线性项 | 已修复（ingest/epub_reader.py + test_epub_reader.py） |
 | [2026-09-12-epub-internal-links-anchors.md](2026-09-12-epub-internal-links-anchors.md) | EPUB 内部链接/页码锚点/标题 id 带 pandoc 源文件前缀 → 按 spine 映射重写为成品单元（跨单元链接 / 同单元纯锚点） | 已修复（structure/links.py + build/html.py + ingest/epub_reader.py） |
+| [2026-09-13-delivery-integrity.md](2026-09-13-delivery-integrity.md) | 工具 QA 全过仍缺 38/72 张图（译文正文丢图片段，守恒只查 align）→ 交付审计独立对账 + 以 align 重建 + 全量重验 | 已落地（qa/provenance.py 对账自动化 + references/delivery.md 强制清单） |
 
 ## 来源与去向（经验怎么进这里）
 
