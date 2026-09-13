@@ -103,3 +103,48 @@ def test_terminology_hit_uses_alias() -> None:
     # 源文排印讹误 IDG 命中别名，译文缺 target 报违例
     hits = terminology_hits("the IDG", "该组织", g)
     assert hits and hits[0].source == "IDF"
+
+
+def test_terminology_hit_normalizes_fullwidth_target() -> None:
+    """回归（issue #4）：target 含全角括号，译文用 NFKC 半角形式 → 不误报。"""
+    g = Glossary([_entry("交通部", "交通（道路）部", type="org", status=STATUS_CONFIRMED)])
+    hits = terminology_hits("交通部负责修建", "交通(道路)部负责修建", g)
+    assert hits == []
+
+
+def test_terminology_hit_missing_fullwidth_target_still_reported() -> None:
+    """target 归一化后仍缺失 → 真实违例照报（不得因归一化漏报）。"""
+    g = Glossary([_entry("交通部", "交通（道路）部", type="org", status=STATUS_CONFIRMED)])
+    hits = terminology_hits("交通部负责修建", "该部门负责修建", g)
+    assert len(hits) == 1
+    assert hits[0].expected == "交通（道路）部"
+
+
+def test_terms_in_text_normalizes_fullwidth_candidates() -> None:
+    """回归（issue #4）：术语 source/alias 含全角括号，正文 NFKC 形式应命中。"""
+    g = Glossary(
+        [
+            _entry("交通（道路）部", "铁道部", type="org"),
+            _entry("Railway Board", "铁路局", type="org", aliases=["（军事）动员"]),
+        ]
+    )
+    assert {e.source for e in terms_in_text("交通(道路)部发布命令", g)} == {"交通（道路）部"}
+    assert {e.source for e in terms_in_text("负责(军事)动员工作", g)} == {"Railway Board"}
+
+
+def test_terminology_hit_normalizes_fullwidth_alias() -> None:
+    """别名含全角形式时，源侧（NFKC 后）也须命中。"""
+    g = Glossary(
+        [
+            _entry(
+                "Railway Board",
+                "铁路局",
+                type="org",
+                aliases=["交通（道路）部"],
+                status=STATUS_CONFIRMED,
+            )
+        ]
+    )
+    hits = terminology_hits("交通(道路)部发布命令", "未用确认译法", g)
+    assert len(hits) == 1
+    assert hits[0].source == "Railway Board"

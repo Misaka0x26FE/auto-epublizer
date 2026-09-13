@@ -30,13 +30,18 @@ class TerminologyHit:
 
 
 def terms_in_text(text: str, glossary: Glossary) -> list[GlossaryEntry]:
-    """返回正文实际出现的术语条目（含 source 与别名命中）。"""
+    """返回正文实际出现的术语条目（含 source 与别名命中）。
+
+    source/alias 与正文一致做 NFKC 归一化后匹配（回归 issue #4：术语含全角
+    括号、正文为半角形式时曾漏命中）。
+    """
     normalized = normalize(text)
     if not normalized:
         return []
     seen: dict[str, GlossaryEntry] = {}
     for entry in glossary.entries():
         for candidate in [entry.source, *entry.aliases]:
+            candidate = normalize(candidate)
             if not candidate:
                 continue
             if _boundary_pattern(candidate).search(normalized):
@@ -45,7 +50,11 @@ def terms_in_text(text: str, glossary: Glossary) -> list[GlossaryEntry]:
 
 
 def terminology_hits(src: str, tgt: str, glossary: Glossary) -> list[TerminologyHit]:
-    """源句出现术语 source（或其别名），译文缺失对应 target 时报违例（G0 术语命中）。"""
+    """源句出现术语 source（或其别名），译文缺失对应 target 时报违例（G0 术语命中）。
+
+    source/alias/target 与正文一致做 NFKC 归一化后比较（回归 issue #4：
+    target 含全角括号时与归一化后的译文形式不一致，曾全部误报）。
+    """
     src_norm = normalize(src)
     tgt_norm = normalize(tgt)
     if not src_norm or not tgt_norm:
@@ -55,15 +64,15 @@ def terminology_hits(src: str, tgt: str, glossary: Glossary) -> list[Terminology
     for entry in glossary.entries():
         if entry.source in seen:
             continue
-        target = entry.target
+        target = normalize(entry.target)
         if not target:
             continue
-        candidates = [entry.source, *entry.aliases]
-        matched = any(c and _boundary_pattern(c).search(src_norm) for c in candidates)
+        candidates = [c for c in (normalize(x) for x in [entry.source, *entry.aliases]) if c]
+        matched = any(_boundary_pattern(c).search(src_norm) for c in candidates)
         if not matched:
             continue
         seen.add(entry.source)
         # 译文须含确认译法（按词边界）；缺失即违例
         if not _boundary_pattern(target).search(tgt_norm):
-            hits.append(TerminologyHit(source=entry.source, expected=target, found=None))
+            hits.append(TerminologyHit(source=entry.source, expected=entry.target, found=None))
     return hits
