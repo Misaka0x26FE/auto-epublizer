@@ -96,6 +96,20 @@ def test_terms_in_text_filters_by_occurrence() -> None:
     assert "Jay Gatsby" not in found
 
 
+def test_terminology_hit_word_boundary_cyrillic() -> None:
+    """回归：俄文术语不得命中更长词的内部（СС ⊄ СССР/АССР/КФССР）。
+
+    旧实现以 ``[A-Za-z0-9]`` 为词边界，西里尔字母不算边界字符 → 短术语（СС/СД 等）
+    在全书中产生成批误报（实测一卷 2,440 处）。
+    """
+    g = Glossary([_entry("СС", "党卫队", type="org", status=STATUS_CONFIRMED)])
+    assert terminology_hits("АССР и СССР", "自治共和国与苏联", g) == []
+    hits = terminology_hits("подразделения СС вели бой", "党卫队部队在战斗", g)
+    assert hits == []
+    hits = terminology_hits("подразделения СС вели бой", "部队在战斗", g)
+    assert len(hits) == 1 and hits[0].expected == "党卫队"
+
+
 def test_terminology_hit_uses_alias() -> None:
     g = Glossary(
         [_entry("IDF", "以色列国防军", type="org", aliases=["IDG"], status=STATUS_CONFIRMED)]
