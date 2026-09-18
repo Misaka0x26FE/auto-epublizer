@@ -1,189 +1,231 @@
-# Preprocessing（预处理：事实收集 + agent 理解撰写）
+<!-- i18n: source=preprocessing.zh.md sha256=34cf7bbc0c6575af93a3717ee34132a459a063c9bdf6aafaf67068adc61f9e96 -->
+> **English** | [中文](preprocessing.zh.md)
 
-预处理是**agent 任务**：CLI 只产出零 token 事实（`preprocessing/facts.json` / `facts.md`），
-方案决策与分层理解由你（agent）用自身能力撰写。全部产物落在 `preprocessing/`。
+# Preprocessing (fact collection + agent-authored understanding)
 
-## 1. 跑事实收集
+Preprocessing is an **agent task**: the CLI only produces zero-token facts
+(`preprocessing/facts.json` / `facts.md`); approach decisions and layered understanding
+are written by you (the agent) with your own capabilities. All artifacts land in
+`preprocessing/`.
+
+## 1. Run fact collection
 
 ```bash
-# 新书（= init + 事实收集：嗅探/元数据/TOC/体检/规模）
+# New book (= init + fact collection: sniffing/metadata/TOC/health check/size)
 auto-epublizer preprocess <input> [--reference <path...>] [--target zh-CN]
-# 已有工作区（幂等刷新 facts）
+# Existing workspace (idempotent refresh of facts)
 auto-epublizer preprocess
 ```
 
-`facts.md` 包含：源文件类型与嗅探结果（DRM/文字层/扫描件判定/乱码率）、DC 元数据、
-目录 TOC、规模统计（单元/词数/句数/token 粗估）、内容体检、环境能力快照（doctor）、
-确定性路由提示，以及 **agent 待办清单**。
+`facts.md` contains: source file type and sniffing results (DRM/text layer/scanned-copy
+detection/garbled-character rate), DC metadata, table of contents TOC, size statistics
+(units/words/sentences/rough token estimate), content health check, environment
+capability snapshot (doctor), deterministic routing hints, and the **agent to-do list**.
 
-## 1.1 能力自报（capabilities.md）
+## 1.1 Capability self-report (capabilities.md)
 
-CLI 探测不到的五维能力边界，由你（agent）开工前自报，写 `preprocessing/capabilities.md`：
+The five-dimension capability boundary that the CLI cannot probe is self-reported by you
+(the agent) before starting work, written to `preprocessing/capabilities.md`:
 
-| 维度 | 自报内容 | 影响 |
+| Dimension | Self-report content | Impact |
 |---|---|---|
-| agent 自身能力 | multimodal（能否看图）、search（是否有网络搜索工具） | 扫描 PDF 视觉兜底 / 背景知识补齐路由 |
-| agent 模型 | 模型 ID、上下文窗口、是否视觉模型 | 单次可处理的书内容量、是否可走多模态 |
-| OS 环境 | 本机可达的 CLI 工具（doctor 已探测部分） | ingest/OCR 路由 |
-| 外部 API 边界 | 可用外部解析 API（MinerU key）、网络可达 | 解析/检索可用性 |
-| 待处理文件工作量 | 规模粗估（facts 有 token 粗估）、难点预估 | 切分与分阶段计划 |
+| Agent's own capabilities | multimodal (can it look at images), search (does it have a web search tool) | Scanned PDF visual fallback / background-knowledge completion routing |
+| Agent model | Model ID, context window, whether it is a vision model | Amount of book content processable per pass, whether multimodal can be used |
+| OS environment | Locally reachable CLI tools (the part doctor already probed) | ingest/OCR routing |
+| External API boundary | Available external parsing API (MinerU key), network reachability | Parsing/retrieval availability |
+| Workload of files to process | Rough size estimate (facts has a rough token estimate), difficulty estimate | Splitting and phased plan |
 
-`multimodal` / `search` 也可从 `facts.md` 的「环境能力快照」里确认（CLI 探测不到的显示
-「待 agent 自报」）。
+`multimodal` / `search` can also be confirmed from the "environment capability snapshot"
+in `facts.md` (what the CLI cannot probe shows "awaiting agent self-report").
 
-## 1.2 背景知识补齐（Plan B 路由）
+## 1.2 Background-knowledge completion (Plan B routing)
 
-翻译前若缺少背景知识（专名、史实、文化背景、可疑 OCR 文本），按此路由：
+Before translation, if background knowledge is missing (proper names, historical facts,
+cultural background, suspicious OCR text), route as follows:
 
-1. **有网络搜索工具**（自报 search=true）：自行检索，结果与来源记入 `references/web/`
-   （URL、标题、时间），追加到 `references/index.jsonl`；
-2. **无搜索工具**：明确询问用户，将用户提供的材料放 `references/user/`；
-3. 两者都没有时不强行补；把缺口写进 `risks.md` 留待翻译/审校时处理。
+1. **With a web search tool** (self-reported search=true): search on your own, record
+   results and sources in `references/web/` (URL, title, time), append to
+   `references/index.jsonl`;
+2. **Without a search tool**: explicitly ask the user, and place the material the user
+   provides in `references/user/`;
+3. If neither is available, do not force completion; write the gap into `risks.md` to be
+   handled during translation/review.
 
-## 2. 按待办依次撰写（全部写在 `preprocessing/`）
+## 2. Write in to-do order (all written under `preprocessing/`)
 
-### 1.2 元数据核对（facts 待办首项；`meta` 命令写回）
+### 1.2 Metadata verification (first facts to-do item; written back by the `meta` command)
 
-facts 嗅探的元数据（title/creator/publisher/date/rights）只是**推断**——源文件自带
-metadata 常错、常缺、常乱码。开工第一步：对照源文版权页/题录逐项核实（存疑处
-询问用户），确认/补全后写回：
+The metadata sniffed by facts (title/creator/publisher/date/rights) is only an
+**inference** — metadata carried by the source file is often wrong, often missing, often
+garbled. First step of the work: verify item by item against the source copyright
+page/bibliographic record (ask the user where in doubt), and after confirming/completing,
+write back:
 
 ```bash
 auto-epublizer meta --publisher "..." --date "..." --rights "..."
 ```
 
-**译者署名默认规则**：用户无特殊说明时，译者 = 你的 agent 框架名称
-（opencode 处理写 `OpenCode`，豆包处理写 `DouBao`，以此类推）；用户指定名优先。
+**Default rule for translator credit**: when the user gives no special instruction, the
+translator = your agent framework name (OpenCode writes `OpenCode`, DouBao writes
+`DouBao`, and so on); a name specified by the user takes priority.
 
 ```bash
 auto-epublizer meta --translator OpenCode
 ```
 
-署名随 build 进入 EPUB 元数据（`dc:creator` + `role=trl`）；QA 期的
-`W_META_INCOMPLETE` 应在预处理期已被本步骤消化。
+The credit enters the EPUB metadata along with build (`dc:creator` + `role=trl`); the
+`W_META_INCOMPLETE` of the QA phase should already have been handled by this step during
+preprocessing.
 
-### 2.0 `todo.md`（任务细化清单——开工第一件，贯穿全程）
+### 2.0 `todo.md` (detailed task list — the first thing to do, running through the whole process)
 
-**要求**：读 facts 后、动手翻译前，把「处理这本书要做的每一个动作」细化成可勾选
-任务清单。粒度要小到**不用思考就能照做**：每一单元一项（阅读 structured → 写
-translation + align → import → g0）、每 3–5 单元一项 build 校验、审校/质检/交付
-各阶段逐项列出。翻译全程**每完成一项就勾掉一项**，并随进展追加/修正。
+**Requirement**: after reading facts and before starting translation, break "every action
+needed to process this book" down into a checkable task list. The granularity must be
+small enough that **it can be followed without thinking**: one item per unit (read
+structured → write translation + align → import → g0), one build validation every 3–5
+units, and each review/QA/delivery phase listed item by item. Throughout translation,
+**check off one item each time one is completed**, and append/correct as progress is made.
 
-模板（可在此基础按书增删，如按「部/章/行间」分组、附预计 token 或词数）：
+Template (add or remove items on this basis according to the book, e.g. group by
+"part/chapter/interlude", attach estimated tokens or word counts):
 
 ```markdown
-# todo.md（逐细节任务清单）
+# todo.md (detailed task list)
 
-> 开工第一件产物。完成一项勾一项（- [x]）；新任务追加到对应阶段。
-> 与 status --json / publication.json 状态机配合，杜绝「以为做了其实没做」。
+> The first artifact of the work. Check off one item each time one is completed (- [x]); append new tasks to the corresponding phase.
+> Works together with the status --json / publication.json state machine to prevent "thinking it was done when it was not".
 
-## 0. 预处理理解（facts 之后）
-- [ ] capabilities.md：自报五维能力边界
-- [ ] plan.md：方案决策（路由 + 依据 + 工作量）
-- [ ] global.md：全局理解
-- [ ] units/<id>.md：逐章理解
-- [ ] terms.csv：术语预提取 + import --terms
+## 0. Preprocessing understanding (after facts)
+- [ ] capabilities.md: self-report the five-dimension capability boundary
+- [ ] plan.md: approach decisions (route + basis + workload)
+- [ ] global.md: global understanding
+- [ ] units/<id>.md: per-chapter understanding
+- [ ] terms.csv: terminology pre-extraction + import --terms
 - [ ] risks.md + report.md
 
-## 0.5 语义整备（信号触发；OCR/扫描件路径必做）
-- [ ] 读 facts.md「可疑信号」表，逐单元核对/修复 structured/（references/repair.md）
-- [ ] 写 preprocessing/repairs.jsonl（每项修复留痕；无法确定写 unresolved）
-- [ ] 重切/合并单元时写 preprocessing/structure.csv + 跑 restructure
+## 0.5 Semantic repair (signal-triggered; mandatory on the OCR/scanned-copy path)
+- [ ] Read the "suspicious signals" table in facts.md, check/repair structured/ unit by unit (references/repair.md)
+- [ ] Write preprocessing/repairs.jsonl (leave a trace for every repair; write unresolved when undecidable)
+- [ ] When re-splitting/merging units, write preprocessing/structure.csv + run restructure
 
-## 1. 单元翻译（每单元：读 structured → 写 translation + align → import --unit → g0 --unit）
-- [ ] ch01 <标题>（约 N 段）
-- [ ] ch02 <标题>
-- [ ] …（按 48 单元 / 25 章逐一列出）
+## 1. Unit translation (per unit: read structured → write translation + align → import --unit → g0 --unit)
+- [ ] ch01 <title> (about N paragraphs)
+- [ ] ch02 <title>
+- [ ] ... (list one by one across 48 units / 25 chapters)
 
-## 2. 过程校验（每译 3–5 单元一次）
-- [ ] build 一次，验证格式契约（图片段 / 空行 / 转义 / 目录层级）
-- [ ] 解包抽查：插图、目录、标题
+## 2. In-process validation (once every 3–5 units translated)
+- [ ] build once, validate the format contract (image segments / blank lines / escaping / TOC hierarchy)
+- [ ] Unpack and spot-check: illustrations, TOC, headings
 
-## 3. 审校（G1–G3）
-- [ ] 逐批审校，写 reviews/review-<ts>/{issues,patches,summary,result.json}
-- [ ] 术语冲突外置 glossary_conflicts.jsonl 逐条裁决写回 glossary.csv
-- [ ] 双语版 build（--bilingual）抽查，重点核省略号收尾段落
+## 3. Review (G1–G3)
+- [ ] Review batch by batch, write reviews/review-<ts>/{issues,patches,summary,result.json}
+- [ ] Externalize terminology conflicts to glossary_conflicts.jsonl, arbitrate item by item and write back to glossary.csv
+- [ ] Spot-check the bilingual build (--bilingual), focusing on ellipsis-ending paragraphs
 
-## 4. 封装与质检（G4–G5）
-- [ ] build 全量 EPUB
-- [ ] qa：epubcheck 0 error + 审计 pass + G0 术语命中清零
-- [ ] 核对 status --json 无 stale、目录层级与源文一致
-- [ ] 交付：产物落 output/ + 记录 events
+## 4. Build and QA (G4–G5)
+- [ ] build the full EPUB
+- [ ] qa: epubcheck 0 error + audit pass + G0 terminology hits cleared
+- [ ] Check that status --json has no stale, and the TOC hierarchy matches the source book
+- [ ] Delivery: artifacts land in output/ + record events
 ```
 
-### 2.0b `repairs.jsonl` + 语义整备（条件触发）
+### 2.0b `repairs.jsonl` + semantic repair (conditionally triggered)
 
-facts.md「可疑信号（语义整备线索）」表命中时（OCR/扫描件路径无论有无信号都应做），
-按 `references/repair.md` 对照 `raw/` 证据修复 `structured/`，并把每个修复动作写入
-`preprocessing/repairs.jsonl`（契约见 repair.md；`unresolved` 项 qa 会提示）。
-信号是线索不是缺陷——判断与处置由你（agent）完成，**不要写启发式修复脚本**。
+When a row in the "suspicious signals (semantic-repair clues)" table of facts.md is hit
+(the OCR/scanned-copy path should do this whether or not there is a signal), follow
+`references/repair.md` to repair `structured/` against the evidence in `raw/`, and write
+every repair action into `preprocessing/repairs.jsonl` (contract in repair.md;
+`unresolved` items are flagged by qa).
+A signal is a clue, not a defect — judgement and handling are done by you (the agent),
+**do not write heuristic repair scripts**.
 
-若修复伴随单元边界重切/合并：写 `preprocessing/structure.csv` 后运行
-`auto-epublizer restructure` 登记（状态机回退语义见 `references/structure.md`）。
+If the repair is accompanied by re-splitting/merging of unit boundaries: write
+`preprocessing/structure.csv` and then run `auto-epublizer restructure` to register it
+(for state-machine rollback semantics see `references/structure.md`).
 
-### 2.1 `plan.md`（方案决策）
+### 2.1 `plan.md` (approach decisions)
 
-输入：facts.md（源类型/体检/能力快照/路由提示）+ `references/ingest.md` 决策表。
-写明：选择的 ingest 路由（pandoc / 按页切片 / 扫描件路由：**MinerU API 最优先——
-无 key 时先询问用户是否有**；无 key 才退传统 OCR/rapidocr + 逐页阅读兜底）及
-**依据**；扫描件时明确 OCR 或逐页阅读的执行方式（含工作量估算：页数 × 逐页阅读
-成本）；DRM/损坏等阻断问题在此升级给用户。
+Input: facts.md (source type/health check/capability snapshot/routing hints) +
+the decision table in `references/ingest.md`.
+State clearly: the chosen ingest route (pandoc / page slicing / scanned-copy route:
+**MinerU API first — when there is no key, first ask the user whether they have one**;
+only without a key fall back to traditional OCR/rapidocr + page-by-page reading) and the
+**basis** for it; for scanned copies, specify how OCR or page-by-page reading will be
+executed (including workload estimate: page count × cost of page-by-page reading); blocking
+problems such as DRM/corruption are escalated to the user here.
 
-### 2.2 `global.md`（全局理解）
+### 2.2 `global.md` (global understanding)
 
-主要内容、中心思想、语言风格（语域/语气/句式偏好）、叙事结构（人称/时态/跨章依赖）、
-文体判定（novel/academic/paper/poetry/newspaper，参照 `references/style.md`）。
-这是翻译上下文的来源之一（agent 翻译时在 `analysis/` 缺失的情况下回退读本文件）。
+Main content, central idea, language style (register/tone/sentence-pattern preference),
+narrative structure (person/tense/cross-chapter dependencies), genre determination
+(novel/academic/paper/poetry/newspaper, see `references/style.md`).
+This is one of the sources of translation context (when `analysis/` is missing, the agent
+falls back to reading this file during translation).
 
-### 2.3 `units/<id>.md`（章节理解）
+### 2.3 `units/<id>.md` (chapter understanding)
 
-每个单元一份：本章梗概/思想推进/登场人物/术语注意/与其他章的衔接。
-同样作为 agent 翻译的章级上下文（fallback 顺序同上）。
+One per unit: this chapter's summary/development of ideas/characters appearing/terminology
+notes/connection with other chapters.
+It likewise serves as chapter-level context for agent translation (fallback order as above).
 
-### 2.4 `terms.csv`（术语预提取）
+### 2.4 `terms.csv` (terminology pre-extraction)
 
-列格式与 `glossary.csv` 权威列一致：
+The column format is identical to the authoritative columns of `glossary.csv`:
 `source,target,type,aliases,gender,reading,status,note`
-覆盖：人名/地名/机构/专名、source-only 口癖/称谓/固定表达、缩写与已知勘误先例。
-翻译前导入术语库：`auto-epublizer import --terms preprocessing/terms.csv`。
+Coverage: personal names/place names/institutions/proper names, source-only verbal
+tics/forms of address/fixed expressions, abbreviations and known erratum precedents.
+Import the terminology store before translation:
+`auto-epublizer import --terms preprocessing/terms.csv`.
 
-### 2.5 `risks.md`（风险标注）
+### 2.5 `risks.md` (risk annotation)
 
-多语片段/诗歌/双关/文化梗、长难句与术语密集段、预期术语冲突、
-扫描件 OCR 难页清单。供翻译与审校重点关注。
+Multilingual passages/poetry/puns/cultural references, long difficult sentences and
+terminology-dense passages, expected terminology conflicts,
+list of difficult OCR pages of scanned copies. For translation and review to focus on.
 
-### 2.6 `report.md`（汇总）
+### 2.6 `report.md` (summary)
 
-以上各件的提炼合并，是「翻译前输入锚点」：一张表回答
-「用什么方案、全书讲什么、风格怎么定、术语怎么统一、风险在哪、规模多大」。
+The distilled merge of the above items; it is the "pre-translation input anchor": one
+table that answers "which approach to use, what the whole book is about, how the style is
+set, how terminology is unified, where the risks are, how big the scale is".
 
-### 2.7 `catalog.csv`（可选：源内容盘点）
+### 2.7 `catalog.csv` (optional: source content inventory)
 
-目录完整性契约：逐项声明源内容去向——`included`（已收录，unit_id 必填）、
-`physical`（护封/腰封/书脊等实体元素，有意不进 EPUB）、`excluded`（有意排除，
-note 必填理由）、`unresolved`（未决，**qa 阻断放行**）。与 provenance 互补：
-catalog 管「源侧有没有漏收」，provenance 管「译侧有没有漏译」。
-facts 待办有该项时建议写；不写则全部检查跳过。
+Table-of-contents completeness contract: declare the destination of each item of source
+content — `included` (included, unit_id required), `physical` (physical elements such as
+dust jacket/belly band/spine, intentionally not in the EPUB), `excluded` (intentionally
+excluded, note must give the reason), `unresolved` (undecided, **qa blocks release**).
+Complementary to provenance: catalog governs "whether anything was missed on the source
+side", provenance governs "whether anything was untranslated on the translation side".
+When the facts to-do list has this item, it is recommended to write it; if not written,
+all checks are skipped.
 
-## 3. 完成判据
+## 3. Completion criteria
 
-- `auto-epublizer status --json` 的 `preprocessing_complete == true`
-  （facts + todo.md + global.md + capabilities.md 四者齐备）
-  且不再有 `preprocessing_plan_missing` stale 提示。
-- **todo.md 必须生成**：逐细节任务清单已列出全部单元翻译项与阶段校验项
-  （这是后续翻译/审校/交付的全程工作锚点）。
-- capabilities/plan/global/units/terms/risks/report 七类产物齐备
-  （小书可合并风险与报告，但 capabilities/plan/global/terms 必备）。
+- `preprocessing_complete == true` in `auto-epublizer status --json`
+  (facts + todo.md + global.md + capabilities.md all four present)
+  and no more `preprocessing_plan_missing` stale hint.
+- **todo.md must be generated**: the detailed task list has listed all unit translation
+  items and phase validation items
+  (this is the whole-process work anchor for subsequent translation/review/delivery).
+- The seven artifact types capabilities/plan/global/units/terms/risks/report are all
+  present (for small books risks and report may be merged, but
+  capabilities/plan/global/terms are required).
 
-## 4. 与 analysis 的关系
+## 4. Relationship with analysis
 
-- 理解层由你撰写：可写 `preprocessing/`（plan/global/units/terms/risks/report），
-  也可写 `analysis/`（overview/global/units/keypoints/style/glossary，见
-  `references/analysis.md`）——两者都作为翻译/审校的上下文读取源，`analysis/` 优先。
-- `preprocess` 只产零 token 事实与待办清单；不做任何语义生成。
+- The understanding layer is written by you: you may write `preprocessing/`
+  (plan/global/units/terms/risks/report), or write `analysis/`
+  (overview/global/units/keypoints/style/glossary, see `references/analysis.md`) — both
+  are read as context sources for translation/review, with `analysis/` taking priority.
+- `preprocess` only produces zero-token facts and the to-do list; it performs no semantic
+  generation.
 
-## 注意事项
+## Notes
 
-- `preprocessing/facts.*` 由 CLI 幂等生成，**不要手工编辑**；其余文件是你写的智能产物。
-- facts 里的「路由提示」是确定性结论，不是决策；最终方案以 plan.md 为准。
-- 规模 token 为粗估（chars/2），仅用于规划，非计费依据。
+- `preprocessing/facts.*` is generated idempotently by the CLI, **do not edit it by hand**;
+  the other files are intelligent artifacts written by you.
+- The "routing hints" in facts are deterministic conclusions, not decisions; the final
+  approach is governed by plan.md.
+- The scale token figure is a rough estimate (chars/2), used for planning only, not a
+  billing basis.

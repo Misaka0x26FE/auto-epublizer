@@ -1,89 +1,115 @@
-# Repair（语义整备：解析缺陷 / OCR 修正 / 结构重切）
+<!-- i18n: source=repair.zh.md sha256=fa40649653ee5aa682077a956e61223b1d051ac4bcb6089da78662d4e818b5bc -->
+> **English** | [中文](repair.zh.md)
 
-> **定位**：凡「靠语言理解才能判对」的源文本问题，都是你的活，不是脚本的活。
-> 信号由 `facts.md`「可疑信号」给出（`references/preprocessing.md` §2.0b）；本手册
-> 给「读什么证据 → 怎么修 → 怎么留痕 → 怎么自查」。
-> **规范**：`docs/semantic-repair.md`（场景全清单与反模式）。
+# Repair (semantic repair: parse defects / OCR correction / structural re-split)
 
-## 何时做
+> **Positioning**: any source-text problem that "can only be judged correctly through
+> language understanding" is your job, not the script's job. Signals are given by the
+> "suspicious signals" table in `facts.md` (`references/preprocessing.md` §2.0b); this
+> manual gives "what evidence to read → how to repair → how to leave a trace → how to
+> self-check".
+> **Spec**: `docs/semantic-repair.md` (full scenario list and anti-patterns).
 
-- **信号触发**：facts.md 有「可疑信号」表 → 逐单元核对修复；
-- **OCR / 扫描件路径**：无论有无信号都做一遍（传统 OCR 的换行/误识是必然项）；
-- **MinerU 层级乱**：标题层级混乱、单元边界需要重切（走 restructure）；
-- **翻译/审校回流**：翻译中发现缺句/重复/语义不通，定位回源（窗口 F）。
+## When to do it
 
-## 证据在哪（先看证据再动手）
+- **Signal-triggered**: facts.md has a "suspicious signals" table → verify and repair unit
+  by unit;
+- **OCR / scanned-copy route**: do it once whether or not there is a signal (line breaks
+  and misrecognitions of traditional OCR are inevitable items);
+- **MinerU messy hierarchy**: heading hierarchy is chaotic and unit boundaries need
+  re-splitting (go through restructure);
+- **Translation/review backflow**: a missing sentence/duplication/incoherent meaning is
+  found during translation, locate it back to the source (window F).
 
-| 证据 | 位置 | 用途 |
+## Where the evidence is (look at the evidence before acting)
+
+| Evidence | Location | Purpose |
 |---|---|---|
-| 逐页文本块（含 bbox/OCR 标记） | `structured/raw/page-NNN.json` | 页边界、换行、OCR 原文 |
-| 扫描页渲染图 | `structured/raw/pages/pNNN.png` | 看图判定版面/插图/页眉脚 |
-| MinerU 原始产物 | `structured/raw/mineru/`（content_list.json + full.md） | 层级错乱时的 ground truth |
-| 源文件 | `source/`（只读） | 终审依据 |
-| 当前结构化文本 | `structured/<unit>.md` | 被修复对象 |
+| Per-page text blocks (including bbox/OCR marks) | `structured/raw/page-NNN.json` | page boundaries, line breaks, OCR raw text |
+| Scanned-page rendered images | `structured/raw/pages/pNNN.png` | view the image to determine layout/illustrations/running head and footer |
+| MinerU raw artifacts | `structured/raw/mineru/` (content_list.json + full.md) | ground truth when the hierarchy is garbled |
+| Source file | `source/` (read-only) | final-review basis |
+| Current structured text | `structured/<unit>.md` | the object being repaired |
 
-## 逐类操作（摘要；完整清单一览 `docs/semantic-repair.md` §2）
+## Operations by category (summary; full list in `docs/semantic-repair.md` §2)
 
-**A. 文本流**：硬换行按语义重断段落；跨页续段合并；页眉/页脚/页码按页图判定
-（工具只兜 50% 频率法）；脚注/边注分离并建立注码↔注文对应；多栏/异形版面按阅读
-顺序重排；重复文本层去重。
+**A. Text flow**: re-break hard line breaks into paragraphs by semantics; merge
+cross-page continuation paragraphs; determine running heads/footers/page numbers from the
+page images (the tool only backstops with the 50% frequency method); separate
+footnotes/marginal notes and establish note-reference↔note-text correspondence; reorder
+multi-column/irregular layouts by reading order; deduplicate repeated text layers.
 
-**B. OCR 噪声**：字符混淆（`l/1/I`、`己/已/巳`…）按语言与上下文校正；西文粘连
-（`delos`→`de los`）恢复词边界；标点套用出版规范；mojibake 按语言还原；版面噪声
-对照页图剔除；**每行成段必须按语义重断（禁止写阈值合并脚本）**。
+**B. OCR noise**: correct character confusions (`l/1/I`, `己/已/巳`…) by language and
+context; restore word boundaries for run-together Western text (`delos`→`de los`); apply
+publishing norms to punctuation; restore mojibake by language; remove layout noise against
+the page images; **every line broken into a paragraph must be re-broken by semantics
+(writing threshold-based merge scripts is forbidden)**.
 
-**C. 结构**：标题判定（字号/代码/图注误判）、层级推导、单元边界重切/合并
-（走 restructure）、四层归类纠正、垃圾页剔除（去向记 `catalog.csv`）。
+**C. Structure**: heading determination (misjudged font size/code/figure caption), level
+inference, unit-boundary re-split/merge (go through restructure), four-layer
+classification correction, garbage-page removal (record the destination in `catalog.csv`).
 
-**D. 媒体**：封面多候选择一；插图归属（整页图版/内嵌/装饰/扫描背景）；图注与图序；
-表格结构恢复（无框线/合并单元格/跨页/表头）；公式 LaTeX（`inserts` 语义层）。
+**D. Media**: choose one among multiple cover candidates; illustration attribution
+(full-page plate/inline/decoration/scan background); figure captions and figure order;
+table structure recovery (borderless/merged cells/cross-page/header); formula LaTeX (the
+`inserts` semantic layer).
 
-**E/F. 元数据与源缺陷回流**：`meta` 核对；翻译期单点源错走 `corr:`；影响段落/结构
-的源缺陷回写 structured 并重译该单元。
+**E/F. Metadata and source-defect backflow**: `meta` verification; single-point source
+errata during translation go through `corr:`; source defects that affect
+paragraphs/structure are written back to structured and the unit is re-translated.
 
-## 留痕：`preprocessing/repairs.jsonl`（操作级，每行一个修复动作）
+## Trace: `preprocessing/repairs.jsonl` (operation level, one repair action per line)
 
 ```json
 {"unit": "ch03", "kind": "line_join", "pages": [12, 13], "count": 18,
- "summary": "OCR 每行成段，按语义重断合并", "method": "逐页看图 + 手动重排",
+ "summary": "OCR one line per paragraph, re-broken and merged by semantics", "method": "view images page by page + manual re-arrangement",
  "evidence": "structured/raw/pages/p012.png", "status": "done"}
 ```
 
-- `unit`：必填，必须是 `publication.json` 中的单元；
-- `kind`：`line_join|hyphen|ocr_char|mojibake|punct|header_footer|footnote|order|
-  heading|boundary|classification|garbage|media|metadata|other`；
-- `pages` / `count`：可选（源页号 / 影响处数）；
-- `summary`：必填（做了什么）；`method`：可选（怎么做）；
-- `evidence`：可选，工作区相对路径且**必须存在**（页图/页 JSON/MinerU 产物）；
-- `status`：`done`（已修）或 `unresolved`（无法确定，勿硬修；qa 会提示）。
+- `unit`: required, must be a unit in `publication.json`;
+- `kind`: `line_join|hyphen|ocr_char|mojibake|punct|header_footer|footnote|order|
+  heading|boundary|classification|garbage|media|metadata|other`;
+- `pages` / `count`: optional (source page number / number of affected places);
+- `summary`: required (what was done); `method`: optional (how it was done);
+- `evidence`: optional, a workspace-relative path and **must exist** (page image/page
+  JSON/MinerU artifact);
+- `status`: `done` (repaired) or `unresolved` (cannot be determined, do not force a fix;
+  qa will hint).
 
-## 结构重建：`preprocessing/structure.csv` + `restructure`
+## Structure rebuild: `preprocessing/structure.csv` + `restructure`
 
-只按前 S 级切单元、更深标题留单元内，或干脆手动重切/合并：
+Split units only by the first S levels and keep deeper headings inside the unit, or simply
+re-split/merge manually:
 
 ```csv
 id,region,kind,title,level,rel_path
-ch01,body,chapter,第一章 缘起,1,body/ch01.md
-ch02,body,chapter,第二章 入城,1,body/ch02.md
+ch01,body,chapter,Chapter 1 Origins,1,body/ch01.md
+ch02,body,chapter,Chapter 2 Entering the City,1,body/ch02.md
 ```
 
 ```bash
-auto-epublizer restructure      # 校验 + 更新 publication.units（同 id 未变保留状态）
+auto-epublizer restructure      # validate + update publication.units (same id with unchanged content keeps state)
 ```
 
-- `rel_path` 必须在 `structured/` 内、文件必须存在；每个 md 首行 `# 标题` 与
-  `title` 一致；`structured/`（除 raw/）不得有未登记的孤儿 md；
-- 单元内容有变 → 状态回退 `split`（需重译重 import）；消失单元提示孤儿产物。
+- `rel_path` must be inside `structured/` and the file must exist; each md's first line
+  `# title` must match `title`; `structured/` (except raw/) must not contain unregistered
+  orphan md;
+- If a unit's content changes → state rolls back to `split` (requires re-translation and
+  re-import); a vanished unit hints at orphan artifacts.
 
-## 自查三件事（批量修复后必做）
+## Three self-checks (mandatory after bulk repair)
 
-1. **守恒**：grep 标记（`{fig:NNN}`）/脚注（`[^label]`）/图片引用数量与修复前一致
-   （丢失会被 G0/交付审计阻断）；
-2. **抽样**：首/中/尾各抽若干页，与 `raw/` 页证据对照，确认没有静默吞内容；
-3. **无法确定**：写 `status: unresolved` 并说明，不要「猜着修」。
+1. **Conservation**: the counts of grep markers (`{fig:NNN}`)/footnotes (`[^label]`)/image
+   references are the same as before the repair (loss is blocked by G0/delivery audit);
+2. **Sampling**: sample several pages from the first/middle/last and compare against the
+   `raw/` page evidence to confirm nothing was silently swallowed;
+3. **Cannot determine**: write `status: unresolved` with an explanation; do not "guess-fix".
 
-## 反模式（再强调）
+## Anti-patterns (re-emphasized)
 
-- 不要写「智能合并/拆分/清洗脚本」——阈值永远差一点（真实教训反复翻车）；
-- 脚本只做确定性检索/统计/搬运；语义判断（哪是标题/哪里断段/哪个字错）由你自己读；
-- 修复后必须重走 `import`（md↔align 不一致会阻断）与全量验证。
+- Do not write "smart merge/split/cleaning scripts" — the threshold is always slightly off
+  (real lessons flip over repeatedly);
+- Scripts only do deterministic retrieval/statistics/moving; semantic judgements (which is
+  a heading/where to break a paragraph/which character is wrong) are read by you yourself;
+- After repair you must re-run `import` (md↔align inconsistency blocks) and full
+  validation.

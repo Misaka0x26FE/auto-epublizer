@@ -1,116 +1,131 @@
-# Workflow（阶段路由 + 命令总览）
+<!-- i18n: source=workflow.zh.md sha256=c8242f29749ede06164294c5b3907f45a66eb63ac409fb7467cd6d0b51e0c478 -->
+> **English** | [中文](workflow.zh.md)
 
-## 状态路由
+# Workflow (stage routing + command overview)
 
-工作区是 `<workspaces_dir>/<book-slug>/`，权威索引是 `publication.json`。
+## State routing
 
-**开工前**：`auto-epublizer doctor --json` 自检环境（pandoc/pymupdf/OCR/epubcheck/
-MinerU/网络），并自报 multimodal / search（能否看图、有无搜索工具）——按
-`references/ingest.md` 的能力-路由决策表选 ingest 路由。
+The workspace is `<workspaces_dir>/<book-slug>/`, and the authoritative index is
+`publication.json`.
 
-```text
-无 publication.json               -> 全新流程：先 preprocess <input>（= init + 事实收集）
-有 publication.json              -> 续跑：status --json 看状态机与对账（stale / preprocessing）
-  preprocessing_complete=false   -> 按 facts.md 待办完成 agent 理解产物（todo.md 逐细节清单 + capabilities/plan/global/...）
-  单元 status 全 built           -> 已完成，跳过对应阶段
-  有 structured/ 无 analysis/ 且无 preprocessing/global.md -> agent 写 global.md（理解层）
-  有 translation/ 但 status 未推进（stale） -> 运行 import 登记
-  有 translation/ 无 reviews/    -> agent 写审校产物 reviews/review-<ts>/
-  有 output/*.epub               -> 已封装，qa 或重新 build
-```
-
-遇到**源站/脏源/边界情况**（如 Baka-Tsuki 插图段不渲染、epubcheck 离线装 jar、
-MediaWiki 卷导航垃圾混入 structured），先查 `lessons/` 目录——里面是真实工作沉淀的
-「判据 + 处置 + 验证」，命中即按它处理；未命中再自行排查。
-
-## 标准阶段
+**Before starting**: `auto-epublizer doctor --json` self-checks the environment
+(pandoc/pymupdf/OCR/epubcheck/MinerU/network), and self-reports multimodal / search
+(whether you can see images and whether you have a search tool) — choose the ingest route
+from the capability-routing decision table in `references/ingest.md`.
 
 ```text
-doctor（能力自检：工具链 + 自报 multimodal/search）
-  -> preprocess （CLI：嗅探/元数据/TOC/体检/规模 -> preprocessing/facts.*，零 token）
-  -> agent 理解 （读 facts.md 撰写 capabilities/plan/global/units/terms/risks/report；
-                 analysis/*.md 也由 agent 撰写）
-  -> 语义整备 （可选/条件：facts 可疑信号触发；OCR/扫描件路径必做——按
-                 references/repair.md 对照 raw 证据修复 structured/ 并写
-                 preprocessing/repairs.jsonl 留痕）
-  -> 翻译      （agent 手写 translation/ + align/，然后 import 登记）
-  -> g0        （静态校验：术语命中=真实缺陷须清零；长度比=advisory）
-  -> review    （QC G1–G3，agent 语义审校后写 reviews/review-<ts>/result.json）
-  -> build     （EPUB 封装 -> output/）
-  -> qa        （epubcheck + 解包审计 + G5 放行 -> report.json）
-  -> delivery  （交付审计：按 references/delivery.md 全量校验 + 写
-                 reviews/delivery-<ts>.md；强制，全部单元 built 后 qa 会以
-                 W_DELIVERY_AUDIT_MISSING 提示）
+No publication.json              -> fresh flow: first preprocess <input> (= init + fact collection)
+publication.json present         -> resume: status --json to see the state machine and reconciliation (stale / preprocessing)
+  preprocessing_complete=false   -> complete the agent understanding artifacts per the facts.md to-do (todo.md detailed checklist + capabilities/plan/global/...)
+  all unit status = built        -> done, skip the corresponding stages
+  has structured/ no analysis/ and no preprocessing/global.md -> agent writes global.md (understanding layer)
+  has translation/ but status not advanced (stale) -> run import to register
+  has translation/ no reviews/   -> agent writes review artifacts reviews/review-<ts>/
+  has output/*.epub              -> already built; qa or rebuild
 ```
 
-仅转换不翻译：
+When you hit a **source-site / dirty-source / edge case** (e.g. Baka-Tsuki illustration
+segments not rendering, installing the epubcheck jar offline, MediaWiki volume-navigation
+junk mixed into structured), first check the `lessons/` directory — it contains the
+"criterion + handling + verification" distilled from real work; if it matches, follow it;
+if not, investigate on your own.
+
+## Standard stages
 
 ```text
-convert <input>   -> 归一化 + 结构 + EPUB + QA
+doctor (capability self-check: toolchain + self-reported multimodal/search)
+  -> preprocess (CLI: sniff/metadata/TOC/health/size -> preprocessing/facts.*, zero-token)
+  -> agent understanding (read facts.md and write capabilities/plan/global/units/terms/risks/report;
+                 analysis/*.md is also written by the agent)
+  -> semantic repair (optional/conditional: triggered by suspicious signals in facts; mandatory
+                 for OCR/scanned paths — per references/repair.md, repair structured/ against
+                 raw evidence and write preprocessing/repairs.jsonl as a trace)
+  -> translation (agent hand-writes translation/ + align/, then import to register)
+  -> g0        (static validation: terminology hits = real defects that must be zeroed; length ratio = advisory)
+  -> review    (QC G1–G3; after agent semantic review, write reviews/review-<ts>/result.json)
+  -> build     (EPUB build -> output/)
+  -> qa        (epubcheck + unpack audit + G5 release -> report.json)
+  -> delivery  (delivery audit: full validation per references/delivery.md + write
+                 reviews/delivery-<ts>.md; mandatory, and after all units are built qa
+                 will remind with W_DELIVERY_AUDIT_MISSING)
 ```
 
-## 交付收尾：反馈贡献（可选）
+Conversion only, no translation:
 
-交付完成后，询问用户：**是否将本次工作中遇到的技术问题与建议解决方案作为 issue
-提交到项目 GitHub 仓库（`Misaka0x26FE/auto-epublizer`）？** 用户同意时：
+```text
+convert <input>   -> normalize + structure + EPUB + QA
+```
 
-1. **检查 GitHub 登录状态**：`gh auth status`。已登录 → 以该账户（即用户账户）
-   名义继续；未登录 → 请用户先登录自己的 GitHub 账户（`gh auth login`，走浏览器/
-   设备码流程），不要向用户索要密码或 token，登录成功后再继续。
-2. **整理内容**（只含技术问题与解决方案，参照 `lessons/` 的判据/处置/验证三段式）：
-   - 纯经验沉淀 → 写 `skills/auto-epublizer/lessons/<日期>-<主题>.md` 并同步
-     `lessons/README.md` 索引；
-   - 若工作过程中修复了代码缺陷 → 带上对应回归测试与文档同步，遵循仓库规范
-     （`uv run pytest -q` + `ruff check .` + `ruff format --check .`），
-     在本地以 Conventional Commits 单主题提交（issue 流程不要求 fork/建分支/push）。
-3. **以用户账户名义提交 issue，并附参考代码**：
-   - `gh issue create --repo Misaka0x26FE/auto-epublizer --title <主题>
-     --body-file <临时文件>`（正文较长，用 `--body-file` 而非 `--body`）；
-   - issue 正文 = 问题现象 + 根因 + 建议方案 + 验证结果（三段式）+ **参考代码**
-     （即原可作为 PR 的改动，供维护者直接采用）：
-     - 代码修复 → `git format-patch -<N> <commit>`（或 `git diff`）的完整补丁，
-       贴进 ```diff 围栏代码块（维护者可 `git am` / `git apply` 直接合入）；
-     - 纯经验沉淀 → lesson 文件全文贴进 ```markdown 围栏代码块。
-4. **隐私提醒（必须说）**：提交内容不得包含用户书籍的源文件、译文、元数据或任何
-   个人信息；issue 标题/正文/参考代码先给用户过目确认后再提交。
+## Delivery wrap-up: feedback contribution (optional)
 
-## 命令总览
+After delivery is complete, ask the user: **Should the technical problems encountered in
+this work and the proposed solutions be submitted as an issue to the project's GitHub
+repository (`Misaka0x26FE/auto-epublizer`)?** If the user agrees:
+
+1. **Check GitHub login status**: `gh auth status`. Logged in → continue under that account
+   (i.e. the user's account); not logged in → ask the user to log in to their own GitHub
+   account first (`gh auth login`, via the browser/device-code flow); do not ask the user
+   for a password or token, and continue only after login succeeds.
+2. **Prepare the content** (technical problems and solutions only, following the
+   criterion/handling/verification three-part structure of `lessons/`):
+   - Pure experience write-up → write `skills/auto-epublizer/lessons/<date>-<topic>.md` and
+     update the `lessons/README.md` index;
+   - If a code defect was fixed during the work → include the corresponding regression test
+     and docs sync, follow the repository conventions
+     (`uv run pytest -q` + `ruff check .` + `ruff format --check .`), and commit locally as
+     a single-topic Conventional Commit (the issue flow does not require a fork/branch/push).
+3. **File the issue in the user's name, with reference code attached**:
+   - `gh issue create --repo Misaka0x26FE/auto-epublizer --title <topic>
+     --body-file <temp-file>` (the body is long, use `--body-file` rather than `--body`);
+   - issue body = problem symptoms + root cause + proposed solution + verification results
+     (three parts) + **reference code** (i.e. the change that could have been a PR, for the
+     maintainer to adopt directly):
+     - Code fix → the complete patch from `git format-patch -<N> <commit>` (or `git diff`),
+       pasted into a ```diff fenced code block (the maintainer can merge it directly with
+       `git am` / `git apply`);
+     - Pure experience write-up → paste the full lesson file into a ```markdown fenced code
+       block.
+4. **Privacy reminder (must say)**: the submission must not contain the user's book source
+   files, translations, metadata, or any personal information; show the issue title/body/
+   reference code to the user for confirmation before submitting.
+
+## Command overview
 
 ```bash
-# 能力自检（开工前必做；multimodal/search 由 agent 自报补填）
+# capability self-check (mandatory before starting; multimodal/search supplied by the agent's own report)
 auto-epublizer doctor [--json] [--ping]
 
-# 预处理（新书：init + 零 token 事实收集 → preprocessing/facts.*；已有工作区：幂等刷新）
+# preprocessing (new book: init + zero-token fact collection → preprocessing/facts.*; existing workspace: idempotent refresh)
 auto-epublizer preprocess <input> [--reference <path...>] [--target zh-CN] [--workspace <dir>]
-# （agent 读 facts.md 撰写 capabilities/plan/global/units/terms/risks/report，见 references/preprocessing.md）
-# init <input> 等价于 preprocess 的建工作区子集（不产 facts；仍可用于仅需拆解的场景）
+# (agent reads facts.md and writes capabilities/plan/global/units/terms/risks/report, see references/preprocessing.md)
+# init <input> is equivalent to the workspace-creation subset of preprocess (produces no facts; still usable for split-only scenarios)
 
-# agent 手写翻译后的登记入口（G0 结构校验 + 状态推进 + 术语冲突外置）
+# registration entry after agent hand-writes translation (G0 structural validation + state advance + terminology-conflict externalization)
 auto-epublizer meta [--translator X] [--publisher P] [--date D] [--rights R] [--workspace <dir>]
 auto-epublizer import [--unit <id>] [--terms <csv>] [--reviewed] [--workspace <dir>]
 
-# 单元边界重建登记（agent 重切/合并后；preprocessing/structure.csv → publication.json）
+# unit-boundary rebuild registration (after the agent re-splits/merges; preprocessing/structure.csv → publication.json)
 auto-epublizer restructure [--workspace <dir>]
 
-# G0 零 token 静态校验（翻译/导入后立即跑；术语命中是放行硬门，长度比 advisory）
+# G0 zero-token static validation (run immediately after translation/import; terminology hits are a hard release gate, length ratio advisory)
 auto-epublizer g0 [--unit <id>] [--workspace <dir>]
 
-# 封装（译文缺省回退源文；--bilingual 产出 -bi.epub；--theme 选排版主题）
+# build (translation missing falls back to source; --bilingual produces -bi.epub; --theme selects the layout theme)
 auto-epublizer build [--bilingual] [--theme standard|compact|spacious] [-o <out.epub>] [--workspace <dir>]
 
-# 质检（epubcheck 零 error + 解包审计 + 溯源审计 + G5 放行判定）
+# QA (epubcheck zero errors + unpack audit + provenance audit + G5 release decision)
 auto-epublizer qa [--epub <path>] [--workspace <dir>]
 
-# 仅转换不翻译
+# conversion only, no translation
 auto-epublizer convert <input> [--theme standard|compact|spacious] [-o <out.epub>] [--workspace <dir>]
 
-# 进度 / 状态机 / 产物-状态对账
+# progress / state machine / artifact-state reconciliation
 auto-epublizer status [--workspace <dir>] [--json]
 ```
 
-## 状态机与 `status --json`
+## State machine and `status --json`
 
-单元状态机：`pending → split → analyzed → translated → aligned → reviewed → built`。
+Unit state machine: `pending → split → analyzed → translated → aligned → reviewed → built`.
 
 ```bash
 auto-epublizer status --workspace <dir> --json
@@ -121,20 +136,23 @@ auto-epublizer status --workspace <dir> --json
 #  "stale":[{"id":"preprocessing","status":"facts_written","reason":"preprocessing_plan_missing"}]}
 ```
 
-- `stale`：agent 手写了 translation/align 但尚未 `import` 登记，或预处理 facts 已产但
-  理解产物（capabilities/global）未完成——状态机与产物脱节的信号。
-- agent 手写产物必须跑 `import` 状态才会推进；`import` 会校验
-  seq 连续性/空译文（阻断）与长度比/术语命中（告警）。
+- `stale`: the agent has handwritten translation/align but has not yet `import`-registered it,
+  or the preprocessing facts are produced but the understanding artifacts
+  (capabilities/global) are incomplete — a signal that the state machine and artifacts have
+  fallen out of sync.
+- Agent handwritten artifacts only advance state after `import` is run; `import` validates
+  seq continuity / empty translations (blocking) and length ratio / terminology hits
+  (warnings).
 
-## 故障排查
+## Troubleshooting
 
-| 现象 | 处理 |
+| Symptom | Handling |
 |---|---|
-| `工作区尚未初始化` | 先 `init`；或 `--workspace` 指向错误的目录 |
-| `输入文件内容与工作区不一致` | 源文件被替换；用原始源文件或重新 `init` |
-| `成品不存在：...请先 build/convert` | `qa` 前先 `build` |
-| `epubcheck errors: -1` | 未装 epubcheck jar（`~/.cache/epubcheck.jar`）；G4 审计仍可跑，`released_reason=epubcheck_not_run` |
-| `导入失败`（import 阻断） | 按 `--unit` 输出的错误清单修 align（断号/空译文/缺文件）后重试 |
-| `pandoc` 缺失 | `doctor` 已提示；装 pandoc 或先把文件转为 PDF/TXT/MD |
-| 扫描 PDF 处理不了 | 按 OCR 路由（`doctor` + multimodal 自报）：**MinerU 外部 API 最优先**（无 key 先询问用户）→ 传统 OCR（tesseract/ocrmypdf）/rapidocr + agent 逐页阅读兜底 |
-| 单元状态停在中间态 / stale | `status --json` 定位，从对应阶段续跑（手写产物跑 `import`） |
+| `工作区尚未初始化` | run `init` first; or `--workspace` points to the wrong directory |
+| `输入文件内容与工作区不一致` | the source file was replaced; use the original source file or re-`init` |
+| `成品不存在：...请先 build/convert` | run `build` before `qa` |
+| `epubcheck errors: -1` | the epubcheck jar is not installed (`~/.cache/epubcheck.jar`); the G4 audit can still run, with `released_reason=epubcheck_not_run` |
+| `导入失败` (import blocked) | fix align per the error list output by `--unit` (sequence gaps/empty translations/missing files) and retry |
+| `pandoc` missing | `doctor` already flags it; install pandoc or first convert the file to PDF/TXT/MD |
+| Scanned PDF cannot be processed | follow the OCR route (`doctor` + multimodal self-report): **MinerU external API first** (ask the user first when there is no key) → traditional OCR (tesseract/ocrmypdf)/rapidocr + agent page-by-page reading as fallback |
+| Unit status stuck in an intermediate state / stale | locate with `status --json` and resume from the corresponding stage (run `import` for handwritten artifacts) |
