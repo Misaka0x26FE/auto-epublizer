@@ -77,7 +77,7 @@ uv run auto-epublizer qa                   # 结构审计 + epubcheck + 放行�
 uv run auto-epublizer status [--json]      # 进度 / 状态机 / 产物对账
 ```
 
-配置项见 [docs/configuration.md](docs/configuration.md)（`config.yaml`，无密钥段；
+配置项见 [docs/configuration.md](docs/configuration.zh.md)（`config.yaml`，无密钥段；
 可选外部解析 API 的 `MINERU_API_KEY` 只从环境变量读取）。
 
 ---
@@ -93,9 +93,9 @@ uv run auto-epublizer status [--json]      # 进度 / 状态机 / 产物对账
 | 术语管理 | 三态术语表（种子→候选→冲突→确认）+ 冲突外置裁决，跨章/跨书一致 |
 | 可复现 | 同一输入必得同一产物；断点续跑按单元状态跳过已完成单元 |
 
-翻译流程细节见 [docs/translation-flow.md](docs/translation-flow.md)；
-分文体优化（小说/学术/论文/诗歌/报刊）见 [docs/genre-style.md](docs/genre-style.md)；
-PDF 解析难点与方案见 [docs/pdf-parsing.md](docs/pdf-parsing.md)。
+翻译流程细节见 [docs/translation-flow.md](docs/translation-flow.zh.md)；
+分文体优化（小说/学术/论文/诗歌/报刊）见 [docs/genre-style.md](docs/genre-style.zh.md)；
+PDF 解析难点与方案见 [docs/pdf-parsing.md](docs/pdf-parsing.zh.md)。
 
 ---
 
@@ -123,23 +123,23 @@ PDF 解析难点与方案见 [docs/pdf-parsing.md](docs/pdf-parsing.md)。
 
 | 文档 | 内容 |
 |---|---|
-| [docs/configuration.md](docs/configuration.md) | 配置完整 schema（config.yaml） |
-| [docs/development-plan.md](docs/development-plan.md) | 开发任务与里程碑 |
-| [docs/translation-flow.md](docs/translation-flow.md) | 翻译流程设计 |
-| [docs/quality-control.md](docs/quality-control.md) | 六道关 QC 规格（数据契约/验收阈值/收敛状态机） |
-| [docs/epub-template-spec.md](docs/epub-template-spec.md) | EPUB 形态规范（无样式模板/有限主题/标准弹窗注释） |
-| [docs/postprocessing-spec.md](docs/postprocessing-spec.md) | 后处理验收（内容溯源/媒体/目录层级） |
-| [docs/pdf-content-spec.md](docs/pdf-content-spec.md) | PDF 内容提取规范（书签切章/插图路由/表格/公式/inserts 溯源） |
-| [docs/pdf-parsing.md](docs/pdf-parsing.md) | PDF 解析难点与方案对比 |
-| [docs/genre-style.md](docs/genre-style.md) + [docs/genres/](docs/genres/) | 分文体设计 |
-| [docs/publishing-workflow.md](docs/publishing-workflow.md) | 传统三审三校编校流程映射 |
-| [docs/reference-projects.md](docs/reference-projects.md) | 参考项目（wenyi）：借鉴与差异 |
+| [docs/configuration.md](docs/configuration.zh.md) | 配置完整 schema（config.yaml） |
+| [docs/development-plan.md](docs/development-plan.zh.md) | 开发任务与里程碑 |
+| [docs/translation-flow.md](docs/translation-flow.zh.md) | 翻译流程设计 |
+| [docs/quality-control.md](docs/quality-control.zh.md) | 六道关 QC 规格（数据契约/验收阈值/收敛状态机） |
+| [docs/epub-template-spec.md](docs/epub-template-spec.zh.md) | EPUB 形态规范（无样式模板/有限主题/标准弹窗注释） |
+| [docs/postprocessing-spec.md](docs/postprocessing-spec.zh.md) | 后处理验收（内容溯源/媒体/目录层级） |
+| [docs/pdf-content-spec.md](docs/pdf-content-spec.zh.md) | PDF 内容提取规范（书签切章/插图路由/表格/公式/inserts 溯源） |
+| [docs/pdf-parsing.md](docs/pdf-parsing.zh.md) | PDF 解析难点与方案对比 |
+| [docs/genre-style.md](docs/genre-style.zh.md) + [docs/genres/](docs/genres/) | 分文体设计 |
+| [docs/publishing-workflow.md](docs/publishing-workflow.zh.md) | 传统三审三校编校流程映射 |
+| [docs/reference-projects.md](docs/reference-projects.zh.md) | 参考项目（wenyi）：借鉴与差异 |
 | [docs/plans/](docs/plans/) | 计划文档目录（每轮任务立项/状态/索引） |
-| [docs/testing-doubao.md](docs/testing-doubao.md) | 豆包云容器实测指南 |
+| [docs/testing-doubao.md](docs/testing-doubao.zh.md) | 豆包云容器实测指南 |
 
 面向 AI 的文档：
 - **维护本仓库代码的 agent** → [AGENTS.md](AGENTS.zh.md)（项目怎么实现、怎么验证）
-- **用本 CLI 处理一本书的 agent** → [`skills/auto-epublizer/`](skills/auto-epublizer/SKILL.md)
+- **用本 CLI 处理一本书的 agent** → [`skills/auto-epublizer/`](skills/auto-epublizer/SKILL.zh.md)
   （每步怎么做、怎么判读结果、怎么修；含 `lessons/` 实战经验沉淀）
 
 ---

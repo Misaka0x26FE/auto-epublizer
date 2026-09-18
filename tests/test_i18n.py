@@ -117,3 +117,12 @@ def test_relink_skips_language_banner(tmp_path: Path) -> None:
 
 def test_repo_stamps_and_banners() -> None:
     assert i18n.check_stamps(ROOT) == []
+
+
+def test_repo_links_resolve_and_match_language() -> None:
+    assert i18n.check_links(ROOT) == []
+
+
+def test_repo_has_expected_twin_pairs() -> None:
+    """50 对（README/AGENTS + skills 26 + docs 22）；docs/i18n.md 为双语例外。"""
+    assert len(i18n.iter_md(ROOT)) == len(i18n.audit_unpaired(ROOT)) + 50 * 2

@@ -25,7 +25,7 @@
   见 [docs/plans/2026-09-04-remove-internal-llm.md](docs/plans/2026-09-04-remove-internal-llm.md)，
   由 `test_architecture_boundaries.py` 的 `test_no_llm_api_calls_anywhere` 强制回归。
   判据不变：「同样输入必须得到同样输出 → Python；需理解/权衡/判断 → agent」，
-  完整版见 [docs/agent-vs-code.md](docs/agent-vs-code.md)。
+  完整版见 [docs/agent-vs-code.md](docs/agent-vs-code.zh.md)。
 - 工作区为 `publication.json` 权威索引 + 工作区目录（见下），不沿用旧 `split/` 流程。
 - 质量检验六道关（G0–G5），重点参考 wenyi（`trans_novel`）的 Review 体系。
 - **只负责交付质量**（准确 / 完整 / 一致 / 规范 / 结构正确 / 可复现），**不做内容的价值观 / 政治 / 思想性判断**。
@@ -33,8 +33,8 @@
   质量把关、术语裁决、修复决策**由使用本项目的 agent 用自身能力（读文件、判断、写文件）完成。
   agent 只需基础能力，无需 MCP / 子代理。
 - **产物规范**：EPUB 形态规范（无样式模板 / 有限主题 / 标准弹窗注释）见
-  [docs/epub-template-spec.md](docs/epub-template-spec.md)；后处理验收与实现计划
-  （内容溯源 / 媒体 / 目录层级）见 [docs/postprocessing-spec.md](docs/postprocessing-spec.md)。
+  [docs/epub-template-spec.md](docs/epub-template-spec.zh.md)；后处理验收与实现计划
+  （内容溯源 / 媒体 / 目录层级）见 [docs/postprocessing-spec.md](docs/postprocessing-spec.zh.md)。
 - **许可**：本项目自身代码采用 **AGPL-3.0**；第三方依赖保留各自许可证，并在 `THIRD_PARTY_LICENSES.md` 登记（AGPL 依赖可直接引入，与项目同许可兼容）。
 
 ## 处理一本著作的标准流程
@@ -246,7 +246,7 @@ search**（能否看图、有无搜索工具，CLI 无法探测）——据此�
 skills 的能力-路由决策表选择 ingest 路由（pandoc / 按页切片 / 扫描件档：
 **MinerU 外部 API 最优先（无 key 时先询问用户）→ 传统 OCR + agent 逐页阅读兜底**；
 「看」是 agent 自身能力）。PDF 内容提取
-（插图/表格/公式/多栏/书签切章）规范见 [docs/pdf-content-spec.md](docs/pdf-content-spec.md)。
+（插图/表格/公式/多栏/书签切章）规范见 [docs/pdf-content-spec.md](docs/pdf-content-spec.zh.md)。
 
 ## 状态与续跑不变量
 

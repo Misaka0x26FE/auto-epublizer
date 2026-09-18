@@ -1,4 +1,4 @@
-<!-- i18n: source=README.zh.md sha256=e68687956b24ce563b16dd7649abf0beae6eb8f02cb2ebe28b956b9c92c429f2 -->
+<!-- i18n: source=README.zh.md sha256=b00eea0b2ecaf78bc1d6337f3d6d426d4e8f970df2a99be5ca030e3274e7c4bf -->
 > **English** | [中文](README.zh.md)
 
 # auto-epublizer

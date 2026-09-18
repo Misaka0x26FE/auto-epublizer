@@ -1,6 +1,6 @@
 # 2026-09-18 i18n：文档英文版（英文默认）与中英同步契约
 
-状态：规划中
+状态：已完成（8226135 / deb26a5 / 8a3d9e0 / 072d6f8 / da52a03 / 11553dc / 293b03b / 5f59985 + 收尾回写；立项 bf0d3cf）
 
 ## 背景与目标
 
@@ -190,8 +190,32 @@ uv run ruff check . && uv run ruff format --check .
 
 ## 验证记录
 
-（实施完成后回写：`--check`/`--links`/pytest/ruff 结果、各提交号。）
+- 范围：**50 对全部产出**（根 2 + skills 26 + docs 22）；`docs/i18n.md` 双语例外。
+- 工具：`scripts/i18n.py`（`--check`/`--links`/`--relink`/`--finalize`/`--audit`）
+  + `tests/test_i18n.py`（11 个测试：工具临时树自测 + 仓库实时戳/横幅/链接/孪生数）。
+- 结果：`--check` OK、`--links` OK；`uv run pytest -q` **344 passed**；
+  `ruff check` / `ruff format --check` 全绿。
+- 提交（每阶段一提交，GitHub/Gitee 双推）：
+  - 立项 `bf0d3cf`；S1 工具契约 `8226135`；S2 根文档 `deb26a5`
+  - S3a `8a3d9e0`（SKILL + 核心 references）；S3b `072d6f8`（其余 references）；
+    S3c `da52a03`（lessons）
+  - S4a `11553dc`（docs 规范）；S4b `293b03b`（docs 流程/质量）；
+    S4c `5f59985`（docs 文体/交接）
+  - S5 收尾（本条回写：全局 relink + 50 对重盖章 + 实时链接测试 + 状态回写）
+- 抽查：英文文件残留中文仅为 CLI 字面消息/专有名词示例（各文件 1–8 行）。
 
 ## 实施偏差
 
-（实施中与计划的偏差回写本节；无则记「无」。）
+- **新增 `scripts/i18n.py --relink`（计划外工具增强）**：按语言把相对 markdown
+  链接改指孪生，避免 50 份逐一改链。期间发现并修复其误改语言横幅的缺陷
+  （横幅标签 中文/English 跳过），并补回归测试 `test_relink_skips_language_banner`。
+- 内联代码中的路径提及（如 `SKILL.zh.md` 路由表的 `` `references/workflow.md` ``）
+  不是 markdown 链接，`--relink`/`--links` 不处理，保持指向英文默认；中文读者可经
+  顶部横幅切到 `.zh.md`。如需按语言改写内联提及，列为后续扩展点。
+- `docs/i18n.md` 按 D6 保持双语单文件（不设 `.zh.md`）。
+- 代码注释/文档字符串中对 `docs/*.md` 的**文字引用**按计划保持原样（指向英文默认，
+  路径有效，属非目标）。
+- 历史计划 `docs/plans/*.md` 保持中文单语；其指向被译文档的链接仍为裸 `.md`
+  （指向英文默认，`--links` 存在性校验通过）。
+- `skills/auto-epublizer/manifest.json` 未改：references 列表语言中立，安装脚本
+  整目录复制（`.zh.md` 随附），无需新增字段。
