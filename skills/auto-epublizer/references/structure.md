@@ -1,75 +1,96 @@
-# Structure（四层结构重建 + 溯源）
+<!-- i18n: source=structure.zh.md sha256=4a334cd400864934e2ef9e33548f49938eb9181f1ced6bf9b390c32495738f3d -->
+> **English** | [中文](structure.zh.md)
 
-把归一化单元归类为出版物四层结构，清洗后落 `structured/`，作为翻译与封装的源文权威。
+# Structure (four-layer structural rebuild + provenance)
 
-## 四层结构
+Classify normalized units into the publication's four-layer structure; after cleaning, land
+them in `structured/`, serving as the authoritative source text for translation and
+packaging.
+
+## Four-layer structure
 
 ```text
 structured/
-├── cover.md                        # 封面
+├── cover.md                        # cover
 ├── frontmatter/{titlepage,copyright,dedication,foreword,preface,toc}.md
-├── body/ch01.md ...                # 正文单元（翻译主战场）
+├── body/ch01.md ...                # body units (the main battleground of translation)
 ├── backmatter/{afterword,appendix,notes,bibliography,index,glossary}.md
-└── media/                          # 媒体资产
+└── media/                          # media assets
 ```
 
-## 归类规则
+## Classification rules
 
-标题关键词 → (region, kind)，例：
+Title keyword → (region, kind), for example:
 
-| 标题含 | region | kind |
+| Title contains | region | kind |
 |---|---|---|
-| 封面 / cover | cover | cover |
-| 书名页 / titlepage | frontmatter | titlepage |
-| 版权 / copyright | frontmatter | copyright |
-| 献词 / dedication | frontmatter | dedication |
-| 他序 / foreword | frontmatter | foreword |
-| 前言 / 自序 / preface | frontmatter | preface |
-| 目录 / toc / contents | frontmatter | toc |
-| 后记 / 跋 / afterword | backmatter | afterword |
-| 附录 / appendix | backmatter | appendix |
-| 参考文献 / bibliography | backmatter | bibliography |
-| 索引 / index | backmatter | index |
+| cover | cover | cover |
+| title page | frontmatter | titlepage |
+| copyright | frontmatter | copyright |
+| dedication | frontmatter | dedication |
+| foreword | frontmatter | foreword |
+| preface / author's preface | frontmatter | preface |
+| toc / contents | frontmatter | toc |
+| afterword / postscript | backmatter | afterword |
+| appendix | backmatter | appendix |
+| bibliography | backmatter | bibliography |
+| index | backmatter | index |
 
-未命中关键词 → `body` + `chNN`（顺序编号）。单元 ID 稳定（`ch01`、`front-preface`、`back-index`）。
+No keyword hit → `body` + `chNN` (sequential numbering). Unit IDs are stable (`ch01`,
+`front-preface`, `back-index`).
 
-## 清洗
+## Cleaning
 
-- **页码剔除**：独立成段的页码（`12`、`- 8 -`、`第3页`）。
-- **页眉页脚剔除**：按 `source_page` 分组，同一短文本在 ≥50% 页首/页末出现即剔除（`min_pages` 保护）。
-- **EPUB 锚点/属性残留**：`read_epub` 在入库时已清除 `[]{#id}` 锚点、`{#id}` 属性、
-  `[text]{.class}` 类属性与 `<br>`；若 `structured/` 仍见此类残留在标题里，说明走了
-  pandoc 通用回退路径，按 `references/ingest.md`「EPUB 按 spine 切分」排查。
-- **溯源**：每个 `Segment` 带 `meta.source_page`，PDF 每页有 `page-NNN.json` 对应。
+- **Page-number removal**: standalone page-number paragraphs (`12`, `- 8 -`, `page 3`).
+- **Running head/footer removal**: group by `source_page`; a short text that appears at the
+  top/bottom of ≥50% of pages is removed (`min_pages` guard).
+- **EPUB anchor/attribute leftovers**: `read_epub` already clears `[]{#id}` anchors,
+  `{#id}` attributes, `[text]{.class}` class attributes and `<br>` on ingest; if such
+  leftovers are still seen in headings in `structured/`, it means the generic pandoc
+  fallback path was taken — troubleshoot per `references/ingest.md` "EPUB split by spine".
+- **Provenance**: each `Segment` carries `meta.source_page`; each PDF page has a
+  corresponding `page-NNN.json`.
 
-## 契约
+## Contract
 
-- 单元 = 翻译最小可管理单位；`Unit.meta` 存 `rel_path` 与 `region`（`set_units` 时写入
-  `publication.json`），analysis/translation/build 都靠它定位文件。
-- 标题层级（h1/h2）数量、段落块数量应与源文一致——**审校核对锚点**（g0.py 提供计数
-  纯函数但未接入自动校验，属后续扩展点）。
-- 插入元素（`{fig:NNN}` 等）标记数量守恒（G0 单元级总量守恒已接线，丢失即硬缺陷）；
-  **md 表格形状守恒已接线**（表数/行列数，import 硬校验）；
-  脚注/尾注引用↔定义配对与回链由 G4 审计（`E_FN_BACKLINK`/`E_ANCHOR`）覆盖。
+- Unit = the smallest manageable unit of translation; `Unit.meta` stores `rel_path` and
+  `region` (written into `publication.json` by `set_units`), and analysis/translation/build
+  all rely on it to locate files.
+- The number of heading levels (h1/h2) and the number of paragraph blocks should be
+  consistent with the source text — **the review's reconciliation anchor** (g0.py provides
+  pure counting functions but they are not wired into automatic validation; it is a future
+  extension point).
+- Insert elements (`{fig:NNN}` etc.) marker counts are conserved (G0 unit-level total
+  conservation is already wired; loss is a hard defect);
+  **md table shape conservation is already wired** (table count/row-column counts, import
+  hard validation);
+  footnote/endnote reference↔definition pairing and backlinks are covered by the G4 audit
+  (`E_FN_BACKLINK`/`E_ANCHOR`).
 
-## 单元边界重建（restructure 登记）
+## Unit-boundary rebuild (restructure registration)
 
-修复/重切导致**单元集合变化**（拆分、合并、新增、删除）时，内容级修改无需登记
-（build/provenance 直接读 `structured/`），但边界级变更必须登记，否则
-`publication.json.units` 与磁盘脱节：
+When repair/re-splitting causes **a change in the unit set** (split, merge, add, delete),
+content-level modifications need no registration (build/provenance read `structured/`
+directly), but boundary-level changes must be registered, otherwise
+`publication.json.units` becomes decoupled from disk:
 
-1. 按真实章节手动重写 `structured/`（每个单元一个 md，首行 `# 标题`）；
-2. 写 `preprocessing/structure.csv`（列 `id,region,kind,title,level,rel_path`；
-   每行一个单元，`title` 必须等于该文件首行标题、`rel_path` 与 region 前缀一致）；
-3. 运行 `auto-epublizer restructure`：校验（文件在、无孤儿 md、无重复 id）后更新
-   `publication.json.units`；
-4. 状态语义：同 id 且内容未变 → 保留状态；有变 → 回退 `split`（需重译重 import）；
-   消失的 id → 输出孤儿产物提示（旧 translation/align 可清理）。
+1. Manually rewrite `structured/` according to the real chapters (one md per unit, first
+   line `# title`);
+2. Write `preprocessing/structure.csv` (columns `id,region,kind,title,level,rel_path`; one
+   unit per row; `title` must equal that file's first-line heading, `rel_path` must match
+   the region prefix);
+3. Run `auto-epublizer restructure`: after validation (files exist, no orphan md, no
+   duplicate id) it updates `publication.json.units`;
+4. State semantics: same id and unchanged content → state retained; changed → roll back to
+   `split` (requires re-translation and re-import); a vanished id → output an orphan-artifact
+   hint (old translation/align can be cleaned up).
 
-> 何时用：MinerU/OCR 层级混乱需重切、碎片单元合并、单单元丢 nav 需拆分。
-> 详见 `references/repair.md` 与 `docs/semantic-repair.md` §3.3。
+> When to use: MinerU/OCR hierarchy is messy and needs re-splitting, fragmented units need
+> merging, a single unit that lost nav needs splitting.
+> See `references/repair.md` and `docs/semantic-repair.md` §3.3.
 
-## 说明
+## Notes
 
-分栏阅读顺序、复杂表格保形、脚注/尾注专项提取是复杂 PDF 场景，当前为后续扩展点；
-基础四层归类 + 页眉页脚/页码剔除已实现。
+Column-order reading, complex-table shape preservation, and dedicated footnote/endnote
+extraction are complex PDF scenarios and are currently future extension points; basic
+four-layer classification + running-head/footer/page-number removal are implemented.
