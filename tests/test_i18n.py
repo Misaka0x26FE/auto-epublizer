@@ -98,6 +98,20 @@ def test_relink_rewrites_language_siblings(tmp_path: Path) -> None:
     assert i18n.relink(tmp_path / "a.md") == 0  # 幂等
 
 
+def test_relink_skips_language_banner(tmp_path: Path) -> None:
+    """回归：语言横幅本身是链接，--relink 不得改写它（否则戳随之失效）。"""
+    _pair(tmp_path, "a")
+    _pair(tmp_path, "b")
+    (tmp_path / "a.zh.md").write_text("[B](b.md)", encoding="utf-8")
+    i18n.finalize(tmp_path / "a.md")
+    assert i18n.relink(tmp_path / "a.zh.md") == 1  # 正文链接被重写
+    assert i18n.relink(tmp_path / "a.md") == 0  # 横幅不受影响
+    i18n.finalize(tmp_path / "a.md")
+    assert i18n.check_stamps(tmp_path) == []
+    assert "> **English** | [中文](a.zh.md)" in (tmp_path / "a.md").read_text(encoding="utf-8")
+    assert "> **中文** | [English](a.md)" in (tmp_path / "a.zh.md").read_text(encoding="utf-8")
+
+
 # ── 仓库实时校验（随文档翻译进度保持通过）──────────────────────────────────
 
 

@@ -1,36 +1,42 @@
-# Review（六道关 QC 操作指引）
+<!-- i18n: source=review.zh.md sha256=4ca5f85b55cf7ca7280f7d97149c9f76bec06c5ba62260ff90782b2ee6878b9a -->
+> **English** | [中文](review.zh.md)
 
-> 排障与放行判读速查（错误码全集/条件全集）见 `references/invariants.md`。
+# Review (six-gate QC operational guide)
 
-六道关按成本分层：G0/G4/G5 是 CLI 确定性校验（零 token）；G1–G3 的**语义审校是 agent
-任务**（唯一 LLM 原则）——你用自身能力读双语对照找问题、裁决、修订，并把产物按契约写进
-`reviews/review-<ts>/`，`qa` 从 `result.json` 读 g1/g2/g3 计数与收敛状态。
+> For a quick troubleshooting and release-interpretation reference (full error-code / condition sets), see `references/invariants.md`.
 
-## 关卡总览
+The six gates are layered by cost: G0/G4/G5 are CLI deterministic validation (zero token);
+the **semantic review of G1–G3 is an agent task** (single-LLM principle) — you use your own
+abilities to read the bilingual alignment, find problems, arbitrate and revise, and write
+the artifacts into `reviews/review-<ts>/` per the contract; `qa` reads the g1/g2/g3 counts
+and convergence state from `result.json`.
 
-| 关卡 | 做什么 | 谁做 | 产出 |
+## Gate overview
+
+| Gate | What it does | Who does it | Output |
 |---|---|---|---|
-| G0 | 零 token 静态校验（对照表完整性/长度比/术语命中/标记守恒/脚注守恒/源保真） | CLI（`g0`/`import`） | 静态告警列表 |
-| G1 | 逐段双语审校（漏译/增译/误译/术语/人称） | agent | `issues` 候选 |
-| G2 | 证据取证复核（回源文/上下文确认） | agent | `issues` 确认/驳回 |
-| G3 | 仲裁 + 修订 + 收敛判定 | agent | `patches` + `termination` |
-| G4 | EPUB 结构 QA（epubcheck + 解包审计） | CLI（`qa`） | 结构审计报告 |
-| G5 | 交付验收（汇总 + 放行清单） | CLI（`qa`） | `report.json` |
+| G0 | Zero-token static validation (alignment completeness / length ratio / terminology hit / marker conservation / footnote conservation / source fidelity) | CLI (`g0`/`import`) | static warning list |
+| G1 | Segment-by-segment bilingual review (omission / addition / mistranslation / terminology / person) | agent | `issues` candidates |
+| G2 | Evidence-gathering review (confirm against source text / context) | agent | `issues` confirmed / rejected |
+| G3 | Arbitration + revision + convergence determination | agent | `patches` + `termination` |
+| G4 | EPUB structural QA (epubcheck + unpack audit) | CLI (`qa`) | structural audit report |
+| G5 | Delivery acceptance (aggregation + release checklist) | CLI (`qa`) | `report.json` |
 
-## 审校产物契约（agent 手写）
+## Review artifact contract (agent-written)
 
-产出 `reviews/review-<ts>/`：
+Produce `reviews/review-<ts>/`:
 
 ```text
 reviews/review-<ts>/
-├── metadata.json         # 内容摘要 + 审校配置指纹
-├── issues.json           # 本轮发现的问题（G1–G2 确认后）
-├── patches.json          # 修订建议（G3）
-├── summary.md            # 审校小结
-└── result.json           # 终局：issue_count / termination / rounds（qa 读取）
+├── metadata.json         # content summary + review-config fingerprint
+├── issues.json           # issues found this round (after G1–G2 confirmation)
+├── patches.json          # revision suggestions (G3)
+├── summary.md            # review summary
+└── result.json           # final: issue_count / termination / rounds (read by qa)
 ```
 
-`result.json` 键（qa 契约；缺省按 0，`issue_count` 是 `g2_confirmed` 的旧回退键）：
+`result.json` keys (qa contract; default 0, `issue_count` is the legacy fallback key for
+`g2_confirmed`):
 
 ```json
 {
@@ -42,84 +48,109 @@ reviews/review-<ts>/
 }
 ```
 
-审校通过（`termination == "clean_confirmed"`）后，用 `auto-epublizer import --reviewed`
-把处于 `aligned` 的单元推进 `reviewed`（幂等；已 reviewed/built 的单元跳过重导）。
-若你的修订改动了 `translation/`+`align/`，先重新 `import`（回到 aligned）再
-`import --reviewed`。
+After the review passes (`termination == "clean_confirmed"`), use
+`auto-epublizer import --reviewed` to advance units in `aligned` to `reviewed`
+(idempotent; units already reviewed/built skip re-import). If your revision changed
+`translation/` + `align/`, first re-`import` (back to aligned) and then
+`import --reviewed`.
 
-## termination（收敛终态）
+## termination (convergence end state)
 
-| 值 | 含义 | 下一步 |
+| Value | Meaning | Next step |
 |---|---|---|
-| `clean_confirmed` | 连续 N 轮无 issue | 可进入 build |
-| `max_rounds` | 达轮数上限仍未收敛 | 人工检查遗留 issue |
-| `no_progress` | 修订摘要出现 A↔B 循环 | 振荡，人工介入裁决 |
-| `unresolved_fixes` | 无法修订的句子积压 | 人工处理 |
+| `clean_confirmed` | N consecutive rounds with no issue | can proceed to build |
+| `max_rounds` | max rounds reached without convergence | manually inspect leftover issues |
+| `no_progress` | revision digest shows an A↔B cycle | oscillation, human arbitration required |
+| `unresolved_fixes` | backlog of sentences that cannot be revised | handle manually |
 
-## G1 抽样策略
+## G1 sampling strategy
 
-小书（≤10 单元）全审。大部头按**章节类型 × 高风险特征**分层抽样，高风险必审：
-论证密集/表格、脚注、引文密集/多语材料/OCR 存疑段（对齐 `risks.md` 与
-`preprocessing/units/<id>.md` 的风险标注）/复杂版式/**每章首尾单元**；其余随机抽查。
+Small books (≤10 units) are fully reviewed. Large books use stratified sampling by
+**chapter type × high-risk feature**; high-risk must be reviewed:
+argument-dense/tables, footnotes, quotation-dense/multilingual material/OCR-suspect
+segments (aligned with the risk annotations in `risks.md` and
+`preprocessing/units/<id>.md`)/complex layout/**the first and last unit of each
+chapter**; the rest are randomly spot-checked.
 
-## G1 问题类型（宁缺毋滥）
+## G1 issue types (better to omit than to over-flag)
 
-`missing`（漏译）/ `added`（增译）/ `mistranslation`（误译）/ `terminology`（术语违例）/
-`pronoun`（人称/性别错误）。合理语序调整、自然意译、风格润色**不算问题**，拿不准不报。
+`missing` (omission) / `added` (addition) / `mistranslation` / `terminology` (terminology
+violation) / `pronoun` (person/gender error). Reasonable word-order adjustment, natural
+free translation and stylistic polish **do not count as issues**; when unsure, do not
+report.
 
-## 修订与盲复审
+## Revision and blind re-review
 
-- 修订先出 `patches.json`（"最小修改的完整单句替换"），确认后再改 `translation/`+
-  `align/`（改后重新 `import`）；正式 `translation/`、`glossary.csv`、`publication.json`
-  不要绕过 import 直接手改。
-- 下一轮审校不传旧问题说明，只读修订后的译文（盲审），防止"按说明书打勾"。
+- A revision first produces `patches.json` ("minimal-edit full-sentence replacement"),
+  and only after confirmation edits `translation/` + `align/` (re-`import` after
+  editing); do not hand-edit the official `translation/`, `glossary.csv` or
+  `publication.json` directly, bypassing import.
+- The next review round does not receive the previous issue descriptions and reads only
+  the revised translation (blind review), preventing "checking the boxes against the
+  spec".
 
-## 术语冲突仲裁
+## Terminology-conflict arbitration
 
-跨段对同一术语/人称/固定表达给出矛盾译法时，应外置到 `analysis/glossary_conflicts.jsonl`
-并终局裁决；同一词多种译法并存（如赤区/苏区）是"最隐蔽的质量问题"，裁决后写回
-`analysis/glossary.csv`（权威）。
+When different segments give contradictory renderings for the same term/person/fixed
+expression, externalize them to `analysis/glossary_conflicts.jsonl` and arbitrate at the
+end; multiple renderings of the same word coexisting (e.g. 赤区/苏区) is "the most
+insidious quality problem"; after arbitration write back to `analysis/glossary.csv`
+(authoritative).
 
-## G4 / G5（见 qa.md 与 build.md）
+## G4 / G5 (see qa.md and build.md)
 
-- G4：`auto-epublizer qa` 跑 epubcheck（零 error）+ 解包逐项审计（mimetype 首位未压缩、
-  container 指向 OPF、manifest/spine 可解析、nav 链接可解析、URL 安全、lang 正确、每章一个 h1）。
-- G5 放行条件：`g2_confirmed == 0` 或全部已修订；`g0_terminology_open == 0`（术语命中清零）；
-  `g4_epubcheck_errors == 0`（且 epubcheck 实际运行）；`g4_audit == "pass"`；
-  溯源完整（`provenance_coverage ≈ 1.0`、三边对账/媒体溯源零缺失、目录层级不扁平、
-  溯源 findings 无 error 级）。
-- **放行 ≠ 交付**：`qa released` 只代表已知契约全绿；交付前还须按
-  `references/delivery.md` 完成交付审计（独立对账 + 解包抽检 + 人肉核对 →
-  `reviews/delivery-<ts>.md` 记录）。
+- G4: `auto-epublizer qa` runs epubcheck (zero error) + item-by-item unpack audit
+  (mimetype first and uncompressed, container points to OPF, manifest/spine parseable,
+  nav links resolvable, URL safe, correct lang, exactly one h1 per chapter).
+- G5 release conditions: `g2_confirmed == 0` or all revised;
+  `g0_terminology_open == 0` (terminology hits cleared);
+  `g4_epubcheck_errors == 0` (and epubcheck actually ran); `g4_audit == "pass"`;
+  complete provenance (`provenance_coverage ≈ 1.0`, zero missing in tri-lateral
+  reconciliation / media provenance, TOC hierarchy not flat, no error-level provenance
+  findings).
+- **Release ≠ delivery**: `qa released` only means all known contracts are green; before
+  delivery you must also complete the delivery audit per `references/delivery.md`
+  (independent reconciliation + unpack sampling + manual checks → a
+  `reviews/delivery-<ts>.md` record).
 
-## 验收阈值（默认）
+## Acceptance thresholds (defaults)
 
-| 指标 | 阈值 |
+| Metric | Threshold |
 |---|---|
-| 长度比 | `0.30 ≤ len(tgt)/len(src) ≤ 3.0`（G0 告警，advisory） |
-| **插入标记守恒** | **`{fig:NNN}` 等标记 src/tgt 单元级总量一致（硬缺陷；未清零 G5 报 `structure_open`）** |
-| **脚注守恒** | **pandoc `[^label]` 与句末数字注码总量一致（硬缺陷，同上）** |
-| **术语冲突** | **`glossary_conflicts_open == 0`（裁决写回 glossary.csv 前 qa 不放行，`glossary_conflict_open`）** |
-| **术语命中** | **0（G0 `terminology` 是真实缺陷，不是 advisory——译文缺了术语表源词；必须逐条核验清零，否则 G5 不放行，`released_reason=terminology_open`）** |
-| 空译文 | 禁止（`import` 阻断该单元） |
-| 差错率 | `confirmed_issues / 总句数 ≤ 1e-4`（agent 自查参考，非 CLI 硬门） |
-| epubcheck | 0 error（且须实际运行；jar 缺失 → `epubcheck_not_run`） |
+| Length ratio | `0.30 ≤ len(tgt)/len(src) ≤ 3.0` (G0 warning, advisory) |
+| **Insert marker conservation** | **`{fig:NNN}` etc. markers consistent in src/tgt unit-level totals (hard defect; if not cleared, G5 reports `structure_open`)** |
+| **Footnote conservation** | **pandoc `[^label]` and sentence-final numeric note references consistent in total (hard defect, as above)** |
+| **Terminology conflict** | **`glossary_conflicts_open == 0` (qa does not release before arbitration is written back to glossary.csv, `glossary_conflict_open`)** |
+| **Terminology hit** | **0 (G0 `terminology` is a real defect, not advisory — the translation is missing a glossary source term; it must be verified and cleared item by item, otherwise G5 does not release, `released_reason=terminology_open`)** |
+| Empty translation | forbidden (`import` blocks that unit) |
+| Error rate | `confirmed_issues / total sentences ≤ 1e-4` (agent self-check reference, not a CLI hard gate) |
+| epubcheck | 0 error (and it must actually run; missing jar → `epubcheck_not_run`) |
 
-> 说明：G0 可独立运行——`auto-epublizer g0` 在翻译/导入后立即校验。
-> **G0 告警分两类，处理方式不同**：
-> - `terminology`（术语命中）：**真实缺陷**，CLI 以红色 `✗` 标出，`import` 也会单独
->   计数提示；必须逐条核对译文/术语表后清零（补译 / 修术语表 / 声明例外）才能放行。
->   豆包实测教训：曾把术语未命中与长度误报混为一谈全当噪声，漏掉真问题。
-> - `length`（长度比过低/过高）：advisory，英→中长度比天然偏低会大量误报，不作为
->   放行硬条件；但**抽样核对**是否真漏译（尤其超长句被省略号收尾的段落）。
+> Note: G0 can run independently — `auto-epublizer g0` validates immediately after
+> translation/import.
+> **G0 warnings fall into two categories with different handling**:
+> - `terminology` (terminology hit): a **real defect**, the CLI marks it in red `✗`,
+>   and `import` also counts it separately; you must check the translation/glossary item
+>   by item and clear it (supplement the translation / fix the glossary / declare an
+>   exception) before release. DouBao field lesson: terminology misses were once lumped
+>   together with length false-positives and treated as all noise, missing the real
+>   problem.
+> - `length` (length ratio too low/too high): advisory, en→zh length ratios are naturally
+>   low and produce many false positives, not a release hard condition; but **spot-check**
+>   whether there is a real omission (especially paragraphs where an overly long sentence
+>   ends with an ellipsis).
 >
-> G1–G3 由你审校后写 `result.json`；全局理解上下文在 `analysis/` 缺失时回退
-> `preprocessing/global.md`。G4 由 `qa` 命令驱动；G5 由 `qa` 聚合 G0–G4 写
-> `report.json`（含 `error_rate`/`released`/`released_reason`）。
+> G1–G3 are written to `result.json` after your review; the global-understanding context
+> falls back to `preprocessing/global.md` when `analysis/` is missing. G4 is driven by the
+> `qa` command; G5 is written by `qa`, aggregating G0–G4 into `report.json` (including
+> `error_rate`/`released`/`released_reason`).
 
-## 翻译期间的过程校验（QC 落实，豆包实测教训）
+## In-process validation during translation (QC discipline, DouBao field lesson)
 
-- **每译 3–5 个单元 build 一次**：格式契约问题当轮暴露（图片段缺 `<img>` 行、
-  空行破坏、转义残留），避免一次污染多个单元到最后集中返工。
-- 每个单元写完即 `import --unit <id>` 登记 + `g0 --unit <id>` 校验，术语告警当场处理。
-- 标题在开工前一次性定稿进 `preprocessing/plan.md`，不在翻译中途改。
+- **Build once every 3–5 units translated**: format-contract problems surface in that
+  round (image segments missing an `<img>` line, blank-line breakage, escaping residue),
+  avoiding contaminating multiple units at once and a big rework at the end.
+- Write each unit and immediately `import --unit <id>` to register + `g0 --unit <id>` to
+  validate; handle terminology warnings on the spot.
+- Finalize headings once before starting work into `preprocessing/plan.md`; do not change
+  them mid-translation.

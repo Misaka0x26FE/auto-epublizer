@@ -1,50 +1,55 @@
-# QA（epubcheck + 解包审计）
+<!-- i18n: source=qa.zh.md sha256=9797a535913fe277482e8d182163ceec8ac988427029b8fe2b5abd4a11efb5c0 -->
+> **English** | [中文](qa.zh.md)
 
-> 排障与放行判读速查（错误码全集/条件全集）见 `references/invariants.md`。
+# QA (epubcheck + unpack audit)
 
-`qa` 命令对成品 EPUB 做结构 QA（G4），写 `report.json`。
+> For a quick troubleshooting and release-interpretation reference (full error-code / condition sets), see `references/invariants.md`.
 
-## 命令
+The `qa` command performs structural QA (G4) on the finished EPUB and writes
+`report.json`.
+
+## Command
 
 ```bash
 auto-epublizer qa [--epub <path>] [--workspace <dir>]
-# 输出：G4 审计：pass/fail；epubcheck errors：N；passed：true/false
+# Output: G4 audit: pass/fail; epubcheck errors: N; passed: true/false
 ```
 
 ## epubcheck
 
-- 用 `~/.cache/epubcheck.jar`（`java -jar`）校验，零 error 放行。
-- jar 缺失时 `available=False`、`ran=False`、`errors=-1`，`passed=False`（未验证 ≠ 合格）。
+- Validate with `~/.cache/epubcheck.jar` (`java -jar`); zero error releases.
+- When the jar is missing, `available=False`, `ran=False`, `errors=-1`, `passed=False`
+  (not verified ≠ qualified).
 
-## 解包逐项审计（离线，零 token）
+## Item-by-item unpack audit (offline, zero token)
 
-| 检查 | 失败码 |
+| Check | Failure code |
 |---|---|
-| 非 zip | `E_NOT_EPUB` |
-| mimetype 非首位 / 被压缩 / 内容错 | `E_MIMETYPE_FIRST` / `E_MIMETYPE_STORED` / `E_MIMETYPE_CONTENT` |
-| 缺 container.xml / 未声明 OPF | `E_NO_CONTAINER` / `E_CONTAINER_OPF` |
-| OPF 缺失 | `E_OPF_MISSING` |
-| spine idref 未在 manifest | `E_SPINE_REF` |
-| manifest href 无法解析 | `E_MANIFEST_HREF` |
-| nav 链接无法解析 | `E_NAV_HREF` |
-| NCX content src 无法解析（悬空引用） | `E_NCX_HREF` |
-| landmarks 链接无法解析（悬空引用） | `E_LANDMARKS_HREF` |
-| 内容文档 img src 无法解析（媒体悬空） | `E_IMG_SRC` |
-| javascript:/data: URL 注入 | `E_UNSAFE_URL` |
-| 内容文档缺 lang / h1 数量不为 1 | `W_NO_LANG` / `W_H1_COUNT`（告警） |
-| 标题跳级（h1→h3 等） | `E_HEADING_SKIP` |
-| HTML 注释残留 / markdown 标记残留（`![` `**` `:::` `{.` `[^`） | `E_RESIDUE` / `W_RESIDUE`（error/告警） |
-| DC 元数据缺失（creator/date/publisher/rights） | `W_META_INCOMPLETE`（告警） |
-| 内部锚点无法解析（含脚注 noteref→footnote） | `E_ANCHOR` |
-| 脚注 aside 缺回链或回链不可解析 | `E_FN_BACKLINK` |
-| 双语 src/tgt 段落数不一致 | `E_BI_PAIRS` |
-| 主题含具体字体名/字号 / 颜色 | `E_THEME_FONT` / `E_THEME_COLOR` |
-| 封面 properties 与 meta 互证失败 | `E_COVER_META` |
-| img alt 空值或缺失 / 格式兼容性差（.webp/.avif） | `W_IMG_NO_ALT` / `W_IMG_FORMAT`（告警） |
-| 图片超大（>4000px）/ 超宽超高（>5:1）/ 未压缩（>2MB） | `W_IMG_LARGE` / `W_IMG_RATIO` / `W_IMG_UNCOMPRESSED`（告警） |
-| EPUB 总体积超阈值（50MB） | `W_EPUB_SIZE`（告警） |
+| not a zip | `E_NOT_EPUB` |
+| mimetype not first / compressed / wrong content | `E_MIMETYPE_FIRST` / `E_MIMETYPE_STORED` / `E_MIMETYPE_CONTENT` |
+| missing container.xml / OPF not declared | `E_NO_CONTAINER` / `E_CONTAINER_OPF` |
+| OPF missing | `E_OPF_MISSING` |
+| spine idref not in manifest | `E_SPINE_REF` |
+| manifest href unresolvable | `E_MANIFEST_HREF` |
+| nav link unresolvable | `E_NAV_HREF` |
+| NCX content src unresolvable (dangling reference) | `E_NCX_HREF` |
+| landmarks link unresolvable (dangling reference) | `E_LANDMARKS_HREF` |
+| content document img src unresolvable (dangling media) | `E_IMG_SRC` |
+| javascript:/data: URL injection | `E_UNSAFE_URL` |
+| content document missing lang / h1 count not 1 | `W_NO_LANG` / `W_H1_COUNT` (warning) |
+| heading level skip (h1→h3 etc.) | `E_HEADING_SKIP` |
+| HTML comment residue / markdown marker residue (`![` `**` `:::` `{.` `[^`) | `E_RESIDUE` / `W_RESIDUE` (error/warning) |
+| DC metadata missing (creator/date/publisher/rights) | `W_META_INCOMPLETE` (warning) |
+| internal anchor unresolvable (including footnote noteref→footnote) | `E_ANCHOR` |
+| footnote aside missing backlink or backlink unresolvable | `E_FN_BACKLINK` |
+| bilingual src/tgt paragraph counts inconsistent | `E_BI_PAIRS` |
+| theme contains a concrete font name/size / color | `E_THEME_FONT` / `E_THEME_COLOR` |
+| cover properties and meta cross-verification fails | `E_COVER_META` |
+| img alt empty or missing / poor format compatibility (.webp/.avif) | `W_IMG_NO_ALT` / `W_IMG_FORMAT` (warning) |
+| image too large (>4000px) / too wide or tall (>5:1) / uncompressed (>2MB) | `W_IMG_LARGE` / `W_IMG_RATIO` / `W_IMG_UNCOMPRESSED` (warning) |
+| EPUB total size over threshold (50MB) | `W_EPUB_SIZE` (warning) |
 
-## 质量报告 `report.json`
+## Quality report `report.json`
 
 ```json
 {"slug":"...","g4_audit":"pass","g4_epubcheck_errors":0,"passed":true,
@@ -52,80 +57,105 @@ auto-epublizer qa [--epub <path>] [--workspace <dir>]
  "epubcheck":{"available":true,"ran":true,"errors":0,"warnings":0}}
 ```
 
-## 放行条件（G5）
+## Release conditions (G5)
 
-- `g4_epubcheck_errors == 0`（epubcheck 已实际运行）
-- `g4_audit == "pass"`（解包审计零 error）
-- G0 术语命中清零（`g0_terminology_open == 0`；长度比类告警才是 advisory）
-- G0 结构违例清零（`g0_structure_open == 0`：标记/脚注守恒）
-- 未决术语冲突清零（`glossary_conflicts_open == 0`；未清零 → `glossary_conflict_open`——
-  回 analysis/glossary_conflicts.jsonl 裁决写回 glossary.csv 后重跑 qa）
-- 审校 `g2_confirmed == 0` 或全部已修订
-- 溯源完整（postprocessing-spec §5）：`provenance_coverage ≈ 1.0`（无翻译产物时为
-  null，不适用）、`units_missing == 0`、`units_order_ok`、`media_lost == 0`、
-  `toc_flat == false`、`inserts_missing_files == 0`（插图/表格/公式可回溯原始地址且文件在，
-  pdf-content-spec §9）
-- 成品呈现对账清零（交付审计 S1）：`epub_media_missing == 0`、
-  `epub_footnotes_missing == 0`、`align_md_drift == 0`、`epub_coverage ≈ 1.0`
-  （成品实际包含 ↔ 译文正文/对照表）
+- `g4_epubcheck_errors == 0` (epubcheck actually ran)
+- `g4_audit == "pass"` (unpack audit zero error)
+- G0 terminology hits cleared (`g0_terminology_open == 0`; length-ratio warnings are the
+  advisory ones)
+- G0 structural violations cleared (`g0_structure_open == 0`: marker/footnote
+  conservation)
+- Unresolved terminology conflicts cleared (`glossary_conflicts_open == 0`; if not
+  cleared → `glossary_conflict_open` — go back to analysis/glossary_conflicts.jsonl,
+  arbitrate and write back to glossary.csv, then rerun qa)
+- Review `g2_confirmed == 0` or all revised
+- Complete provenance (postprocessing-spec §5): `provenance_coverage ≈ 1.0` (null when
+  there is no translation artifact, not applicable), `units_missing == 0`,
+  `units_order_ok`, `media_lost == 0`, `toc_flat == false`,
+  `inserts_missing_files == 0` (illustrations/tables/formulas traceable to the original
+  location with the file present, pdf-content-spec §9)
+- Finished-product presentation reconciliation cleared (delivery audit S1):
+  `epub_media_missing == 0`, `epub_footnotes_missing == 0`, `align_md_drift == 0`,
+  `epub_coverage ≈ 1.0` (actual product inclusion ↔ translation body/alignment)
 
-> `qa released=True` 只代表已知契约全绿；**交付前还须执行 `references/delivery.md`
-> 的交付审计清单**（独立对账 + 人工抽查 + 写交付记录），两者都完成才算交付。
+> `qa released=True` only means all known contracts are green; **before delivery you must
+> also execute the delivery-audit checklist in `references/delivery.md`** (independent
+> reconciliation + manual spot-check + write the delivery record); only when both are
+> done does it count as delivered.
 
-`released` 为 False 时看 `released_reason` 判定原因：
-`unresolved_confirmed`（G2 确认未修订）/ `audit_failed` / `provenance_incomplete`
-（溯源不完整：看 `provenance_findings` 里的 E_UNIT_MISSING/E_UNIT_ORDER/E_MEDIA_LOST/
-E_MEDIA_ORDER/E_MEDIA_EPUB_LOST/E_FN_EPUB_LOST/E_EPUB_PARA_LOST/E_ALIGN_MD_DRIFT/
-E_TOC_FLAT/E_INSERT_MISSING_FILE/E_INSERT_BAD_SOURCE 定位）/
-`epubcheck_not_run`（jar 缺失，装 jar 重跑）/ `epubcheck_errors`。
-G0 **长度比**类告警是 advisory 线索，不阻断放行；**术语命中**（`g0_terminology_open`）
-是放行硬门，未清零 → `released_reason=terminology_open`。
-`toc_missing`（facts 源 TOC 对账）与 `W_TOC_DEPTH` 是 warning 线索，不阻断。
+When `released` is False, look at `released_reason` to determine the cause:
+`unresolved_confirmed` (G2 confirmed but unrevised) / `audit_failed` /
+`provenance_incomplete` (incomplete provenance: locate via the
+E_UNIT_MISSING/E_UNIT_ORDER/E_MEDIA_LOST/E_MEDIA_ORDER/E_MEDIA_EPUB_LOST/E_FN_EPUB_LOST/E_EPUB_PARA_LOST/E_ALIGN_MD_DRIFT/
+E_TOC_FLAT/E_INSERT_MISSING_FILE/E_INSERT_BAD_SOURCE entries in `provenance_findings`) /
+`epubcheck_not_run` (missing jar, install the jar and rerun) / `epubcheck_errors`.
+G0 **length-ratio** warnings are advisory clues and do not block release; **terminology
+hits** (`g0_terminology_open`) are a release hard gate, and if not cleared →
+`released_reason=terminology_open`.
+`toc_missing` (facts source-TOC reconciliation) and `W_TOC_DEPTH` are warning clues and do
+not block.
 
-## 插入内容（inserts）审计判读
+## Inserts audit interpretation
 
-`raw/inserts/<id>.json`（插图/表格/公式描述文件，pdf-content-spec §2）存在时，
-provenance 追加四码检查（E 级进放行门；W 级不阻断，但按 translation.md「inserts 补全」补齐后再复跑）：
+When `raw/inserts/<id>.json` (illustration/table/formula description files,
+pdf-content-spec §2) exists, provenance adds a four-code check (E-level enters the release
+gate; W-level does not block, but supplement per translation.md "inserts completion" and
+rerun):
 
-| 码 | 级别 | 含义与处置 |
+| Code | Level | Meaning and handling |
 |---|---|---|
-| `E_INSERT_MISSING_FILE` | error | `source.file` 指向的媒体文件不在盘——重跑该单元 ingest（`preprocess`/`init`）或从源 PDF 重新提取；确认不是被误删 |
-| `E_INSERT_BAD_SOURCE` | error | `source.page` 非正整数或 `bbox` 非法——描述文件损坏，手工修正该 `<id>.json` 的 source 字段（回源 PDF 核对页号/坐标） |
-| `W_INSERT_NO_DESC` | warning | `content_desc` 为空——agent 按 translation.md「inserts 补全」回源页写内容描述 |
-| `W_INSERT_NO_LATEX` | warning | formula 记录 `latex` 为空——agent 手写 LaTeX 填入（依据 bbox 定位公式，图为准） |
+| `E_INSERT_MISSING_FILE` | error | the media file that `source.file` points to is not on disk — rerun that unit's ingest (`preprocess`/`init`) or re-extract from the source PDF; confirm it was not accidentally deleted |
+| `E_INSERT_BAD_SOURCE` | error | `source.page` is not a positive integer or `bbox` is invalid — the description file is corrupt; manually fix the source field of that `<id>.json` (check the page number/coordinates against the source PDF) |
+| `W_INSERT_NO_DESC` | warning | `content_desc` is empty — the agent writes a content description from the source page per translation.md "inserts completion" |
+| `W_INSERT_NO_LATEX` | warning | formula record `latex` is empty — the agent hand-writes LaTeX into it (locate the formula by bbox; the image is authoritative) |
 
-report.json 落盘的计数字段只有 `inserts_missing_files`（进放行门）；
-`inserts_total` / `inserts_no_desc` / `inserts_no_latex` 只在溯源结果对象内存在，
-不落盘——需要计数时自行统计 `provenance_findings` 里的 `W_INSERT_NO_DESC` /
-`W_INSERT_NO_LATEX` 条目。
+The only count field persisted in report.json is `inserts_missing_files` (enters the
+release gate); `inserts_total` / `inserts_no_desc` / `inserts_no_latex` exist only inside
+the provenance result object and are not persisted — when a count is needed, tally the
+`W_INSERT_NO_DESC` / `W_INSERT_NO_LATEX` entries in `provenance_findings` yourself.
 
-## 排查
+## Troubleshooting
 
-- `epubcheck errors: -1` → 未装 jar；按 `doctor` 提示下载放到 `~/.cache/epubcheck.jar` 后重跑。
-- `成品不存在` → 先 `build` 或 `convert`。
-- 审计发现 `W_H1_COUNT` → 内容文档标题层级问题（每章应恰一个 h1）。
-- `E_ZIP_DUPLICATE` → zip 条目名重复（手改包/损坏）；从译文重新 build，不修成品。
-- `E_IMG_REMOTE` → 图片外链；把图下载进 raw/media/、译文改本地引用后重 build。
-- `E_TOC_COVERAGE` → spine↔nav 双向覆盖缺口（章节缺 nav 条目 / nav 幽灵条目）；
-  注意**目录深度投影**（`output.nav_depth`）剔除的超深单元是预期豁免，不算缺口；
-  其他情况查该单元 translation md 的标题层级，重 build。
-- `E_MEDIA_EPUB_LOST` → 译文引用的图片未进成品（构建静默丢弃/渲染缺失）：
-  查 `structured/raw/media/` 是否有该文件、`events.jsonl` 的 `media_dropped` 事件；
-  补文件后重 build。
-- `E_FN_EPUB_LOST` → 成品脚注数与译文不一致：查译文 md 的 `[^label]:` 定义是否完整、
-  重 build；`W_RESIDUE` 提示字面 `[^` 残留时即定义缺失。
-- `E_EPUB_PARA_LOST` → 成品缺失译文段落（正文探针 `epub_coverage` < 1.0）：
-  从报告中定位 `unit:段`，核对 translation md 与 structured 后重 build。
-- `E_ALIGN_MD_DRIFT` → 译文正文与对照表不一致（一侧缺内容）：以 align 为准核对并
-  重写 md，重跑 `import`。
-- `W_DELIVERY_AUDIT_MISSING` → 全部单元已构建但无交付记录：按
-  `references/delivery.md` 执行交付审计并写 `reviews/delivery-<ts>.md`。
-- `W_REPAIR_UNRESOLVED` → 语义整备有未决修复（`preprocessing/repairs.jsonl`
-  中 status=unresolved）：能修则修后复跑 qa；确属存疑的在交付记录中说明。
-- `W_NAMING` → 成品文件名与 slug 前缀不符；`-o` 重命名或按 `<slug>.epub`/`<slug>-bi.epub` 输出。
-- `W_STRUCT_MISSING` → structured/ 源文文件缺失（被误删）；从源文件重跑该单元 ingest。
+- `epubcheck errors: -1` → jar not installed; download it per the `doctor` hint, place it
+  at `~/.cache/epubcheck.jar`, and rerun.
+- `product does not exist` → `build` or `convert` first.
+- Audit finds `W_H1_COUNT` → content-document heading hierarchy problem (each chapter
+  should have exactly one h1).
+- `E_ZIP_DUPLICATE` → duplicate zip entry names (hand-edited package/corrupt); rebuild
+  from the translation, do not fix the product.
+- `E_IMG_REMOTE` → image external link; download the image into raw/media/, change the
+  translation to a local reference, and rebuild.
+- `E_TOC_COVERAGE` → spine↔nav bidirectional coverage gap (chapter missing a nav entry /
+  ghost nav entry); note that super-deep units removed by **TOC depth projection**
+  (`output.nav_depth`) are an expected exemption and do not count as gaps; otherwise
+  check that unit's translation md heading hierarchy and rebuild.
+- `E_MEDIA_EPUB_LOST` → an image referenced by the translation did not make it into the
+  product (silently dropped by build / rendering missing): check whether the file exists
+  in `structured/raw/media/` and the `media_dropped` event in `events.jsonl`; add the
+  file and rebuild.
+- `E_FN_EPUB_LOST` → product footnote count inconsistent with the translation: check
+  whether the `[^label]:` definitions in the translation md are complete and rebuild;
+  `W_RESIDUE` indicating a literal `[^` residue means a definition is missing.
+- `E_EPUB_PARA_LOST` → product is missing a translation paragraph (body probe
+  `epub_coverage` < 1.0): locate `unit:paragraph` from the report, check the translation
+  md against structured, and rebuild.
+- `E_ALIGN_MD_DRIFT` → translation body inconsistent with the alignment (one side missing
+  content): check against align as authoritative, rewrite the md, and rerun `import`.
+- `W_DELIVERY_AUDIT_MISSING` → all units built but no delivery record: perform the
+  delivery audit per `references/delivery.md` and write `reviews/delivery-<ts>.md`.
+- `W_REPAIR_UNRESOLVED` → semantic repair has an unresolved fix (status=unresolved in
+  `preprocessing/repairs.jsonl`): fix it if possible and rerun qa; explain genuinely
+  doubtful ones in the delivery record.
+- `W_NAMING` → product filename does not match the slug prefix; rename with `-o` or output
+  as `<slug>.epub`/`<slug>-bi.epub`.
+- `W_STRUCT_MISSING` → structured/ source file missing (accidentally deleted); rerun that
+  unit's ingest from the source file.
 - `provenance_incomplete` →
-  - `E_UNIT_MISSING`：spine 缺单元——检查该单元译文/源文是否存在、是否为空壳被跳过；
-  - `E_MEDIA_LOST`/`E_MEDIA_ORDER`：译文丢图或图片顺序变了——对照 `structured/` 原文补齐；
-  - 覆盖率 < 1.0：`report.json` 无逐段清单，跑 `g0` 看告警定位漏译段落；
-  - `E_TOC_FLAT`：源文有层级但目录扁平——确认源单元 `level` 已登记（重跑 init/preprocess）。
+  - `E_UNIT_MISSING`: spine missing a unit — check whether that unit's translation/source
+    exists and whether it was skipped as an empty shell;
+  - `E_MEDIA_LOST`/`E_MEDIA_ORDER`: the translation dropped an image or the image order
+    changed — supplement against the `structured/` source text;
+  - coverage < 1.0: `report.json` has no per-paragraph list; run `g0` and use its warnings
+    to locate omitted paragraphs;
+  - `E_TOC_FLAT`: the source text has hierarchy but the TOC is flat — confirm the source
+    unit `level` is registered (rerun init/preprocess).

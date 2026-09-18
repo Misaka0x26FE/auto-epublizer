@@ -1,73 +1,76 @@
-# 发布与分发（publishing gate）
+<!-- i18n: source=publishing.zh.md sha256=596179ea16caa4171b4bf9470cfabed8d96fb3cb1816aff475caf96dbf3197ff -->
+> **English** | [中文](publishing.zh.md)
 
-> **定位**：`qa` 的 `released=true` 只代表**交付质量**合格（准确/完整/一致/规范/
-> 结构正确/可复现）≠ **可发布**。发布是 agent + 用户的语义与法律决策；本篇是
-> 发布前的 gate 清单。仓库原则「不做内容的价值观/思想性判断」不变——这里管的
-> 是权属、隐私与署名的**交付合规**，不是内容审查。
+# Publishing and distribution (publishing gate)
 
-## 1. 发布前 gate（按序执行，任一不过即停）
+> **Positioning**: `qa`'s `released=true` only means **delivery quality** is qualified (accurate/complete/consistent/compliant/
+> structurally correct/reproducible) ≠ **publishable**. Publishing is a semantic and legal decision by the agent + user; this document is the
+> pre-publishing gate checklist. The repository principle "makes no value/ideological judgements about content" is unchanged — what is managed here
+> is the **delivery compliance** of rights, privacy and attribution, not content review.
 
-> 前置：交付审计（`references/delivery.md`）已完成——`qa released` + 独立对账 +
-> 抽查 + `reviews/delivery-<ts>.md` 记录齐备；本 gate 在此之上管权属/隐私/署名。
+## 1. Pre-publishing gate (execute in order; stop if any fails)
 
-### 1.1 权属基础确认
+> Prerequisite: the delivery audit (`references/delivery.md`) is complete — `qa released` + independent reconciliation +
+> sampling + `reviews/delivery-<ts>.md` records all in place; this gate governs rights/privacy/attribution on top of that.
 
-- 确认原书的**再分发许可**：公有领域 / 获授权翻译出版 / 自有版权自译自发布。
-- 依据来源：`references/user/` 的授权材料、出版方许可、原书版权页声明
-  （`publication.json.meta.rights`）。
-- **权属不清 → 默认私有仓库分发，或停下询问用户**；不要替用户做法律假设。
-- 权属结论记录进发布说明（一句话+依据），不写进代码或配置。
+### 1.1 Rights basis confirmation
 
-### 1.2 隐私扫描（发布树 + git 历史）
+- Confirm the **redistribution permission** of the original book: public domain / authorized translation publication / own copyright self-translation self-publishing.
+- Basis sources: the authorization materials in `references/user/`, publisher permission, the original book's copyright page statement
+  (`publication.json.meta.rights`).
+- **Unclear rights → default to private repository distribution, or stop and ask the user**; do not make legal assumptions on the user's behalf.
+- The rights conclusion is recorded in the publishing notes (one sentence + basis), not written into code or configuration.
 
-扫描对象：发布仓库的全部待推内容。检查项：
+### 1.2 Privacy scan (publishing tree + git history)
 
-| 检查 | 方法 | 处置 |
+Scan target: all content to be pushed in the publishing repository. Check items:
+
+| Check | Method | Handling |
 |---|---|---|
-| 凭据/密钥 | 全文扫 API key/token 模式（`sk-`、`AKIA`、长随机串赋值、`MINERU_API_KEY=` 等） | 删除内容 + 作废该凭据（已提交即视为泄露） |
-| 本地路径 | 扫 `/home/<user>/`、`/Users/`、`C:\Users\`、主机名 | 换成可移植写法（`~/`、相对路径） |
-| 用户个人数据 | 报告/lessons/README/提交信息里的真实姓名、邮箱、地址 | 匿名化或征得同意 |
-| 原书正文版权材料 | 源文件（`source/`）**不入库**；模板/示例不含原书可版权文本 | 只发布译文成品与工作区结构 |
-| 图片/封面权属 | 与原书一致（见 §2 封面 gate） | 权属不明不用 |
+| Credentials/keys | Full-text scan for API key/token patterns (`sk-`, `AKIA`, long random string assignments, `MINERU_API_KEY=` etc.) | Delete the content + revoke the credential (once committed it is considered leaked) |
+| Local paths | Scan for `/home/<user>/`, `/Users/`, `C:\Users\`, host names | Replace with portable forms (`~/`, relative paths) |
+| User personal data | Real names, emails, addresses in reports/lessons/README/commit messages | Anonymize or obtain consent |
+| Original book body copyright material | Source files (`source/`) **are not included in the repo**; templates/examples contain no copyrightable original text | Publish only the translated product and workspace structure |
+| Image/cover rights | Consistent with the original book (see §2 cover gate) | Do not use when rights are unclear |
 
-- **`.gitignore` 不能移除已跟踪文件**——敏感文件曾被提交时须 `git rm --cached`
-  并做历史清理（改写历史属破坏性操作，先与用户确认）。
-- `git log -p` 抽查历史提交无上述内容。
+- **`.gitignore` cannot remove already-tracked files** — when sensitive files have been committed, you must `git rm --cached`
+  and perform history cleanup (rewriting history is a destructive operation; confirm with the user first).
+- Spot-check historical commits with `git log -p` for the above content.
 
-### 1.3 README 署名记录
+### 1.3 README attribution record
 
-发布 README 必须包含（缺失=不发布）：
+The publishing README must contain (missing = do not publish):
 
-- **原书题录**：书名、作者、版次、ISBN（如有）、来源语言；
-- **权属声明**：一句话（依据 §1.1 的结论）；
-- **译者署名**：与 `publication.json.meta.translator` 一致（默认=agent 框架名，
-  如 OpenCode/DouBao；用户指定名优先）；
-- **不虚报**：不写 builder/CLI 没有实际输出的元数据、不虚列贡献者。
+- **Original book bibliographic record**: title, author, edition, ISBN (if any), source language;
+- **Rights statement**: one sentence (based on the conclusion in §1.1);
+- **Translator attribution**: consistent with `publication.json.meta.translator` (default = agent framework name,
+  e.g. OpenCode/DouBao; user-specified name takes priority);
+- **No misrepresentation**: do not write metadata the builder/CLI does not actually output, do not falsely list contributors.
 
-### 1.4 成品验证
+### 1.4 Finished-product verification
 
-- 从发布渠道**重新下载**已传资产，核对 sha256 与本地一致；
-- 至少一个阅读器（如 Foliate/Apple Books）打开验证渲染（目录/插图/脚注弹窗）。
+- **Re-download** the uploaded assets from the publishing channel and check the sha256 matches the local one;
+- Open and verify rendering (TOC/illustrations/footnote popups) in at least one reader (e.g. Foliate/Apple Books).
 
-## 2. 封面 gate
+## 2. Cover gate
 
-- 封面仅在**确认可再分发**后使用（`facts.json` 的 `media.cover_candidates` 是候选
-  数据，不是授权证明）；权属不明 → 无封面交付（qa 的 `W_NO_COVER` 可接受）。
-- 封面文件与原书版式不一致（自制封面）时，README 声明「封面为译文版自制」。
+- The cover is used only after **confirming it may be redistributed** (`facts.json`'s `media.cover_candidates` is candidate
+  data, not proof of authorization); unclear rights → deliver without a cover (qa's `W_NO_COVER` is acceptable).
+- When the cover file is inconsistent with the original book's layout (self-made cover), the README states "the cover is self-made for the translated edition".
 
-## 3. 发布操作
+## 3. Publishing operations
 
-- tag 规范：`<slug>-v<N>`（如 `the-big-clocks-v1`）；release 附成品 EPUB +
-  sha256。
-- **纠错发新版本**：发现成品问题 → 修 `translation/`+`align/` → 重 build → 重 qa →
-  发 `-v<N+1>`；**不强推、不覆盖已发布 tag**。
-- **禁止在有源文件的目录 `git add -A`**：先确认 `source/` 不在发布树内再暂存；
-  宁可显式列文件名。
-- 发布记录（版本/日期/变更摘要）追加进发布仓库的 CHANGELOG 或 release note，
-  不写回本工作区。
+- Tag convention: `<slug>-v<N>` (e.g. `the-big-clocks-v1`); the release attaches the finished EPUB +
+  sha256.
+- **Publish a new version to fix errors**: on discovering a finished-product issue → fix `translation/`+`align/` → rebuild → re-qa →
+  publish `-v<N+1>`; **do not force-push, do not overwrite an already-published tag**.
+- **Forbidden to `git add -A` in a directory containing source files**: confirm `source/` is not in the publishing tree before staging;
+  prefer explicitly listing file names.
+- The publishing record (version/date/change summary) is appended to the publishing repository's CHANGELOG or release note,
+  not written back to this workspace.
 
-## 4. 指引关系
+## 4. Guidance relationships
 
-- 放行条件全集与错误码处置 → `references/invariants.md`；
-- G5 判读与修订收敛 → `references/review.md`；
-- 成品构建与确定性 → `references/build.md`。
+- Full set of release conditions and error-code handling → `references/invariants.md`;
+- G5 interpretation and revision convergence → `references/review.md`;
+- Finished-product build and determinism → `references/build.md`.

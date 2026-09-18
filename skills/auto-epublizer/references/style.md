@@ -1,57 +1,60 @@
-# Style（文体档案应用）
+<!-- i18n: source=style.zh.md sha256=5fe9edc8cf052eac0bc1e406414b40c398036e0ac9108e6e264082587d463227 -->
+> **English** | [中文](style.zh.md)
 
-文体档案（genre profile）× 语言指引（langprofile）两个正交维度，决定分析、翻译、术语、审校的侧重。
-文体档案是声明式数据，按 `genre` 键加载，新增体裁不改代码。
+# Style (genre profile application)
 
-## 文体索引
+Genre profile × language guidance (langprofile) are two orthogonal dimensions that determine the emphasis of analysis, translation, terminology and review.
+The genre profile is declarative data, loaded by the `genre` key; adding a new genre does not change code.
 
-| 文体 | genre | 核心特殊优化 |
+## Genre index
+
+| Genre | genre | Core special optimizations |
 |---|---|---|
-| 小说叙事 | `novel` | 角色圣经 + source-only 术语 + 敬称策略 + 对话辨识度 + 前文滚动衔接 |
-| 学术专著 | `academic` | 学科术语统一 + 索引边码 + 缩略语加注 + 参考文献不译 + 数字单位规范 |
-| 论文 | `paper` | IMRaD 结构 + 结果/讨论分离 + 缩略语加注 + 可复现 |
-| 诗歌/散文 | `poetry` | 行结构保留 + 意象优先 + 韵脚策略声明 |
-| 报刊/期刊 | `newspaper` | 按版面组织 + 标题导语化 + 事实/引语准确 + 客观转达 |
+| Novel/narrative | `novel` | character bible + source-only terminology + honorific strategy + dialogue distinctiveness + rolling continuity with preceding text |
+| Academic monograph | `academic` | discipline terminology consistency + index marginal numbers + abbreviation annotation + references untranslated + number/unit conventions |
+| Paper | `paper` | IMRaD structure + separation of results/discussion + abbreviation annotation + reproducibility |
+| Poetry/prose | `poetry` | line structure preservation + imagery priority + rhyme strategy declaration |
+| Newspaper/periodical | `newspaper` | organization by page layout + headline-to-lead treatment + accurate facts/quotes + objective relay |
 
-## 文体档案 schema（`analysis/style.md`）
+## Genre profile schema (`analysis/style.md`)
 
 ```yaml
 genre: novel
-detect: auto            # auto | 显式声明
-style: { ... }          # 文体分析维度
-characters: […]         # 小说：角色圣经
-term_types: […]         # 术语类型白名单
-review_focus: […]       # 审校 issue 类型加权
-translation_rules: […]  # 文体翻译指引
+detect: auto            # auto | explicit declaration
+style: { ... }          # genre analysis dimensions
+characters: […]         # novel: character bible
+term_types: […]         # terminology type whitelist
+review_focus: […]       # review issue type weighting
+translation_rules: […]  # genre translation guidance
 ```
 
-## 术语类型白名单（随文体切换）
+## Terminology type whitelist (switches with genre)
 
-- 小说：`person/place/org/term/appellation/honorific/speech/fixed_expr`；称谓/口癖是
-  source-only 分类标注（翻译时保持一致，术语命中检查无特殊分支）。
-- 学术：`term/person/place/org/event/work`，学科术语严格匹配 + 缩略语加注。
-- 论文：`term/abbreviation`，缩略语首现加注。
+- Novel: `person/place/org/term/appellation/honorific/speech/fixed_expr`; appellations/speech tics are
+  source-only category annotations (kept consistent during translation; the terminology hit check has no special branch).
+- Academic: `term/person/place/org/event/work`, discipline terminology strictly matched + abbreviation annotation.
+- Paper: `term/abbreviation`, abbreviation annotated at first occurrence.
 
-## 语言指引（langprofile，独立于文体）
+## Language guidance (langprofile, independent of genre)
 
-| 源语言 | 要点 |
+| Source language | Key points |
 |---|---|
-| `ja` | 敬称策略；第一人称（私/僕/俺/あたし）跨段一致；拟声拟态词按中文习惯；汉字词≠中文词勿照搬 |
-| `en` | 无敬称，Mr./Ms./Sir 统一；据性别定「他/她/它」；长句按中文重组，被动酌情转主动；专名音译 |
-| `ru/ko/fr/de/es…` | 忠实传意，符合中文表达习惯 |
+| `ja` | honorific strategy; first person (私/僕/俺/あたし) consistent across paragraphs; onomatopoeia/mimetic words per Chinese convention; kanji words ≠ Chinese words, do not copy verbatim |
+| `en` | no honorifics, unify Mr./Ms./Sir; determine "he/she/it" by gender; restructure long sentences per Chinese, convert passive to active as appropriate; transliterate proper nouns |
+| `ru/ko/fr/de/es…` | faithful conveyance of meaning, conforming to Chinese expression conventions |
 
-## 上下文组织顺序（静态 → 动态）
+## Context organization order (static → dynamic)
 
-agent 自行翻译时的上下文组装顺序（无 prompt 注入机制，全部是你读进上下文的材料）：
-文体指引 + 语言指引 + 标点规则（静态）→ 风格/角色圣经 → 全书概览 → 章梗概 →
-重点 → 术语子集 → 前文译文 → 待译正文（动态，按需携带）。
+The context assembly order when the agent translates on its own (there is no prompt injection mechanism; everything is material you read into context):
+genre guidance + language guidance + punctuation rules (static) → style/character bible → book overview → chapter summary →
+key points → terminology subset → preceding translation → text to translate (dynamic, carried as needed).
 
-## 审校侧重（映射 QC）
+## Review emphasis (mapped to QC)
 
-| 文体 | G0 侧重 | G1 侧重 |
+| Genre | G0 emphasis | G1 emphasis |
 |---|---|---|
-| 小说 | 句数/长度比/术语命中 | pronoun、角色称谓、口癖一致 |
-| 学术 | 术语命中、数字单位、缩略语 | 学科术语跨章统一 |
-| 诗歌 | 行数/分节一致 | 行结构/意象 |
+| Novel | sentence count/length ratio/terminology hits | pronoun, character appellation, speech tic consistency |
+| Academic | terminology hits, numbers/units, abbreviations | discipline terminology consistency across chapters |
+| Poetry | line count/section consistency | line structure/imagery |
 
-> 宽容度：合理的语序调整、自然意译、风格润色不算问题——叙事类翻译容忍度高，审校宁缺毋滥。
+> Tolerance: reasonable word-order adjustment, natural free translation, stylistic polishing are not problems — narrative translation has high tolerance; review prefers omission over over-flagging.

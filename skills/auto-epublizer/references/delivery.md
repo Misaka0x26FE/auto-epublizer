@@ -1,116 +1,140 @@
-# Delivery（交付审计：qa 之后、交付之前的强制全量校验）
+<!-- i18n: source=delivery.zh.md sha256=ca05bcd8565145b344b471c848fdc79746fa172170fe34923da4ee49a9bd7797 -->
+> **English** | [中文](delivery.zh.md)
 
-> **定位**：`qa` 通过只代表**已知契约**全绿。本清单要求你在交付前独立做一次
-> 「源引用 ↔ 成品包含」的全量对账与人工抽查，防止「工具没查到的缺口」直达成品。
-> 真实案例：《俄国铁路史》翻译任务工具 QA 全过，成品 72 张引用图只收了 34 张——
-> 根因是译文正文丢图片段而工具守恒只查对照表（align）。
+# Delivery (delivery audit: mandatory full validation after qa and before delivery)
 
-## 何时执行
+> **Positioning**: `qa` passing only means all **known contracts** are green. This
+> checklist requires you to independently perform a full
+> "source citation ↔ product inclusion" reconciliation and manual spot-check before
+> delivery, preventing "gaps the tools did not catch" from reaching the product. Real
+> case: in the *History of Russian Railways* translation task the tool QA fully passed,
+> but the product included only 34 of 72 cited images — the root cause was that the
+> translation body dropped image segments while tool conservation only checked the
+> alignment (align).
 
-`qa` 返回 `released=True` 之后、把成品交给用户/分发之前。**强制**，不可跳过
-（小书可压缩第 2–4 步的抽查量，但不能省略）。
+## When to execute
 
-## 0. 前置：刷新事实
+After `qa` returns `released=True` and before handing the product to the user/distribution.
+**Mandatory**, cannot be skipped (small books may compress the sampling volume of steps
+2–4, but not omit it).
+
+## 0. Prerequisite: refresh facts
 
 ```bash
-auto-epublizer preprocess          # 幂等刷新 facts（对账以当前产物为准，不用旧快照）
-auto-epublizer qa                  # 确认 released=True；released_reason=ok
+auto-epublizer preprocess          # idempotently refresh facts (reconcile against current artifacts, not an old snapshot)
+auto-epublizer qa                  # confirm released=True; released_reason=ok
 ```
 
-## 1. 工具对账复核（读 report.json）
+## 1. Tool reconciliation review (read report.json)
 
-| 字段 | 要求 |
+| Field | Requirement |
 |---|---|
 | `released` / `released_reason` | True / ok |
-| `epub_coverage` | ≈ 1.0（成品段落探针；无探针为 null） |
+| `epub_coverage` | ≈ 1.0 (product paragraph probe; null when there is no probe) |
 | `epub_media_missing` / `epub_footnotes_missing` | 0 |
-| `align_md_drift` | 0（译文正文与对照表一致） |
+| `align_md_drift` | 0 (translation body consistent with alignment) |
 | `g0_terminology_open` / `g0_structure_open` | 0 / 0 |
 | `glossary_conflicts_open` / `catalog_unresolved_open` | 0 / 0 |
-| `W_INSERT_NO_DESC` / `W_REPAIR_UNRESOLVED` / `W_DELIVERY_AUDIT_MISSING` | 逐条过目处置（见 §4） |
+| `W_INSERT_NO_DESC` / `W_REPAIR_UNRESOLVED` / `W_DELIVERY_AUDIT_MISSING` | review and handle item by item (see §4) |
 
-error 级溯源发现（`provenance_findings`）必须清零；warning 逐条判读。
+Error-level provenance findings (`provenance_findings`) must be cleared; warnings are
+interpreted item by item.
 
-## 2. 解包抽查（首/中/尾 + 高风险章：图表/脚注/多语密集）
+## 2. Unpack sampling (first/middle/last + high-risk chapters: image/table/footnote/multilingual dense)
 
-先解包成品：
+First unpack the product:
 
 ```bash
 mkdir -p /tmp/epub-check && cd /tmp/epub-check && unzip -o <slug>.epub
 ```
 
-- **正文探针**：从译文挑 3–5 句代表句，在 `OEBPS/*.xhtml` 里逐个 grep 命中
-  （工具已全量对账，这一步是防工具自身错位的**第二道保险**）；
-- **图片**：确认 `OEBPS/media/` 文件数 = 引用数（工具已查）；再**看 2–3 张图**
-  （multimodal）确认图的内容与上下文位置吻合——防「图在但放错位置/张冠李戴」；
-- **脚注**：抽 3 条注码，确认注文**内容**正确（不是只回链存在）；支持弹窗的阅读器
-  应弹窗显示，不支持者跳章末列表；
-- **目录**：nav 条目数 = 单元数、层级与原书目录一致（对照 facts 的源 TOC）。
+- **Body probe**: pick 3–5 representative sentences from the translation and grep each
+  one in `OEBPS/*.xhtml` for a hit (the tool already reconciles everything; this step is
+  a **second safeguard** against the tool itself being misaligned);
+- **Images**: confirm the file count in `OEBPS/media/` = the citation count (the tool
+  already checked); then **look at 2–3 images** (multimodal) to confirm the image content
+  matches the surrounding position — preventing "the image is there but misplaced/wrong";
+- **Footnotes**: sample 3 note references and confirm the note **content** is correct
+  (not merely that a backlink exists); popup-supporting readers should show a popup, and
+  those that do not support it jump to the end-of-chapter list;
+- **TOC**: nav entry count = unit count, and hierarchy consistent with the original
+  book's TOC (against the source TOC in facts).
 
-## 3. 人肉核对
+## 3. Manual checks
 
-- 封面：`cover-image` 指向正确图、无裁切异常；
-- 元数据：`dc:title/creator/translator/language` vs 版权页（预处理期已用 `meta` 写回，
-  此处复核）；
-- landmarks：frontmatter/bodymatter/backmatter 指向存在的文档。
+- Cover: `cover-image` points to the correct image, no cropping anomaly;
+- Metadata: `dc:title/creator/translator/language` vs the copyright page (already written
+  back via `meta` during preprocessing; recheck here);
+- landmarks: frontmatter/bodymatter/backmatter point to existing documents.
 
-## 4. inserts 描述与未决项
+## 4. inserts description and open items
 
-- `raw/inserts/<id>.json` 中 `content_desc` 为空（`W_INSERT_NO_DESC`）会影响 EPUB
-  图片 alt：逐项补全，或在交付记录中写明「显式接受」及理由（装饰图可接受）；
-- `W_REPAIR_UNRESOLVED`（语义整备未决修复）逐条判读：能修则修；确属存疑的记入
-  交付记录。
+- An empty `content_desc` in `raw/inserts/<id>.json` (`W_INSERT_NO_DESC`) affects the EPUB
+  image alt: fill in item by item, or state "explicitly accepted" and the reason in the
+  delivery record (decorative images are acceptable);
+- `W_REPAIR_UNRESOLVED` (unresolved semantic-repair fixes) interpreted item by item: fix
+  what can be fixed; record genuinely doubtful ones in the delivery record.
 
-## 5. 阅读器实测（可选，推荐）
+## 5. Reader field test (optional, recommended)
 
-用 Foliate / Apple Books / 手机阅读器翻首/中/尾：目录跳转、脚注弹窗、图片渲染、
-双语版抽查（如产出 `-bi.epub`）。
+Use Foliate / Apple Books / a phone reader to page through first/middle/last: TOC
+navigation, footnote popups, image rendering, and spot-check the bilingual edition (if
+`-bi.epub` is produced).
 
-## 6. 修复循环（发现缺陷时）
+## 6. Repair loop (when a defect is found)
 
 ```text
-发现缺陷 → 定位（源文 structured / 译文 translation / 构建）
-  → 修复（文本缺陷走语义整备 repairs.jsonl 留痕；边界/结构走 restructure）
-  → import（校验 + 状态推进）→ g0 → build → qa → 回到本清单第 0 步重跑
+defect found → locate (source text structured / translation translation / build)
+  → repair (text defects go through semantic repair repairs.jsonl for traceability; boundary/structure goes through restructure)
+  → import (validate + advance state) → g0 → build → qa → return to step 0 of this checklist and rerun
 ```
 
-- 修复译文正文后必须重新 `import`（md↔align 不一致会阻断）；
-- 修复后必须**重跑全部对账 + 抽查**，不能只验修的那一处。
+- After repairing the translation body you must re-`import` (an md↔align inconsistency
+  blocks it);
+- After a repair you must **rerun the entire reconciliation + sampling**, not only verify
+  the one place that was fixed.
 
-## 7. 交付记录（强制）
+## 7. Delivery record (mandatory)
 
-写 `reviews/delivery-<YYYYMMDD-HHMMSS>.md`（存在该文件后 qa 不再提示
-`W_DELIVERY_AUDIT_MISSING`）：
+Write `reviews/delivery-<YYYYMMDD-HHMMSS>.md` (once this file exists, qa no longer warns
+`W_DELIVERY_AUDIT_MISSING`):
 
 ```markdown
-# 交付审计 <YYYYMMDD-HHMMSS>
+# Delivery audit <YYYYMMDD-HHMMSS>
 
-- 审计对象：<slug>.epub（qa released，reason=ok）；facts 刷新时间 …
-- 工具对账：epub_coverage=…；epub_media_missing=0；epub_footnotes_missing=0；align_md_drift=0
-- 抽查章节：<首/中/尾/高风险章清单>
-- [ ] 正文探针 N/N 命中
-- [ ] 图片语义抽查 M 张正确（列出）
-- [ ] 脚注内容抽查 3 条正确
-- [ ] 目录/封面/元数据核对（结论）
-- [ ] inserts desc 空值处置：补全 X / 显式接受 Y（理由）
-- 发现与处置：（缺陷 → 根因 → 修复 → 复验；或「无」）
-- 修复循环轮次：0（或 N）
-- 产物清单与同步：本地/备份/云盘/仓库（字节核对结果）
+- Audit target: <slug>.epub (qa released, reason=ok); facts refresh time …
+- Tool reconciliation: epub_coverage=…; epub_media_missing=0; epub_footnotes_missing=0; align_md_drift=0
+- Sampled chapters: <list of first/middle/last/high-risk chapters>
+- [ ] Body probe N/N hits
+- [ ] Image semantic spot-check M images correct (list them)
+- [ ] Footnote content spot-check 3 items correct
+- [ ] TOC/cover/metadata check (conclusion)
+- [ ] inserts desc empty-value handling: fill in X / explicitly accept Y (reason)
+- Findings and handling: (defect → root cause → fix → re-verify; or "none")
+- Repair loop rounds: 0 (or N)
+- Artifact list and sync: local/backup/cloud/repository (byte-check result)
 ```
 
-## 8. 产物同步与分发
+## 8. Artifact sync and distribution
 
-按 `references/publishing.md`：成品清单 + 分发副本字节核对（本地 `output/`、
-备份、云盘/仓库等全部副本更新）；更新分发说明与版本记录。
+Per `references/publishing.md`: product checklist + byte verification of distributed
+copies (all copies updated: local `output/`, backup, cloud/repository, etc.); update the
+distribution notes and version record.
 
-## 9. 经验沉淀
+## 9. Distilling experience
 
-交付中发现的**可复用判据**（不只是本书特例）写 `lessons/`（判据/处置/验证三段式）
-并在交付记录中互引；计划级验证上下文回写对应 `docs/plans/` 文档。
+**Reusable criteria** found during delivery (not just this book's special case) go into
+`lessons/` (the three-part criterion/handling/verification form) and are cross-referenced
+in the delivery record; plan-level verification context is written back to the
+corresponding `docs/plans/` document.
 
-## 常见误区
+## Common misconceptions
 
-- **只信工具 QA**：工具校验它知道的契约（align 守恒/结构审计），build 实际消费的
-  译文正文与成品包含必须独立对账（本轮已自动化，抽查是第二道保险）；
-- **facts 当实时**：facts 是快照，重建/重切/修复后先 `preprocess` 刷新再对账；
-- **只验修复点**：修复会引入新的不一致（状态/产物/分发），必须全量重验。
+- **Trusting only tool QA**: tools validate the contracts they know (align conservation /
+  structural audit); the translation body that build actually consumes and the product
+  inclusion must be independently reconciled (this round is now automated, sampling is the
+  second safeguard);
+- **Treating facts as live**: facts is a snapshot; after rebuild/re-split/repair, first
+  `preprocess` to refresh before reconciling;
+- **Verifying only the fixed point**: a repair introduces new inconsistencies
+  (state/artifacts/distribution), so a full re-verification is required.
