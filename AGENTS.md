@@ -1,4 +1,4 @@
-<!-- i18n: source=AGENTS.zh.md sha256=295126fa103fbff1451cd6bf0b4d7e5ae23a50eb0f8dda9f65e8df5a9ab4262b -->
+<!-- i18n: source=AGENTS.zh.md sha256=76e6e5e061be90e6ee2ae028e371ee374e70048ea21f3b83b83ebc759132a9f9 -->
 > **English** | [中文](AGENTS.zh.md)
 
 # auto-epublizer repository guide (for coding agents developing/maintaining this project)
