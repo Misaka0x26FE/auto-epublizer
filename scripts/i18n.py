@@ -41,6 +41,7 @@ EXCLUDE_DIRS = {
 
 _STAMP_RE = re.compile(r"^<!--\s*i18n:\s*source=(\S+)\s+sha256=([0-9a-f]{64})\s*-->$")
 _LINK_RE = re.compile(r"\[[^\]]*\]\(([^)]+)\)")
+_LINK_FULL_RE = re.compile(r"(\[[^\]]*\]\()([^)]+)(\))")
 _ZH_SUFFIX = ".zh.md"
 
 
@@ -241,6 +242,40 @@ def finalize(file: Path) -> None:
     )
 
 
+def relink(file: Path) -> int:
+    """把文件中的相对 md 链接改指本语言孪生（已译文档）；返回改写条数。
+
+    中文文件（``X.zh.md``）→ 链 ``X.zh.md``；英文文件 → 链 ``X.md``。
+    仅当对侧文件确实存在时才改写（未翻译的文档保持原样）。
+    """
+    is_zh = file.name.endswith(_ZH_SUFFIX)
+    text = file.read_text(encoding="utf-8")
+    changed = 0
+
+    def repl(m: re.Match[str]) -> str:
+        nonlocal changed
+        prefix, raw, suffix = m.group(1), m.group(2).strip(), m.group(3)
+        if raw.startswith(("http://", "https://", "mailto:", "#", "<")):
+            return m.group(0)
+        target, sep, anchor = raw.partition("#")
+        if not target.lower().endswith(".md"):
+            return m.group(0)
+        en, zh = _pair_of(file.parent / target)
+        if not (en.exists() and zh.exists()):
+            return m.group(0)
+        want = zh.name if is_zh else en.name
+        if want == Path(target).name:
+            return m.group(0)
+        changed += 1
+        new_target = str(Path(target).with_name(want)) + (sep + anchor if sep else "")
+        return f"{prefix}{new_target}{suffix}"
+
+    out = _LINK_FULL_RE.sub(repl, text)
+    if changed:
+        file.write_text(out, encoding="utf-8")
+    return changed
+
+
 def main(argv: list[str]) -> int:
     args = argv[1:]
     if not args:
@@ -259,6 +294,12 @@ def main(argv: list[str]) -> int:
         for name in args[1:]:
             finalize(Path(name).resolve())
         print(f"已完成 {len(args) - 1} 对")
+        return 0
+    elif mode == "--relink":
+        total = 0
+        for name in args[1:]:
+            total += relink(Path(name).resolve())
+        print(f"已改写 {total} 条链接")
         return 0
     else:
         print(f"未知参数：{mode}", file=sys.stderr)

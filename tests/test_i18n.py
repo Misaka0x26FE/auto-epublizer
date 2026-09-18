@@ -86,6 +86,18 @@ def test_audit_unpaired(tmp_path: Path) -> None:
     assert i18n.audit_unpaired(tmp_path) == ["solo.md"]
 
 
+def test_relink_rewrites_language_siblings(tmp_path: Path) -> None:
+    _pair(tmp_path, "a")
+    _pair(tmp_path, "b")
+    (tmp_path / "a.zh.md").write_text("[B](b.md)", encoding="utf-8")
+    (tmp_path / "a.md").write_text("[B](b.zh.md)", encoding="utf-8")
+    assert i18n.relink(tmp_path / "a.zh.md") == 1
+    assert "[B](b.zh.md)" in (tmp_path / "a.zh.md").read_text(encoding="utf-8")
+    assert i18n.relink(tmp_path / "a.md") == 1
+    assert "[B](b.md)" in (tmp_path / "a.md").read_text(encoding="utf-8")
+    assert i18n.relink(tmp_path / "a.md") == 0  # 幂等
+
+
 # ── 仓库实时校验（随文档翻译进度保持通过）──────────────────────────────────
 
 
