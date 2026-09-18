@@ -1,313 +1,401 @@
-# auto-epublizer 仓库指南（面向开发/维护本项目的 coding agent）
+<!-- i18n: source=AGENTS.zh.md sha256=295126fa103fbff1451cd6bf0b4d7e5ae23a50eb0f8dda9f65e8df5a9ab4262b -->
+> **English** | [中文](AGENTS.zh.md)
 
-本文件是**维护本仓库代码**的 agent 的入口契约：讲清项目是什么、怎么实现、怎么验证。
+# auto-epublizer repository guide (for coding agents developing/maintaining this project)
 
-> 若你的任务是**用本 CLI 处理一本书**（翻译/转 EPUB），请改读 `skills/auto-epublizer/`——
-> 那是把设计翻译成「照抄就能干」步骤的可安装指引（见「skills/ 目录」）。
+This file is the entry contract for agents that **maintain this repository's code**: it
+explains what the project is, how it is implemented, and how to verify it.
 
-> 本文件同时是"必须实现成什么样"的契约；若子目录出现更具体的 `AGENTS.md`，以更深层文件为准。
+> If your task is to **process a book with this CLI** (translate / convert to EPUB), read
+> `skills/auto-epublizer/` instead — those are installable instructions that turn the
+> design into "copy and go" steps (see the "skills/ directory" section).
 
-## 项目定位
+> This file is also the "what must be implemented" contract; if a subdirectory contains a
+> more specific `AGENTS.md`, the deeper file wins.
 
-`auto-epublizer`（Python CLI，三包 monorepo）提供两项能力、一条共用管线：
+## Project positioning
 
-1. **翻译**：外语文献 → 任意可配置目标语言。
-2. **转 EPUB**：来源复杂文件（PDF/扫描 PDF/EPUB/DOCX/HTML/TXT/Markdown）→ 标准 EPUB 3。
+`auto-epublizer` (a Python CLI, three-package monorepo) provides two capabilities over one
+shared pipeline:
 
-- Python 3.12，包管理用 `uv`。
-- **唯一 LLM 原则（硬约束）**：本项目中**唯一的 LLM 就是操作本 CLI 的 agent 本身**——
-  CLI 只做确定性、零 token 的计算（解析/切片/检测/校验/构建/审计）；一切语义工作
-  （理解、翻译、审校判断、术语裁决、公式 LaTeX、内容描述）由 agent 用自身能力完成。
-  **禁止新增任何 LLM API 调用**（新依赖、新端点、任何包扩展均不许）；存量内部
-  LLM 路径（`auto_common/llm/`、`agents/` 包、translate/analyze/review 命令）**已移除**，
-  见 [docs/plans/2026-09-04-remove-internal-llm.md](docs/plans/2026-09-04-remove-internal-llm.md)，
-  由 `test_architecture_boundaries.py` 的 `test_no_llm_api_calls_anywhere` 强制回归。
-  判据不变：「同样输入必须得到同样输出 → Python；需理解/权衡/判断 → agent」，
-  完整版见 [docs/agent-vs-code.md](docs/agent-vs-code.md)。
-- 工作区为 `publication.json` 权威索引 + 工作区目录（见下），不沿用旧 `split/` 流程。
-- 质量检验六道关（G0–G5），重点参考 wenyi（`trans_novel`）的 Review 体系。
-- **只负责交付质量**（准确 / 完整 / 一致 / 规范 / 结构正确 / 可复现），**不做内容的价值观 / 政治 / 思想性判断**。
-- **能力分工**：CLI 负责确定性计算与校验放行；**内容理解、语义判断、
-  质量把关、术语裁决、修复决策**由使用本项目的 agent 用自身能力（读文件、判断、写文件）完成。
-  agent 只需基础能力，无需 MCP / 子代理。
-- **产物规范**：EPUB 形态规范（无样式模板 / 有限主题 / 标准弹窗注释）见
-  [docs/epub-template-spec.md](docs/epub-template-spec.md)；后处理验收与实现计划
-  （内容溯源 / 媒体 / 目录层级）见 [docs/postprocessing-spec.md](docs/postprocessing-spec.md)。
-- **许可**：本项目自身代码采用 **AGPL-3.0**；第三方依赖保留各自许可证，并在 `THIRD_PARTY_LICENSES.md` 登记（AGPL 依赖可直接引入，与项目同许可兼容）。
+1. **Translation**: foreign-language documents → any configurable target language.
+2. **EPUB conversion**: heterogeneous sources (PDF / scanned PDF / EPUB / DOCX / HTML /
+   TXT / Markdown) → standard EPUB 3.
 
-## 处理一本著作的标准流程
+- Python 3.12; package management with `uv`.
+- **Single-LLM principle (hard constraint)**: the **only LLM in this project is the agent
+  operating the CLI itself** — the CLI performs only deterministic, zero-token computation
+  (parsing / splitting / detection / validation / building / auditing); all semantic work
+  (understanding, translation, review judgement, terminology arbitration, formula LaTeX,
+  content descriptions) is done by the agent with its own capabilities. **Adding any LLM
+  API call is forbidden** (no new dependency, endpoint, or package extension); the legacy
+  internal LLM paths (`auto_common/llm/`, the `agents/` package, the translate/analyze/
+  review commands) **have been removed**, see
+  [docs/plans/2026-09-04-remove-internal-llm.md](docs/plans/2026-09-04-remove-internal-llm.md),
+  enforced by `test_no_llm_api_calls_anywhere` in `test_architecture_boundaries.py`. The
+  criterion is unchanged: "same input must yield same output → Python; needs
+  understanding/weighing/judgement → agent"; the full version is in
+  [docs/agent-vs-code.md](docs/agent-vs-code.md).
+- The workspace is a `publication.json` authoritative index plus a workspace directory
+  (below); the old `split/` flow is not used.
+- Six quality gates (G0–G5), drawing heavily on wenyi's (`trans_novel`) Review system.
+- **Responsible for delivery quality only** (accurate / complete / consistent / compliant /
+  structurally correct / reproducible); it **makes no value, political or ideological
+  judgements about the content**.
+- **Division of labour**: the CLI does deterministic computation and validation/release;
+  **content understanding, semantic judgement, quality gating, terminology arbitration and
+  repair decisions** are done by the agent using this project with its own abilities
+  (read files, judge, write files). The agent needs only basic capabilities — no MCP or
+  sub-agents.
+- **Artifact specs**: the EPUB form spec (unstyled template / limited themes / standard
+  popup notes) is in [docs/epub-template-spec.md](docs/epub-template-spec.md); the
+  post-processing acceptance and implementation plan (content provenance / media / TOC
+  hierarchy) is in [docs/postprocessing-spec.md](docs/postprocessing-spec.md).
+- **License**: the project's own code is **AGPL-3.0**; third-party dependencies keep their
+  own licenses and are registered in `THIRD_PARTY_LICENSES.md` (AGPL dependencies may be
+  used directly, as they are compatible with the project license).
+
+## Standard workflow for processing a work
 
 ```bash
-# 0. 能力自检（agent 开工前必做：判断自身能力边界 + 环境工具链）
-auto-epublizer doctor [--ping]   # 工具链/依赖/MinerU/网络探测；multimodal/search 由 agent 自报补填
+# 0. Capability self-check (the agent must do this before starting: its own capability
+#    boundary + the environment toolchain)
+auto-epublizer doctor [--ping]   # toolchain/deps/MinerU/network probe; multimodal/search self-reported by the agent
 
-# 1. 安装
+# 1. Install
 uv sync
 
-# 2. 配置（无密钥段；可选外部解析 API 的 MINERU_API_KEY 只从环境变量读取，见「配置与密钥」）
+# 2. Configure (no secret section; the optional external parsing API's MINERU_API_KEY is
+#    read from the environment only, see "Configuration, secrets and providers")
 
-# 3. 预处理（零 token 事实收集 + agent 理解）：
-auto-epublizer preprocess <input>   # 新书：init + 嗅探/元数据/TOC/体检/规模 → preprocessing/facts.*
-#    agent 读 facts.md，按待办清单撰写：todo.md（逐细节任务清单，全程勾选）/ capabilities.md
-#    （自报五维）/ plan.md（方案决策）/ global.md（全局理解）/ units/<id>.md /
+# 3. Preprocessing (zero-token fact collection + agent understanding):
+auto-epublizer preprocess <input>   # new book: init + sniff/metadata/TOC/health/size → preprocessing/facts.*
+#    The agent reads facts.md and writes, per the to-do list: todo.md (detailed task list,
+#    checked off throughout) / capabilities.md (self-reported five dimensions) / plan.md
+#    (approach decisions) / global.md (global understanding) / units/<id>.md /
 #    terms.csv / risks.md / report.md
-auto-epublizer preprocess           # 已有工作区：幂等刷新 facts
+auto-epublizer preprocess           # existing workspace: idempotent refresh of facts
 
-# 3.5 元数据核对与译者署名（agent 任务）：对照源文版权页核实 facts 嗅探值，
-#    经 meta 命令写回；译者署名默认=agent 框架名（OpenCode/DouBao…）
+# 3.5 Metadata verification and translator credit (agent task): verify the sniffed facts
+#     against the source copyright page and write back via the meta command; translator
+#     credit defaults to the agent framework name (OpenCode/DouBao/...)
 auto-epublizer meta [--translator OpenCode] [--publisher ...] [--date ...] [--rights ...]
 
-# 4. 理解（agent 任务）：analysis/*.md 与术语表由 agent 自身能力撰写
-#    （概述/全局/每单元/重点；上下文也可只来自 preprocessing/）
+# 4. Analysis (agent task): analysis/*.md and the glossary are written by the agent itself
+#    (overview/global/per-unit/key points; context may also come from preprocessing/)
 
-# 5. 翻译（agent 任务）：agent 读 structured/ 自己翻译，写 translation/ + align/，
-#    然后「import」登记：G0 校验 + 状态推进 + 术语冲突外置（terms.csv 可经 --terms 导入）
+# 5. Translation (agent task): the agent reads structured/ and translates, writing
+#    translation/ + align/, then "import" registers it: G0 validation + state advance +
+#    terminology-conflict externalization (terms.csv may be imported via --terms)
 auto-epublizer import [--unit <id>] [--terms preprocessing/terms.csv] [--reviewed]
-                                 # 登记 agent 手写翻译产物；--reviewed 把 aligned 单元推进
-                                 # reviewed（审校通过的显式登记；reviewed/built 跳过重导）
-auto-epublizer g0                # 翻译/导入后立即静态校验（术语命中为真实缺陷须逐条核验；长度比才是 advisory）
+                                 # register agent-written translation artifacts; --reviewed advances
+                                 # aligned units to reviewed (explicit registration of review
+                                 # acceptance; reviewed/built skip re-import)
+auto-epublizer g0                # run static validation right after translating/importing (terminology hits are real defects to verify one by one; length ratio is only advisory)
 
-# 5.5 语义整备（agent 任务，条件触发）：facts 有可疑信号、或 OCR/扫描件路径时，
-#     按 references/repair.md 对照 raw 证据修复 structured/ 并写 preprocessing/repairs.jsonl；
-#     单元边界重切/合并另写 preprocessing/structure.csv 后登记（S3）
-auto-epublizer restructure [--workspace <dir>]   # 登记重建的单元结构（同 id 未变保留状态）
+# 5.5 Semantic repair (agent task, conditionally triggered): when facts carry suspicious
+#     signals, or the OCR/scanned path was used, follow references/repair.md to repair
+#     structured/ against raw evidence and write preprocessing/repairs.jsonl; for unit
+#     boundary re-splits/merges also write preprocessing/structure.csv and register it (S3)
+auto-epublizer restructure [--workspace <dir>]   # register rebuilt unit structure (unchanged ids keep state)
 
-# 6. 审校（agent 任务）：agent 按 G1–G3 语义自行审校，写 reviews/review-<ts>/
-#    （issues/patches/summary/result.json；qa 从 result.json 读 g1/g2/g3 计数）
+# 6. Review (agent task): the agent performs G1–G3 semantic review itself and writes
+#    reviews/review-<ts>/ (issues/patches/summary/result.json; qa reads g1/g2/g3 counts
+#    from result.json)
 
-# 7. 封装输出
-auto-epublizer build          # 纯译文 / 双语 EPUB → output/（--theme 选排版主题）
+# 7. Package output
+auto-epublizer build          # translation-only / bilingual EPUB → output/ (--theme selects the layout theme)
 
-# 8. 质检（G0 静态校验 + G4 审计 + G5 汇总放行 → report.json）
-auto-epublizer qa             # 结构审计 + epubcheck
-auto-epublizer status --json  # 查看进度/状态机/产物-状态对账
+# 8. QA (G0 static validation + G4 audit + G5 release summary → report.json)
+auto-epublizer qa             # structure audit + epubcheck
+auto-epublizer status --json  # inspect progress/state machine/artifact-state reconciliation
 
-# 9. 交付审计（agent 任务，强制）：按 skills/auto-epublizer/references/delivery.md
-#    做全量独立对账 + 抽样验证 + 人肉核对 → 写 reviews/delivery-<ts>.md
+# 9. Delivery audit (agent task, mandatory): follow
+#    skills/auto-epublizer/references/delivery.md for full independent reconciliation +
+#    sampling + manual checks → write reviews/delivery-<ts>.md
 ```
 
-仅转换不翻译：`auto-epublizer convert <input> -o output/book.epub`。
+Conversion only, no translation: `auto-epublizer convert <input> -o output/book.epub`.
 
-**状态不变式**：语义产物由 agent 手写，`publication.json` 状态只经 CLI 命令推进
-（`import` 登记翻译产物、`restructure` 登记单元边界重建——agent 手写产物进 CLI 的
-两个入口；审校产物 `result.json` 由 agent 手写、状态推进参照其契约），
-agent 不手工编辑；所有产物汇入同一套 G0 校验、状态机、术语闭环、构建与质检。
+**State invariants**: semantic artifacts are hand-written by the agent; `publication.json`
+state advances only through CLI commands (`import` registers translation artifacts and
+`restructure` registers unit-boundary rebuilds — the two entries through which
+agent-written artifacts enter the CLI; review artifacts `result.json` are hand-written by
+the agent and state advances per their contract). The agent never edits state by hand; all
+artifacts flow into the same G0 validation, state machine, terminology loop, build and QA.
 
-## skills/ 目录（面向下游 agent 的可安装指引）
+## skills/ directory (installable instructions for downstream agents)
 
-`skills/auto-epublizer/` 是**模块一**：把 `docs/` 里的设计翻译成「下游 agent 照抄就能完成
-一本书」的步骤。它与本文件（`AGENTS.md`）分工如下：
+`skills/auto-epublizer/` is **module one**: it turns the design in `docs/` into steps a
+downstream agent can follow to finish a book. It divides labour with this file
+(`AGENTS.md`) as follows:
 
-| 文档 | 受众 | 回答的问题 |
+| Document | Audience | Question it answers |
 |---|---|---|
-| `AGENTS.md`（本文件） | 开发/维护本项目的 agent | 项目是什么、怎么实现、怎么验证 |
-| `skills/auto-epublizer/` | 使用本 CLI 处理一本书的 agent | 每一步怎么做、怎么判读结果、怎么修 |
+| `AGENTS.md` (this file) | Agents developing/maintaining this project | What the project is, how it is implemented, how to verify it |
+| `skills/auto-epublizer/` | Agents processing a book with this CLI | What to do at each step, how to read the results, how to fix |
 
-`skills/` 结构（纯文档，不写业务逻辑）：
+`skills/` structure (pure documentation, no business logic):
 
 ```text
 skills/auto-epublizer/
-├── SKILL.md               # 入口：按工作区状态路由（无 publication.json → 全新流程；有 → 续跑）
-├── manifest.json          # 元数据 + references 清单
-└── references/            # 分主题操作指引（按需只读当前阶段的一份）
-    ├── workflow.md        # 阶段路由 + 命令总览 + status --json 判读 + 故障排查
-    ├── preprocessing.md   # 预处理：读 facts → agent 撰写 plan/global/units/terms/risks/report
-    ├── ingest.md          # 文件解析（pandoc / PDF 按页切片 / OCR 兜底）
-    ├── repair.md          # 语义整备：解析缺陷/OCR 修正/结构重切（信号→修复→留痕）
-    ├── structure.md       # 四层结构归类 + 清洗 + 溯源
-    ├── analysis.md        # 分层理解（overview/global/units/keypoints）+ 术语播种
-    ├── translation.md     # 切片翻译 + 句对齐 + 术语三态闭环
-    ├── review.md          # 六道关 QC 操作指引（G0–G5 何时跑、怎么看报告、怎么修）
-    ├── build.md           # EPUB 封装 + 确定性
-    ├── qa.md              # epubcheck + 解包审计
-    ├── delivery.md        # 交付审计：qa 后强制全量校验（独立对账 + 抽查 + 交付记录）
-    └── style.md           # 文体档案（novel/academic/paper/poetry/newspaper）+ langprofile
+├── SKILL.md               # entry: route by workspace state (no publication.json → fresh flow; present → resume)
+├── manifest.json          # metadata + references list
+└── references/            # per-topic operational guides (read only the current stage on demand)
+    ├── workflow.md        # stage routing + command overview + status --json reading + troubleshooting
+    ├── preprocessing.md   # preprocessing: read facts → agent writes plan/global/units/terms/risks/report
+    ├── ingest.md          # file parsing (pandoc / PDF page slicing / OCR fallback)
+    ├── repair.md          # semantic repair: parse defects / OCR fixes / structural re-split (signal→fix→trace)
+    ├── structure.md       # four-layer structure classification + cleaning + provenance
+    ├── analysis.md        # layered understanding (overview/global/units/keypoints) + terminology seeding
+    ├── translation.md     # chunk translation + sentence alignment + three-state terminology loop
+    ├── review.md          # six-gate QC operational guide (when to run G0–G5, how to read reports, how to fix)
+    ├── build.md           # EPUB packaging + determinism
+    ├── qa.md              # epubcheck + unpack audit
+    ├── delivery.md        # delivery audit: mandatory full validation after qa (independent reconciliation + sampling + delivery record)
+    └── style.md           # genre profiles (novel/academic/paper/poetry/newspaper) + langprofile
 ```
 
-- 每个 reference 只覆盖一个阶段，SKILL.md 用「Route Before Acting」路由表让 agent 按当前
-  阶段只读一份，不一次加载全部。
-- 文档以**实际 CLI 能力**为准：未实现项（如 G0 自动接入、网络检索）
-  显式标注「后续扩展点」，避免 agent 照未实现功能操作。
-- 安装：`scripts/install-skills.sh --target opencode` 复制到 agent 的 skills 目录。
+- Each reference covers exactly one stage; SKILL.md's "Route Before Acting" table makes the
+  agent read only one file for the current stage instead of loading everything at once.
+- Documentation follows **actual CLI capability**: unimplemented items (e.g. automatic G0
+  wiring, web search) are explicitly marked "future extension" so agents do not act on
+  features that do not exist.
+- Install: `scripts/install-skills.sh --target opencode` copies it into the agent's skills
+  directory.
 
-> 维护本仓库时，改了 CLI 命令/工作区契约/QC 行为，须同步更新对应 reference 与 SKILL.md 路由表。
+> When maintaining this repository, if you change a CLI command, the workspace contract or
+> QC behaviour, you must update the corresponding reference and the SKILL.md routing table.
 
-## 文档地图（docs/ 四类文档各归其位）
+## Documentation map (each of the four doc types has its place)
 
-| 目录 | 定位 | 内容 | 何时新增/更新 |
+| Directory | Role | Content | When to add/update |
 |---|---|---|---|
-| `docs/` 根 | **规范 / 交接 / 参考 / 测试指南** | 设计规范（`pdf-content-spec` / `epub-template-spec` / `postprocessing-spec` / `semantic-repair`）、交叉文档（`agent-vs-code` / `quality-control` / `quality-lessons` 规范表 / `configuration` / `translation-flow` / `publishing-workflow`）、参考项目（`reference-projects`）、交接（`workstate`、历史进度快照 `progress-snapshot-2026-09-01`）、豆包环境测试指南（`testing-doubao`） | 改设计/接交流程时 |
-| `docs/plans/` | **每次任务的计划文档** | `YYYY-MM-DD-<主题>.md`，立项→实施→回写状态（完成标提交号）；README 索引 | 每轮开发任务立项时 |
-| `skills/auto-epublizer/references/` | **面向「用 CLI 处理书」的 agent 常规操作指引** | 每个阶段一份（workflow/preprocessing/ingest/…/style） | 改 CLI 命令/工作区契约/QC 行为时 |
-| `skills/auto-epublizer/lessons/` | **真实工作沉淀的特定情况经验** | 判据/处置/验证三段式，每篇一主题；索引含来源与去向 | 遇到并解决一个特定源站/脏源/边界情况时 |
+| `docs/` root | **Specs / handover / reference / testing guides** | Design specs (`pdf-content-spec` / `epub-template-spec` / `postprocessing-spec` / `semantic-repair`), cross-cutting docs (`agent-vs-code` / `quality-control` / the `quality-lessons` spec table / `configuration` / `translation-flow` / `publishing-workflow`), reference projects (`reference-projects`), handover (`workstate`, historical progress snapshot `progress-snapshot-2026-09-01`), DouBao environment testing guide (`testing-doubao`) | When design/handover flow changes |
+| `docs/plans/` | **Plan documents, one per task** | `YYYY-MM-DD-<topic>.md`, drafted → implemented → status written back (completion marked with commit hash); README index | When each development task is planned |
+| `skills/auto-epublizer/references/` | **Routine operational guidance for book-processing agents** | One per stage (workflow/preprocessing/ingest/.../style) | When CLI commands / workspace contract / QC behaviour change |
+| `skills/auto-epublizer/lessons/` | **Situation-specific experience from real work** | Criterion / handling / verification, one topic per file; index includes source and destination | When a specific source site, dirty source or edge case is encountered and solved |
 
-**经验教训的归位规则**：计划文档的验证记录（如 `pdf-dogfooding` §6）是可复用经验的
-**来源**，但经验本体**沉淀到 `lessons/`**（计划文档保留验证上下文，lessons 提供
-「同型情况怎么判/怎么修」）；规范表（如 `quality-lessons.md` 的正向目标/负面限制）
-留在 `docs/` 作为 QC 设计依据。新教训一律写 `lessons/`，不往 plans 里塞经验正文。
+**Where lessons belong**: a plan document's verification record (e.g. §6 of
+`pdf-dogfooding`) is the **source** of reusable experience, but the experience itself is
+**deposited in `lessons/`** (the plan keeps the verification context; the lesson offers
+"how to judge/fix the same kind of situation"); spec tables (e.g. the positive
+goals/negative constraints in `quality-lessons.md`) stay in `docs/` as QC design
+rationale. New lessons always go to `lessons/`; never stuff lesson prose into plans.
 
-**文档 i18n（中英双语）**：文档采用「英文默认 `X.md` + 中文 `X.zh.md`」双语，
-**中文为权威源**、英文为派生译文；改中文源须同步英文并运行
-`python scripts/i18n.py --finalize X.md`（`--check`/`--links` 由 `tests/test_i18n.py`
-强制）；命名、范围、术语对照见 `docs/i18n.md`。历史计划（`docs/plans/`）、
-`template/`、`THIRD_PARTY_LICENSES.md`、CLI 输出与代码注释保持中文单语。
+**Documentation i18n (bilingual)**: docs use the "English default `X.md` + Chinese
+`X.zh.md`" convention, with **Chinese as the authoritative source** and English as the
+derived translation; when you change a Chinese source you must update the English version
+and run `python scripts/i18n.py --finalize X.md` (`--check`/`--links` are enforced by
+`tests/test_i18n.py`); naming, scope and the glossary are in `docs/i18n.md`. Historical
+plans (`docs/plans/`), `template/`, `THIRD_PARTY_LICENSES.md`, CLI output and code comments
+stay Chinese-only.
 
-## 工作区目录契约
+## Workspace directory contract
 
 ```text
 <book-slug>/
-├── source/           ① 待处理文件（原样，绝不改动）
-├── output/           ② 成品 EPUB（<slug>.epub / <slug>-bi.epub）
-├── structured/       ③ 按出版物四层结构拆分的源文（frontmatter/body/backmatter/media）
-│                     + raw/（处理源文件的中间产物：OCR 页图、PDF→HTML、
-│                     pages/（扫描页渲染图）、mineru/（MinerU 解析产物），持久化供审查）
-├── analysis/         ④ 分层理解（agent 产物：overview/global/units/keypoints/glossary 等）
-├── translation/      ⑤ 译文（镜像 structured 树）+ align/<unit-id>.jsonl 句级对照表
-├── reviews/          ⑥ 审校运行记录 review-<ts>/（issues/patches/summary/result.json）
-├── references/       ⑦ 参考：user/（用户上传）+ web/（agent 网络检索）+ index.jsonl
-├── preprocessing/    ⑧ 预处理层：facts.json/facts.md（CLI 零 token 事实）+
-│                       agent 撰写的 todo.md（逐细节任务清单）/ plan/global/units/terms/risks/report
-│                       + catalog.csv（可选源盘点：included/physical/excluded/unresolved）
-│                       + repairs.jsonl（可选语义整备留痕：done/unresolved）
-│                       + structure.csv（可选结构重建清单，restructure 登记用）
-├── publication.json  权威索引（DC 元数据 + 内容树 + 状态机 + 配置快照）
-├── .progress.json    （预留）批次级断点；当前未落盘，断点=单元级跳过
-├── glossary.db       术语库内部索引（可选，SQLite）
-└── events.jsonl      追加式行为账本
+├── source/           ① file to process (untouched, never modified)
+├── output/           ② finished EPUB (<slug>.epub / <slug>-bi.epub)
+├── structured/       ③ source split by the four-layer publication structure (frontmatter/body/backmatter/media)
+│                     + raw/ (intermediates from processing the source: OCR page images, PDF→HTML,
+│                     pages/ (rendered scanned pages), mineru/ (MinerU artifacts), persisted for review)
+├── analysis/         ④ layered understanding (agent artifacts: overview/global/units/keypoints/glossary, etc.)
+├── translation/      ⑤ translation (mirrors the structured tree) + align/<unit-id>.jsonl sentence-level alignment
+├── reviews/          ⑥ review-run records review-<ts>/ (issues/patches/summary/result.json)
+├── references/       ⑦ references: user/ (user uploads) + web/ (agent web retrieval) + index.jsonl
+├── preprocessing/    ⑧ preprocessing layer: facts.json/facts.md (CLI zero-token facts) +
+│                       agent-written todo.md (detailed task list) / plan/global/units/terms/risks/report
+│                       + catalog.csv (optional source inventory: included/physical/excluded/unresolved)
+│                       + repairs.jsonl (optional semantic-repair trace: done/unresolved)
+│                       + structure.csv (optional structural-rebuild list, used by restructure)
+├── publication.json  authoritative index (DC metadata + content tree + state machine + config snapshot)
+├── .progress.json    (reserved) batch-level checkpoint; not written today, so resume = unit-level skip
+├── glossary.db       terminology-store internal index (optional, SQLite)
+└── events.jsonl      append-only behavior ledger
 ```
 
-单元状态机：`pending → split → analyzed → translated → aligned → reviewed → built`
-（`reviewed`=通过审校，`built`=已封装；`convert` 路径跳过理解/翻译/审校，直接 split → built）。
+Unit state machine: `pending → split → analyzed → translated → aligned → reviewed → built`
+(`reviewed` = passed review, `built` = packaged; the `convert` path skips analysis /
+translation / review and goes split → built directly).
 
-目录生命周期：`source/`、`references/user/` 不可动；`structured/`（含 `raw/` 中间产物）
-持久化保存供审查，可由源文件重建；`preprocessing/facts.*` 由 CLI 幂等生成，其余
-`preprocessing/` 产物、`analysis/`、`translation/`、`reviews/`、`output/` 是智能产物；
-`events.jsonl` 是追加式账本；`.progress.json` 为预留断点文件（当前未落盘，
-实际断点续跑 = 按 `publication.json` 单元状态跳过已完成单元）；
-`publication.json`、`glossary.db` 是权威真相。
+Directory lifecycle: `source/` and `references/user/` are immutable; `structured/`
+(including `raw/` intermediates) is persisted for review and can be rebuilt from the
+source; `preprocessing/facts.*` is generated idempotently by the CLI, while the rest of
+`preprocessing/`, `analysis/`, `translation/`, `reviews/` and `output/` are intelligent
+artifacts; `events.jsonl` is an append-only ledger; `.progress.json` is a reserved
+checkpoint file (not written today — resume is actually done by skipping completed units
+per `publication.json`); `publication.json` and `glossary.db` are the authoritative truth.
 
-**预处理分工**：`preprocess` 命令只产出零 token 事实（嗅探/元数据/TOC/体检/规模）；
-**方案决策与分层理解是 agent 任务**——读 facts.md 与 docs 决策表写 `plan.md`，
-用自身能力完成全局理解/章节理解/术语预提取/风险标注。理解上下文的读取优先级：
-`analysis/`（agent 直写）→ `preprocessing/`（agent 预处理产物）。
+**Preprocessing division of labour**: the `preprocess` command produces only zero-token
+facts (sniff/metadata/TOC/health/size); **approach decisions and layered understanding are
+the agent's job** — read facts.md and the docs decision tables to write `plan.md`, and use
+your own abilities for global understanding / per-chapter understanding / terminology
+pre-extraction / risk annotation. Reading priority for analysis context: `analysis/`
+(agent-written) → `preprocessing/` (agent preprocessing artifacts).
 
-术语表三态：`种子 → 候选 → 冲突 → 确认`。`analysis/glossary.csv` 是权威（人类/agent 可读），
-冲突外置到 `glossary_conflicts.jsonl`；翻译 worker 只读快照 + 追加提案，由单线程合并器裁决后写回 CSV。
+Terminology three states: `seed → candidate → conflict → confirmed`.
+`analysis/glossary.csv` is authoritative (human/agent readable); conflicts are externalized
+to `glossary_conflicts.jsonl`; translation workers read a snapshot and append proposals
+only, and a single-threaded merger arbitrates and writes back to the CSV.
 
-句级对照表 `translation/align/<unit-id>.jsonl` 每行一句：
+Sentence-level alignment `translation/align/<unit-id>.jsonl`, one sentence per line:
 
 ```jsonl
-{"seq": 1, "src": "原句", "tgt": "译句", "note": null}
+{"seq": 1, "src": "source sentence", "tgt": "translated sentence", "note": null}
 ```
 
-`seq` 是双语排版、QA 定位、断点续跑的锚点；`note` 记录拆句/并句/漏译/存疑，
-`corr:wrong→right` 前缀 = 源文勘误先例留痕（translate/import 两路径自动写入）。
+`seq` anchors bilingual layout, QA location and resume; `note` records splits/merges/
+omissions/doubts, and the `corr:wrong→right` prefix records source-erratum precedents
+(written automatically by both the translate and import paths).
 
-## 架构边界
+## Architecture boundaries
 
-三包 monorepo，依赖方向必须保持（`test_architecture_boundaries.py` 固定）：
+Three-package monorepo; the dependency direction must hold (fixed by
+`test_architecture_boundaries.py`):
 
 ```text
-auto_common（基础设施：config/workspace）
+auto_common (infrastructure: config/workspace)
       ▲
-auto_translator（确定性领域逻辑：glossary/genre/analysis(detect)/translation(align)/review(g0/models/convergence)）
+auto_translator (deterministic domain logic: glossary/genre/analysis(detect)/translation(align)/review(g0/models/convergence))
       ▲
-auto_epublizer（转 EPUB + 编排：ingest/structure/build/qa + orchestrator/cli）
+auto_epublizer (EPUB conversion + orchestration: ingest/structure/build/qa + orchestrator/cli)
 ```
 
-逻辑分层（跨包不变）：
+Logical layering (invariant across packages):
 
 ```text
-CLI → Orchestrator（薄 façade）→ 领域服务 → glossary / align / g0 / workspace(RunStore)
+CLI → Orchestrator (thin façade) → domain services → glossary / align / g0 / workspace(RunStore)
 ```
 
-- `auto_common` 是叶子，不得依赖 `auto_translator` / `auto_epublizer`。
-- `auto_translator` 只依赖 `auto_common`，不得依赖 `auto_epublizer`。
-- `orchestrator.py` 只装配与路由，不直接调用领域函数，不持有线程池。
-- 下层不得反向导入 orchestrator。
-- 全库不得有任何 LLM 模块/调用（唯一 LLM 原则，由架构边界测试强制）。
-- 并发属于具体领域服务；结果必须按稳定原文序合并，不得让线程完成顺序改变输出。
-- 第三方依赖保留各自许可证并在 `THIRD_PARTY_LICENSES.md` 登记；AGPL 依赖可直接引入（项目自身为 AGPL）。
+- `auto_common` is the leaf and must not depend on `auto_translator` / `auto_epublizer`.
+- `auto_translator` depends only on `auto_common`, never on `auto_epublizer`.
+- `orchestrator.py` only assembles and routes; it does not call domain functions directly
+  and holds no thread pool.
+- Lower layers must not import orchestrator in reverse.
+- The whole repository must contain no LLM module/call (single-LLM principle, enforced by
+  the architecture-boundary tests).
+- Concurrency belongs to concrete domain services; results must be merged in stable source
+  order and thread completion order must never change the output.
+- Third-party dependencies keep their own licenses and are registered in
+  `THIRD_PARTY_LICENSES.md`; AGPL dependencies may be used directly (the project itself is
+  AGPL).
 
-**能力分工**：CLI 只做确定性计算与校验放行——解析/切片/检测（语言体裁启发式、PDF 插图/
-表格/公式）、G0 静态校验、import 登记、构建、qa 审计。**语义判断类工作全部由 agent
-自身完成**：理解层（`analysis/` 与 `preprocessing/`）、翻译（`translation/`+`align/`）、
-审校（G1–G3，写 `reviews/review-<ts>/result.json`）、术语冲突终局裁决
-（`glossary_conflicts.jsonl` → 写回 `glossary.csv`）、inserts 语义（content_desc/latex）、
-未收敛情形（`max_rounds`/`no_progress`/`unresolved_fixes`）的处置、源文勘误、复杂结构
-判断、修复与放行决策。agent 只需**读文件、跑 shell、写文件**三种基础能力，
-**不要求 MCP、子代理或任何特殊工具**。
+**Division of labour**: the CLI only does deterministic computation and
+validation/release — parsing/splitting/detection (language & genre heuristics, PDF
+illustrations/tables/formulas), G0 static validation, import registration, build, QA audit.
+**All semantic judgement is done by the agent itself**: the analysis layer (`analysis/` and
+`preprocessing/`), translation (`translation/` + `align/`), review (G1–G3, writing
+`reviews/review-<ts>/result.json`), final terminology-conflict arbitration
+(`glossary_conflicts.jsonl` → write back to `glossary.csv`), inserts semantics
+(content_desc/latex), handling of non-converged cases (`max_rounds` / `no_progress` /
+`unresolved_fixes`), source errata, complex structural judgement, repair and release
+decisions. The agent needs only three basic abilities — **read files, run shell, write
+files** — and **no MCP, sub-agents or special tools**.
 
-**能力自检先行**：agent 开工前先跑 `auto-epublizer doctor` 判断环境工具链（pandoc/pymupdf/
-OCR（tesseract/ocrmypdf/rapidocr）/epubcheck/MinerU/网络），并**自报 multimodal 与
-search**（能否看图、有无搜索工具，CLI 无法探测）——据此按
-skills 的能力-路由决策表选择 ingest 路由（pandoc / 按页切片 / 扫描件档：
-**MinerU 外部 API 最优先（无 key 时先询问用户）→ 传统 OCR + agent 逐页阅读兜底**；
-「看」是 agent 自身能力）。PDF 内容提取
-（插图/表格/公式/多栏/书签切章）规范见 [docs/pdf-content-spec.md](docs/pdf-content-spec.md)。
+**Capability self-check first**: before starting, the agent runs
+`auto-epublizer doctor` to assess the environment toolchain (pandoc/pymupdf/OCR
+(tesseract/ocrmypdf/rapidocr)/epubcheck/MinerU/network) and **self-reports its multimodal
+and search** abilities (can it see images, does it have a search tool — the CLI cannot probe
+these). Based on that, choose the ingest route from the skills capability-routing table
+(pandoc / page slicing / scanned path: **MinerU external API first (ask the user first when
+there is no key) → traditional OCR + agent page-by-page reading fallback**; "looking" is the
+agent's own ability). The PDF content-extraction spec (illustrations/tables/formulas/
+multi-column/bookmark chaptering) is in
+[docs/pdf-content-spec.md](docs/pdf-content-spec.md).
 
-## 状态与续跑不变量
+## State and resume invariants
 
-- `publication.json` 是初始化成功的最终标志：派生状态先落盘，最后原子提交。
-- JSON 状态经同目录临时文件 + `os.replace` 原子写；禁止直接覆盖。
-- 状态用源文件 `source_sha256` 绑定内容；不得按同名静默复用不同内容。
-- 已完成单元必须可安全跳过；改翻译/术语/解析/审校缓存时须覆盖中断后续跑。
-- 导出从一致快照读取；审校只能改影子译文，正式 segment 只有显式 Autofix 可改。
-- 用量账本追加式；一次审校增量只合并一次，重试/续跑不得重复计费。
+- `publication.json` is the final marker of a successful init: derived state is persisted
+  first and committed atomically last.
+- JSON state is written atomically via a same-directory temp file + `os.replace`; direct
+  overwrite is forbidden.
+- State is bound to content via the source file's `source_sha256`; never silently reuse
+  different content under the same name.
+- Completed units must be safely skippable; when changing translation/terminology/parsing/
+  review caches, resume after interruption must still work.
+- Export reads from a consistent snapshot; review may change only the shadow translation,
+  and official segments may change only through an explicit Autofix.
+- Usage ledger is append-only; one review increment is merged exactly once, and
+  retries/resumes must not double-count.
 
-## 质量检验流程（G0–G5 + 交付审计）
+## Quality-check flow (G0–G5 + delivery audit)
 
-1. **零 token 廉价校验**：对照表完整性、长度比异常（<0.30 / >3.0 / 空，advisory）、
-   术语命中（硬）、插入标记/脚注标记守恒（硬，单元级总量比对，含 pandoc `[^N]` 与
-   句末数字两种表示）、源保真（align src ↔ structured 双向块级绑定；反向失配
-   =src 被改写/杜撰，import 阻断；前向缺块=advisory）。
-2. **逐批审校 Agent（cheap）**：missing/added/mistranslation/terminology/pronoun；宁缺毋滥；JSON 协议末尾必须 `reviewed_segments` + `complete:true`，违例整批重试。
-3. **证据取证 Agent Loop（strong）**：候选先取证再裁决，禁止假设未取得的上下文；术语库与影子修订都是待核验材料。
-4. **冲突仲裁 + 影子修订 + 盲复审**：跨块矛盾终局仲裁；Fixer 只在影子 overlay 改；下一轮盲审不传旧说明；连续 clean 确认或 max_rounds 收敛；振荡检测（摘要 SHA-256 循环）。
-5. **EPUB 结构 QA**：epubcheck 零 error + 解包逐项审计（mimetype 首位、manifest/spine/nav 解析、封面、lang、每章一个 h1、脚注双向跳转、无残留）。
-6. **交付验收**：汇总 G0–G4 + 溯源审计生成 `report.json`（g0_flags/g1_issues/g2_confirmed/
-   g3_termination/error_rate/provenance_coverage/units_missing/media_lost/released/
-   released_reason），放行条件为 **G0 术语命中清零**（`terminology` 是真实缺陷，非 advisory）、
-   **G0 结构违例清零**（`marker`/`footnote` 标记守恒；`g0_structure_open`）、
-   **未决术语冲突清零**（`glossary_conflicts_open`：裁决写回 glossary.csv 前不放行）、
-   **源盘点未决清零**（`catalog_unresolved_open`，catalog.csv 存在时才检查）、
-   `g2_confirmed == 0` 或全部已修订、`g4_epubcheck_errors == 0`、
-   `g4_audit == "pass"`、溯源完整（`provenance_coverage ≈ 1.0`（无翻译产物为 null）、
-   三边对账/媒体溯源零缺失、目录层级不扁平；详见 docs/postprocessing-spec.md §5）。
-   成品呈现对账同样清零：`epub_media_missing`/`epub_footnotes_missing`/`align_md_drift` 为 0、
-   `epub_coverage ≈ 1.0`（交付审计 S1；md 是 build 输入、align 是校验基准，二者与成品独立对账）。
-7. **交付审计（agent 门，qa released 之后强制执行）**：按
-   `skills/auto-epublizer/references/delivery.md` 做独立对账 + 解包抽查（首/中/尾 +
-   高风险章：正文探针/看图/脚注内容）+ 人肉核对（目录/封面/元数据）+ inserts 描述
-   处置 + 产物同步字节核对，写 `reviews/delivery-<ts>.md`；发现缺陷走修复循环
-   （修 → import → build → qa → 重新审计）。全部单元 built 后 qa 以
-   `W_DELIVERY_AUDIT_MISSING` 提示缺记录（warning 不阻断）。
+1. **Zero-token cheap validation**: alignment completeness, abnormal length ratio
+   (<0.30 / >3.0 / empty, advisory), terminology hits (hard), insert-marker/footnote-marker
+   conservation (hard, unit-level total comparison, covering both pandoc `[^N]` and
+   sentence-final digit forms), source fidelity (align src ↔ structured bidirectional
+   block-level binding; reverse mismatch = src was rewritten/fabricated, blocks import;
+   forward missing block = advisory).
+2. **Batch review agent (cheap)**: missing/added/mistranslation/terminology/pronoun; better
+   to omit than to over-flag; the JSON protocol must end with `reviewed_segments` +
+   `complete:true`, otherwise the whole batch is retried.
+3. **Evidence-gathering agent loop (strong)**: candidates are evidenced before being
+   judged; assuming un-obtained context is forbidden; both the glossary and the shadow
+   revision are unverified material.
+4. **Conflict arbitration + shadow revision + blind re-review**: cross-block contradictions
+   are finally arbitrated; the Fixer edits only the shadow overlay; the next blind round
+   does not receive the previous explanation; consecutive clean confirmations or max_rounds
+   convergence; oscillation detection (digest SHA-256 cycle).
+5. **EPUB structure QA**: epubcheck zero errors + item-by-item unpack audit (mimetype
+   first, manifest/spine/nav parse, cover, lang, one h1 per chapter, bidirectional footnote
+   links, no leftovers).
+6. **Delivery acceptance**: aggregate G0–G4 + provenance audit into `report.json`
+   (g0_flags/g1_issues/g2_confirmed/g3_termination/error_rate/provenance_coverage/
+   units_missing/media_lost/released/released_reason); the release conditions are
+   **G0 terminology hits cleared** (`terminology` is a real defect, not advisory),
+   **G0 structural violations cleared** (`marker`/`footnote` conservation;
+   `g0_structure_open`), **unresolved terminology conflicts cleared**
+   (`glossary_conflicts_open`: no release before arbitration is written back to
+   glossary.csv), **unresolved source inventory cleared** (`catalog_unresolved_open`, only
+   checked when catalog.csv exists), `g2_confirmed == 0` or all revised,
+   `g4_epubcheck_errors == 0`, `g4_audit == "pass"`, complete provenance
+   (`provenance_coverage ≈ 1.0` (null when there is no translation artifact), zero missing
+   in tri-lateral reconciliation/media provenance, TOC hierarchy not flat; see
+   docs/postprocessing-spec.md §5). Finished-product presentation reconciliation must also
+   be zero: `epub_media_missing`/`epub_footnotes_missing`/`align_md_drift` = 0 and
+   `epub_coverage ≈ 1.0` (delivery audit S1; md is the build input and align is the
+   validation baseline, and both are reconciled independently against the product).
+7. **Delivery audit (agent gate, mandatory after qa released)**: per
+   `skills/auto-epublizer/references/delivery.md`, perform independent reconciliation +
+   unpack sampling (first/middle/last + high-risk chapters: body probes / image viewing /
+   footnote content) + manual checks (TOC/cover/metadata) + inserts-description handling +
+   byte-level artifact-sync verification, and write `reviews/delivery-<ts>.md`; defects go
+   through the repair loop (fix → import → build → qa → re-audit). Once every unit is
+   built, qa reminds you with `W_DELIVERY_AUDIT_MISSING` when the record is missing
+   (warning, non-blocking).
 
-> 翻译期间的过程校验（QC 落实，豆包实测教训）：每译 3–5 个单元 build 一次，格式契约
-> 问题当轮暴露（图片段缺 `<img>` 行、空行破坏）；每单元写完 `import --unit <id>` +
-> `g0 --unit <id>` 当场处理术语告警；标题开工前一次性定稿进 plan.md。
+> In-process validation during translation (QC discipline, a DouBao field lesson): build
+> once every 3–5 units so format-contract problems surface in that round (missing `<img>`
+> lines in image segments, blank-line breakage); after each unit run `import --unit <id>` +
+> `g0 --unit <id>` to handle terminology warnings on the spot; finalize headings once,
+> before starting, in plan.md.
 
-## 配置、密钥与 provider
+## Configuration, secrets and providers
 
-- 配置**无任何 LLM/密钥段**（唯一 LLM 原则）；可选外部解析 API 的 `MINERU_API_KEY`
-  只从环境变量读取，禁止写入源码、测试、文档示例或提交。
-- 测试全部确定性离线：不调用任何 LLM、不依赖外部网络。
-- 用户可预期错误 → 明确异常 + 简洁中文提示；CLI 不打印 traceback。
+- Configuration has **no LLM/secret section** (single-LLM principle); the optional external
+  parsing API's `MINERU_API_KEY` is read from the environment only and must never be written
+  to source, tests, documentation examples or commits.
+- All tests are deterministic and offline: no LLM calls, no external network.
+- User-predictable errors → explicit exception + concise Chinese message; the CLI does not
+  print tracebacks.
 
-## 开发与验证命令
+## Development and verification commands
 
 ```bash
-uv sync                      # 安装
-uv run pytest -q             # 全量测试（离线、确定、快速，不依赖真实书籍）
+uv sync                      # install
+uv run pytest -q             # full test suite (offline, deterministic, fast; no real books)
 uv run ruff check .
 uv run ruff format --check .
 ```
 
-修复缺陷先添加能失败的最小回归测试；测试数据写 `tempfile`，不依赖仓库外的真实书籍。
+When fixing a defect, first add the smallest failing regression test; test data goes in
+`tempfile` and must not depend on real books outside the repository.
 
-## 代码与交付风格
+## Code and delivery style
 
-- 中文领域命名与提示词；公共代码带类型提示与简短 docstring。
-- 遵循 pyproject 的 Ruff 规则（目标 Python 3.12）。
-- 提交信息用 Conventional Commits；只暂存本次任务修改的文件；不提交密钥与用户本地数据。
-- 交付前运行受影响测试 + ruff check + ruff format --check。
+- Chinese domain naming and prompts; public code has type hints and short docstrings.
+- Follow the Ruff rules in pyproject (target Python 3.12).
+- Commit messages use Conventional Commits; stage only the files changed by the current
+  task; never commit secrets or user-local data.
+- Before delivery, run the affected tests + ruff check + ruff format --check.
