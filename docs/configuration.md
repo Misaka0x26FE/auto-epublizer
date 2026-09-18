@@ -1,69 +1,78 @@
-# 配置参考（config.yaml 目标 schema）
+<!-- i18n: source=configuration.zh.md sha256=26bbb96cc5418b8a16cdf64725f41a69a9439ead73725200163d34238778d9b6 -->
+> **English** | [中文](configuration.zh.md)
 
-本文档汇总各环节的配置项，作为 `config.yaml` 的统一形状。
-实现以 `src/auto_common/config.py` 为契约，新增配置项须同步更新此处、根目录示例与测试。
-`init` 时仅把关键项快照进 `publication.json.config`（顶层字段，只含
-`bilingual` / `target_language` 两项，见 `workspace/models.py::ConfigSnapshot`），
-并非本表全量的镜像。
+# Configuration reference (target `config.yaml` schema)
 
-**唯一 LLM 原则**：CLI 不调用任何 LLM，配置中没有 provider/密钥/档位段；
-一切语义工作（理解/翻译/审校）由操作 CLI 的 agent 用自身能力完成。
+This document collects the configuration items of each stage as the unified shape of
+`config.yaml`.
+The implementation contract is `src/auto_common/config.py`; newly added configuration items
+must be synced to this document, the root example, and the tests.
+At `init` time, only key items are snapshotted into `publication.json.config` (a top-level
+field, containing only `bilingual` / `target_language`, see `workspace/models.py::ConfigSnapshot`),
+not a full mirror of this table.
+
+**Single-LLM principle**: the CLI does not call any LLM, and the configuration has no
+provider/secret/tier section; all semantic work (understanding/translation/review) is done by
+the agent operating the CLI with its own abilities.
 
 ```yaml
-# ── 语言与文体 ───────────────────────────────────────────────
+# ── language and genre ───────────────────────────────────────
 language:
-  source: auto          # auto=确定性脚本启发式检测；或写死 ISO 639-1（en/ja/ru/ko/fr/de/es…）
-  target: zh-CN         # 目标语言，任意可配
-  genre: auto           # auto=启发式判定；或显式 novel/academic/paper/poetry/newspaper
+  source: auto          # auto=deterministic script heuristic detection; or hard-code ISO 639-1 (en/ja/ru/ko/fr/de/es…)
+  target: zh-CN         # target language, any configurable value
+  genre: auto           # auto=heuristic determination; or explicit novel/academic/paper/poetry/newspaper
 
-# ── 管线开关 ────────────────────────────────────────────────
+# ── pipeline switches ────────────────────────────────────────
 pipeline:
   bilingual: false
 
-# ── 质量控制 ─────────────────────────────────────────────────
+# ── quality control ──────────────────────────────────────────
 qc:
-  length_ratio: { too_short: 0.30, too_long: 3.0 }   # G0 长度比告警阈值
+  length_ratio: { too_short: 0.30, too_long: 3.0 }   # G0 length-ratio warning thresholds
   epubcheck:
     jar: "~/.cache/epubcheck.jar"
     strict: true
 
-# ── PDF 解析 ────────────────────────────────────────────────
+# ── PDF parsing ──────────────────────────────────────────────
 pdf:
-  backend: auto           # auto | pymupdf | mineru（auto=扫描件且 MINERU_API_KEY 存在时优先 MinerU）
-  ocr: auto               # auto | off | 强制 rapidocr
-  page_dpi: 300           # 页渲染分辨率（OCR 兜底）
-  mineru_effort: medium   # 未接线（MinerU v4 API 无此参数）；保留兼容旧配置
-  mineru_model: pipeline  # pipeline（默认，确定性、零幻觉）| vlm（高精度，内部为 VLM）
-  mineru_language: ch     # MinerU OCR 语言（PaddleOCR 语言码：ch/en/ja/…）
-  mineru_batch_pages: 200 # >此页数自动分批（MinerU 单文件 ≤200 页限制；≤0 关闭）
+  backend: auto           # auto | pymupdf | mineru (auto=prefer MinerU when it is a scan and MINERU_API_KEY exists)
+  ocr: auto               # auto | off | force rapidocr
+  page_dpi: 300           # page render resolution (OCR fallback)
+  mineru_effort: medium   # not wired (the MinerU v4 API has no such parameter); kept for compatibility with old configs
+  mineru_model: pipeline  # pipeline (default, deterministic, zero hallucination) | vlm (high precision, internally a VLM)
+  mineru_language: ch     # MinerU OCR language (PaddleOCR language code: ch/en/ja/…)
+  mineru_batch_pages: 200 # automatically batch above this page count (MinerU single-file ≤200 pages limit; ≤0 disables)
 
-# ── 术语表 ──────────────────────────────────────────────────
+# ── glossary ─────────────────────────────────────────────────
 glossary:
-  storage: csv            # csv（默认，权威存储）；sqlite 未实现（预留）
-  scope: chapter          # 未接线（预留；当前术语注入由 agent 按本章出现过滤）
+  storage: csv            # csv (default, authoritative storage); sqlite not implemented (reserved)
+  scope: chapter          # not wired (reserved; currently terminology injection is filtered by the agent per chapter occurrence)
 
-# ── 路径 ─────────────────────────────────────────────────────
+# ── paths ────────────────────────────────────────────────────
 paths:
-  workspaces_dir: .       # 工作区根目录（每本书一个 <book-slug>/）
+  workspaces_dir: .       # workspace root directory (one <book-slug>/ per book)
 
-# ── 输出 ─────────────────────────────────────────────────────
+# ── output ───────────────────────────────────────────────────
 output:
-  mono: true              # 未接线（预留；mono/bilingual 由 build --bilingual 决定）
-  bilingual: false        # 未接线（同上）
-  about_page: true        # 未接线（预留；"关于此翻译"页未实现）
-  theme: standard         # 排版主题：standard | compact | spacious（docs/epub-template-spec.md §5）
-                          # 仅排版微调（泛化字族/行距/缩进/对齐），无具体字体名/颜色/字号
-  nav_depth: 3            # 目录最大嵌套深度（1–6，docs/epub-template-spec.md §3 投影）
-                          # 超深单元不进 nav/NCX，但保留在 spine 阅读顺序与锚点中
+  mono: true              # not wired (reserved; mono/bilingual is decided by build --bilingual)
+  bilingual: false        # not wired (same as above)
+  about_page: true        # not wired (reserved; the "about this translation" page is not implemented)
+  theme: standard         # layout theme: standard | compact | spacious (docs/epub-template-spec.md §5)
+                          # only layout micro-adjustments (generic font family/line spacing/indent/alignment), no concrete font name/color/size
+  nav_depth: 3            # maximum TOC nesting depth (1–6, docs/epub-template-spec.md §3 projection)
+                          # overly deep units do not enter nav/NCX, but are kept in the spine reading order and anchors
 ```
 
-## 配置快照与续跑
+## Configuration snapshot and resume
 
-`init` 成功后，把本次运行的关键配置（`language.target`、`pipeline.bilingual` 等）
-快照进 `publication.json.config`；续跑时优先用快照，避免配置漂移导致结果不一致。
+After `init` succeeds, the key configuration of this run (`language.target`,
+`pipeline.bilingual`, etc.) is snapshotted into `publication.json.config`; on resume the
+snapshot is preferred, avoiding inconsistent results caused by configuration drift.
 
-## 密钥
+## Secrets
 
-本项目配置无任何密钥段（唯一 LLM = agent 本身，agent 自身的凭证与 CLI 无关）。
-仅有的外部凭据是可选的 `MINERU_API_KEY` 环境变量（MinerU 外部解析 API），只从环境变量读取，
-禁止写入配置文件、源码、测试或提交。
+This project's configuration has no secret section whatsoever (the only LLM = the agent
+itself; the agent's own credentials are unrelated to the CLI).
+The only external credential is the optional `MINERU_API_KEY` environment variable (the
+MinerU external parsing API), read only from the environment variable, and forbidden from
+being written into configuration files, source, tests, or commits.

@@ -1,70 +1,82 @@
-# 后处理规范：内容完整性 / 媒体 / EPUB 结构 的验收与实现
+<!-- i18n: source=postprocessing-spec.zh.md sha256=401b75a6e7b005b4330699469be064b705db4c71c0138c68e723e17de429d1d8 -->
+> **English** | [中文](postprocessing-spec.zh.md)
 
-本文档规定翻译/导入完成后、交付前（`build` → `qa` 区间）的**后处理验收标准与实现计划**。
-覆盖三大类：**内容完整性与溯源**、**媒体位置与样式**、**EPUB 结构与目录层级**。
+# Post-Processing Spec: Acceptance and Implementation of Content Integrity / Media / EPUB Structure
 
-> 范围边界沿用：只负责**交付质量**（准确/完整/一致/规范/结构正确/可复现），不做
-> 价值观/政治/思想性判断。样式规范以 `docs/epub-template-spec.md` 为准，本文只负责
-> 「验收与校验」，不重复定义样式。
+This document specifies the **post-processing acceptance criteria and implementation plan**
+after translation/import completes and before delivery (the `build` → `qa` interval). It
+covers three major categories: **content integrity and provenance**, **media position and
+style**, **EPUB structure and TOC hierarchy**.
 
-## 1. 定位
+> The scope boundary follows: it is responsible only for **delivery quality**
+> (accurate/complete/consistent/normative/structurally correct/reproducible) and makes no
+> value/political/ideological judgements. The style spec is governed by
+> `docs/epub-template-spec.md`; this document is responsible only for
+> "acceptance and validation" and does not redefine styles.
 
-后处理不是新阶段，而是对现有 **G4/G5（+ 部分 build/G0）** 的规格化补全。三道验收
-分别落在：溯源归 G0/G5、媒体归 build+G4、结构归 G4。
+## 1. Positioning
 
-## 2. 三大类验收标准与现状差距
+Post-processing is not a new stage but a specification-level completion of the existing
+**G4/G5 (+ part of build/G0)**. The three acceptances fall respectively into: provenance
+into G0/G5, media into build+G4, structure into G4.
 
-> 现状列是**立项时（2026-09-04 前）快照**；完成情况以 §4 为准（P0–P2 已全部完成），
-> 下表 ⬜ 项均已实现并接入 `qa`。
+## 2. Three Categories of Acceptance Criteria and Current Gaps
 
-### 2.1 内容完整性与溯源
+> The current-state column is a **snapshot at project inception (before 2026-09-04)**;
+> completion status follows §4 (P0–P2 all completed), and all ⬜ items in the table below
+> have been implemented and wired into `qa`.
 
-> 目标：仓库内容齐全无缺漏，翻译后的每个部分都能追溯到原文。
+### 2.1 Content Integrity and Provenance
 
-| 验收项 | 现状 | 缺口 / 动作 |
+> Goal: repository content is complete without omission, and every translated part can be
+> traced back to the original text.
+
+| Acceptance item | Current state | Gap / action |
 |---|---|---|
-| 逐句溯源锚点 | ✅ `align/<id>.jsonl` 每行 `{seq,src,tgt,note}` | — |
-| 对照表完整性 | ✅ G0 `check_alignment`（seq 连续、src/tgt 非空） | — |
-| 结构守恒 | ✅ G0（段落块/标记/脚注/标题 1:1） | — |
-| **三边对账**（structured↔translation↔output） | ⬜ | 新增：逐单元三边存在、顺序一致、无遗漏/多余 |
-| **媒体溯源**（图片数量/顺序与源文一致） | ⬜ | 新增：译文图片引用 vs 源文，防丢图/多图/错位 |
-| **逐段溯源覆盖率** | ✅ | structured 每段 ↔ align 全覆盖，产出 `provenance_coverage` |
-| **成品呈现对账**（build 输入 ↔ EPUB 实际包含） | ✅ | md 图片引用 ↔ 成品 `<img>`（`E_MEDIA_EPUB_LOST`）、md 脚注定义数 ↔ 成品 `<aside>` 数（`E_FN_EPUB_LOST`）、正文段落全量探针（`E_EPUB_PARA_LOST` + `epub_coverage`）；md↔align 一致性（`E_ALIGN_MD_DRIFT`） |
-| **源文勘误留痕** | ✅ | `apply_corrections` 命中项写入 align `note`（如 `corr:IDG→IDF`），区分译错/源错 |
+| Sentence-by-sentence provenance anchor | ✅ `align/<id>.jsonl` each line `{seq,src,tgt,note}` | — |
+| Alignment completeness | ✅ G0 `check_alignment` (seq consecutive, src/tgt non-empty) | — |
+| Structural conservation | ✅ G0 (paragraph blocks/markers/footnotes/headings 1:1) | — |
+| **Tri-lateral reconciliation** (structured↔translation↔output) | ⬜ | new: per-unit tri-lateral existence, consistent order, no omission/extra |
+| **Media provenance** (image count/order matches the source) | ⬜ | new: translated image references vs source, to prevent lost/extra/misplaced images |
+| **Per-paragraph provenance coverage** | ✅ | every structured paragraph ↔ full align coverage, producing `provenance_coverage` |
+| **Finished-product presentation reconciliation** (build input ↔ what the EPUB actually contains) | ✅ | md image references ↔ product `<img>` (`E_MEDIA_EPUB_LOST`), md footnote definition count ↔ product `<aside>` count (`E_FN_EPUB_LOST`), full body-paragraph probe (`E_EPUB_PARA_LOST` + `epub_coverage`); md↔align consistency (`E_ALIGN_MD_DRIFT`) |
+| **Source erratum trace** | ✅ | `apply_corrections` hits written to align `note` (e.g. `corr:IDG→IDF`), distinguishing translation errors/source errors |
 
-### 2.2 媒体位置与样式
+### 2.2 Media Position and Style
 
-> 目标：图片插入到原文对应位置；能全尺寸就全尺寸，不能则等比例缩放居中。
+> Goal: images inserted at the corresponding positions in the original text; full size when
+> possible, otherwise scaled proportionally and centered.
 
-| 验收项 | 现状 | 缺口 / 动作 |
+| Acceptance item | Current state | Gap / action |
 |---|---|---|
-| 图片不溢出 + 居中 | ✅ `max-width:100%` + 居中 + 不放大 | 语义确认见 epub-template-spec §4 |
-| 字节收集 + 去悬空 | ✅ `collect_media` | — |
-| **尺寸策略显式化** | ⬜ | 「只缩不放大」写为唯一策略；超宽/超高/大图审计告警 |
-| **位置溯源** | ⬜ | 图片在译文中的相对顺序与源文一致（并入 2.1 媒体溯源） |
-| 图注 caption / alt | ⬜ | 图注 `<figcaption>`；alt 空值告警（可访问性） |
-| 封面 `cover-image` | ⬜ | 见 epub-template-spec §3 |
-| 格式兼容 | ⬜ | `.avif`/`.webp` 兼容性告警 |
+| Images do not overflow + centered | ✅ `max-width:100%` + centered + not enlarged | semantic confirmation see epub-template-spec §4 |
+| Byte collection + dangling removal | ✅ `collect_media` | — |
+| **Size strategy made explicit** | ⬜ | "shrink only, never enlarge" written as the sole strategy; over-wide/over-tall/large-image audit warnings |
+| **Position provenance** | ⬜ | the relative order of images in the translation matches the source (merged into 2.1 media provenance) |
+| Figure caption caption / alt | ⬜ | figure caption `<figcaption>`; alt empty value warning (accessibility) |
+| Cover `cover-image` | ⬜ | see epub-template-spec §3 |
+| Format compatibility | ⬜ | `.avif`/`.webp` compatibility warning |
 
-### 2.3 EPUB 结构与目录层级
+### 2.3 EPUB Structure and TOC Hierarchy
 
-> 目标：EPUB 合法，目录齐全，层级符合源文件。
+> Goal: EPUB valid, TOC complete, hierarchy matches the source file.
 
-| 验收项 | 现状 | 缺口 / 动作 |
+| Acceptance item | Current state | Gap / action |
 |---|---|---|
 | epubcheck 0 error | ✅ | — |
-| G4 解包审计 | ✅ mimetype/container/OPF/nav/NCX/landmarks/img 悬空/URL/lang/h1 | — |
-| **目录层级** | ⬜ | nav/NCX 当前扁平单层，源文 h2/h3 不进目录 |
-| **TOC 对账** | ⬜ | preprocess 抽的源 TOC vs nav 条目对照，漏条目告警 |
-| 脚注双向跳转 | ⬜ | 见 epub-template-spec §6（脚注语义化） |
-| 标题无跳级 | ⬜ | h1→h3 跳级告警 |
+| G4 unpack audit | ✅ mimetype/container/OPF/nav/NCX/landmarks/img dangling/URL/lang/h1 | — |
+| **TOC hierarchy** | ⬜ | nav/NCX currently flat single-level, source h2/h3 do not enter the TOC |
+| **TOC reconciliation** | ⬜ | source TOC extracted by preprocess vs nav entries, missing entries warning |
+| Footnote bidirectional jumping | ⬜ | see epub-template-spec §6 (footnote semanticization) |
+| No heading level skips | ⬜ | h1→h3 skip warning |
 
-## 3. 数据契约
+## 3. Data Contract
 
-### 3.1 溯源审计（零 token 纯函数）
+### 3.1 Provenance Audit (Zero-Token Pure Function)
 
-输入 `structured/<id>.md` + `translation/align/<id>.jsonl` + 成品 EPUB spine，
-输出**全书聚合**结果（`qa/provenance.py::ProvenanceResult`，经 `to_dict()` 进 report.json）：
+Input `structured/<id>.md` + `translation/align/<id>.jsonl` + finished EPUB spine,
+output **whole-book aggregate** result (`qa/provenance.py::ProvenanceResult`, via `to_dict()`
+into report.json):
 
 ```json
 {
@@ -97,13 +109,15 @@
 }
 ```
 
-> 目录层级对账按 `output.nav_depth` 投影后进行（与 build 同一算法）；投影深度以产物
-> 声明为准（`nav.xhtml` 的 `<meta name="nav-depth">`，配置参数仅兜底旧产物），避免
-> 配置漂移误报。`toc_depths_expected` 是投影后的期望序列；被投影剔除的 spine 文档名
-> 记录在 `nav_exempt`，交给 `audit_epub` 豁免 `E_TOC_COVERAGE`（内容仍在 spine
-> 阅读顺序，非缺失）。
+> TOC hierarchy reconciliation is performed after projection by `output.nav_depth` (same
+> algorithm as build); the projected depth follows the product's declaration (`nav.xhtml`'s
+> `<meta name="nav-depth">`; config parameters are only a fallback for old products),
+> avoiding false positives from config drift. `toc_depths_expected` is the expected sequence
+> after projection; spine document names removed by projection are recorded in `nav_exempt`,
+> handed to `audit_epub` to exempt `E_TOC_COVERAGE` (the content is still in the spine
+> reading order, not missing).
 
-### 3.2 report.json 扩展（G5）
+### 3.2 report.json Extension (G5)
 
 ```json
 {
@@ -120,89 +134,90 @@
 }
 ```
 
-## 4. 分阶段实现计划
+## 4. Phased Implementation Plan
 
-### P0 — 结构 / 溯源 / 目录层级（✅ 已完成 2026-09-04）
+### P0 — Structure / Provenance / TOC Hierarchy (✅ Completed 2026-09-04)
 
-1. ✅ **目录层级**（链路补全，信息已在 `SourceUnit.meta["heading_level"]`）：
-   - ✅ `structure/rebuild.py`：`rebuild_structure` 把 `heading_level` 写进 entry（`entry["level"]`）
-   - ✅ `orchestrator`/`store`：level 存进 `Unit.meta`，`structure_entries` 回填
-   - ✅ `build/__init__.py`：`_render_nav` 嵌套 `<ol>`、`_render_ncx` 嵌套 `<navPoint>`（含 `dtb:depth`）
-   - ✅ 目录层级审计：`E_TOC_FLAT`（源有层级 nav 扁平）/ `W_TOC_DEPTH`（深度序列不一致）
-     ——在 `qa/provenance.py`（需对照源 level，非 audit_epub）
-   - PDF 源：单 unit 无层级，依赖 agent 在 preprocessing 切分并登记 level（CLI 提供机制）
-2. ✅ **三边对账**：`qa/provenance.py`（`E_UNIT_MISSING`/`E_UNIT_ORDER`），接入 `qa`
-3. ✅ **媒体溯源**：`E_MEDIA_LOST`/`E_MEDIA_ORDER`
-4. ✅ **逐段覆盖率**：`provenance_coverage` 进 report.json（无翻译产物为 null）
-5. ✅ **源文勘误留痕**：`detect_corrections` + `annotate_correction_notes`；
-   import 路径写 align `note` 前缀 `corr:wrong→right`（translate 命令已随内部 LLM 移除）
-6. ✅ **TOC 对账**：facts 源 TOC vs 单元标题 → `W_TOC_MISSING`（warning 线索）
-7. ✅ **脚注语义化**：`noteref`/`footnote` + 全局序号 + 双向跳转（`FootnoteState`）
-8. ✅ **样式瘦身**：`_STYLE_CSS` 去字体/颜色/字号/行距/缩进/对齐（回归测试锁定）
+1. ✅ **TOC hierarchy** (chain completion; information already in `SourceUnit.meta["heading_level"]`):
+   - ✅ `structure/rebuild.py`: `rebuild_structure` writes `heading_level` into entry (`entry["level"]`)
+   - ✅ `orchestrator`/`store`: level stored into `Unit.meta`, `structure_entries` backfilled
+   - ✅ `build/__init__.py`: `_render_nav` nests `<ol>`, `_render_ncx` nests `<navPoint>` (including `dtb:depth`)
+   - ✅ TOC hierarchy audit: `E_TOC_FLAT` (source has hierarchy but nav is flat) / `W_TOC_DEPTH` (depth sequence inconsistent)
+     ——in `qa/provenance.py` (needs to compare against source level, not audit_epub)
+   - PDF source: a single unit has no hierarchy; relies on the agent splitting and registering level in preprocessing (the CLI provides the mechanism)
+2. ✅ **Tri-lateral reconciliation**: `qa/provenance.py` (`E_UNIT_MISSING`/`E_UNIT_ORDER`), wired into `qa`
+3. ✅ **Media provenance**: `E_MEDIA_LOST`/`E_MEDIA_ORDER`
+4. ✅ **Per-paragraph coverage**: `provenance_coverage` into report.json (null when there is no translation artifact)
+5. ✅ **Source erratum trace**: `detect_corrections` + `annotate_correction_notes`;
+   the import path writes align `note` prefix `corr:wrong→right` (the translate command was removed along with the internal LLM)
+6. ✅ **TOC reconciliation**: facts source TOC vs unit headings → `W_TOC_MISSING` (warning clue)
+7. ✅ **Footnote semanticization**: `noteref`/`footnote` + global numbering + bidirectional jumping (`FootnoteState`)
+8. ✅ **Style slimming**: `_STYLE_CSS` removes font/color/font size/line spacing/indent/alignment (regression-test locked)
 
-### P1 — 媒体位置 / 样式 / 主题（✅ 已完成 2026-09-04）
+### P1 — Media Position / Style / Theme (✅ Completed 2026-09-04)
 
-- ✅ 主题机制：预置三套极简主题（`standard`/`compact`/`spacious`）+ `--theme` +
-  `config.output.theme`（epub-template-spec §5）；audit 拦截具体字体名/字号/颜色
-  （`E_THEME_FONT`/`E_THEME_COLOR`）
-- ✅ 封面 `cover-image`（`<meta name="cover">` + spine `linear="no"`）+ `W_NO_COVER` 对账
-- ✅ 媒体审计：超宽/超高/大图（`W_IMG_RATIO`/`W_IMG_LARGE`）、alt 空值（`W_IMG_NO_ALT`）、
-  格式兼容（`.webp`/`.avif` → `W_IMG_FORMAT`）
-- ✅ 图注 `<figcaption>`：独立图段（alt 非空）→ `figure+figcaption`
-- 尺寸策略「只缩不放大」：已在 P0 样式瘦身时作为功能性规则锁定（回归测试）
+- ✅ Theme mechanism: three preset minimal themes (`standard`/`compact`/`spacious`) + `--theme` +
+  `config.output.theme` (epub-template-spec §5); audit blocks concrete font names/font sizes/colors
+  (`E_THEME_FONT`/`E_THEME_COLOR`)
+- ✅ Cover `cover-image` (`<meta name="cover">` + spine `linear="no"`) + `W_NO_COVER` reconciliation
+- ✅ Media audit: over-wide/over-tall/large image (`W_IMG_RATIO`/`W_IMG_LARGE`), alt empty value (`W_IMG_NO_ALT`),
+  format compatibility (`.webp`/`.avif` → `W_IMG_FORMAT`)
+- ✅ Figure caption `<figcaption>`: standalone figure paragraph (alt non-empty) → `figure+figcaption`
+- Size strategy "shrink only, never enlarge": already locked as a functional rule during P0 style slimming (regression test)
 
-### P2 — 补充项（✅ 已完成 2026-09-04）
+### P2 — Supplementary Items (✅ Completed 2026-09-04)
 
-- ✅ 可访问性：标题无跳级（`E_HEADING_SKIP`）；alt 空值（P1 已做 `W_IMG_NO_ALT`）、lang（原有 `W_NO_LANG`）
-- ✅ 残留检查：HTML 注释（`E_RESIDUE`）/ markdown·pandoc 标记（`W_RESIDUE`：`![` `**` `:::` `{.` `[^`）；
-  源语言字符残留属语义判断，归 G1 审校（agent 任务），不做确定性检查
-- ✅ 元数据完备：creator/date/publisher/rights 缺失 → `W_META_INCOMPLETE`（告警，供 agent 补全）
-- ✅ 双语溯源：`build --bilingual` src/tgt 段落数成对（`E_BI_PAIRS`）
-- ✅ 内部链接：内部锚点可解析（`E_ANCHOR`，含 noteref→footnote）+ 脚注回链（`E_FN_BACKLINK`）
-- ✅ 体积审计：EPUB 总体积（`W_EPUB_SIZE`，50MB）+ 单图未压缩（`W_IMG_UNCOMPRESSED`，2MB）
-- ✅ 命名规范：成品文件名以 slug 为前缀（`W_NAMING`，qa 接线）；spine 顺序 = 源顺序（P0 provenance 已覆盖）
-- ✅ 打包完整性（2026-09-06 S1.3）：zip 条目重复（`E_ZIP_DUPLICATE`）、图片外链
-  （`E_IMG_REMOTE`——媒体必须打包，阅读器离线丢图）、spine↔nav 双向覆盖
-  （`E_TOC_COVERAGE`，nav/landmarks 自身与封面 linear="no" 豁免）、
-  元数据缺失**或空白**（`W_META_INCOMPLETE`）
-- ✅ 图片断页：`page-break-inside: avoid`（功能性样式）
+- ✅ Accessibility: no heading level skips (`E_HEADING_SKIP`); alt empty value (P1 already did `W_IMG_NO_ALT`), lang (existing `W_NO_LANG`)
+- ✅ Residue check: HTML comments (`E_RESIDUE`) / markdown·pandoc markers (`W_RESIDUE`: `![` `**` `:::` `{.` `[^`);
+  source-language character residue is a semantic judgement and goes to G1 review (agent task), not a deterministic check
+- ✅ Metadata completeness: missing creator/date/publisher/rights → `W_META_INCOMPLETE` (warning, for the agent to complete)
+- ✅ Bilingual provenance: `build --bilingual` src/tgt paragraph counts paired (`E_BI_PAIRS`)
+- ✅ Internal links: internal anchors resolvable (`E_ANCHOR`, including noteref→footnote) + footnote backlinks (`E_FN_BACKLINK`)
+- ✅ Size audit: total EPUB size (`W_EPUB_SIZE`, 50MB) + single image uncompressed (`W_IMG_UNCOMPRESSED`, 2MB)
+- ✅ Naming convention: product file name prefixed with slug (`W_NAMING`, qa wiring); spine order = source order (P0 provenance already covers)
+- ✅ Packaging integrity (2026-09-06 S1.3): duplicate zip entries (`E_ZIP_DUPLICATE`), remote images
+  (`E_IMG_REMOTE`—media must be packaged, readers lose images offline), spine↔nav bidirectional coverage
+  (`E_TOC_COVERAGE`, with nav/landmarks themselves and the cover `linear="no"` exempted),
+  metadata missing **or blank** (`W_META_INCOMPLETE`)
+- ✅ Image page-break: `page-break-inside: avoid` (functional style)
 
-## 5. 放行条件扩展
+## 5. Release Condition Extension
 
-现有 G5 放行条件（`g2_confirmed==0 或全部修订` + `g0_terminology_open==0` +
-`epubcheck 0 error（且实际运行）` + `audit pass`）基础上新增：
+On top of the existing G5 release conditions (`g2_confirmed==0 or all revised` + `g0_terminology_open==0` +
+`epubcheck 0 error (and actually run)` + `audit pass`), add:
 
-- `provenance_coverage ≈ 1.0`（≥0.9999，每段可溯；无翻译产物为 null，convert 路径不适用）
-- 三边对账零 error、媒体溯源零 error、溯源 findings 无 error 级
-  （`E_UNIT_ORDER`/`E_MEDIA_ORDER`/`E_INSERT_BAD_SOURCE` 等均阻断放行）
-- `inserts_missing_files == 0`（插入内容文件不缺失）
-- 目录层级零 `E_TOC_FLAT`（有层级源）
-- 成品呈现对账清零（交付审计 S1）：`align_md_drift == 0`、`epub_media_missing == 0`、
-  `epub_footnotes_missing == 0`、`epub_coverage ≈ 1.0`（md↔align 一致、成品实际包含
-  与 build 输入对账无缺）；构建期媒体丢弃写 `events.jsonl` `media_dropped` 事件留痕
+- `provenance_coverage ≈ 1.0` (≥0.9999, every paragraph traceable; null when there is no translation artifact, not applicable to the convert path)
+- zero tri-lateral reconciliation errors, zero media provenance errors, no error-level provenance findings
+  (`E_UNIT_ORDER`/`E_MEDIA_ORDER`/`E_INSERT_BAD_SOURCE` etc. all block release)
+- `inserts_missing_files == 0` (insert content files not missing)
+- zero `E_TOC_FLAT` in TOC hierarchy (source with hierarchy)
+- finished-product presentation reconciliation zeroed (delivery audit S1): `align_md_drift == 0`, `epub_media_missing == 0`,
+  `epub_footnotes_missing == 0`, `epub_coverage ≈ 1.0` (md↔align consistent, product actual content
+  reconciled against build input with no missing); build-time media drops are written to an `events.jsonl` `media_dropped` event for tracing
 
-> 实现见 `qa/report.py::generate_report`（`prov_ok` 聚合判定 + `released_reason` 细分）。
-- 插入内容文件零缺失（`inserts_missing_files == 0`，pdf-content-spec §9：
-  每个插图/表格/公式可回溯原始地址 `{page,bbox,xref,method}` 且媒体文件在盘）
+> Implementation see `qa/report.py::generate_report` (`prov_ok` aggregate determination + `released_reason` breakdown).
+- Insert content files zero missing (`inserts_missing_files == 0`, pdf-content-spec §9:
+  every illustration/table/formula can be traced back to its original address `{page,bbox,xref,method}` and the media file is on disk)
 
-## 6. 测试计划
+## 6. Test Plan
 
-每项加最小回归测试（沿用 tempfile 离线惯例，不依赖任何外部 LLM）：
+Add a minimal regression test for each item (following the tempfile offline convention, depending on no external LLM):
 
-- 目录层级：带 h1/h2/h3 的 markdown → 断言 nav 嵌套 `<ol>` + NCX 嵌套 navPoint + 不报 `E_TOC_FLAT`
-- 三边对账/媒体溯源/覆盖率：缺失/乱序/丢图 fixture → 断言对应 error code
-- 脚注语义化：注码 → `noteref`/`footnote` + 全局连续序号 + 双向 href 可解析
-- 样式瘦身：断言 `_STYLE_CSS` 不含 `font-family`/`font-size`/`color`
-- 主题：`--theme compact` → 断言注入对应排版属性
-- 封面/figcaption/alt/残留：单项断言
-- 全量 `uv run pytest -q` + `ruff` 回归
+- TOC hierarchy: markdown with h1/h2/h3 → assert nav nests `<ol>` + NCX nests navPoint + does not report `E_TOC_FLAT`
+- Tri-lateral reconciliation/media provenance/coverage: missing/out-of-order/lost-image fixture → assert the corresponding error code
+- Footnote semanticization: note reference → `noteref`/`footnote` + globally consecutive numbering + bidirectional href resolvable
+- Style slimming: assert `_STYLE_CSS` contains no `font-family`/`font-size`/`color`
+- Theme: `--theme compact` → assert the corresponding typographic properties are injected
+- Cover/figcaption/alt/residue: individual assertions
+- Full `uv run pytest -q` + `ruff` regression
 
-## 7. 与 epub-template-spec 的关系
+## 7. Relationship with epub-template-spec
 
-| 文档 | 回答 |
+| Document | Answers |
 |---|---|
-| `epub-template-spec.md` | EPUB **应该长什么样**（三层规范、主题、注释标准化） |
-| 本文档 | 后处理**怎么验收、怎么实现**（验收标准、审计、实现计划） |
+| `epub-template-spec.md` | what the EPUB **should look like** (three-layer spec, themes, note standardization) |
+| This document | how post-processing **is accepted and implemented** (acceptance criteria, audit, implementation plan) |
 
-本文档的 2.2（媒体样式）与 P0/P1 中涉及样式的项，具体样式取值以 `epub-template-spec.md`
-为准，本文档只描述「校验动作」与「实现落点」。
+The specific style values for 2.2 (media style) and the style-related items in P0/P1 of this
+document are governed by `epub-template-spec.md`; this document describes only the
+"validation actions" and "implementation landing points".
