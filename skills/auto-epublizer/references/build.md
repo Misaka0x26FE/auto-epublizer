@@ -1,62 +1,63 @@
-# Build（EPUB 封装）
+<!-- i18n: source=build.zh.md sha256=bda3e1a27a250b015ddde8e380fb22d35205777ee3e9399fcfb76d0a987a11d9 -->
+> **English** | [中文](build.zh.md)
 
-`build` 命令把译文（缺省回退源文）封装为标准 EPUB 3，落 `output/`。
+# Build (EPUB packaging)
 
-## 命令
+The `build` command packages the translation (falls back to the source text by default) as standard EPUB 3, into `output/`.
+
+## Command
 
 ```bash
 auto-epublizer build [--bilingual] [-o <out.epub>] [--theme standard|compact|spacious] [--workspace <dir>]
 ```
 
-- 单语：从 `translation/<rel_path>` 读译文（缺省回退 `structured/`）。
-- 双语：`--bilingual` 按 `align/` 对照表渲染源/译交错，输出 `<slug>-bi.epub`。
+- Monolingual: reads the translation from `translation/<rel_path>` (falls back to `structured/` by default).
+- Bilingual: `--bilingual` renders source/translation interleaved per the `align/` alignment table, outputting `<slug>-bi.epub`.
 
-## EPUB 3 组件
+## EPUB 3 components
 
-| 文件 | 说明 |
+| File | Description |
 |---|---|
-| `mimetype` | `application/epub+zip`，zip 首位、不压缩 |
-| `META-INF/container.xml` | 指向 `OEBPS/content.opf` |
-| `OEBPS/content.opf` | manifest/spine/DC 元数据/`dcterms:modified` |
-| `OEBPS/nav.xhtml` | EPUB 3 导航（toc） |
-| `OEBPS/toc.ncx` | NCX（向后兼容） |
-| `OEBPS/landmarks.xhtml` | frontmatter/bodymatter/backmatter 地标 |
+| `mimetype` | `application/epub+zip`, first in the zip, uncompressed |
+| `META-INF/container.xml` | points to `OEBPS/content.opf` |
+| `OEBPS/content.opf` | manifest/spine/DC metadata/`dcterms:modified` |
+| `OEBPS/nav.xhtml` | EPUB 3 navigation (toc) |
+| `OEBPS/toc.ncx` | NCX (backward compatibility) |
+| `OEBPS/landmarks.xhtml` | frontmatter/bodymatter/backmatter landmarks |
 
-## 确定性
+## Determinism
 
-- 构建时间戳用冻结值（非 `time.Now()`），同一冻结工作区两次构建字节一致。
-- 结果按稳定原文序合并，不随并发完成顺序变化。
-- 内部稳定 ID 不外泄到产物（脚注/尾注用确定性序号）。
+- The build timestamp uses a frozen value (not `time.Now()`); two builds of the same frozen workspace are byte-identical.
+- Results are merged in stable source order and do not change with concurrent completion order.
+- Internal stable IDs do not leak into artifacts (footnotes/endnotes use deterministic sequence numbers).
 
-## 元数据
+## Metadata
 
-DC 元数据来自 `publication.json.meta`：`dc:title`、`dc:creator`、`dc:language`（译文用
-`target_language`，纯转换用源语言）、`dc:identifier`（isbn/uri/slug）、`dc:date`、
-`dc:publisher`、`dc:rights`。
+DC metadata comes from `publication.json.meta`: `dc:title`, `dc:creator`, `dc:language` (the translation uses `target_language`, pure conversion uses the source language), `dc:identifier` (isbn/uri/slug), `dc:date`, `dc:publisher`, `dc:rights`.
 
-## 命名
+## Naming
 
-- 纯译文：`output/<slug>.epub`
-- 双语：`output/<slug>-bi.epub`
-- `-o` 可覆盖输出路径。
+- Pure translation: `output/<slug>.epub`
+- Bilingual: `output/<slug>-bi.epub`
+- `-o` can override the output path.
 
-## 说明
+## Notes
 
-- **主题**（`--theme` / `config.output.theme`）：`standard`（serif+1.7 行距+缩进+两端对齐+标题居中，
-  默认）/ `compact`（sans-serif+1.4+无缩进）/ `spacious`（serif+2.0）。只控排版微调，
-  无具体字体名/颜色/字号（audit 会拦：`E_THEME_FONT`/`E_THEME_COLOR`）。
-- **封面**：cover 单元的首个图片自动成为 `cover-image`（`<meta name="cover">` +
-  spine `linear="no"`）；无封面源图时 audit 提示 `W_NO_COVER`（provenance）。
-- **脚注**：`[^label]` → 标准弹窗注释（noteref/footnote），注码 `[N]`、**每章从 1 起**
-  独立编号 + 双向回链（不支持弹窗的阅读器退化为章末注释区）。
-- **目录层级**：源文标题层级（`level`）→ nav 嵌套 `<ol>` + NCX 嵌套 navPoint；
-  **目录深度投影**（`--nav-depth` / `config.output.nav_depth`，默认 3，1–6）：超出
-  深度的单元不进 nav/NCX（仍在 spine 阅读顺序、锚点保留），封面单元不进目录；
-  `dtb:depth` 为投影后实际深度。
-- **图片**：只缩不放大居中 + 断页（`page-break-inside: avoid`）；独立图段（alt 非空）→
-  `figure+figcaption` 图注。
-- **语义标签**：引用 `>` → `blockquote`；诗行块 `|` → `p.verse`；`- `/`1. ` → `ul/ol`。
-- **表格**：md 管道表（`| a | b |` + 分隔行）与 pandoc 简单/网格表（成排 `---` 列界）
-  渲染为 `<table class="data">`（`th`/`td` + 功能性边框）；单元格文字正常翻译，
-  结构保持不变。**翻译时不要改动列界与分隔线**（G0 表格形状守恒）。
-- 原图优先+补充层为后续扩展点。
+- **Theme** (`--theme` / `config.output.theme`): `standard` (serif + 1.7 line spacing + indent + justified + centered headings,
+  default) / `compact` (sans-serif + 1.4 + no indent) / `spacious` (serif + 2.0). Only controls typographic fine-tuning;
+  no specific font names/colors/font sizes (audit blocks them: `E_THEME_FONT`/`E_THEME_COLOR`).
+- **Cover**: the first image of the cover unit automatically becomes `cover-image` (`<meta name="cover">` +
+  spine `linear="no"`); when there is no cover source image, audit warns `W_NO_COVER` (provenance).
+- **Footnotes**: `[^label]` → standard popup notes (noteref/footnote), note reference `[N]`, **restarting from 1 per chapter**
+  with independent numbering + bidirectional backlink (readers that do not support popups degrade to an end-of-chapter note area).
+- **TOC hierarchy**: source heading levels (`level`) → nested nav `<ol>` + nested NCX navPoint;
+  **nav depth projection** (`--nav-depth` / `config.output.nav_depth`, default 3, 1–6): units beyond the
+  depth do not enter nav/NCX (they remain in spine reading order, anchors preserved), the cover unit does not enter the TOC;
+  `dtb:depth` is the actual depth after projection.
+- **Images**: only shrink, never enlarge, centered + page-break (`page-break-inside: avoid`); standalone image paragraphs (non-empty alt) →
+  `figure+figcaption` captions.
+- **Semantic tags**: quote `>` → `blockquote`; verse block `|` → `p.verse`; `- `/`1. ` → `ul/ol`.
+- **Tables**: md pipe tables (`| a | b |` + separator row) and pandoc simple/grid tables (rows of `---` column boundaries)
+  are rendered as `<table class="data">` (`th`/`td` + functional borders); cell text is translated normally,
+  structure stays unchanged. **Do not change column boundaries and separator lines during translation** (G0 table shape conservation).
+- Original image first + supplementary layer is a future extension point.

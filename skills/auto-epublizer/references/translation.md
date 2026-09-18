@@ -1,112 +1,138 @@
-# Translation（切片翻译 + 句对齐 + 术语闭环）
+<!-- i18n: source=translation.zh.md sha256=c3e2d31fce53cd0aeb7f76f7059dbd8f7e39cb79b3257596e59a9b16fff259ec -->
+> **English** | [中文](translation.zh.md)
 
-翻译是 **agent 任务**（唯一 LLM 原则）：agent 读 `structured/<rel_path>.md`，用自身能力
-逐段翻译，写 `translation/<rel_path>.md`（镜像结构）+ `translation/align/<unit-id>.jsonl`
-（`{seq, src, tgt, note}`），然后**必须**跑 `auto-epublizer import` 登记——G0 结构校验
-（seq 断号/空译文阻断）+ 状态推进（translated→aligned）+ 术语冲突外置。
-未 import 前单元状态停在 `analyzed`，`status --json` 会报 stale。
+# Translation (chunk translation + sentence alignment + terminology loop)
 
-## 产出
+Translation is an **agent task** (single-LLM principle): the agent reads
+`structured/<rel_path>.md`, translates paragraph by paragraph with its own abilities,
+writes `translation/<rel_path>.md` (mirrored structure) + `translation/align/<unit-id>.jsonl`
+(`{seq, src, tgt, note}`), and then **must** run `auto-epublizer import` to register — G0
+structural validation (broken seq numbers / empty translations block) + state advance
+(translated→aligned) + terminology-conflict externalization. Before import, the unit state
+stays at `analyzed`, and `status --json` reports stale.
+
+## Output
 
 ```text
 translation/
-├── body/ch01.md ...      # 译文（镜像 structured 相对路径）
-└── align/ch01.jsonl      # 句级对照表
+├── body/ch01.md ...      # translation (mirrors the structured relative path)
+└── align/ch01.jsonl      # sentence-level alignment
 ```
 
-## 翻译时参考上下文（读取优先级）
+## Reference context while translating (reading priority)
 
-翻译前先读理解层产物，保证前后一致：
+Read the understanding-layer artifacts before translating to ensure consistency:
 
-| 层次 | 来源（`analysis/` 缺失时回退 `preprocessing/`） |
+| Layer | Source (falls back to `preprocessing/` when `analysis/` is missing) |
 |---|---|
-| 全书概览 | `analysis/overview.md` 或 `preprocessing/global.md` |
-| 风格/全局 | `analysis/global.md` 或 `preprocessing/global.md` |
-| 章梗概 | `analysis/units/<id>.md` 或 `preprocessing/units/<id>.md` |
-| 重点 | `analysis/keypoints.md` |
-| 术语子集 | `glossary.csv` 中本批正文实际出现的（`terms_in_text` 过滤） |
-| 前文译文 | 已完成的 `align/` 的 `tgt`（保持术语/风格连续性） |
+| Whole-book overview | `analysis/overview.md` or `preprocessing/global.md` |
+| Style/global | `analysis/global.md` or `preprocessing/global.md` |
+| Chapter summary | `analysis/units/<id>.md` or `preprocessing/units/<id>.md` |
+| Key points | `analysis/keypoints.md` |
+| Terminology subset | the ones actually appearing in this batch of body text in `glossary.csv` (filtered by `terms_in_text`) |
+| Previous translation | the `tgt` of completed `align/` (maintain terminology/style continuity) |
 
-两者共存时 `analysis/` 优先；纯 agent 预处理路径用 `preprocessing/`。
+When both exist, `analysis/` takes priority; the pure-agent preprocessing path uses
+`preprocessing/`.
 
-## 句级对齐
+## Sentence-level alignment
 
-`translation/align/<id>.jsonl` 每行一句：
+`translation/align/<id>.jsonl`, one sentence per line:
 
 ```jsonl
-{"seq": 1, "src": "原句", "tgt": "译句", "note": null}
+{"seq": 1, "src": "source sentence", "tgt": "translated sentence", "note": null}
 ```
 
-- `seq` 是双语排版、QA 定位、断点续跑的锚点，从 1 起连续。
-- 段级等长：一个源段通常对应一句（或多句）；拆句/并句在 `note` 声明；
-  `note` 记录拆/并句/漏译/存疑（前缀 `corr:wrong→right` 记源文勘误先例）。
+- `seq` is the anchor for bilingual layout, QA location and resume, starting from 1 and
+  consecutive.
+- Paragraph-level equal length: one source paragraph usually corresponds to one sentence
+  (or several); splits/merges are declared in `note`; `note` records splits/merges/
+  omissions/doubts (the prefix `corr:wrong→right` records source-erratum precedents).
 
-## 特殊段处理（PDF 内容提取产物）
+## Handling special segments (PDF content-extraction artifacts)
 
-PDF ingest 会产出三类非纯文本段（来源见 `references/ingest.md`；描述文件在
-`structured/raw/inserts/`）。翻译时按类型处理：
+PDF ingest produces three kinds of non-plain-text segments (for the source see
+`references/ingest.md`; description files are in `structured/raw/inserts/`). Handle them by
+type when translating:
 
-| 段形态 | 处理 |
+| Segment form | Handling |
 |---|---|
-| 图片引用段：`![p012-img01](raw/media/…)` | **原样保留**，不翻译 alt（alt 是 inserts id，非内容）；译文段与源段一致即可通过 G0 |
-| 公式段：`$$原始抽取文本$$` | 保留 `$$…$$` 包裹；内部公式文本**不做翻译**（多为符号乱串，译文保持原样；真实 LaTeX 进 inserts 的 `latex`，见下节） |
-| markdown 表格段：`\| a \| b \|…` | 翻译**单元格文字**，保留管道符/分隔行/对齐结构；表格两端不要加空行合并 |
+| Image-reference segment: `![p012-img01](raw/media/…)` | **Keep as-is**; do not translate alt (alt is an inserts id, not content); the translated segment just needs to match the source segment to pass G0 |
+| Formula segment: `$$raw extracted text$$` | Keep the `$$…$$` wrapping; the formula text inside is **not translated** (mostly garbled symbols, keep the translation as-is; real LaTeX goes into the inserts `latex`, see next section) |
+| markdown table segment: `\| a \| b \|…` | Translate the **cell text**, keep the pipe characters / separator rows / alignment structure; do not add blank lines at either end of the table to merge it |
 
-## inserts 补全（agent 任务：语义字段）
+## inserts completion (agent task: semantic fields)
 
-`raw/inserts/<id>.json` 的确定性字段（id/type/source/file）由 CLI 生成；
-**语义字段由你补全**——时机：该单元翻译完成后、跑 `qa` 之前。provenance 审计以
-`<id>.json` 单文件为权威（`index.jsonl` 只是快照，可不改）：
+The deterministic fields (id/type/source/file) of `raw/inserts/<id>.json` are generated by
+the CLI; **the semantic fields are completed by you** — timing: after that unit's
+translation is done and before running `qa`. The provenance audit takes the single
+`<id>.json` file as authoritative (`index.jsonl` is only a snapshot and need not be
+changed):
 
-1. **必做·所有记录**：按 `source.page` 回源页（PDF 查看器翻到该页）核对内容，
-   写 `content_desc`——这个插图/表格/公式**讲什么、为什么出现在此处**（一两句即可）；
-2. **formula 记录**：手写 `latex`（依据 `source.bbox` 定位页内公式；`$$…$$` 里的
-   原始抽取文本仅供参考，以图为准）；
-3. 可选：确认文件在盘（`source.file` 对应 `structured/raw/<file>`）——缺失会报
-   `E_INSERT_MISSING_FILE`，见 `references/qa.md`。
+1. **Mandatory · all records**: go back to the source page by `source.page` (turn to that
+   page in a PDF viewer) and verify the content, then write `content_desc` — **what this
+   illustration/table/formula is about and why it appears here** (one or two sentences is
+   enough);
+2. **formula records**: hand-write `latex` (locate the formula on the page by
+   `source.bbox`; the raw extracted text inside `$$…$$` is for reference only, the image is
+   authoritative);
+3. Optional: confirm the file is on disk (`source.file` corresponds to
+   `structured/raw/<file>`) — if missing it reports `E_INSERT_MISSING_FILE`, see
+   `references/qa.md`.
 
-不补全不阻断构建（W 级 warning），但 `content_desc` 会进 EPUB 的图片 alt/说明位，
-空描述直接影响成品质量——**视为必做**。
+Not completing them does not block the build (W-level warning), but `content_desc` goes
+into the EPUB's image alt/caption position, and an empty description directly affects
+product quality — **treat it as mandatory**.
 
-## 术语三态闭环
+## Three-state terminology loop
 
 ```text
-种子(seed) ── agent 撰写 glossary.csv + references/user 导入（preprocessing/terms.csv 预提取）
+seed ── agent writes glossary.csv + references/user import (preprocessing/terms.csv pre-extraction)
     │
-注入(inject) ── 按 terms_in_text 过滤注入（确认态译法必须遵守）
+inject ── inject filtered by terms_in_text (confirmed translations must be followed)
     │
-登记(import) ── 术语冲突检测，同 source 异 target 记冲突
+import ── terminology-conflict detection; same source with a different target is recorded as a conflict
     │
-外置(record) ── 冲突追加到 analysis/glossary_conflicts.jsonl（import 自动完成）
+record ── conflicts are appended to analysis/glossary_conflicts.jsonl (done automatically by import)
     │
-裁决(resolve) ── agent 读冲突文件终局裁决，写回 glossary.csv（权威）
+resolve ── agent reads the conflict file and makes the final arbitration, writing back to glossary.csv (authoritative)
 ```
 
-**裁决写回 glossary.csv 后，对全部已译单元重跑 `g0`**——旧译法违例（terminology）
-当场清零，不要只查新译单元；未决冲突未写回前 `qa` 不放行（`glossary_conflict_open`）。
+**After the arbitration is written back to glossary.csv, re-run `g0` on all translated
+units** — old-translation violations (`terminology`) are cleared on the spot; do not only
+check the newly translated units; before unresolved conflicts are written back, `qa` will
+not release (`glossary_conflict_open`).
 
-- 冲突不自动覆盖已确认译法，保留候选待裁决（对应"译名统一 + 约定俗成"）。
-- `import --terms <csv>` 可批量导入 agent 提取的新术语提案（三态自动判定：新 source→seed，
-  与 confirmed 异译→conflict）。
-- 称谓/敬称/口癖/固定表达（source-only 类型）是文体档案的分类标注；
-  术语命中检查对所有类型统一按字面/词边界匹配。
-- **src 原样摘抄**：align 每行 `src` 必须原样取自 `structured/`（含标题行也可作
-  src）——import 做源保真校验，被改写/截断/杜撰的 src 会阻断登记（源文勘误只改
-  `tgt` 并用 note `corr:` 留痕，不要顺手改 src）。
-- **表格形状必须与源一致**：md 管道表格的表数与每个表的行列数在译文中须与
-  `structured/` 相同（单元格内容正常翻译，结构不动）——import 硬校验，
-  违例阻断登记（`table`）。
-- **标记一个都不能丢**：`{fig:NNN}` 插入标记与脚注标记（`[^label]`/句末数字）在
-  译文中必须与源文总量一致（拆句/并句可挪位，不可丢）——G0 单元级守恒校验，
-  丢失即硬缺陷（`marker`/`footnote`），阻断 G5 放行。
+- Conflicts do not automatically override confirmed translations; the candidate is kept
+  pending arbitration (corresponding to "unified translated names + established usage").
+- `import --terms <csv>` can batch-import new terminology proposals extracted by the agent
+  (three states auto-determined: new source→seed, a different translation from
+  confirmed→conflict).
+- Appellations/honorifics/speech tics/fixed expressions (source-only types) are
+  classification annotations of the genre profile; the terminology hit check uniformly
+  matches all types by literal/word boundary.
+- **Excerpt `src` verbatim**: each line's `src` in align must be taken verbatim from
+  `structured/` (a heading line can also serve as src) — import performs source-fidelity
+  validation; a rewritten/truncated/fabricated src blocks registration (for source errata
+  change only `tgt` and leave a trace with the `corr:` note; do not change src in passing).
+- **Table shape must match the source**: the number of md pipe tables and the row/column
+  count of each table in the translation must be the same as in `structured/` (cell content
+  is translated normally, the structure does not move) — import hard validation, a
+  violation blocks registration (`table`).
+- **Not a single marker may be lost**: `{fig:NNN}` insert markers and footnote markers
+  (`[^label]`/sentence-final digits) must total the same in the translation as in the
+  source (splits/merges may move them, but they must not be lost) — G0 unit-level
+  conservation validation; loss is a hard defect (`marker`/`footnote`) that blocks G5
+  release.
 
-## 状态机与续跑
+## State machine and resume
 
-单元：`split → analyzed → translated → aligned → reviewed → built`。`import` 把完成单元
-置为 `aligned`；重复 import 无害（幂等）。审校通过后 `import --reviewed` 推进为
-`reviewed`（幂等）；`reviewed`/`built` 单元 import 跳过重导（重导修订稿须先重走审校）。
+Unit: `split → analyzed → translated → aligned → reviewed → built`. `import` sets a
+completed unit to `aligned`; repeated import is harmless (idempotent). After review passes,
+`import --reviewed` advances it to `reviewed` (idempotent); import skips re-importing
+`reviewed`/`built` units (re-importing a revised draft must first go through review again).
 
-## 双语
+## Bilingual
 
-`--bilingual` 产出双语对照：`build --bilingual` 时按 `align/` 对照表渲染源/译交错排版，
-输出 `<slug>-bi.epub`。
+`--bilingual` produces a bilingual edition: `build --bilingual` renders source/translation
+interleaved according to the `align/` alignment table, outputting `<slug>-bi.epub`.

@@ -255,6 +255,8 @@ def relink(file: Path) -> int:
     def repl(m: re.Match[str]) -> str:
         nonlocal changed
         prefix, raw, suffix = m.group(1), m.group(2).strip(), m.group(3)
+        if prefix[1:-2].strip() in ("中文", "English"):
+            return m.group(0)  # 语言横幅自身，跳过
         if raw.startswith(("http://", "https://", "mailto:", "#", "<")):
             return m.group(0)
         target, sep, anchor = raw.partition("#")
