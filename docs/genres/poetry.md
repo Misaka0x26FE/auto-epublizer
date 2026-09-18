@@ -1,63 +1,67 @@
-# 诗歌与散文 · 翻译优化文档
+<!-- i18n: source=poetry.zh.md sha256=6ef20b14ab5e8e69b632a0d4b92bb52d8224e4fef454bf1ddb3d89e787105571 -->
+> **English** | [中文](poetry.zh.md)
 
-> 诗歌与散文的专门优化规范。此类文体的核心是**形式承载意义**（分行、格律、韵脚、意象、节奏），
-> 翻译不能只求字面忠实。
+# Poetry and Prose · Translation Optimization Document
 
-## 1. 文体定位与识别特征
+> The dedicated optimization specification for poetry and prose. The core of this genre is
+> **form carrying meaning** (line breaks, meter, rhyme, imagery, rhythm); translation cannot
+> merely seek literal fidelity.
 
-识别特征：
+## 1. Genre Positioning and Identification Features
 
-- 诗歌：分行/分节、格律或自由体、韵脚、意象密集；
-- 散文：随笔/小品，重意境与节奏，段落松散自由；
-- 辅文极少：通常只有标题、正文、可选注释。
+Identification features:
 
-## 2. 结构特征与辅文侧重
+- Poetry: line/section breaks, meter or free verse, rhyme, dense imagery;
+- Prose: essays/short sketches, emphasizing mood and rhythm, with loose and free paragraphs;
+- Frontmatter/backmatter is **minimal**: usually only title, body, and optional notes.
 
-| 区域 | 处理 |
+## 2. Structural Features and Frontmatter/Backmatter Focus
+
+| Region | Handling |
 |---|---|
-| 标题 | 需译，简洁 |
-| 正文（分行/分节） | 保留行结构与分节 |
-| 注释（如有） | 保留双向跳转 |
-| 献词/题记 | 需译 |
+| Title | Needs translation, concise |
+| Body (lines/sections) | Preserve line structure and sections |
+| Notes (if any) | Preserve bidirectional jumps |
+| Dedication/epigraph | Needs translation |
 
-## 3. 分析维度（agent 撰写 analysis/ 时参照）
+## 3. Analysis Dimensions (consulted by the agent when writing analysis/)
 
-| 字段 | 含义 |
+| Field | Meaning |
 |---|---|
-| `form` | 体裁（自由诗/格律诗/散文诗/随笔） |
-| `meter` | 格律 / 音节 |
-| `rhyme` | 韵脚 |
-| `imagery` | 意象体系 |
+| `form` | Form (free verse/metered verse/prose poem/essay) |
+| `meter` | Meter / syllables |
+| `rhyme` | Rhyme |
+| `imagery` | Imagery system |
 
-## 4. 术语与实体表
+## 4. Terminology and Entity Table
 
-- 通常较少专名；偶有人名/地名/典故需注。
-- 若含典故/文化负载词，记入术语表 `type=term`，附 `note` 解释。
+- Usually few proper nouns; occasionally personal names/place names/allusions need annotation.
+- If allusions/culturally loaded words are present, record them in the glossary as `type=term` with a `note` explanation.
 
-## 5. 翻译指引
+## 5. Translation Guidance
 
-1. **保留行结构与分行**（诗歌的生命线）；
-2. **意象优先于字面**：为保意象可适度调整字面；
-3. **韵脚策略显式声明**（关键取舍）：
-   - `keep_meaning`：保意弃韵（推荐默认，可读性优先）；
-   - `keep_rhyme`：保韵弃部分字面（格律诗可选项）；
-4. 节奏与语感按目标语言自然表达，不机械逐字。
+1. **Preserve line structure and line breaks** (the lifeline of poetry);
+2. **Imagery takes priority over the literal**: the literal may be moderately adjusted to preserve imagery;
+3. **Explicitly declare the rhyme strategy** (a key trade-off):
+   - `keep_meaning`: keep meaning, discard rhyme (recommended default, readability first);
+   - `keep_rhyme`: keep rhyme, discard part of the literal (an option for metered verse);
+4. Rhythm and feel expressed naturally in the target language, not mechanically word-for-word.
 
-## 6. 审校侧重（映射 QC）
+## 6. Review Focus (Mapping to QC)
 
-| QC 关卡 | 诗歌侧重 |
+| QC gate | Poetry focus |
 |---|---|
-| G0 | 行数/分节一致（对照表完整性） |
-| G1 | 侧重 `missing`（意象丢失）、分行错乱 |
-| G2 | 取证：典故/文化负载词注释 |
-| G3 | 意象/固定意象跨段统一 |
+| G0 | Line-count/section consistency (alignment completeness) |
+| G1 | Focus on `missing` (loss of imagery), disordered line breaks |
+| G2 | Evidence: annotations for allusions/culturally loaded words |
+| G3 | Cross-paragraph consistency of imagery/fixed imagery |
 
-**宽容度**：诗歌翻译字面自由度大，审校只报**意象丢失、行结构破坏、明显误译**，不报措辞差异。
+**Tolerance**: poetry translation allows great literal freedom; review reports only **loss of imagery, broken line structure, obvious mistranslation**, not wording differences.
 
-## 7. 特殊优化清单
+## 7. Special Optimization Checklist
 
-- [ ] 行结构/分节保留（对照表按行对齐）
-- [ ] 意象优先 + 韵脚策略声明
-- [ ] 典故/文化负载词注释
-- [ ] 审校 missing（意象丢失）+ 分行错乱检测
-- [ ] 高宽容度（不报措辞差异）
+- [ ] Line structure/sections preserved (alignment aligned by line)
+- [ ] Imagery first + rhyme strategy declared
+- [ ] Annotations for allusions/culturally loaded words
+- [ ] Review detection of missing (loss of imagery) + disordered line breaks
+- [ ] High tolerance (does not report wording differences)

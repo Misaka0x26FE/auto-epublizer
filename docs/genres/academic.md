@@ -1,75 +1,83 @@
-# 学术专著 · 翻译优化文档
+<!-- i18n: source=academic.zh.md sha256=722b3ce94ca9703a8d9f4a0c42fcd86ee83f3e48291a43b7f1ab2b565cfdf781 -->
+> **English** | [中文](academic.zh.md)
 
-> 学术专著的专门优化规范。学术书结构最完备，强依赖"可检索、可核对、可复现"的知识组织性辅文。
+# Academic Monograph · Translation Optimization Document
 
-## 1. 文体定位与识别特征
+> The dedicated optimization specification for academic monographs. Academic books have the
+> most complete structure and depend heavily on "searchable, verifiable, reproducible"
+> knowledge-organizing supplementary matter.
 
-学术专著在"通用图书结构"之上**补全了检索性与参考性辅文**，是结构最完备的图书类型。
+## 1. Genre Positioning and Identification Features
 
-识别特征：
+An academic monograph **completes the searchable and referential supplementary matter** on
+top of the "general book structure"; it is the book type with the most complete structure.
 
-- 有绪论/导论、篇章节、脚注/尾注、参考文献、索引、附录、凡例；
-- 正文含脚注、图表、引文；
-- 服务"可检索、可核对、可复现"，而非叙事。
+Identification features:
 
-## 2. 结构特征与辅文侧重
+- Has introduction/prolegomena, parts/chapters/sections, footnotes/endnotes, references, index, appendix, explanatory notes;
+- The body contains footnotes, charts and citations;
+- Serves "searchable, verifiable, reproducible" rather than narration.
 
-| 区域 | 处理 |
+## 2. Structural Features and Frontmatter/Backmatter Focus
+
+| Region | Handling |
 |---|---|
-| 封面/书脊/封底 | 内容提要、ISBN 条码；勒口作者简介 |
-| 书名页/版权页 | 含 CIP 数据，元数据著录 |
-| 内容提要 | 需译，介绍性辅文 |
-| 序/前言/凡例 | 需译；凡例（工具书/资料汇编常用）需理解 |
-| 目录 | 检索性辅文，层级必须与正文一致 |
-| 正文 | 篇章节 + 脚注 + 图表 + 引文 |
-| 附录/注释（尾注）/参考文献/索引 | **命脉**，绝不能丢，索引加边码 |
-| 后记/跋 | 需译 |
+| Cover/spine/back cover | Content summary, ISBN barcode; author bio on the foldout |
+| Title page/copyright page | Contains CIP data, metadata cataloguing |
+| Content summary | Needs translation, introductory supplementary matter |
+| Preface/foreword/explanatory notes | Need translation; explanatory notes (common in reference works/compilations) need understanding |
+| Table of contents | Search-oriented supplementary matter, hierarchy must match the body |
+| Body | Parts/chapters/sections + footnotes + charts + citations |
+| Appendix/notes (endnotes)/references/index | **Lifeline**, must never be lost, index gets edge codes |
+| Afterword/postscript | Needs translation |
 
-## 3. 分析维度（agent 撰写 analysis/ 时参照）
+## 3. Analysis Dimensions (consulted by the agent when writing analysis/)
 
-| 字段 | 含义 |
+| Field | Meaning |
 |---|---|
-| `discipline` | 学科领域 |
-| `terminology` | 术语体系（含通用译名约定） |
-| `argument` | 论证结构 / 中心论点 |
-| `citation_style` | 引文/注释/参考文献格式（作者-年制 / 脚注制） |
-| `register` | 语域（正式学术） |
+| `discipline` | Discipline/field |
+| `terminology` | Terminology system (including conventional translation-name conventions) |
+| `argument` | Argument structure / central thesis |
+| `citation_style` | Citation/note/reference format (author-year / footnote style) |
+| `register` | Register (formal academic) |
 
-## 4. 术语与实体表
+## 4. Terminology and Entity Table
 
-| 类型 | 说明 | 处理 |
+| Type | Description | Handling |
 |---|---|---|
-| `学科术语` term | 领域核心概念 | 全书严格统一，对照通用译名 |
-| `专名` proper | 人名/地名/组织 | 对照 `references/` 译名表 |
-| `缩略语` abbreviation | 机构/委员会/术语缩写 | 首次出现加注全称 |
+| `学科术语` term | Core concepts of the field | Strictly consistent throughout the book, checked against conventional translation names |
+| `专名` proper | Personal names/place names/organizations | Checked against the `references/` translation-name table |
+| `缩略语` abbreviation | Institution/committee/term abbreviations | Annotate the full name at first occurrence |
 
-术语表类型白名单随文体切换为学科术语，避免小说式的称谓/口癖抽取。
+The glossary's type whitelist switches to discipline terms along with the genre, avoiding
+novel-style appellation/verbal-tic extraction.
 
-## 5. 翻译指引
+## 5. Translation Guidance
 
-1. 术语严格全书统一，采用国内通用译名（参照 `references/` 官方译名表，如商务印书馆《英语姓名译名手册》）；
-2. 长句按逻辑重组断句；被动语态、名词化按中文学术习惯转化；
-3. 保留引文、注释、参考文献、索引；**索引加边码**便于检索；
-4. 数字、计量单位统一（英美制转国际单位）；缩略语首次出现加注全称；
-5. 参考文献英文刊名/书名用斜体、格式统一、**不译**。
+1. Terminology strictly consistent throughout the book, using domestically conventional translation names (refer to the official translation-name tables in `references/`, e.g. the Commercial Press's *A Handbook of English Name Translations*);
+2. Long sentences restructured and split by logic; passive voice and nominalization converted per Chinese academic conventions;
+3. Preserve citations, notes, references and the index; **index gets edge codes** for easy retrieval;
+4. Numbers and units of measurement unified (Anglo-American system converted to International System); abbreviations annotated with the full name at first occurrence;
+5. References: English journal/book titles in italics, format unified, **not translated**.
 
-## 6. 审校侧重（映射 QC）
+## 6. Review Focus (Mapping to QC)
 
-| QC 关卡 | 学术侧重 |
+| QC gate | Academic focus |
 |---|---|
-| G0 | 术语命中（学科术语严格匹配）、数字单位、缩略语加注 |
-| G1 | 侧重 `terminology`（术语违例）、`missing`（引文/注释/索引遗漏） |
-| G2 | 取证：术语库 + 通用译名来源（references） |
-| G3 | 冲突仲裁聚焦学科术语跨章统一 |
+| G0 | Terminology hits (discipline terms strictly matched), number units, abbreviation annotation |
+| G1 | Focus on `terminology` (terminology violations), `missing` (omitted citations/notes/index) |
+| G2 | Evidence: glossary + sources of conventional translation names (references) |
+| G3 | Conflict arbitration focuses on cross-chapter consistency of discipline terms |
 
-**严格度**：学术书术语不一致、引文遗漏、注释丢失是硬伤，审校容忍度低（相比小说）。
+**Strictness**: inconsistent terminology, omitted citations and lost notes in academic books
+are hard defects, and review tolerance is low (compared with novels).
 
-## 7. 特殊优化清单
+## 7. Special Optimization Checklist
 
-- [ ] 学科术语白名单 + 通用译名对照（references）
-- [ ] 索引边码保留
-- [ ] 缩略语首次出现加注全称
-- [ ] 参考文献格式统一且不译
-- [ ] 数字/计量单位规范化
-- [ ] 脚注/尾注双向跳转（EPUB 重建）
-- [ ] 审校 terminology + missing 加权 + 低宽容度
+- [ ] Discipline-term whitelist + conventional translation-name cross-reference (references)
+- [ ] Index edge codes preserved
+- [ ] Abbreviations annotated with full name at first occurrence
+- [ ] Reference format unified and untranslated
+- [ ] Numbers/units of measurement normalized
+- [ ] Footnotes/endnotes bidirectional jumps (EPUB rebuilding)
+- [ ] Review terminology + missing weighting + low tolerance
