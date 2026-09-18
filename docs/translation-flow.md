@@ -1,140 +1,150 @@
-# 翻译流程设计
+<!-- i18n: source=translation-flow.zh.md sha256=10e4711895e8ed24ce0bd716506185615727b82ec3415a4436ad0d0453f305c1 -->
+> **English** | [中文](translation-flow.zh.md)
 
-在传统"切片翻译"（`split/` → 分批译）基础上，加入**章节目录结构划分**与
-**全本 → 章节 → 重点内容的分层理解 + 术语表辅助**，作为质量控制的输入。
-范围沿用：只负责交付质量，不做价值观判断。
+# Translation Flow Design
 
-> **唯一 LLM 原则**：翻译/理解/审校由操作 CLI 的 agent 完成（CLI 零 LLM 调用）。
-> 本文档描述工作流与数据流契约（structured/analysis/translation+align/reviews）；
-> 「分析」「翻译」「审校」各步的**语义执行者是 agent**，CLI 只做结构校验/状态推进/构建质检。
+Building on the traditional "chunked translation" (`split/` → batched translation), this adds
+**chapter TOC structure division** and **whole-book → chapter → key-content layered understanding
++ glossary assistance** as input for quality control.
+Scope unchanged: only responsible for delivery quality, makes no value judgements.
 
-## 1. 总体流程
+> **Single-LLM principle**: translation/understanding/review are done by the agent operating the CLI
+> (the CLI makes zero LLM calls). This document describes the workflow and data-flow contracts
+> (structured/analysis/translation+align/reviews); the **semantic executor of the "analysis",
+> "translation" and "review" steps is the agent**, and the CLI only performs structural validation /
+> state advance / build QA.
+
+## 1. Overall flow
 
 ```text
-source ──ingest──▶ structured/（章节目录结构划分，四层结构）
+source ──ingest──▶ structured/ (chapter TOC structure division, four-layer structure)
                        │
                        ▼
-                   analysis/（分层理解：overview 全本 + global 全局 + units 章节 + keypoints 重点
-                       │      + glossary 术语表 + characters 人物表）〔agent 撰写〕
+                   analysis/ (layered understanding: overview whole-book + global + units chapters + keypoints
+                       │      + glossary + characters) 〔agent writes〕
                        ▼
-                   translate（切片翻译：章节 → 段落 → 句对）〔agent 撰写 translation/ + align/〕
+                   translate (chunked translation: chapter → paragraph → sentence pair) 〔agent writes translation/ + align/〕
                        │
                        ▼
-                   import（登记手写产物：G0 校验 + 状态推进 + 术语冲突外置）
+                   import (register hand-written artifacts: G0 validation + state advance + terminology-conflict externalization)
                        │
                        ▼
-                   review（QC G0–G3，agent 审校写 result.json）→ build → qa（G4–G5）
+                   review (QC G0–G3, agent reviews and writes result.json) → build → qa (G4–G5)
 ```
 
-## 2. 章节目录结构划分（切片的基础单元）
+## 2. Chapter TOC structure division (the base unit of chunking)
 
-`structured/` 按出版物四层结构拆成**单元（unit）**，每个单元一个文件、一个稳定 ID：
+`structured/` is split into **units** by the publication's four-layer structure; each unit is one
+file with a stable ID:
 
 ```text
 structured/
 ├── frontmatter/{titlepage,copyright,dedication,foreword,preface,toc}.md
-├── body/ch01.md            # 正文单元（翻译主战场）
+├── body/ch01.md            # body unit (the main battlefield for translation)
 ├── backmatter/{afterword,appendix,notes,bibliography,index}.md
 └── media/…
 ```
 
-- **单元 = 翻译的最小可管理单位**，状态机：`pending → split → analyzed → translated → aligned → reviewed → built`。
-- 每个源文单元对应一个译文单元（`translation/<镜像路径>/<id>.md`）+ 一个句级对照表（`translation/align/<id>.jsonl`）。
-- 切片的"片"是**批次（batch）**，不是章节；章节是调度与状态管理的边界，批次是发给模型的边界。
+- **A unit = the smallest manageable unit of translation**, state machine: `pending → split → analyzed → translated → aligned → reviewed → built`.
+- Each source unit corresponds to one translation unit (`translation/<mirror path>/<id>.md`) + one sentence-level alignment (`translation/align/<id>.jsonl`).
+- The "slice" of chunking is a **batch**, not a chapter; chapters are the boundary of scheduling and state management, batches are the boundary sent to the model.
 
-## 3. 切片机制（chunking）
+## 3. Chunking mechanism
 
-在单元内部，把段落（Segment）按字符预算打包成批次：
+Within a unit, paragraphs (Segments) are packed into batches by character budget:
 
-> 内部翻译管线已随「移除内部 LLM」删除（2026-09-04）；下表参数**无 CLI 默认值**，
-> 仅作为 agent 自行翻译时的操作建议（批次多大、注入多少上文由 agent 按上下文窗口决定）。
+> The internal translation pipeline was removed along with the "remove internal LLM" work (2026-09-04);
+> the parameters in the table below **have no CLI defaults**, and serve only as operational suggestions
+> when the agent translates on its own (how big a batch is, how much prior context to inject, are decided
+> by the agent according to its context window).
 
-| 参数 | 建议值 | 说明 |
+| Parameter | Suggested value | Description |
 |---|---|---|
-| `max_chars_per_segment` | 1200 | 单段超过则按句末标点再拆（续段回并在 align `note` 留痕） |
-| `max_chars_per_batch` | 1800 | 一个批次（句群）目标大小（agent 上下文预算） |
-| `rolling_context_segments` | 6 | 翻译时携带的前文译文尾段数 |
-| `align_retry_limit` | 2 | （历史参数，等长数组校验已随内部管线移除） |
+| `max_chars_per_segment` | 1200 | A single paragraph exceeding this is split further at sentence-ending punctuation (continuation segments are merged back and traced in the align `note`) |
+| `max_chars_per_batch` | 1800 | Target size of one batch (sentence group) (agent context budget) |
+| `rolling_context_segments` | 6 | Number of trailing segments of prior translation carried when translating |
+| `align_retry_limit` | 2 | (Historical parameter; equal-length array validation was removed along with the internal pipeline) |
 
-- 段落 = Segment（最小可对齐单元），一段对应源/译文各一个；
-- 批次 = 若干段落，一次发给模型，模型**必须返回等长句对 JSON**；
-- 超长段拆成多段，续段 `cont=True`、无独立 anchor，回填时并回原段；
-- 批次边界 = 断点续跑检查点（每单元译到第几批由单元状态 + align 进度体现，`.progress.json` 为预留未落盘）。
+- Paragraph = Segment (the smallest alignable unit), one paragraph corresponds to one source/translation each;
+- Batch = several paragraphs, sent to the model at once; the model **must return an equal-length sentence-pair JSON**;
+- Over-long paragraphs are split into multiple segments; continuation segments have `cont=True` and no independent anchor, and are merged back into the original paragraph on write-back;
+- Batch boundary = checkpoint for resume (which batch each unit has been translated to is reflected by unit state + align progress; `.progress.json` is reserved and not persisted).
 
-## 4. 分层理解注入（全本 → 章节 → 重点）
+## 4. Layered-understanding injection (whole book → chapter → key points)
 
-翻译每个批次前，按"静态 → 动态"顺序组装上下文（前缀缓存友好，沿用 wenyi 经验）：
+Before translating each batch, assemble context in "static → dynamic" order (prefix-cache friendly, following the wenyi experience):
 
-| 层次 | 来源文件 | 内容 | 稳定性 |
+| Level | Source file | Content | Stability |
 |---|---|---|---|
-| 全书概览 | `analysis/overview.md` | 主线、人物弧光、伏笔、结局 | 书级静态 |
-| 风格指南/全局 | `analysis/global.md` | 叙事人称、语气、语域、对话风格、跨章依赖 | 书级静态 |
-| 本章梗概 | `analysis/units/<id>.md` | 本章情节/论证推进、登场人物、术语注意 | 章级静态 |
-| 重点内容 | `analysis/keypoints.md` | 高风险段落、复杂排版、多语片段提醒 | 书级静态（命中注入） |
-| 术语子集 | `glossary.db` / `glossary.csv` | 本批正文**实际出现**的术语（`terms_in_text`） | 批级动态 |
-| 前文译文 | 上一批 `align/` 的 `tgt` | 最近 N 段，保持代词/称谓/语气衔接 | 批级动态 |
-| 待译正文 | 本批 `src` 段落（带编号） | 翻译对象 | 批级动态 |
+| Whole-book overview | `analysis/overview.md` | Main line, character arcs, foreshadowing, ending | Book-level static |
+| Style guide/global | `analysis/global.md` | Narrative person, tone, register, dialogue style, cross-chapter dependencies | Book-level static |
+| Chapter summary | `analysis/units/<id>.md` | Plot/argument progression of this chapter, characters appearing, terminology notes | Chapter-level static |
+| Key points | `analysis/keypoints.md` | High-risk paragraphs, complex layout, multilingual-fragment reminders | Book-level static (injected on hit) |
+| Terminology subset | `glossary.db` / `glossary.csv` | Terms **actually appearing** in this batch's body text (`terms_in_text`) | Batch-level dynamic |
+| Prior translation | `tgt` of the previous batch's `align/` | Most recent N paragraphs, maintaining pronoun/appellation/tone continuity | Batch-level dynamic |
+| Text to translate | This batch's `src` paragraphs (with numbers) | Translation object | Batch-level dynamic |
 
-> prompt 结构（对应 wenyi 缓存约定）：system 全静态；user 按"风格/概览 → 章梗概 →
-> 重点 → 术语表 → 前文译文 → 待译正文"排列，越靠前越稳定，命中越多前缀缓存。
+> prompt structure (corresponding to wenyi's cache convention): system is fully static; user is arranged as
+> "style/overview → chapter summary → key points → glossary → prior translation → text to translate",
+> the earlier the more stable, and the more prefix-cache hits.
 
-## 5. 翻译批次数据流（切片 → 句对）
+## 5. Translation batch data flow (chunk → sentence pair)
 
 ```
-段落数组 [p0, p1, …] + 分层上下文 + 术语子集   （agent 阅读理解层与术语后逐段翻译）
+paragraph array [p0, p1, …] + layered context + terminology subset   (the agent translates paragraph by paragraph after reading the understanding layer and terminology)
         │
         ▼
-translation/<rel>.md + align/<id>.jsonl  ← 每段一句或数句：{seq, src, tgt, note}
-        │  （import 校验：seq 连续、无空译文；拆/并句在 note 声明）
+translation/<rel>.md + align/<id>.jsonl  ← one sentence or several per paragraph: {seq, src, tgt, note}
+        │  (import validation: seq continuous, no empty translation; splits/merges declared in note)
         ▼
-状态推进 translated → aligned
+state advance translated → aligned
 ```
 
-关键保证：
+Key guarantees:
 
-1. **段级等长**：输入 N 段，输出必须 N 项（每项是该段的译文句数组），数量不符重试、逐段兜底——从结构上杜绝整段漏译。
-2. **句级对齐**：每段译文按句拆开，与原句一一对应，写入 `align/<id>.jsonl` 的 `{seq, src, tgt, note}`；拆句/并句在 `note` 声明。这是 QC G0（对照表完整性）与双语排版的唯一来源。
-3. **续段回并**：`cont=True` 的续段译文回并到上一段，不另起段落。
+1. **Paragraph-level equal length**: input N paragraphs, output must have N items (each item is that paragraph's array of translated sentences); mismatch is retried, with per-paragraph fallback — structurally eliminating whole-paragraph omissions.
+2. **Sentence-level alignment**: each paragraph's translation is split by sentence and mapped one-to-one with the source sentences, written into `align/<id>.jsonl` as `{seq, src, tgt, note}`; sentence splits/merges are declared in `note`. This is the sole source for QC G0 (alignment completeness) and bilingual layout.
+3. **Continuation merge-back**: the translation of a continuation segment with `cont=True` is merged back into the previous paragraph and does not start a new paragraph.
 
-## 6. 术语表辅助（三态闭环）
+## 6. Glossary assistance (three-state closed loop)
 
 ```text
-种子(seed) ── analyze 播种 + references/user 导入
+seed ── analyze seeding + references/user import
     │
     ▼
-注入(inject) ── 每批按 terms_in_text 过滤后注入 prompt（确认态译法必须遵守）
+inject ── each batch filtered by terms_in_text then injected into the prompt (confirmed-state translations must be followed)
     │
     ▼
-提案(propose) ── 翻译后抽取新术语/称呼变体，追加到 glossary_conflicts.jsonl
+propose ── after translation, extract new terms/appellation variants, append to glossary_conflicts.jsonl
     │
     ▼
-裁决(resolve) ── 单线程合并：同 source 异 target 记冲突，人工/agent 确认后写回 glossary.csv
+resolve ── single-threaded merge: same source with different target records a conflict; after human/agent confirmation write back to glossary.csv
 ```
 
-- 称谓/敬称/口癖/固定表达只按完整 source 精确匹配，避免裸名 alias 误注入；
-- 冲突不自动覆盖已确认译法，保留候选待裁决（对应传统"译名统一 + 约定俗成"）。
+- Appellations/honorifics/catchphrases/fixed expressions match exactly only by the complete source, avoiding false injection of bare-name aliases;
+- Conflicts do not automatically overwrite confirmed translations; candidates are retained pending arbitration (corresponding to the traditional "unified translated names + established usage").
 
-## 7. 状态机与续跑
+## 7. State machine and resume
 
-- 单元：`pending → split → analyzed → translated → aligned → reviewed → built`。
-- 断点续跑 = 按单元状态 + align 进度跳过已完成批次（`.progress.json` 为预留断点文件，未落盘）。
-- 改术语表/理解/解析缓存时，须覆盖受影响单元的中断后续跑（与 RunStore 不变量一致）。
+- Unit: `pending → split → analyzed → translated → aligned → reviewed → built`.
+- Resume = skip completed batches by unit state + align progress (`.progress.json` is a reserved checkpoint file, not persisted).
+- When changing the glossary/understanding/parsing cache, the affected units' post-interruption resume must be covered (consistent with the RunStore invariants).
 
-## 8. 与质量控制的衔接
+## 8. Interface with quality control
 
-| 翻译环节 | 对应的 QC 关卡 |
+| Translation link | Corresponding QC gate |
 |---|---|
-| 句级对齐产出 `align/` | G0 对照表完整性、句数一致、长度比、空译文 |
-| 术语注入 → 译文术语 | G0 术语命中（确定性）+ G1 术语违例 + G2 裁决 |
-| 分层理解注入 | 翻译一致性（代词/称谓/语气），G1 审校的上下文依据 |
-| 切片批次 | 断点续跑粒度 + G1 逐批审校粒度 |
+| Sentence-level alignment produces `align/` | G0 alignment completeness, sentence-count consistency, length ratio, empty translation |
+| Terminology injection → translation terminology | G0 terminology hit (deterministic) + G1 terminology violation + G2 arbitration |
+| Layered-understanding injection | Translation consistency (pronoun/appellation/tone), contextual basis for G1 review |
+| Chunk batches | Resume granularity + G1 per-batch review granularity |
 
-## 9. 与传统切片翻译的差异
+## 9. Differences from traditional chunked translation
 
-| 传统切片 | 本项目 |
+| Traditional chunking | This project |
 |---|---|
-| `split/NNNN.md` 纯文本切片 | `structured/` 章节目录结构 + 稳定单元 ID |
-| `_analysis.md` / `_understanding.md` 单文件 | `analysis/` 分层：overview/global/units/keypoints |
-| `GLOSSARY.csv` 人工维护 | glossary 三态 + 冲突外置 + 注入过滤 |
-| 译后无句级对齐 | `align/<id>.jsonl` 句级对照表（QC 与双语的锚点） |
-| 无 QC 闭环 | 翻译 → G0–G3 审校闭环 |
+| `split/NNNN.md` plain-text chunks | `structured/` chapter TOC structure + stable unit IDs |
+| `_analysis.md` / `_understanding.md` single file | `analysis/` layers: overview/global/units/keypoints |
+| `GLOSSARY.csv` manually maintained | glossary three states + conflict externalization + injection filtering |
+| No sentence-level alignment after translation | `align/<id>.jsonl` sentence-level alignment (anchor for QC and bilingual) |
+| No QC closed loop | Translation → G0–G3 review closed loop |

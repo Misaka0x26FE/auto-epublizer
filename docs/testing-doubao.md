@@ -1,82 +1,90 @@
-# 豆包云容器真实使用测试指南
+<!-- i18n: source=testing-doubao.zh.md sha256=f7d0149debf6ca4b0124f900a3b020a0172938c0d649c54d8bae337b7d2dfdaa -->
+> **English** | [中文](testing-doubao.zh.md)
 
-> ⚠️ **历史记录（2026-09 后已过时）**：`config.yaml` 的 `llm:` 段已按**唯一 LLM 原则**
-> 移除（CLI 零 LLM 调用）。本文档中的 LLM 配置步骤（§2.3 火山方舟等）不再适用；
-> 实测经验中「agent 主进程完成翻译/审校」的部分（§9）正是现行工作方式。
-> 保留作为豆包环境网络/工具链排查的历史参考。
+# Testing Guide for Real Use in the DouBao Cloud Container
 
-目的：在**豆包 APP 云容器**里用真实书籍、真实 agent 跑通完整管线，验证
-`AGENTS.md` / `skills/` 承诺的行为，记录与预期的偏差。
+> ⚠️ **Historical record (outdated after 2026-09)**: the `llm:` section of `config.yaml` has
+> been removed per the **single-LLM principle** (CLI makes zero LLM calls). The LLM
+> configuration steps in this document (§2.3 Volcano Ark, etc.) no longer apply; the part of
+> the field-test experience about "the agent main process completing translation/review"
+> (§9) is exactly the current way of working. Kept as a historical reference for network/
+> toolchain troubleshooting in the DouBao environment.
 
-> 本文档面向**手动测试**（人或豆包 agent 照抄执行）。离线自动化测试见 `uv run pytest -q`。
+Purpose: in the **DouBao APP cloud container**, use a real book and a real agent to run the
+complete pipeline, verify the behavior promised by `AGENTS.md` / `skills/`, and record the
+deviations from expectations.
+
+> This document is for **manual testing** (a human or a DouBao agent follows it literally).
+> For offline automated testing see `uv run pytest -q`.
 
 ---
 
-## 1. 豆包云容器的环境约束
+## 1. Environment constraints of the DouBao cloud container
 
-| 约束 | 影响 | 应对 |
+| Constraint | Impact | Countermeasure |
 |---|---|---|
-| 无外网大模型 API（DeepSeek/OpenAI 等不可用） | 默认 `config.example.yaml` 的 `api.deepseek.com` **连不通** | LLM 走火山方舟（豆包）OpenAI 兼容端点（§2.3） |
-| GitHub / astral.sh 等外网可达性不确定 | `git clone`、`uv` 安装脚本可能失败 | 备选：上传 zip（§2.2）、`pip install uv` |
-| `pandoc` / `java` 大概率未预装 | EPUB/DOCX/HTML 读取、epubcheck 跳过 | `apt-get install pandoc`；epubcheck 可选（§2.1） |
-| 容器可能是低配 CPU | 本地计算都轻（无重模型） | 主要耗时在 API 往返 |
+| No external LLM API (DeepSeek/OpenAI etc. unavailable) | the default `api.deepseek.com` in `config.example.yaml` **cannot be reached** | LLM goes through the Volcano Ark (DouBao) OpenAI-compatible endpoint (§2.3) |
+| Reachability of external networks such as GitHub / astral.sh is uncertain | `git clone`, the `uv` install script may fail | alternatives: upload a zip (§2.2), `pip install uv` |
+| `pandoc` / `java` most likely not preinstalled | EPUB/DOCX/HTML reading, epubcheck skipped | `apt-get install pandoc`; epubcheck optional (§2.1) |
+| The container may be a low-spec CPU | all local computation is light (no heavy models) | the main time cost is API round trips |
 
 ---
 
-## 2. 环境准备（容器内）
+## 2. Environment preparation (inside the container)
 
-### 2.1 基础工具
+### 2.1 Basic tools
 
 ```bash
-# Python 3.12 + uv（uv 装不上时用 pip 兜底）
+# Python 3.12 + uv (fall back to pip when uv cannot be installed)
 curl -LsSf https://astral.sh/uv/install.sh | sh || pip install uv
-uv python install 3.12        # 容器自带 python < 3.12 时
+uv python install 3.12        # when the container ships python < 3.12
 
-# pandoc（EPUB/DOCX/HTML 输入需要；TXT/MD/PDF 不需要）
+# pandoc (needed for EPUB/DOCX/HTML input; not needed for TXT/MD/PDF)
 apt-get update && apt-get install -y pandoc
 
-# epubcheck + java（可选；缺失时 qa 的 epubcheck 结果为 -1，released 恒 False）
-# java -jar ~/.cache/epubcheck.jar 为默认查找路径
+# epubcheck + java (optional; when missing, qa's epubcheck result is -1 and released is always False)
+# java -jar ~/.cache/epubcheck.jar is the default lookup path
 ```
 
-### 2.2 获取项目
+### 2.2 Obtaining the project
 
 ```bash
-# 首选
+# preferred
 git clone https://github.com/Misaka0x26FE/auto-epublizer.git
 cd auto-epublizer
 
-# GitHub 不通时：本机下载 zip 后经豆包 APP 上传到容器
+# when GitHub is unreachable: download the zip on your machine, then upload it to the container via the DouBao APP
 unzip auto-epublizer-main.zip && cd auto-epublizer-main
 
-uv sync                       # 安装三包依赖
-uv run pytest -q              # 离线冒烟：应全绿（不依赖网络与 API Key）
+uv sync                       # install the three-package dependencies
+uv run pytest -q              # offline smoke: should be all green (no dependency on network or API Key)
 ```
 
-### 2.3 LLM 配置：火山方舟（豆包唯一通道）
+### 2.3 LLM configuration: Volcano Ark (the only DouBao channel)
 
-豆包模型经火山方舟提供 OpenAI 兼容端点，provider 无需改代码，只改配置：
+The DouBao model is provided through Volcano Ark's OpenAI-compatible endpoint; the provider
+needs no code change, only a configuration change:
 
 ```bash
-# API Key 只从环境变量读（契约：禁止写进 config.yaml / 提交）
-# Key 在火山方舟控制台创建：console.volcengine.com/ark
-export ARK_API_KEY="<方舟 API Key>"
+# API Key is read only from an environment variable (contract: forbidden to write into config.yaml / commit)
+# Create the Key in the Volcano Ark console: console.volcengine.com/ark
+export ARK_API_KEY="<Volcano Ark API Key>"
 ```
 
-项目根写 `config.yaml`（**与 config.example.yaml 的差异只有 llm 段**）：
+Write `config.yaml` at the project root (**the only difference from config.example.yaml is the llm section**):
 
 ```yaml
 llm:
   provider: openai-compatible
-  base_url: https://ark.cn-beijing.volces.com/api/v3   # 注意不带 /chat/completions
+  base_url: https://ark.cn-beijing.volces.com/api/v3   # note: no /chat/completions
   api_key_env: ARK_API_KEY
   timeout: 600
   max_retries: 4
   tiers:
-    strong:                       # 翻译 / 取证 / 修订
+    strong:                       # translation / evidence gathering / revision
       model: doubao-seed-1.6-250615
-      options: {}                 # 不带 thinking 等私有参数，避免 4xx
-    cheap:                        # 审校 G1 / 分析
+      options: {}                 # no private parameters such as thinking, to avoid 4xx
+    cheap:                        # review G1 / analysis
       model: doubao-seed-1.6-flash-250615
       options: {}
     fast:
@@ -84,20 +92,22 @@ llm:
       options: {}
 ```
 
-> 模型 ID 以方舟控制台「在线推理」页为准，本文示例可能过期。strong 用旗舰、
-> cheap/fast 用低价档可显著省钱。方舟端点属豆包体系域名，容器网络应放行。
+> Model IDs are subject to the "Online Inference" page of the Ark console; the examples in
+> this document may be outdated. Using the flagship for strong and the low-price tier for
+> cheap/fast can save considerably. The Ark endpoint belongs to the DouBao domain system and
+> the container network should allow it.
 
-其余段（segment/qc/paths…）直接抄 `config.example.yaml`。
+For the remaining sections (segment/qc/paths…), copy directly from `config.example.yaml`.
 
-### 2.4 通用注意
+### 2.4 General notes
 
-- **所有 CLI 命令从项目根目录跑**（CLI 默认读 cwd 的 `config.yaml`）。
-- 工作区默认建在 cwd 下：`auto-epublizer init ~/books/foo.txt` → `./foo/`。
-- 一次只跑一条长流程命令（`publication.json` 有文件锁，但别自找麻烦）。
+- **All CLI commands are run from the project root** (the CLI reads `config.yaml` from the cwd by default).
+- The workspace is created under the cwd by default: `auto-epublizer init ~/books/foo.txt` → `./foo/`.
+- Run only one long-pipeline command at a time (`publication.json` has a file lock, but don't go asking for trouble).
 
 ---
 
-## 3. 冒烟测试（5 分钟，先证明通路）
+## 3. Smoke test (5 minutes, first prove the path works)
 
 ```bash
 cd auto-epublizer
@@ -111,210 +121,210 @@ uv run auto-epublizer qa
 uv run auto-epublizer status --json
 ```
 
-预期：每步有绿色中文输出；最终 `output/demo.epub` 存在；`qa` 输出
-`G5 放行：否`（**无 epubcheck jar 时 released 恒为 False，这是预期而非 bug**）。
+Expected: each step has green Chinese output; finally `output/demo.epub` exists; `qa` outputs
+`G5 放行：否` (**without an epubcheck jar, released is always False; this is expected, not a bug**).
 
-若 analyze 即失败：先查 `ARK_API_KEY` 是否 export、方舟模型 ID 是否有效（§8）。
+If analyze fails right away: first check whether `ARK_API_KEY` is exported and whether the Ark model ID is valid (§8).
 
 ---
 
-## 4. 测试用例
+## 4. Test cases
 
-> 选书：只用**公有领域**文本（古腾堡公版书等）。建议先短篇（< 1 万词）再长书。
-> 成本直觉：短篇全流程约几十~百余次 API 调用；review 轮次每 +1，成本近似翻倍。
+> Book selection: use only **public-domain** texts (Project Gutenberg public-domain books, etc.). It is recommended to start with a short piece (< 10,000 words) and then a long book.
+> Cost intuition: a full pipeline for a short piece is about several dozen to just over a hundred API calls; each +1 review round approximately doubles the cost.
 
-### T1 短篇 TXT/MD 翻译全流程（核心必测）
+### T1 Full pipeline for a short TXT/MD translation (core, must-test)
 
 ```bash
 uv run auto-epublizer init ~/books/poe-tell-tale.txt
-uv run auto-epublizer analyze          # 产 analysis/：语言/体裁检测 + 术语播种
-uv run auto-epublizer translate        # 产 translation/ + align/*.jsonl
-uv run auto-epublizer review           # 产 reviews/review-<ts>/
-uv run auto-epublizer build            # 产 output/<slug>.epub（纯译文）
+uv run auto-epublizer analyze          # produces analysis/: language/genre detection + terminology seeding
+uv run auto-epublizer translate        # produces translation/ + align/*.jsonl
+uv run auto-epublizer review           # produces reviews/review-<ts>/
+uv run auto-epublizer build            # produces output/<slug>.epub (translation only)
 uv run auto-epublizer qa
 ```
 
-验证点：
+Verification points:
 
-| 项 | 预期 |
+| Item | Expectation |
 |---|---|
-| `status --json` | 单元走完 `split → analyzed → translated/aligned → reviewed → built` |
-| `analysis/glossary.csv` | 有 seed 状态术语行（豆包提取质量顺带记录） |
-| `translation/align/*.jsonl` | 每行 `{seq,src,tgt,note}`，seq 连续 1..N |
-| `reviews/review-<ts>/result.json` | `termination=clean_confirmed`（真实 LLM 也可能 max_rounds，记录即可） |
-| `report.json` | g0_flags / g1_candidates / g2_confirmed / g3_patched / error_rate 字段齐全 |
-| `usage.json` | merged_runs 含 `analyze-`、`translate-`、`review-` 前缀 |
-| 打开 EPUB | 译文完整、无英文残留段落、中文标点正常 |
+| `status --json` | the unit goes through `split → analyzed → translated/aligned → reviewed → built` |
+| `analysis/glossary.csv` | has seed-status terminology rows (record the DouBao extraction quality along the way) |
+| `translation/align/*.jsonl` | each line is `{seq,src,tgt,note}`, seq contiguous 1..N |
+| `reviews/review-<ts>/result.json` | `termination=clean_confirmed` (a real LLM may also reach max_rounds; just record it) |
+| `report.json` | g0_flags / g1_candidates / g2_confirmed / g3_patched / error_rate fields all present |
+| `usage.json` | merged_runs contains the `analyze-`, `translate-`, `review-` prefixes |
+| Open the EPUB | translation complete, no leftover English paragraphs, Chinese punctuation normal |
 
-### T2 断点续跑（translate 跳过已完成单元）
+### T2 Checkpoint resume (translate skips completed units)
 
 ```bash
-# 在 T1 完成后：
+# after T1 completes:
 uv run auto-epublizer translate
-# 输出应显示 单元=0 跳过=N；usage.json 的 calls 不增长（不调 LLM）
+# the output should show units=0 skipped=N; usage.json calls does not grow (no LLM calls)
 
 uv run auto-epublizer translate --force
-# 输出应显示 单元=N 跳过=0；全部重译重计费
+# the output should show units=N skipped=0; everything is retranslated and re-charged
 ```
 
-### T3 审校真实收敛
+### T3 Genuine review convergence
 
-用 T1 工作区，读 `reviews/review-<ts>/rounds/`：
+Using the T1 workspace, read `reviews/review-<ts>/rounds/`:
 
-- R1 若有 issue → `issues.json` 有候选 → `summary.json` 记 confirmed 数；
-- `shadow_overlay.json` 存在且**只含修订句**（正式 `translation/` 未被改动，diff 验证）；
-- 盲复审：下一轮 issues 数应下降或保持 0；连续 2 轮 0 → `clean_confirmed`。
-- 若 `termination=max_rounds / no_progress / unresolved_fixes`：单元**不得**被标
-  `reviewed`（`status --json` 应停在 aligned）——这是有意行为，人工处置后重跑。
+- If R1 has issues → `issues.json` has candidates → `summary.json` records the confirmed count;
+- `shadow_overlay.json` exists and **contains only the revised sentences** (the official `translation/` is unchanged; verify by diff);
+- Blind re-review: the next round's issue count should drop or stay at 0; two consecutive rounds of 0 → `clean_confirmed`.
+- If `termination=max_rounds / no_progress / unresolved_fixes`: the unit **must not** be marked
+  `reviewed` (`status --json` should stop at aligned) — this is intentional behavior; rerun after manual handling.
 
-### T4 转换路径（不翻译）
+### T4 Conversion path (no translation)
 
 ```bash
 uv run auto-epublizer convert ~/books/some.epub -o /tmp/out.epub
 ```
 
-验证：不消耗任何 LLM 调用（usage 不变）；英文书 OPF 的 `dc:language` 是源语言
-而非 zh-CN；单元状态直接 `built`。
+Verification: consumes no LLM calls (usage unchanged); the `dc:language` of the OPF of an English book is the source language
+rather than zh-CN; the unit status is directly `built`.
 
-### T5 双语 EPUB
+### T5 Bilingual EPUB
 
 ```bash
-uv run auto-epublizer build --bilingual    # 产 <slug>-bi.epub
+uv run auto-epublizer build --bilingual    # produces <slug>-bi.epub
 ```
 
-验证：每句译文段 `xml:lang="zh-CN"`、源文段 `xml:lang="<源语言>"` 交错。
+Verification: each translated-sentence paragraph `xml:lang="zh-CN"` and source-sentence paragraph `xml:lang="<source language>"` interleave.
 
-### T6 pandoc 格式（EPUB / DOCX / HTML）
+### T6 pandoc formats (EPUB / DOCX / HTML)
 
-需 §2.1 的 pandoc。每种格式各 init 一本小书，走 T1 全流程。重点：章节拆分成
-多个 chXX 单元（TXT/MD 是标题启发式，EPUB/DOCX 应按文档结构来）。
+Requires pandoc from §2.1. init a small book in each format and run the full T1 pipeline. Focus:
+chapter splitting into multiple chXX units (TXT/MD is heading-heuristic; EPUB/DOCX should follow the document structure).
 
-### T7 PDF（文字层）
+### T7 PDF (text layer)
 
 ```bash
 uv run auto-epublizer init ~/books/legacy.pdf
 ```
 
-已知行为：**整本书归为一个 `ch01` 单元**（无章级切分）；`structured/raw/page-NNN.json`
-逐页留档。扫描版 PDF（无文字层）会报错提示走 OCR——**OCR 未接进 CLI**，属已知
-未接线项（见 §6），遇到记录即可，勿当 bug 修。
+Known behavior: **the whole book is grouped into a single `ch01` unit** (no chapter-level splitting); `structured/raw/page-NNN.json`
+keeps a per-page archive. A scanned PDF (no text layer) reports an error directing you to OCR — **OCR is not wired into the CLI**, a known
+unwired item (see §6); just record it when encountered, don't fix it as a bug.
 
-### T8 错误路径（零成本）
+### T8 Error paths (zero cost)
 
-| 操作 | 预期 |
+| Operation | Expectation |
 |---|---|
-| 不 export ARK_API_KEY 直接 translate | 中文报错「缺少 API Key」，无 traceback |
-| `init /tmp/不存在.md` | 中文报错「源文件不存在」 |
-| 同名工作区重复 init | 报「工作区已存在」 |
-| 改动 source 文件后跑续命令 | 报「输入文件内容与工作区不一致」（sha256 绑定） |
-| `qa` 前没 build | 报「成品不存在…请先 build/convert」 |
+| Do not export ARK_API_KEY and run translate directly | Chinese error `缺少 API Key`, no traceback |
+| `init /tmp/不存在.md` | Chinese error `源文件不存在` |
+| init again with the same-named workspace | reports `工作区已存在` |
+| run a follow-up command after modifying the source file | reports `输入文件内容与工作区不一致` (sha256 binding) |
+| `qa` without a prior build | reports `成品不存在…请先 build/convert` |
 
 ---
 
-## 5. 判读手册
+## 5. Interpretation guide
 
-**`status --json`**：`units[].status` 是唯一进度真相。卡在中间态 → 从该阶段续跑。
+**`status --json`**: `units[].status` is the only source of progress truth. Stuck in an intermediate state → resume from that stage.
 
-**`report.json`（qa 产物，聚合 G0–G5）**：
+**`report.json` (qa product, aggregating G0–G5)**:
 
-| 字段 | 含义 |
+| Field | Meaning |
 |---|---|
-| `g0_flags[]` | 零 token 静态告警（长度比/空译文/术语缺失/seq 断号），advisory 线索不阻断放行（英→中长度比误报多，实测 994 条均为误报） |
-| `g1_candidates` / `g2_confirmed` / `g3_patched` | G1 候选 → G2 取证确认 → G3 实际修订数 |
-| `error_rate` | `g2_confirmed / 总句数` |
-| `g4_audit` / `g4_epubcheck_errors` | 解包审计 / epubcheck（-1=未运行） |
-| `released` | 放行判定：问题清零或全修订 + 审计 pass + epubcheck 0 error + 无 G0 告警 |
+| `g0_flags[]` | zero-token static warnings (length ratio / empty translation / missing terminology / seq gaps); advisory clues do not block release (English→Chinese length ratio has many false positives; all 994 measured entries were false positives) |
+| `g1_candidates` / `g2_confirmed` / `g3_patched` | G1 candidates → G2 evidence-confirmed → G3 actual revision count |
+| `error_rate` | `g2_confirmed / total sentence count` |
+| `g4_audit` / `g4_epubcheck_errors` | unpack audit / epubcheck (-1 = not run) |
+| `released` | release decision: issues cleared to zero or all revised + audit pass + epubcheck 0 error + no G0 warnings |
 
-**`usage.json`**：`merged_runs` 的 run_id 幂等——同一命令重跑不会重复计费；
-`totals.calls` 是累计调用数。
+**`usage.json`**: the `merged_runs` run_id is idempotent — rerunning the same command does not double-charge;
+`totals.calls` is the cumulative call count.
 
-**`reviews/review-<ts>/result.json`**：termination 四态的含义与下一步见
-`skills/auto-epublizer/references/review.md`。
+**`reviews/review-<ts>/result.json`**: for the meaning of the four termination states and the next step, see
+`skills/auto-epublizer/references/review.md`.
 
 ---
 
-## 6. 已知限制（遇到 ≠ bug，记录即可）
+## 6. Known limitations (encountering ≠ bug, just record it)
 
-> 2026-09-04 复核：OCR 与术语提案两条已接线（`pdf.ocr: auto/off` + `import --terms`）；
-> analyze 截断、review/translation 串行、convert 源语言、PDF 章级聚合已由修复计划
-> P2/P3/P4 修复，一并移除；剩余条目仍成立。
+> 2026-09-04 recheck: the two items OCR and terminology proposal are now wired (`pdf.ocr: auto/off` + `import --terms`);
+> analyze truncation, review/translation serialization, convert source language, and PDF chapter-level aggregation have been fixed by fix plans
+> P2/P3/P4 and removed accordingly; the remaining items still hold.
 
-| 现象 | 原因 |
+| Symptom | Cause |
 |---|---|
-| `released` 恒 False | 容器无 epubcheck jar；装了才会按真实结果放行（环境限制，非 bug） |
-| `.progress.json` 未落盘 | 预留断点文件，实际断点=单元级跳过（契约已标注预留） |
-| 自动化批量重试后仍失败 | 每批已重试 2 次，报错即停，人工看报文 |
+| `released` always False | the container has no epubcheck jar; only after installing it will release follow the real result (environment limitation, not a bug) |
+| `.progress.json` not persisted | reserved checkpoint file; the actual checkpoint = unit-level skip (the contract already marks it as reserved) |
+| Still fails after automated batch retries | each batch has already retried 2 times; it stops on error, and a human reads the message |
 
-## 7. 结果记录模板
+## 7. Result record template
 
-每个用例跑完，把以下材料归档（供回填 issue / 改进迭代）：
+After each test case, archive the following materials (for backfilling issues / improvement iterations):
 
 ```text
-用例编号 / 书名 / 规模（词数或句数）
-环境：豆包云容器规格、pandoc 有无、epubcheck 有无
-config.yaml 的 llm 段（抹掉 Key）+ 模型 ID
-命令序列与每步耗时（uv run … 的墙钟时间）
-status --json 末态、report.json 全文、reviews 最新 result.json
-usage.json 的 totals 与 merged_runs 数
-与预期的偏差列表（含 §6 之外的新发现）
-译文抽样 3 段（源/译对照）
+test case number / book title / size (word count or sentence count)
+environment: DouBao cloud container spec, whether pandoc is present, whether epubcheck is present
+the llm section of config.yaml (Key scrubbed) + model ID
+command sequence and time per step (wall-clock time of uv run …)
+status --json final state, full report.json, latest reviews result.json
+usage.json totals and merged_runs count
+list of deviations from expectations (including new findings beyond §6)
+3 sampled translation paragraphs (source/translation side by side)
 ```
 
-## 8. 故障排查
+## 8. Troubleshooting
 
-| 症状 | 处置 |
+| Symptom | Handling |
 |---|---|
-| analyze 报 HTTP 401/403 | `ARK_API_KEY` 未 export 或无效 |
-| 报 HTTP 404 | base_url 写错（应止于 `/api/v3`）或模型 ID 不存在 |
-| 报 4xx 且提示 `response_format` | 所选豆包模型不支持 json_object；换 pro/seed 系列模型 ID |
-| 全部请求超时 | 容器网络未放行方舟域名；在豆包侧确认 |
-| `审校输出协议违例` 反复出现 | 豆包模型 JSON 稳定性问题；换 strong 档模型再试，保留报文 |
-| pandoc 报错 | EPUB/DOCX 先转 PDF/TXT 兜底（`IngestError` 有中文提示） |
-| translate 中断 | 直接重跑同命令：已完成单元自动跳过（T2） |
+| analyze reports HTTP 401/403 | `ARK_API_KEY` not exported or invalid |
+| reports HTTP 404 | base_url is wrong (should end at `/api/v3`) or the model ID does not exist |
+| reports 4xx and mentions `response_format` | the chosen DouBao model does not support json_object; switch to a pro/seed series model ID |
+| all requests time out | the container network does not allow the Ark domain; confirm on the DouBao side |
+| `审校输出协议违例` appears repeatedly | DouBao model JSON stability problem; switch to a strong-tier model and retry, keep the message |
+| pandoc reports an error | convert EPUB/DOCX to PDF/TXT as a fallback (`IngestError` has a Chinese message) |
+| translate is interrupted | just rerun the same command: completed units are skipped automatically (T2) |
 
 ---
 
-## 9. 豆包环境实测记录（2026-09-02）
+## 9. DouBao environment field-test record (2026-09-02)
 
-> 本节为**豆包 APP 云容器**内真实执行本指南的实测结果与偏差，回填供后续迭代。
-> 测试对象：Baka-Tsuki《魔法禁书目录 GT 卷1》（英文，约 66,619 词，42 结构单元，13 张插图）。
+> This section is the actual result and deviations of running this guide for real inside the **DouBao APP cloud container**, backfilled for subsequent iterations.
+> Test subject: Baka-Tsuki《A Certain Magical Index GT Vol. 1》(English, about 66,619 words, 42 structural units, 13 illustrations).
 
-### 9.1 实测发现的问题与处置
+### 9.1 Problems found in the field test and their handling
 
-| # | 现象 | 根因 | 处置 |
+| # | Symptom | Root cause | Handling |
 |---|---|---|---|
-| 1 | `uv run pytest` 收集期 4 个文件 ImportError；CLI 启动即 `ModuleNotFoundError: auto_epublizer.build` | 仓库**从未提交 `src/auto_epublizer/build/`**：`.gitignore` 的 `build/` 无锚定模式误伤源码目录 | 依测试与 QA 契约补齐 build 模块；**主仓已修复**（`585f3a2`：`build/` → `/build/` 并补推模块） |
-| 2 | `init`/`convert` 后 `structured/raw/media/` 为空，插图不进 EPUB | pandoc 对相对路径资源按 **cwd** 解析（非源文件目录） | `run_pandoc` 改 `cwd=源文件目录` + 绝对路径；**主仓已回移**（`d7a3e46`） |
-| 3 | pandoc 孤立图片段落输出占位语法 `[alt]{.image .placeholder …}`，标准正则匹配不到 | pandoc 固有行为 | `collect_media` 识别占位语法；**主仓已回移** |
-| 4 | MediaWiki 皮肤痕迹（`[]{#…}`、`[edit]`）导致 classify 误判 | pandoc 保留皮肤痕迹 | 预处理脚本 lxml 提取 `#mw-content-text` 深度清理（用户侧脚本，不入主仓） |
-| 5 | **容器无外部 LLM API**：无可用方舟 Key，`analyze` 报 401；部分外网（wikimedia）超时 | 环境限制 | 见 §9.2 |
+| 1 | `uv run pytest` collection had ImportError in 4 files; CLI startup immediately `ModuleNotFoundError: auto_epublizer.build` | the repository **had never committed `src/auto_epublizer/build/`**: the unanchored pattern `build/` in `.gitignore` accidentally harmed the source directory | completed the build module per the test and QA contract; **main repo already fixed** (`585f3a2`: `build/` → `/build/` and re-pushed the module) |
+| 2 | after `init`/`convert`, `structured/raw/media/` was empty and illustrations did not enter the EPUB | pandoc resolves relative-path resources against the **cwd** (not the source file directory) | `run_pandoc` changed to `cwd=source file directory` + absolute paths; **main repo back-ported** (`d7a3e46`) |
+| 3 | pandoc output the placeholder syntax `[alt]{.image .placeholder …}` for isolated image paragraphs, which the standard regex cannot match | inherent pandoc behavior | `collect_media` recognizes the placeholder syntax; **main repo back-ported** |
+| 4 | MediaWiki skin traces (`[]{#…}`, `[edit]`) caused classify misjudgment | pandoc retains skin traces | preprocessing script lxml-extracted `#mw-content-text` for deep cleaning (user-side script, not in the main repo) |
+| 5 | **container has no external LLM API**: no usable Ark Key, `analyze` reports 401; some external networks (wikimedia) time out | environment limitation | see §9.2 |
 
-### 9.2 关键决策：翻译由 agent 主进程完成
+### 9.2 Key decision: translation is done by the agent main process
 
-> 豆包环境无可用外部 LLM API，翻译流程由 **agent 主进程**完成：agent 读 `structured/`
-> → 自身能力翻译 → 写 `translation/`（镜像结构）+ `align/` 句级对照 → `build` → `qa`。
-> CLI 的 `analyze`/`translate`/`review` 在豆包容器内**不作为翻译主路径**；§2.3 的方舟配置
-> 降级为**可选分支**（有 Key 的环境仍可用）。
+> In the DouBao environment with no usable external LLM API, the translation pipeline is done by the **agent main process**: the agent reads `structured/`
+> → translates with its own capabilities → writes `translation/` (mirrored structure) + `align/` sentence-level alignment → `build` → `qa`.
+> The CLI's `analyze`/`translate`/`review` are **not the main translation path** inside the DouBao container; the Ark configuration in §2.3
+> degrades to an **optional branch** (environments with a Key can still use it).
 
-### 9.3 Build 层缺陷（全量中文交付时发现）
+### 9.3 Build-layer defects (found during full Chinese delivery)
 
-| # | 现象 | 处置 | 主仓状态 |
+| # | Symptom | Handling | Main repo status |
 |---|---|---|---|
-| 6 | 目录与页面标题显示英文（源文标题） | build/convert 优先取译文文件首个 `# ` 标题 | 已回移（`d7a3e46`） |
-| 7 | MediaWiki 容器 div 空壳单元混入目录 | 跳过无正文且标题占位的空壳单元 | 已回移 |
-| 8 | HTML `<img>`/`<figure>` 被整体转义、pandoc 缩略图二次转义 | `collect_media` 认 HTML 图片；`_PANDOC_LINKED_IMG` 归一 | 已回移 |
+| 6 | TOC and page titles show English (source titles) | build/convert take precedence from the first `# ` heading of the translation file | back-ported (`d7a3e46`) |
+| 7 | MediaWiki container div empty-shell units mixed into the TOC | skip empty-shell units with no body and a placeholder title | back-ported |
+| 8 | HTML `<img>`/`<figure>` were escaped wholesale, pandoc thumbnails double-escaped | `collect_media` recognizes HTML images; `_PANDOC_LINKED_IMG` normalization | back-ported |
 
-### 9.4 质量校验结果
+### 9.4 Quality validation results
 
-- ch20 译文错位（漏译 1 段导致整体前移）由「对话引号连续性 + 图片段对齐」扫描发现并修复；全 42 单元复扫无错位。
-- 最终交付：41 spine 单元 + 13 图全量中文 EPUB，G4 审计 pass、差错率 0.0。
-- **G0 长度比告警 994 条均为误报**（英→中信息密度差）→ 主仓已修正放行逻辑（G0 告警为 advisory，不阻断 `released`）。
-- epubcheck 因容器无 jar 未跑（已知限制）。
+- ch20 translation misalignment (missing one translated paragraph causing an overall shift forward) was found by a "dialogue-quote continuity + image-paragraph alignment" scan and fixed; a full re-scan of all 42 units found no misalignment.
+- Final delivery: 41 spine units + 13 images full Chinese EPUB, G4 audit pass, error rate 0.0.
+- **All 994 G0 length-ratio warnings were false positives** (English→Chinese information density difference) → the main repo has fixed the release logic (G0 warnings are advisory and do not block `released`).
+- epubcheck was not run because the container has no jar (known limitation).
 
-### 9.5 主仓回移状态（2026-09-02）
+### 9.5 Main repo back-port status (2026-09-02)
 
-| 修复 | 提交 |
+| Fix | Commit |
 |---|---|
-| `.gitignore` 误伤 build 模块（P0） | `585f3a2` |
-| pandoc cwd / collect_media / 译文标题 / 空壳单元 / HTML 图片（P4/P5/P8/P9/P10） | `d7a3e46`（含 4 个新增回归测试） |
-| G0 告警不阻断放行（P12，对齐 AGENTS.md G5 契约） | 见 `git log -- qa/report.py` |
+| `.gitignore` accidentally harming the build module (P0) | `585f3a2` |
+| pandoc cwd / collect_media / translated titles / empty-shell units / HTML images (P4/P5/P8/P9/P10) | `d7a3e46` (including 4 new regression tests) |
+| G0 warnings do not block release (P12, aligning with the AGENTS.md G5 contract) | see `git log -- qa/report.py` |

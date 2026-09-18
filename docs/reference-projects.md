@@ -1,34 +1,37 @@
-# 参考项目：wenyi
+<!-- i18n: source=reference-projects.zh.md sha256=6e21aaf4357fd323d088b8cc56ead3f866b14b5b1863ca14ac1fcd08eaf45390 -->
+> **English** | [中文](reference-projects.zh.md)
 
-> **定位**：设计借鉴来源。wenyi（`trans_novel`）实现了多项 auto-epublizer 想要的能力，
-> 本文记录**借鉴**（直接采用其模式）与**差异**（我们做不同/更强）。
-> 面向维护本仓库的 agent 的设计契约见 `AGENTS.md`；此处是溯源参考。
+# Reference project: wenyi
 
-参考 [wenyi](https://github.com/BigDawnGhost/wenyi)（包名 `trans-novel`）——面向长篇文本的多阶段翻译工具。
+> **Positioning**: a source of design inspiration. wenyi (`trans_novel`) implements several capabilities that auto-epublizer wants;
+> this document records the **borrowings** (directly adopting its patterns) and the **differences** (where we do things differently / more strongly).
+> The design contract for agents maintaining this repository is in `AGENTS.md`; this is the provenance reference.
 
-## 借鉴（直接采用其模式）
+Reference [wenyi](https://github.com/BigDawnGhost/wenyi) (package name `trans-novel`) — a multi-stage translation tool for long texts.
 
-1. **数据模型**：`Document → Chapter → Segment`。Segment 是最小可翻译/可对齐单元（通常一段），带 `anchor`（EPUB 回填占位符）、`resource_href`、`cont`（超长段拆分后的续段标记，回填时并回原段）。
-2. **状态与续跑（RunStore）**：
-   - 同目录临时文件 + `os.replace` 原子写；
-   - `source_sha256` 绑定源内容，拒绝"同名不同内容"静默复用状态；
-   - 多级文件锁（run/state/event/assemble）隔离长流程与短状态读写；
-   - `manifest.json` 最后原子提交，作为初始化完成标志（"派生状态先落盘，manifest 最后"）；
-   - `events.jsonl` 追加式行为账本，用于审计与批次检查点恢复；
-   - 导出前冻结一致快照（ExportSnapshotStore），避免读到 manifest 与章节文件的混合时刻。
-3. **段级对齐策略**：一批 N 段整体发给模型，要求返回**等长 JSON 数组**；数量不符重试（align_retry_limit），仍不符则逐段兜底翻译——从结构上杜绝整段漏译。我们在此之上再加**句级对照表**（见 AGENTS.md「句级对照表」）。
-4. **术语库**：SQLite 存储 + `term_conflicts` 冲突表；同 source 出现不同 target 时保留当前译法、记录候选待人工裁决；逐批按正文实际出现过滤注入 prompt；按 rowid 排序稳定前缀缓存。
-5. **标点规范**：中文标点统一（PUNCT_RULE 思路）；翻译时保持源文标点/段落结构。
-6. **架构边界**：`CLI → Orchestrator（薄 façade）→ 领域服务`，下层不得反向导入上层，并发只属于领域服务、结果按稳定顺序合并；用 `test_architecture_boundaries.py` 固定契约。
-7. **配置与续跑**：YAML 配置（language/pipeline/qc/pdf/glossary/paths/output），同一命令幂等续跑。
+## Borrowings (directly adopting its patterns)
 
-## 差异（我们做不同 / 更强）
+1. **Data model**: `Document → Chapter → Segment`. Segment is the smallest translatable/alignable unit (usually one paragraph), carrying `anchor` (an EPUB backfill placeholder), `resource_href`, `cont` (the continuation-segment marker after splitting an over-long paragraph, merged back into the original paragraph on backfill).
+2. **State and resume (RunStore)**:
+   - same-directory temp file + `os.replace` atomic write;
+   - `source_sha256` binds the source content, rejecting silent reuse of state for "same name, different content";
+   - multi-level file locks (run/state/event/assemble) isolate long pipelines from short state reads/writes;
+   - `manifest.json` is committed atomically last, as the initialization-complete marker ("derived state first to disk, manifest last");
+   - `events.jsonl` append-only behavior ledger, used for auditing and batch-checkpoint recovery;
+   - freeze a consistent snapshot before export (ExportSnapshotStore), avoiding reading a mixed moment of the manifest and chapter files.
+3. **Paragraph-level alignment strategy**: send a batch of N paragraphs to the model as a whole, requiring a **same-length JSON array** in return; retry on count mismatch (align_retry_limit), and if it still mismatches, fall back to translating paragraph by paragraph — structurally eliminating whole-paragraph omissions. On top of this we add a **sentence-level alignment table** (see AGENTS.md "sentence-level alignment").
+4. **Terminology store**: SQLite storage + `term_conflicts` conflict table; when the same source has different targets, keep the current translation and record the candidate for manual adjudication; filter and inject into the prompt per batch according to the actual occurrences in the body; sort by rowid for a stable prefix cache.
+5. **Punctuation norms**: unify Chinese punctuation (the PUNCT_RULE idea); keep the source text's punctuation/paragraph structure during translation.
+6. **Architecture boundaries**: `CLI → Orchestrator (thin façade) → domain services`, lower layers must not import upper layers in reverse, concurrency belongs only to domain services, results are merged in stable order; the contract is fixed by `test_architecture_boundaries.py`.
+7. **Configuration and resume**: YAML configuration (language/pipeline/qc/pdf/glossary/paths/output), idempotent resume of the same command.
 
-| 维度 | wenyi | auto-epublizer |
+## Differences (where we do things differently / more strongly)
+
+| Dimension | wenyi | auto-epublizer |
 |---|---|---|
-| 目标语言 | 仅简体中文 | 任意语言可配 |
-| 对齐粒度 | 段级等长数组 | 段级对齐 + **句级 JSONL 对照表** |
-| 结构模型 | 全部按章处理 | 显式出版物**四层结构**（frontmatter/body/backmatter + 外观） |
-| 核心功能 | 翻译为主 | **转换（convert）为一等功能**，翻译可选 |
-| PDF | 依赖 MinerU 外部 API | 本地 OCR（RapidOCR）+ 文字层/插图/表格/公式提取 + agent 视觉（MinerU 外部 API 最优先） |
-| 工作区 | `state/<slug>/` | `publication.json` + 工作区目录 |
+| Target language | Simplified Chinese only | any language, configurable |
+| Alignment granularity | paragraph-level same-length arrays | paragraph-level alignment + **sentence-level JSONL alignment table** |
+| Structure model | everything processed by chapter | explicit publication **four-layer structure** (frontmatter/body/backmatter + appearance) |
+| Core function | translation-first | **convert as a first-class function**, translation optional |
+| PDF | depends on the MinerU external API | local OCR (RapidOCR) + text-layer/illustration/table/formula extraction + agent vision (MinerU external API takes top priority) |
+| Workspace | `state/<slug>/` | `publication.json` + workspace directory |

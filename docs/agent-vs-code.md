@@ -1,62 +1,71 @@
-# Agent 与 Python 代码的分工边界
+<!-- i18n: source=agent-vs-code.zh.md sha256=225be26db071d65fe1d37517f095133d2c97901ebd0df54847fcc6a704831ef9 -->
+> **English** | [中文](agent-vs-code.zh.md)
 
-本文回答一个架构根本问题：**哪些工作归 Python 代码，哪些工作归 agent。**
-它是 `AGENTS.md` 中「能力分工」条目的展开，是维护与使用本项目的共同判据。
+# Division of Labour Between the Agent and Python Code
 
-## 一条主判据
+This document answers a fundamental architectural question: **which work belongs to Python
+code, and which work belongs to the agent.**
+It expands the "division of labour" entry in `AGENTS.md` and is the shared criterion for
+maintaining and using this project.
 
-> **「同样输入必须得到同样输出」→ Python；「需要理解内容、做权衡、下判断」→ agent。**
+## One Main Criterion
 
-三条辅助判据：
+> **"The same input must produce the same output" → Python; "requires understanding content, making trade-offs, reaching judgements" → the agent.**
 
-1. **状态一致性归 Python**——原子写、锁、状态机、幂等；agent 手工维护状态必然出错。
-2. **外部世界归 Python**——跑 pandoc / epubcheck / OCR，是确定性工具调用，不该让 agent 手搓；
-   而**任何「理解」都归 agent**（唯一 LLM 原则：本项目中唯一的 LLM 就是操作 CLI 的 agent）。
-3. **验收判读归 agent**——机器只能给信号，判断（怎么修、放不放行）是 agent 的事。
+Three auxiliary criteria:
 
-一句话：**Python 负责「不错」，agent 负责「对」。**
-确定性、一致性、可复现交给代码；理解、权衡、终审交给 agent。
-CLI 是 agent 的手，不是 agent 的脑。
+1. **State consistency belongs to Python** — atomic writes, locks, the state machine, idempotence; an agent maintaining state by hand is bound to make mistakes.
+2. **The external world belongs to Python** — running pandoc / epubcheck / OCR is a deterministic tool invocation and should not be hand-rolled by the agent;
+   while **any "understanding" belongs to the agent** (single-LLM principle: the only LLM in this project is the agent operating the CLI).
+3. **Acceptance interpretation belongs to the agent** — a machine can only produce signals; the judgement (how to fix, whether to release) is the agent's job.
 
-## 归 Python（工具：不会骗你）
+In one sentence: **Python is responsible for "not wrong", the agent for "right".**
+Determinism, consistency and reproducibility go to code; understanding, trade-offs and final review go to the agent.
+The CLI is the agent's hand, not the agent's brain.
 
-| 类别 | 具体 |
+## Belongs to Python (tool: it won't lie to you)
+
+| Category | Details |
 |---|---|
-| 确定性转换 | ingest（pandoc / PDF 按页切片 / OCR / 插图 / 表格 / 公式检测）、structure（四层归类 / 清洗 / 稳定 ID）、align（句对齐）、build（EPUB 封装）、preprocess facts（嗅探 / 元数据 / TOC / 体检 / 规模）、PDF 内容提取（书签切章 / 多栏阅读顺序 / inserts 描述文件） |
-| 状态与一致性 | publication.json 原子写 / 多级锁 / source_sha256 绑定 / 状态机推进 |
-| 外部工具调用 | pandoc / epubcheck / OCR / MinerU API（外部解析） |
-| 确定性校验 | G0 静态检查、G4 解包审计、epubcheck、inserts 溯源审计——**只出信号，不出裁决** |
+| Deterministic transformation | ingest (pandoc / PDF page slicing / OCR / illustration / table / formula detection), structure (four-layer classification / cleaning / stable ID), align (sentence alignment), build (EPUB packaging), preprocess facts (sniffing / metadata / TOC / health check / size), PDF content extraction (bookmark chaptering / multi-column reading order / inserts description files) |
+| State and consistency | publication.json atomic write / multi-level locks / source_sha256 binding / state machine advancement |
+| External tool invocation | pandoc / epubcheck / OCR / MinerU API (external parsing) |
+| Deterministic validation | G0 static checks, G4 unpack audit, epubcheck, inserts provenance audit — **signals only, no verdicts** |
 
-## 归 agent（判断者：懂内容）
+## Belongs to the Agent (judge: understands content)
 
-| 类别 | 具体 |
+| Category | Details |
 |---|---|
-| 方案决策 | `preprocessing/plan.md`（ingest 路由选择 + 依据）——CLI 给事实与提示，决策永远是 agent 的 |
-| 语义理解 | `preprocessing/` 与 `analysis/` 的 global / units / terms / risks / overview / keypoints；「中心思想 / 风格 / 风险」的提炼 |
-| 翻译 | `translation/` + `align/`（CLI 只负责 import 时的结构校验） |
-| 审校 | G1–G3 语义审校（读 align 找漏译/误译/术语违例）、修订、收敛判定 → `reviews/review-<ts>/result.json` |
-| 判读与处置 | g0 告警怎么修、`report.json` 怎么判、未收敛（max_rounds / 振荡 / unresolved_fixes）怎么办、放不放行 |
-| 术语终局裁决 | `glossary_conflicts.jsonl` → 裁决写回 `glossary.csv` |
-| 插入内容语义 | `raw/inserts/<id>.json` 的 `content_desc`（内容描述）与 `latex`（公式手写 LaTeX） |
-| **语义整备** | 解析缺陷/OCR 噪声/结构判断的修复（换行重断、误识校正、页眉脚归属、单元重切）——信号由 facts 给出，修复与留痕归 agent，见 [semantic-repair.md](semantic-repair.md) |
-| 源文勘误 | 按先例修正（如 IDG→IDF 类） |
-| agent 元能力自报 | multimodal（能否看图）、search（有无搜索工具）——CLI 原理上探测不到，只能 agent 自己说 |
+| Approach decisions | `preprocessing/plan.md` (ingest route selection + rationale) — the CLI gives facts and hints; the decision is always the agent's |
+| Semantic understanding | global / units / terms / risks / overview / keypoints in `preprocessing/` and `analysis/`; distillation of "central idea / style / risks" |
+| Translation | `translation/` + `align/` (the CLI only handles structural validation at import time) |
+| Review | G1–G3 semantic review (read align to find omissions/mistranslations/terminology violations), revision, convergence determination → `reviews/review-<ts>/result.json` |
+| Interpretation and handling | how to fix g0 warnings, how to judge `report.json`, what to do about non-convergence (max_rounds / oscillation / unresolved_fixes), whether to release |
+| Final terminology arbitration | `glossary_conflicts.jsonl` → arbitration written back to `glossary.csv` |
+| Insert content semantics | `content_desc` (content description) and `latex` (hand-written LaTeX for formulas) of `raw/inserts/<id>.json` |
+| **Semantic repair** | fixes for parse defects / OCR noise / structural judgement (line-break re-splitting, misrecognition correction, running head/footer attribution, unit re-splitting) — signals come from facts; repair and traceability belong to the agent, see [semantic-repair.md](semantic-repair.md) |
+| Source errata | correction by precedent (e.g. the IDG→IDF class) |
+| Agent meta-capability self-report | multimodal (can it see images), search (does it have a search tool) — the CLI cannot detect these in principle; only the agent can say |
 
-## 两个灰色区
+## Two Grey Areas
 
-**① `analysis/` 的理解产物算谁的？**
-归 agent。`analysis/*.md` 与术语表由 agent 用自身能力撰写（读 `preprocessing/` 事实与
-`references/style.md` 文体档案）；CLI 只提供确定性助手（语言/体裁启发式、`render_style_md`）。
+**① Whose are the understanding artifacts in `analysis/`?**
+The agent's. `analysis/*.md` and the glossary are written by the agent with its own
+abilities (reading `preprocessing/` facts and the `references/style.md` genre profile);
+the CLI only provides deterministic helpers (language/genre heuristics, `render_style_md`).
 
-**② G1 审校的 issue 算谁的？**
-归 agent。issue 内容是 agent 的语义判断，但「宁缺毋滥」约束、G0 静态信号、取证流程
-（G2 先证据后裁决）的规则与契约是代码的。机器给信号，规则管流程，agent 做终审。
+**② Whose are the issues from G1 review?**
+The agent's. The issue content is the agent's semantic judgement, but the "better to omit
+than to over-flag" constraint, the G0 static signals, and the rules and contracts of the
+evidence-gathering process (G2 evidence before verdict) belong to code. The machine gives
+signals, the rules govern the process, the agent does the final review.
 
-## 一条架构推论
+## One Architectural Corollary
 
-从这个边界自然推出本项目的解耦方式：**agent 的产物总是「文件」，Python 的工作是
-「验证文件 + 推进状态 + 消费文件」**。两边只通过文件契约（schema）耦合。这解释了：
+From this boundary follows naturally how this project is decoupled: **the agent's artifacts
+are always "files", and Python's job is to "validate files + advance state + consume
+files"**. The two sides couple only through file contracts (schema). This explains:
 
-- agent 只需「读文件、跑 shell、写文件」三种能力，不需要 MCP / 子代理 / 特殊工具；
-- CLI 无任何 LLM 调用，一切语义工作由 agent 手写产物完成，经 `import` / 审校产物登记；
-- agent 不手工编辑 `publication.json`——状态推进只走 CLI 命令（`import` / `build` / `qa`…）。
+- the agent needs only three abilities — "read files, run shell, write files" — and no MCP / sub-agents / special tools;
+- the CLI makes no LLM calls; all semantic work is done by the agent's hand-written artifacts, registered via `import` / review artifacts;
+- the agent does not hand-edit `publication.json` — state advances only through CLI commands (`import` / `build` / `qa`…).

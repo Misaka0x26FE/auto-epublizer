@@ -1,142 +1,144 @@
-# 质量控制流程设计（auto-epublizer）
+<!-- i18n: source=quality-control.zh.md sha256=0bb972ef8dd274c0d10d90774155a24d55dbc08830572b9ace12d2f354e96d86 -->
+> **English** | [中文](quality-control.zh.md)
 
-本文档把 README 里的"六道关"落成可实现的规格：每道关的**触发时机、输入、输出、失败动作、
-成本、数据契约、验收阈值与收敛条件**。范围边界沿用：只负责**交付质量**（准确 / 完整 /
-一致 / 规范 / 结构正确 / 可复现），不做价值观 / 政治 / 思想性判断。
+# Quality-Control Process Design (auto-epublizer)
 
-## 0. 设计原则
+This document turns the "six gates" in the README into an implementable specification:
+each gate's **trigger timing, inputs, outputs, failure actions, cost, data contract,
+acceptance thresholds and convergence conditions**. The scope boundary is unchanged: it is
+responsible only for **delivery quality** (accurate / complete / consistent / compliant /
+structurally correct / reproducible) and makes no value, political or ideological
+judgements.
 
-1. **成本分层**：先零 token，再 cheap 档，再 strong 档，按需升级——绝不让 cheap 能挡的错烧 strong 的钱。
-2. **角色分离**：翻译 / 审校 / 取证 / 修订 / 仲裁各自独立，审校不直接改译文，修订走影子 overlay。
-3. **证据驱动，非投票**：候选问题先取证再裁决；术语库、参考、影子修订都是"待核验材料"。
-4. **确定性 + 可续跑 + 可审计**：结果按稳定原文序合并；每道关有检查点；全部产物落盘可回看。
+## 0. Design Principles
 
-## 1. 六道关总览
+1. **Cost layering**: zero-token first, then the cheap tier, then the strong tier, upgrading as needed — never burn strong-tier money on errors the cheap tier can catch.
+2. **Role separation**: translation / review / evidence-gathering / revision / arbitration are independent; review does not directly edit the translation, and revision goes through a shadow overlay.
+3. **Evidence-driven, not voting**: candidate issues are evidenced before they are adjudicated; the glossary, references and shadow revisions are all "material pending verification".
+4. **Deterministic + resumable + auditable**: results are merged in stable source order; each gate has checkpoints; all artifacts are persisted to disk for review.
+
+## 1. Overview of the Six Gates
 
 ```text
-translator(强档)                 G0 零 token 静态校验 ── 不过则退回重译/标记
+translator(strong tier)          G0 zero-token static validation ── if fail, send back for retranslation/flag
       │                                     │
       ▼                                     ▼
-  align/ 句级对照表                G1 逐批双语审校(cheap) ── 报 issue，不直接改
+  align/ sentence-level alignment    G1 per-batch bilingual review(cheap) ── reports issues, no direct edits
                                             │
                                             ▼
-                                G2 证据取证复核(strong) ── 确认/驳回候选
+                                G2 evidence-gathering re-check(strong) ── confirm/dismiss candidates
                                             │
                                             ▼
-                                G3 冲突仲裁 + 影子修订 + 盲复审(收敛状态机)
+                                G3 conflict arbitration + shadow revision + blind re-review(convergence state machine)
                                             │
                                             ▼
                                       build → EPUB
                                             │
                                             ▼
-                                G4 EPUB 结构 QA(epubcheck + 解包审计)
+                                G4 EPUB structural QA(epubcheck + unpack audit)
                                             │
                                             ▼
-                                G5 交付验收(质量报告 + 发布清单)
+                                G5 delivery acceptance(quality report + release checklist)
                                             │
                                             ▼
-                          交付审计(agent 门：独立对账 + 抽查 → delivery 记录)
+                          delivery audit(agent gate: independent reconciliation + sampling → delivery record)
 ```
 
-| 关 | 名称 | 时机 | 成本 | 可跳过 | 产出 |
+| Gate | Name | Timing | Cost | Skippable | Output |
 |---|---|---|---|---|---|
-| G0 | 零 token 静态校验 | 每个单元翻译后立即 | 0 | 否 | 静态告警列表 |
-| G1 | 逐批双语审校 | 全书翻译完成后 | cheap | 否（默认） | `issues`（候选） |
-| G2 | 证据取证复核 | G1 报 issue 后 | strong，按需 | 是 | `issues`（确认/驳回） |
-| G3 | 冲突仲裁 + 影子修订 + 盲复审 | G2 后循环 | strong | 是 | `patches` + 收敛判定 |
-| G4 | EPUB 结构 QA | `build` 后 | 0（epubcheck 本地） | 否 | 结构审计报告 |
-| G5 | 交付验收 | 发布前 | 0 | 否 | `report.json` + 发布清单 |
-| （附加） | 交付审计 | `qa released` 后、交付前 | 低（对账 + 抽样） | 否 | `reviews/delivery-<ts>.md` |
+| G0 | Zero-token static validation | immediately after each unit is translated | 0 | No | static warning list |
+| G1 | Per-batch bilingual review | after the whole book is translated | cheap | No (default) | `issues` (candidates) |
+| G2 | Evidence-gathering re-check | after G1 reports issues | strong, on demand | Yes | `issues` (confirmed/dismissed) |
+| G3 | Conflict arbitration + shadow revision + blind re-review | loop after G2 | strong | Yes | `patches` + convergence determination |
+| G4 | EPUB structural QA | after `build` | 0 (epubcheck local) | No | structural audit report |
+| G5 | Delivery acceptance | before release | 0 | No | `report.json` + release checklist |
+| (additional) | Delivery audit | after `qa released`, before delivery | low (reconciliation + sampling) | No | `reviews/delivery-<ts>.md` |
 
-## 2. 关卡详细规格
+## 2. Detailed Gate Specifications
 
-### G0 零 token 静态校验（纯函数，翻译后立即）
+### G0 Zero-Token Static Validation (pure function, immediately after translation)
 
-输入：`translation/align/<id>.jsonl` + `structured/<id>.md` + `analysis/glossary.csv`。
+Input: `translation/align/<id>.jsonl` + `structured/<id>.md` + `analysis/glossary.csv`.
 
-| 检查项 | 规则 | 失败动作 |
+| Check | Rule | Failure action |
 |---|---|---|
-| 对照表完整性 | 每句原文有 `src↔tgt` 映射，`seq` 连续 1..N 无缺号、无重复，无空原文/空译文 | 阻断该单元 import（报错清单），修正后重跑 |
-| 插入标记守恒 | `{fig:NNN}` 等标记 src/tgt **单元级总量**一致（拆并句挪位不误报） | 告警（硬缺陷）；未清零阻断 G5（`structure_open`） |
-| 脚注标记守恒 | pandoc `[^label]`（引用+定义）与句末数字注码两种表示，src/tgt 总量一致 | 同上 |
-| 表格形状守恒 | structured 与 translation 的 md 管道表格：表数一致、逐表行列数一致（跳围栏、转义管道不计列） | 阻断该单元 import（坏表格直接进 build 产物） |
-| 源保真（fidelity） | align 每行 src 的规范化串必在 structured 全部非空行中（反向=硬，import 阻断）；structured 正文块必在 align src 拼接中（前向=advisory，合法剔除如版权残句不阻断） | 反向失配阻断；前向缺块告警 |
-| md↔align 一致性 | translation md（build 输入）与 align tgt（校验基准）归一化后一致（去标题/脚注定义/标记/空白；容错约定见 g0） | 不一致 = 一侧缺内容 → 阻断该单元 import（交付审计 S1.1） |
-| 长度比 | `len(tgt)/len(src)` 落在 `[0.30, 3.0]`；译文非空 | 告警，交 G1 复核 |
-| 术语命中 | 正文出现 glossary `source` 时，译文包含对应 `target`（NFKC 归一化 + 词边界） | 告警，交 G1 定责 |
-| 勘误留痕 | 句 src 命中已知排印讹误先例（IDG→IDF 等）→ align `note` 前缀 `corr:` | 留痕，不告警 |
+| Alignment-table completeness | every source sentence has a `src↔tgt` mapping, `seq` is continuous 1..N with no gaps and no duplicates, no empty source/empty translation | block that unit's import (error list), rerun after correction |
+| Insert-marker conservation | markers such as `{fig:NNN}` have consistent src/tgt **unit-level totals** (sentence split/merge shifting position does not false-positive) | warning (hard defect); not cleared blocks G5 (`structure_open`) |
+| Footnote-marker conservation | the two representations — pandoc `[^label]` (reference + definition) and sentence-final digit note references — have consistent src/tgt totals | same as above |
+| Table-shape conservation | md pipe tables in structured vs translation: same table count, same row/column count per table (fences skipped, escaped pipes not counted as columns) | block that unit's import (a bad table goes straight into the build product) |
+| Source fidelity | each align line's normalized src string must be among all non-empty lines of structured (reverse = hard, import blocked); structured body blocks must be in the concatenation of align src (forward = advisory; legitimate removals such as leftover copyright sentences do not block) | reverse mismatch blocks; forward missing blocks warn |
+| md↔align consistency | translation md (build input) and align tgt (validation baseline) are identical after normalization (strip headings/footnote definitions/markers/whitespace; tolerance conventions see g0) | mismatch = one side is missing content → block that unit's import (delivery audit S1.1) |
+| Length ratio | `len(tgt)/len(src)` falls within `[0.30, 3.0]`; translation non-empty | warning, handed to G1 for re-check |
+| Terminology hit | when the body contains a glossary `source`, the translation contains the corresponding `target` (NFKC normalization + word boundary) | warning, handed to G1 for attribution |
+| Erratum traceability | a sentence src hits a known typographic-error precedent (IDG→IDF etc.) → align `note` prefixed with `corr:` | trace, no warning |
 
-> 实现状态：以上五项已接线（`g0_unit_flags` / `annotate_correction_notes`）。
-> 规格中的「标点规范化」（`normalize_punctuation`）与「残留产物」（HTML 注释/占位符/
-> 页眉页码）属确定性纯函数，分别在构建期样式清理与 G4 解包审计（`E_RESIDUE`/`W_RESIDUE`）
-> 承担；源语言字符残留属语义判断，归 G1（agent 任务）。
+> Implementation status: the five items above are wired up (`g0_unit_flags` /
+> `annotate_correction_notes`). The "punctuation normalization" (`normalize_punctuation`)
+> and "residue artifacts" (HTML comments / placeholders / running heads and page numbers)
+> in the spec are deterministic pure functions, handled respectively by build-time style
+> cleanup and the G4 unpack audit (`E_RESIDUE`/`W_RESIDUE`); source-language character
+> residue is a semantic judgement and belongs to G1 (agent task).
 
-G0 不烧 token、不出"裁决"，只出**确定性告警**，作为 G1 的输入线索。
+G0 burns no tokens and issues no "verdict", only **deterministic warnings**, serving as input leads for G1.
 
-### G1 逐批双语审校（cheap 档 Reviewer）
+### G1 Per-Batch Bilingual Review (cheap-tier Reviewer)
 
-输入：源句 + 译句（来自 `align/` 对照表）、相关术语子集、G0 告警。
+Input: source sentence + translated sentence (from the `align/` alignment table), the relevant terminology subset, G0 warnings.
 
-- 问题类型：`missing`（漏译）/ `added`（增译）/ `mistranslation`（误译）/ `terminology`（术语违例）/ `pronoun`（人称/性别错误）。
-- **宁缺毋滥**：合理语序调整、自然意译、风格润色不算问题，拿不准不报。
-- **严格 JSON 协议**：对象末尾必须依次 `reviewed_segments`（= 本批句数）与 `complete:true`；违例整批重试（缩小输入再试），防止坏字段被静默当作"无问题"。
-- 输出：`issues` 候选列表（`verdict` 未定），交 G2。
+- Issue types: `missing` (omission) / `added` (addition) / `mistranslation` / `terminology` (terminology violation) / `pronoun` (person/gender error).
+- **Better to omit than to over-flag**: reasonable word-order adjustment, natural free translation and stylistic polishing are not problems; when unsure, do not report.
+- **Strict JSON protocol**: the object must end with, in order, `reviewed_segments` (= the number of sentences in this batch) and `complete:true`; a violation retries the whole batch (with a narrower input), preventing bad fields from being silently treated as "no issues".
+- Output: an `issues` candidate list (`verdict` undecided), handed to G2.
 
-### G2 证据取证复核（strong 档 Agent Loop）
+### G2 Evidence-Gathering Re-Check (strong-tier Agent Loop)
 
-输入：G1 候选问题。
+Input: G1 candidate issues.
 
-- 只读工具：`glossary_term`（按术语查库）、`term_occurrences`（术语全书命中位置）、`segment_context`（段落附近上下文）、`book_context`（风格/概览/章梗概）。
-- 单轮最多 4 个请求、最多 `max_evidence_rounds` 轮取证；**禁止假设未取得的上下文**。
-- 每个候选判 `confirmed` / `dismissed`，附 `evidence_refs`。
-- 术语库、references、影子修订是**待核验材料**，互相矛盾时驳回候选或保留基线。
+- Read-only tools: `glossary_term` (look up a term in the store), `term_occurrences` (locations of a term across the book), `segment_context` (context near a paragraph), `book_context` (style/overview/chapter synopsis).
+- At most 4 requests per round and at most `max_evidence_rounds` rounds of evidence gathering; **assuming un-obtained context is forbidden**.
+- Each candidate is judged `confirmed` / `dismissed`, with `evidence_refs`.
+- The glossary, references and shadow revisions are **material pending verification**; when they contradict each other, dismiss the candidate or keep the baseline.
 
-### G3 冲突仲裁 + 影子修订 + 盲复审（收敛状态机）
+### G3 Conflict Arbitration + Shadow Revision + Blind Re-Review (convergence state machine)
 
-对 G2 确认的问题，分三步循环：
+For issues confirmed by G2, a three-step loop:
 
-1. **冲突仲裁**：跨块对同一术语/人称/固定表达给出矛盾建议时，Arbiter 终局裁决 `suggested`（取其一）或 `unresolved`（证据不足）。
-2. **影子修订**：Fixer 在内存 overlay 上生成"最小修改的完整单句替换"（回显 `segment_ref`、`before_hash`、全部 `issue_ids`，末尾 `complete:true`）。正式 `translation/`、`glossary`、`publication.json` 全程只读。
-3. **盲复审**：下一轮审校**不传旧问题说明**，只读修订后的影子译文，防止"按说明书打勾"。
+1. **Conflict arbitration**: when cross-block suggestions for the same term/person/fixed expression contradict each other, the Arbiter makes a final ruling of `suggested` (pick one) or `unresolved` (insufficient evidence).
+2. **Shadow revision**: the Fixer generates on an in-memory overlay a "minimal-change full single-sentence replacement" (echoing `segment_ref`, `before_hash`, all `issue_ids`, ending with `complete:true`). The official `translation/`, `glossary` and `publication.json` are read-only throughout.
+3. **Blind re-review**: the next review round is **not given the old issue descriptions** and reads only the revised shadow translation, preventing "ticking boxes against the instructions".
 
-收敛判定（见 §5）：
+Convergence determination (see §5):
 
-- 连续 `clean_confirmations` 轮无 issue → `clean_confirmed`；
-- 超过轮数上限 → `max_rounds`；
-- 影子译文整体摘要（SHA-256）出现 A↔B 循环 → `no_progress`；
-- Fixer 失败积压且复审不再报 → `unresolved_fixes`。
+- `clean_confirmations` consecutive rounds with no issue → `clean_confirmed`;
+- exceeding the round limit → `max_rounds`;
+- the overall shadow-translation digest (SHA-256) shows an A↔B cycle → `no_progress`;
+- Fixer failures pile up and review no longer reports → `unresolved_fixes`.
 
-Autofix（可选）：先写可恢复索引 `reviews/<ts>/autofix/index.json`，再更新正式 `align/` 的 `tgt`；其余历史保留在 Review 目录。
+Autofix (optional): first write a recoverable index `reviews/<ts>/autofix/index.json`, then update the `tgt` of the official `align/`; the rest of the history is kept in the Review directory.
 
-### G4 EPUB 结构 QA（build 后，本地）
+### G4 EPUB Structural QA (after build, local)
 
-- `epubcheck` 零 error（jar 缓存于 `~/.cache`）。
-- 解包逐项审计（`qa/audit.py`，已实现）：
-  - `mimetype` 首位、未压缩、内容恰为 `application/epub+zip`；
-  - `META-INF/container.xml` 良构、指向 OPF；
-  - manifest 每个 href 可解析、spine 每个 idref 存在；
-  - nav / NCX / landmarks / 内容文档 img src 引用全部可解析（悬空检测）；
-  - 危险 URL（javascript:/data:）注入拦截；
-  - 主题层边界：style.css 无具体字体名/字号（`E_THEME_FONT`）、无颜色（`E_THEME_COLOR`）；
-  - 封面 meta 互证：`properties="cover-image"` ↔ `<meta name="cover">`（`E_COVER_META`）；
-  - 每个内容文档 `xml:lang` 正确、恰好一个 `h1`、无跳级（`E_HEADING_SKIP`）；
-  - 残留：HTML 注释（`E_RESIDUE`）、markdown/pandoc 标记（`W_RESIDUE`）；
-  - 内部锚点可解析（`E_ANCHOR`，含脚注 noteref→footnote）+ 脚注回链（`E_FN_BACKLINK`）；
-  - 双语 src/tgt 段落数成对（`E_BI_PAIRS`）；
-  - 媒体：alt 空值（`W_IMG_NO_ALT`）、格式兼容（`W_IMG_FORMAT`）、超大/超宽超高/未压缩
-    （`W_IMG_LARGE`/`W_IMG_RATIO`/`W_IMG_UNCOMPRESSED`）、EPUB 总体积（`W_EPUB_SIZE`）；
-  - DC 元数据缺失提示（`W_META_INCOMPLETE`）。
-- 溯源审计（`qa/provenance.py`，postprocessing-spec §2）：三边对账、媒体溯源、逐段覆盖率、
-  目录层级——见 G5。
-- **成品呈现对账**（交付审计 S1.2，`qa/provenance.py`）：md 图片引用 ↔ 成品 `<img>`
-  （`E_MEDIA_EPUB_LOST`，封堵构建静默丢弃）、md 脚注定义数 ↔ 成品 `<aside>` 数
-  （`E_FN_EPUB_LOST`）、正文段落全量探针（`E_EPUB_PARA_LOST` + `epub_coverage`，
-  复用 build 同款渲染器）；md↔align 一致性兜底（`E_ALIGN_MD_DRIFT`）。构建期丢弃
-  引用写 `events.jsonl` 的 `media_dropped` 事件留痕。
+- `epubcheck` zero errors (jar cached in `~/.cache`).
+- Item-by-item unpack audit (`qa/audit.py`, already implemented):
+  - `mimetype` first, uncompressed, content exactly `application/epub+zip`;
+  - `META-INF/container.xml` well-formed, pointing to the OPF;
+  - every href in the manifest resolvable, every idref in the spine present;
+  - all references in nav / NCX / landmarks / content-document img src resolvable (dangling detection);
+  - dangerous URL (javascript:/data:) injection interception;
+  - theme-layer boundary: style.css has no specific font name/size (`E_THEME_FONT`), no color (`E_THEME_COLOR`);
+  - cover meta mutual corroboration: `properties="cover-image"` ↔ `<meta name="cover">` (`E_COVER_META`);
+  - each content document has a correct `xml:lang`, exactly one `h1`, no skipped levels (`E_HEADING_SKIP`);
+  - residue: HTML comments (`E_RESIDUE`), markdown/pandoc markers (`W_RESIDUE`);
+  - internal anchors resolvable (`E_ANCHOR`, including footnote noteref→footnote) + footnote backlinks (`E_FN_BACKLINK`);
+  - bilingual src/tgt paragraph counts paired (`E_BI_PAIRS`);
+  - media: empty alt (`W_IMG_NO_ALT`), format compatibility (`W_IMG_FORMAT`), oversized/overwide/overtall/uncompressed (`W_IMG_LARGE`/`W_IMG_RATIO`/`W_IMG_UNCOMPRESSED`), total EPUB size (`W_EPUB_SIZE`);
+  - DC metadata missing hints (`W_META_INCOMPLETE`).
+- Provenance audit (`qa/provenance.py`, postprocessing-spec §2): tri-lateral reconciliation, media provenance, per-segment coverage, TOC hierarchy — see G5.
+- **Finished-product presentation reconciliation** (delivery audit S1.2, `qa/provenance.py`): md image references ↔ product `<img>` (`E_MEDIA_EPUB_LOST`, closing off silent build drops), md footnote-definition count ↔ product `<aside>` count (`E_FN_EPUB_LOST`), full body-paragraph probe (`E_EPUB_PARA_LOST` + `epub_coverage`, reusing the same renderer as build); md↔align consistency fallback (`E_ALIGN_MD_DRIFT`). A reference dropped at build time is traced by writing a `media_dropped` event to `events.jsonl`.
 
-### G5 交付验收（发布前）
+### G5 Delivery Acceptance (before release)
 
-- 汇总 G0–G4 + 溯源审计生成 `report.json`：
+- Aggregate G0–G4 + the provenance audit into `report.json`:
   ```json
   {
     "slug": "…", "epub_path": "…",
@@ -152,39 +154,43 @@ Autofix（可选）：先写可恢复索引 `reviews/<ts>/autofix/index.json`，
     "released": true, "released_reason": "ok"
   }
   ```
-- 发布清单核对：成品命名（`<slug>.epub` / `<slug>-bi.epub`，`W_NAMING`）、元数据（DC 项齐全）、
-  封面、版权署名、许可。
-- **放行条件**（对齐 docs/postprocessing-spec.md §5 与 `qa/report.py::generate_report`）：
-  `g2_confirmed == 0` 或全部已修订（`g3_patched`）；
-  **`g0_terminology_open == 0`**（G0 术语命中是真实缺陷——译文缺失术语表源词，
-  必须逐条核验清零，否则 `released_reason=terminology_open`）；
-  **`g0_structure_open == 0`**（标记/脚注守恒违例；`structure_open`）；
-  **`glossary_conflicts_open == 0`**（未决术语冲突；`glossary_conflict_open`——
-  裁决写回 glossary.csv 前不放行）；
-  `g4_epubcheck_errors == 0`；`g4_audit == "pass"`；溯源完整
-  （`provenance_coverage ≈ 1.0`（无翻译产物为 null）、三边对账/媒体溯源零缺失、
-  `toc_flat == false`、溯源 findings 无 error 级）；
-  成品呈现对账清零（**`align_md_drift == 0`、`epub_media_missing == 0`、
-  `epub_footnotes_missing == 0`、`epub_coverage ≈ 1.0`**，交付审计 S1）。
-  G0 **长度比**告警是 advisory，不阻断（英→中长度比天然偏低，实测大量误报）；
-  epubcheck 未运行（jar 缺失）视为未验证，不放行。
+- Release checklist verification: product naming (`<slug>.epub` / `<slug>-bi.epub`, `W_NAMING`), metadata (all DC items present), cover, copyright attribution, license.
+- **Release conditions** (aligned with docs/postprocessing-spec.md §5 and `qa/report.py::generate_report`):
+  `g2_confirmed == 0` or all revised (`g3_patched`);
+  **`g0_terminology_open == 0`** (a G0 terminology hit is a real defect — the translation is missing a glossary source term and must be verified and cleared one by one, otherwise `released_reason=terminology_open`);
+  **`g0_structure_open == 0`** (marker/footnote conservation violations; `structure_open`);
+  **`glossary_conflicts_open == 0`** (undecided terminology conflicts; `glossary_conflict_open` — no release before the arbitration is written back to glossary.csv);
+  `g4_epubcheck_errors == 0`; `g4_audit == "pass"`; complete provenance
+  (`provenance_coverage ≈ 1.0` (null when there is no translation artifact), zero missing
+  in tri-lateral reconciliation/media provenance, `toc_flat == false`, no error-level
+  provenance findings);
+  finished-product presentation reconciliation cleared (**`align_md_drift == 0`,
+  `epub_media_missing == 0`, `epub_footnotes_missing == 0`, `epub_coverage ≈ 1.0`**,
+  delivery audit S1).
+  The G0 **length-ratio** warning is advisory and does not block (English→Chinese length
+  ratios are naturally low, with many observed false positives); epubcheck not run (jar
+  missing) counts as unverified and does not release.
 
-### 交付审计（agent 门，qa released 后强制）
+### Delivery Audit (agent gate, mandatory after qa released)
 
-`qa released=True` 只代表**已知契约**全绿。交付前按
-`skills/auto-epublizer/references/delivery.md` 执行独立全量校验并写
-`reviews/delivery-<ts>.md`：工具对账复核 → 解包抽查（首/中/尾 + 高风险章：正文
-探针/看图/脚注内容）→ 目录/封面/元数据人肉核对 → inserts 描述与未决项处置 →
-产物同步字节核对。发现缺陷走修复循环（修 → import → build → qa → 重新审计）。
-全部单元 built 后 qa 以 `W_DELIVERY_AUDIT_MISSING` 提示缺记录（warning 不阻断）。
+`qa released=True` only means the **known contracts** are all green. Before delivery, per
+`skills/auto-epublizer/references/delivery.md`, perform an independent full validation and
+write `reviews/delivery-<ts>.md`: tool reconciliation re-check → unpack sampling
+(first/middle/last + high-risk chapters: body probe / image viewing / footnote content) →
+manual check of TOC/cover/metadata → handling of inserts descriptions and open items →
+byte-level artifact-sync verification. Defects found go through the repair loop
+(fix → import → build → qa → re-audit). Once every unit is built, qa reminds you with
+`W_DELIVERY_AUDIT_MISSING` when the record is missing (warning, non-blocking).
 
-> 依据：真实交付案例——《俄国铁路史》工具 QA 全过，成品 72 张引用图仅收录 34 张
-> （译文正文丢图片段，工具守恒只查对照表）。成品校验必须独立做「源引用 ↔ 成品
-> 包含」对账，不能只依赖工具 QA。
+> Basis: a real delivery case — *The History of Russian Railways* passed all tool QA, yet
+> the finished product included only 34 of 72 referenced images (the translated body
+> dropped image segments; the tool's conservation check only inspects the alignment
+> table). Finished-product validation must independently reconcile "source references ↔
+> product inclusion" and must not rely solely on tool QA.
 
-## 3. 数据契约（落 `reviews/`）
+## 3. Data Contracts (written to `reviews/`)
 
-### Issue（G1 产出、G2 定谳）
+### Issue (produced by G1, adjudicated by G2)
 
 ```json
 {
@@ -193,8 +199,8 @@ Autofix（可选）：先写可恢复索引 `reviews/<ts>/autofix/index.json`，
   "index": 3,
   "seq": [12, 13],
   "type": "terminology",
-  "detail": "old sport 未用已确认译法「老兄」",
-  "suggestion": "改为「老兄」",
+  "detail": "old sport does not use the confirmed rendering 「老兄」",
+  "suggestion": "change to 「老兄」",
   "evidence_refs": ["glossary:old sport"],
   "consistency": null,
   "verdict": "confirmed",
@@ -202,97 +208,99 @@ Autofix（可选）：先写可恢复索引 `reviews/<ts>/autofix/index.json`，
 }
 ```
 
-`seq` 定位到 `align/<id>.jsonl` 的具体句，是双语定位、修回、统计差错率的锚点。
+`seq` locates the exact sentence in `align/<id>.jsonl` and is the anchor for bilingual
+location, repair write-back and error-rate statistics.
 
-### Patch（G3 影子修订）
+### Patch (G3 shadow revision)
 
 ```json
 {
   "patch_id": "p-ch01-0003-1",
   "chapter": "ch01",
   "index": 3,
-  "before_hash": "sha256 当前译文",
-  "after": "修订后的完整译句",
+  "before_hash": "sha256 current translation",
+  "after": "complete revised translated sentence",
   "issue_ids": ["r1-ch01-0003"],
   "review_round": 1,
   "status": "provisional"
 }
 ```
 
-### Review 运行目录
+### Review Run Directory
 
 ```text
-reviews/review-<ts>/     # agent 手写的审校记录（G1–G3 由 agent 自身执行）
-├── issues/               # 审校发现
-├── patches/              # 修订补丁
-├── summary               # 汇总说明
-└── result.json           # 终局（qa 从此读取）：g1_candidates / g2_confirmed /
-                         # g3_patched / termination / rounds（issue_count 为旧回退键）
+reviews/review-<ts>/     # agent hand-written review records (G1–G3 executed by the agent itself)
+├── issues/               # review findings
+├── patches/              # revision patches
+├── summary               # summary explanation
+└── result.json           # final outcome (qa reads from here): g1_candidates / g2_confirmed /
+                         # g3_patched / termination / rounds (issue_count is the legacy fallback key)
 ```
 
-## 4. 验收阈值（默认，可配置）
+## 4. Acceptance Thresholds (default, configurable)
 
-| 指标 | 阈值 | 含义 |
+| Metric | Threshold | Meaning |
 |---|---|---|
-| 长度比 | `0.30 ≤ ratio ≤ 3.0`（advisory） | 过小疑漏译、过大疑失控；G1 复核 |
-| 空译文 | 禁止 | import 阻断该单元 |
-| 术语命中 | `g0_terminology_open == 0`（放行硬门） | 全书一致性；真实缺陷须清零 |
-| 差错率 | `confirmed / total_sentences ≤ 1e-4`（agent 自查参考，非 CLI 硬门） | 对齐出版差错率惯例 |
-| epubcheck | 0 error（且须实际运行） | 结构合法性 |
+| Length ratio | `0.30 ≤ ratio ≤ 3.0` (advisory) | too small suggests omission, too large suggests runaway; G1 re-check |
+| Empty translation | forbidden | import blocks the unit |
+| Terminology hit | `g0_terminology_open == 0` (hard release gate) | whole-book consistency; real defects must be cleared |
+| Error rate | `confirmed / total_sentences ≤ 1e-4` (agent self-check reference, not a CLI hard gate) | aligned with publishing error-rate conventions |
+| epubcheck | 0 error (and must actually run) | structural validity |
 
-## 5. 收敛状态机（G3）
+## 5. Convergence State Machine (G3)
 
 ```text
-start ──▶ R1 审校 ──▶ 无 issue ──▶ clean_streak++ ──▶ 达 clean_confirmations ──▶ clean_confirmed
+start ──▶ R1 review ──▶ no issue ──▶ clean_streak++ ──▶ reach clean_confirmations ──▶ clean_confirmed
    │                        │
-   │                        └─▶ 有 issue ──▶ 仲裁+影子修订 ──▶ R2 盲审（重复，且 clean_streak=0）
+   │                        └─▶ has issue ──▶ arbitration + shadow revision ──▶ R2 blind review (repeat, and clean_streak=0)
    │
-   └─▶ 轮数超限 ──▶ max_rounds
-   └─▶ 摘要 SHA-256 循环 ──▶ no_progress
-   └─▶ Fixer 失败积压且复审不再报 ──▶ unresolved_fixes
+   └─▶ round count exceeded ──▶ max_rounds
+   └─▶ digest SHA-256 cycle ──▶ no_progress
+   └─▶ Fixer failures pile up and review no longer reports ──▶ unresolved_fixes
 ```
 
-轮数上限 = `(fix_max_rounds + 1) × clean_confirmations`（默认 `3 × 2 = 6`）。
+Round limit = `(fix_max_rounds + 1) × clean_confirmations` (default `3 × 2 = 6`).
 
-## 6. 配置项（`config` 的 `qc` 段）
+## 6. Configuration Items (the qc section of config)
 
-`config.yaml` 的 `qc` 段**实际只有两项**（见 `auto_common/config.py`）：
+The `qc` section of `config.yaml` **actually has only two items** (see `auto_common/config.py`):
 
 ```yaml
 qc:
-  length_ratio: { too_short: 0.30, too_long: 3.0 }   # G0 长度比告警阈值
+  length_ratio: { too_short: 0.30, too_long: 3.0 }   # G0 length-ratio warning thresholds
   epubcheck: { jar: "~/.cache/epubcheck.jar", strict: true }
 ```
 
-以下参数是 **agent 审校操作的参考值**（G1–G3 由 agent 自行执行，CLI 不接线）：
+The following parameters are **reference values for the agent's review operations**
+(G1–G3 are executed by the agent itself; the CLI does not wire them):
 
-| 参数 | 参考值 | 说明 |
+| Parameter | Reference value | Description |
 |---|---|---|
-| `error_rate_threshold` | 0.0001 | 差错率自查阈值（`g2_confirmed / total_sentences`） |
-| `review.output_retries` | 2 | 审校 JSON 协议违例重试次数 |
-| `evidence.max_rounds` | 2 | 取证轮数上限 |
-| `fix_loop.max_rounds` | 2 | 修复轮数上限（收敛状态机：`(max_rounds+1)×clean_confirmations`） |
-| `fix_loop.clean_confirmations` | 2 | 连续 clean 确认次数 |
+| `error_rate_threshold` | 0.0001 | error-rate self-check threshold (`g2_confirmed / total_sentences`) |
+| `review.output_retries` | 2 | number of retries for review JSON protocol violations |
+| `evidence.max_rounds` | 2 | maximum number of evidence-gathering rounds |
+| `fix_loop.max_rounds` | 2 | maximum number of repair rounds (convergence state machine: `(max_rounds+1)×clean_confirmations`) |
+| `fix_loop.clean_confirmations` | 2 | number of consecutive clean confirmations |
 
-## 7. 与工作区目录的对应
+## 7. Correspondence with the Workspace Directories
 
-| QC 产物 | 落点 |
+| QC artifact | Landing point |
 |---|---|
-| 句级对照表 | `translation/align/<id>.jsonl` |
-| 静态告警 | G0 在 `import`/`g0` 命令当轮输出；`qa` 时重算并聚合进 `report.json` 的 `g0_flags`（不单独落盘） |
-| 审校问题/补丁/仲裁 | `reviews/review-<ts>/`（agent 手写，`result.json` 必备） |
-| 质量报告 | `report.json`（工作区根） |
-| 行为账本 | `events.jsonl`（追加式；用量账本已随内部 LLM 移除而删除） |
+| Sentence-level alignment | `translation/align/<id>.jsonl` |
+| Static warnings | G0 outputs them in the current round of the `import`/`g0` commands; at `qa` time they are recomputed and aggregated into `report.json`'s `g0_flags` (not persisted separately) |
+| Review issues/patches/arbitration | `reviews/review-<ts>/` (agent hand-written, `result.json` required) |
+| Quality report | `report.json` (workspace root) |
+| Behavior ledger | `events.jsonl` (append-only; the usage ledger has been removed along with the internal LLM) |
 
-## 8. 与传统三审三校的对应
+## 8. Correspondence with the Traditional Three Reviews and Three Proofreads
 
-| 传统 | 本项目关卡 |
+| Traditional | Our project's gate |
 |---|---|
-| 校异同 | G0（确定性对照 + 对照表完整性） |
-| 校是非 | G1 + G2（报 issue、取证裁决，不直接改） |
-| 初审 | G1（基础错误） |
-| 复审 | G2 + G3 仲裁（一致 + 存疑） |
-| 编辑加工 | G3 影子修订（只读、留痕、疑难上报） |
-| 核红 | G3 盲复审 + 振荡检测 |
-| 三校一读 | G3 连续 clean 确认 + G4 结构审计 |
-| 付印清样 | G4 + G5（零 error 放行） |
+| Checking similarities and differences (校异同) | G0 (deterministic collation + alignment-table completeness) |
+| Checking right and wrong (校是非) | G1 + G2 (report issues, evidence-based adjudication, no direct edits) |
+| First review | G1 (basic errors) |
+| Second review | G2 + G3 arbitration (consistency + doubts) |
+| Editorial processing | G3 shadow revision (read-only, traceable, escalate difficult cases) |
+| Checking red marks (核红) | G3 blind re-review + oscillation detection |
+| Three proofreads and one read | G3 consecutive clean confirmations + G4 structural audit |
+| Press proof (付印清样) | G4 + G5 (zero errors to release) |
