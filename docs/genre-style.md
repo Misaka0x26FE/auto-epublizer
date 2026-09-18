@@ -1,53 +1,64 @@
-# 文体优化（总览与索引）
+<!-- i18n: source=genre-style.zh.md sha256=e3fb9cf30873fff9a55367a9a5b925e1e833d90364e3c4e291331b042a8defac -->
+> **English** | [中文](genre-style.zh.md)
 
-不同文体对分析、翻译、术语、审校的要求差异很大。本目录为每种文体提供一篇专门文档；本文档是
-总览与索引。
+# Genre Style Optimization (Overview and Index)
 
-## 核心框架：两个正交维度
+Different genres place very different demands on analysis, translation, terminology and
+review. This directory provides one dedicated document per genre; this document is the
+overview and index.
+
+## Core Framework: Two Orthogonal Dimensions
 
 ```text
-文体档案（genre profile，随体裁变）  ×  语言特定指引（langprofile，随源语言变）
+genre profile (varies by genre)  ×  language-specific guidance (langprofile, varies by source language)
 ```
 
-- **文体档案**决定：分析维度（analyze 提取什么）、术语类型白名单（抽什么词）、翻译指引（怎么译）、
-  审校侧重（reviewer 什么算问题）、辅文侧重（哪些辅文重要）。
-- **语言指引**决定：翻译时的语言陷阱（敬称、代词性别、时态、拟声、汉字词…），与文体无关。
+- **Genre profile** determines: analysis dimensions (what analyze extracts), the
+  terminology-type whitelist (which words to extract), translation guidance (how to
+  translate), review focus (what a reviewer counts as a problem), and frontmatter/backmatter
+  focus (which supplementary matter matters).
+- **Language guidance** determines: language pitfalls during translation (honorifics,
+  gendered pronouns, tense, onomatopoeia, Han-character words…), independent of genre.
 
-两者叠加，组成注入 prompt 的文体指引。文体档案是**声明式数据**，按 `genre` 键加载，新增体裁不改代码。
+The two overlay to form the genre guidance injected into the prompt. The genre profile is
+**declarative data**, loaded by the `genre` key; adding a genre does not require code
+changes.
 
-## 文体文档索引
+## Genre Document Index
 
-| 文体 | 文档 | 核心特殊优化 |
+| Genre | Document | Core special optimizations |
 |---|---|---|
-| 小说叙事 | [novel.md](genres/novel.md) | 角色圣经 + source-only 术语 + 敬称策略 + 对话辨识度 + 前文滚动衔接 |
-| 学术专著 | [academic.md](genres/academic.md) | 学科术语统一 + 索引边码 + 缩略语加注 + 参考文献不译 + 数字单位规范 |
-| 论文（IMRaD） | [paper.md](genres/paper.md) | IMRaD 结构 + 结果/讨论分离 + 缩略语加注 + 可复现 |
-| 诗歌/散文 | [poetry.md](genres/poetry.md) | 行结构保留 + 意象优先 + 韵脚策略声明 |
-| 报刊/期刊 | [newspaper.md](genres/newspaper.md) | 按版面组织 + 标题导语化 + 事实/引语准确 + 客观转达 |
+| Novel narrative | [novel.md](genres/novel.md) | Character bible + source-only terms + honorific strategy + dialogue distinctiveness + rolling previous-context linkage |
+| Academic monograph | [academic.md](genres/academic.md) | Discipline terminology consistency + index edge codes + abbreviation annotation + references untranslated + number/unit conventions |
+| Paper (IMRaD) | [paper.md](genres/paper.md) | IMRaD structure + results/discussion separation + abbreviation annotation + reproducibility |
+| Poetry/prose | [poetry.md](genres/poetry.md) | Line-structure preservation + imagery first + rhyme-scheme declaration |
+| Newspaper/periodical | [newspaper.md](genres/newspaper.md) | Organization by page layout + headline-to-lead conversion + factual/quote accuracy + objective relay |
 
-## 语言特定指引（langprofile，独立于文体）
+## Language-Specific Guidance (langprofile, independent of genre)
 
-| 源语言 | 要点 |
+| Source language | Key points |
 |---|---|
-| `ja` | 敬称策略；第一人称（私/僕/俺/あたし）定语域与代词；拟声拟态词按中文习惯；汉字词≠中文词勿照搬；振假名〘〙仅供判读严禁写入 |
-| `en` | 无敬称，Mr./Ms./Sir 全书统一；据姓名性别与上下文定"他/她/它"；时态/关系从句/长句按中文重组，被动酌情转主动；专名音译 |
-| `ru/ko/fr/de/es…` | 忠实传意，符合中文目标语言表达习惯 |
+| `ja` | Honorific strategy; first person (私/僕/俺/あたし) domains and pronouns; onomatopoeia/mimetic words follow Chinese conventions; Han-character words ≠ Chinese words, do not copy directly; furigana 〘〙 for interpretation only, strictly forbidden to write in |
+| `en` | No honorifics, Mr./Ms./Sir consistent throughout; decide "he/she/it" from name gender and context; tense/relative clauses/long sentences restructured per Chinese, passive to active as appropriate; proper-noun transliteration |
+| `ru/ko/fr/de/es…` | Faithful conveyance of meaning, conforming to Chinese target-language expression conventions |
 
-## 文体档案统一 schema
+## Unified Genre Profile Schema
 
-`publication.json.meta.genre` 声明/判定体裁，`analysis/style.md` 存文体档案：
+`publication.json.meta.genre` declares/determines the genre; `analysis/style.md` stores
+the genre profile:
 
 ```yaml
 genre: novel                # novel | academic | paper | poetry | newspaper | ...
-detect: auto                # auto | 显式声明
-style: { … }                # 文体分析维度
-characters: […]             # 小说：角色圣经
-term_types: […]             # 该文体术语类型白名单
-review_focus: […]           # 审校 issue 类型加权
-translation_rules: […]      # 文体翻译指引
+detect: auto                # auto | explicit declaration
+style: { … }                # genre analysis dimensions
+characters: […]             # novel: character bible
+term_types: […]             # terminology-type whitelist for this genre
+review_focus: […]           # review issue-type weighting
+translation_rules: […]      # genre translation guidance
 ```
 
-## 注入顺序（沿用"静态→动态"）
+## Injection Order (Following "Static → Dynamic")
 
-system 放文体指引 + 语言指引 + 标点规则；user 放风格/角色圣经 → 全书概览 → 章梗概 → 重点 →
-术语子集 → 前文译文 → 待译正文。
+The system prompt holds genre guidance + language guidance + punctuation rules; the user
+prompt holds style/character bible → book overview → chapter synopsis → key points →
+terminology subset → previous translation → text to translate.

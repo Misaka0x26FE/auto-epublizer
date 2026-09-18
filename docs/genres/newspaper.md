@@ -1,60 +1,65 @@
-# 报刊与期刊 · 翻译优化文档
+<!-- i18n: source=newspaper.zh.md sha256=4555d1d165f61eea75eee965fd494db6cd9ebf18e32bb7889de823a990f1f4fb -->
+> **English** | [中文](newspaper.zh.md)
 
-> 报刊（报纸）/期刊的专门优化规范。报刊按**版面**组织而非"序跋正文"，是连续出版物。
+# Newspaper and Periodical · Translation Optimization Document
 
-## 1. 文体定位与识别特征
+> The dedicated optimization specification for newspapers/periodicals. Newspapers are
+> organized by **page layout** rather than "preface/postscript + body", and are serial
+> publications.
 
-识别特征：
+## 1. Genre Positioning and Identification Features
 
-- **报纸**：报头（报名/刊号/邮发代号/日期/总期数）、报眼、报眉、版面、栏目、头条/倒头条、通版；
-- **内容**：新闻（消息/通讯/特稿）+ 言论（社论/评论/编者按）+ 副刊（专版）+ 广告；
-- **期刊**：介于图书与报纸之间，有封面、目录页、栏目、正文文章；学术期刊带卷期号、ISSN、摘要、关键词、参考文献。
+Identification features:
 
-## 2. 结构特征与辅文侧重
+- **Newspaper**: masthead (paper name/publication number/postal issue code/date/total issue number), ear panel, running head, page layout, columns, lead story/second lead, double-page spread;
+- **Content**: news (dispatches/reports/features) + opinion (editorials/commentary/editor's notes) + supplements (special pages) + advertisements;
+- **Periodical**: between books and newspapers, with cover, contents page, columns, body articles; academic journals carry volume/issue numbers, ISSN, abstract, keywords, references.
 
-| 区域 | 处理 |
+## 2. Structural Features and Frontmatter/Backmatter Focus
+
+| Region | Handling |
 |---|---|
-| 报头/报眉 | 元数据著录（报名、日期、刊号、版序） |
-| 栏目/版面归属 | **保留**，不打散成章节 |
-| 标题 | 需译，简洁、导语前置 |
-| 正文（消息/社论/评论） | 翻译主战场 |
-| 广告（报纸） | 通常跳过或标注 |
+| Masthead/running head | Metadata cataloguing (paper name, date, publication number, page order) |
+| Column/page attribution | **Preserved**, not broken up into chapters |
+| Title | Needs translation, concise, lead placed first |
+| Body (dispatches/editorials/commentary) | The main battlefield of translation |
+| Advertisements (newspapers) | Usually skipped or marked |
 
-## 3. 分析维度（agent 撰写 analysis/ 时参照）
+## 3. Analysis Dimensions (consulted by the agent when writing analysis/)
 
-| 字段 | 含义 |
+| Field | Meaning |
 |---|---|
-| `layout` | 版面结构 / 栏目归属 |
-| `style` | 新闻体（消息/通讯/社论/评论） |
-| `periodicity` | 周期性 / 时效性 |
+| `layout` | Page layout structure / column attribution |
+| `style` | News style (dispatch/report/editorial/commentary) |
+| `periodicity` | Periodicity / timeliness |
 
-## 4. 术语与实体表
+## 4. Terminology and Entity Table
 
-- 人名/机构/地名（对照通用译名）；
-- 社论/评论中的立场性表达**客观转达**（不因观点改写）。
+- Personal names/institutions/place names (checked against conventional translation names);
+- Stance-expressing expressions in editorials/commentary are **objectively relayed** (not rewritten because of the opinion).
 
-## 5. 翻译指引
+## 5. Translation Guidance
 
-1. **标题简洁、导语前置**（中文新闻习惯）；
-2. **保留版面/栏目归属关系**，不打散成章节；
-3. 社论/评论的语气与立场客观转达，不因观点改写；
-4. 消息按"倒金字塔"结构，重点前置。
+1. **Titles concise, lead placed first** (Chinese news convention);
+2. **Preserve page layout/column attribution relationships**, not broken up into chapters;
+3. The tone and stance of editorials/commentary are objectively relayed, not rewritten because of the opinion;
+4. Dispatches follow the "inverted pyramid" structure, with key points placed first.
 
-## 6. 审校侧重（映射 QC）
+## 6. Review Focus (Mapping to QC)
 
-| QC 关卡 | 报刊侧重 |
+| QC gate | Newspaper focus |
 |---|---|
-| G0 | 标题/导语完整性、术语命中 |
-| G1 | 侧重 `mistranslation`（事实/数字/引语）、`missing`（导语要点） |
-| G2 | 取证：人名机构通用译名 |
-| G3 | 人名/机构跨版面统一 |
+| G0 | Title/lead completeness, terminology hits |
+| G1 | Focus on `mistranslation` (facts/numbers/quotes), `missing` (lead key points) |
+| G2 | Evidence: conventional translation names for personal names and institutions |
+| G3 | Cross-page consistency of personal names/institutions |
 
-**严格度**：新闻事实、数字、引语必须准确（媒体差错率高发区），审校侧重事实与引语。
+**Strictness**: news facts, numbers and quotes must be accurate (a high-incidence area for media errors); review focuses on facts and quotes.
 
-## 7. 特殊优化清单
+## 7. Special Optimization Checklist
 
-- [ ] 按版面/栏目组织（非章节）
-- [ ] 标题导语化 + 倒金字塔结构
-- [ ] 事实/数字/引语准确（审校重点）
-- [ ] 社论/评论客观转达
-- [ ] 人名/机构跨版面统一
+- [ ] Organized by page layout/column (not chapters)
+- [ ] Headline-to-lead conversion + inverted-pyramid structure
+- [ ] Facts/numbers/quotes accurate (a review focal point)
+- [ ] Editorials/commentary objectively relayed
+- [ ] Cross-page consistency of personal names/institutions

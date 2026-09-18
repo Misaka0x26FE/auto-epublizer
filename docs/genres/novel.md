@@ -1,100 +1,104 @@
-# 小说叙事 · 翻译优化文档
+<!-- i18n: source=novel.zh.md sha256=fccb31a3395ed7bc1baaa62777a93b5bcd93320afad14683f0544584e0d5da43 -->
+> **English** | [中文](novel.zh.md)
 
-> 本文档是小说体裁的专门优化规范，落实 wenyi（`trans_novel`）的 `analyzer.py`、
-> `langprofile.py`、`glossary/store.py` 机制。配合 `docs/translation-flow.md` 的
-> 切片翻译流程与 `docs/quality-control.md` 的审校关卡使用。
+# Novel Narrative · Translation Optimization Document
 
-## 1. 文体定位与识别特征
+> This document is the dedicated optimization specification for the novel genre,
+> implementing the `analyzer.py`, `langprofile.py` and `glossary/store.py` mechanisms of
+> wenyi (`trans_novel`). Use it together with the chunk translation flow in
+> `docs/translation-flow.md` and the review gates in `docs/quality-control.md`.
 
-小说是**叙事体**：以章回/分章组织，有角色、对话、情节推进与人物弧光。服务对象是叙事，不是检索。
+## 1. Genre Positioning and Identification Features
 
-识别特征：
+The novel is a **narrative form**: organized by chapters/divisions, with characters,
+dialogue, plot progression and character arcs. It serves narration, not retrieval.
 
-- 有对话、心理描写、场景描写，章标题多为叙事性；
-- 辅文**从简**：封面、书名页、版权页、献词、序（可选）、目录（可有可无）、正文、后记；
-- **一般没有**索引、凡例、参考文献、脚注（除"译注本/校注本"特殊版本）。
+Identification features:
 
-## 2. 结构特征与辅文侧重
+- Has dialogue, psychological description, scene description; chapter titles are mostly narrative;
+- Frontmatter/backmatter is **minimal**: cover, title page, copyright page, dedication, preface (optional), table of contents (optional), body, afterword;
+- **Generally has no** index, explanatory notes, references or footnotes (except for special "annotated translation/collated edition" versions).
 
-| 区域 | 处理 |
+## 2. Structural Features and Frontmatter/Backmatter Focus
+
+| Region | Handling |
 |---|---|
-| 封面/书名页/版权页 | 基本照录，仅做元数据著录 |
-| 献词 | 短，需译，保留排版 |
-| 序（他序/自序）/前言 | 散文，需译，需理解（对应 `analysis/units/`） |
-| 正文 | 翻译主战场，按章→段→句切片 |
-| 后记/跋 | 散文，需译 |
-| 索引/参考文献/脚注 | 通常无；若有（译注本）则按学术规范保留双向跳转 |
+| Cover/title page/copyright page | Basically transcribed as-is, only metadata cataloguing |
+| Dedication | Short, needs translation, layout preserved |
+| Preface (preface by another/author's preface)/foreword | Prose, needs translation, needs understanding (corresponds to `analysis/units/`) |
+| Body | The main battlefield of translation, chunked by chapter → paragraph → sentence |
+| Afterword/postscript | Prose, needs translation |
+| Index/references/footnotes | Usually none; if present (annotated translation) keep bidirectional jumps per academic conventions |
 
-## 3. 分析维度（agent 撰写 → `analysis/style.md`）
+## 3. Analysis Dimensions (agent writes → `analysis/style.md`)
 
-| 字段 | 含义 | 示例 |
+| Field | Meaning | Example |
 |---|---|---|
-| `genre` | 体裁 | 青春校园 / 冷峻第三人称 / 悬疑 |
-| `tone` | 整体语气 / 文体 | 冷峻克制、诗化 |
-| `narration` | 叙事人称与时态 | 第一人称限知、过去时 |
-| `pacing` | 句式节奏 | 长短句比例、段落密度 |
-| `register` | 语域 | 书面 / 口语 / 文白程度 |
-| `dialogue_style` | 对话风格 | 口癖、语气词、称呼习惯 |
-| `rhetoric` | 修辞倾向 | 比喻密度、心理描写方式 |
+| `genre` | Genre | youth campus / cold third person / suspense |
+| `tone` | Overall tone / style | cold and restrained, poetic |
+| `narration` | Narrative person and tense | first-person limited, past tense |
+| `pacing` | Sentence rhythm | ratio of long to short sentences, paragraph density |
+| `register` | Register | written / colloquial / degree of classicalness |
+| `dialogue_style` | Dialogue style | verbal tics, modal particles, forms of address |
+| `rhetoric` | Rhetorical tendency | density of metaphor, mode of psychological description |
 
-## 4. 角色圣经与术语
+## 4. Character Bible and Terminology
 
-### 4.1 角色圣经（character bible）
+### 4.1 Character Bible
 
-每个角色 `{source, reading, target, gender, note}`，`note` 必须包含**说话方式：自称、口癖、敬语习惯**：
+Each character `{source, reading, target, gender, note}`, where `note` must include **manner of speech: self-reference, verbal tics, honorific habits**:
 
 ```json
-{"source":"五河士道","reading":"いつかわしどう","target":"五河士道","gender":"男",
- "note":"温和老好人；自称「俺」；称呼妹妹「琴里」"}
+{"source":"五河士道","reading":"いつかわしどう","target":"五河士道","gender":"male",
+ "note":"Gentle good-natured person; calls himself 「俺」; calls his sister 「琴里」"}
 ```
 
-种入术语库，作为全书翻译统一基准。对话必须按角色口癖/自称/敬语译出辨识度。
+Seeded into the glossary as the unified baseline for translating the whole book. Dialogue must be translated with distinctiveness according to each character's verbal tics/self-reference/honorifics.
 
-### 4.2 术语类型白名单
+### 4.2 Terminology-Type Whitelist
 
-| 类型 | 说明 | 匹配方式 |
+| Type | Description | Matching method |
 |---|---|---|
-| `人物` person | 人名 | source + alias |
-| `地名/组织/术语` | 普通实体 | source + alias |
-| `称谓` appellation | 职称/亲属/昵称等称呼变体 | **仅完整 source** |
-| `敬称` honorific | 先輩→前辈、ちゃん→小X 等 | **仅完整 source** |
-| `口癖` speech | 角色口头禅 | **仅完整 source** |
-| `固定表达` fixed_expr | 咒语/标语/固定台词 | **仅完整 source** |
+| `人物` person | Personal names | source + alias |
+| `地名/组织/术语` | Ordinary entities | source + alias |
+| `称谓` appellation | Address variants such as titles/kinship/nicknames | **full source only** |
+| `敬称` honorific | 先輩→senior, ちゃん→little X, etc. | **full source only** |
+| `口癖` speech | Character catchphrases | **full source only** |
+| `固定表达` fixed_expr | Incantations/slogans/fixed lines | **full source only** |
 
-**source-only 机制**（wenyi `_SOURCE_ONLY_TYPES`）：称谓/敬称/口癖/固定表达只按完整原文精确匹配，
-避免裸名 alias 把带语气/场景的派生译法误注入普通称呼。
+**source-only mechanism** (wenyi `_SOURCE_ONLY_TYPES`): appellations/honorifics/verbal tics/fixed expressions are matched exactly only by the full original text, avoiding bare-name aliases wrongly injecting tone-/scene-derived renderings into ordinary forms of address.
 
-## 5. 翻译指引
+## 5. Translation Guidance
 
-1. 忠实原文，绝不漏译、增译、合并或拆分段落，保留原文分段；
-2. 保留叙事人称与语气；严格执行风格指南的人称、句式节奏、语域；
-3. 对话按角色口癖/自称/敬语译出辨识度；心理、修辞按中文小说习惯自然表达，不生硬直译、不堆砌翻译腔；
-4. 代词指代、人物称谓、语气跨段连贯（靠前文译文滚动注入）；
-5. 敬称策略（日文源）三选一：`keep_style`（体现语气）/ `normalize`（统一规则）/ `drop`（省略）。
+1. Be faithful to the original, never omit, add, merge or split paragraphs; preserve the original paragraphing;
+2. Preserve the narrative person and tone; strictly enforce the style guide's person, sentence rhythm and register;
+3. Translate dialogue with distinctiveness according to each character's verbal tics/self-reference/honorifics; express psychology and rhetoric naturally per Chinese novel conventions, neither stiffly literal nor piled with translationese;
+4. Pronoun reference, forms of address for characters and tone stay coherent across paragraphs (via rolling injection of the previous translation);
+5. Honorific strategy (Japanese source), choose one of three: `keep_style` (reflect tone) / `normalize` (unified rules) / `drop` (omit).
 
-## 6. 审校侧重（映射 QC）
+## 6. Review Focus (Mapping to QC)
 
-| QC 关卡 | 小说侧重 |
+| QC gate | Novel focus |
 |---|---|
-| G0 | 句数一致、长度比、空译文、术语命中（source-only 精确匹配） |
-| G1 | 侧重 `pronoun`（人称/性别代词）、角色称谓一致、口癖一致 |
-| G2 | 取证：术语库条目 + 前文角色称呼上下文 |
-| G3 | 冲突仲裁聚焦角色称谓/固定表达跨章统一 |
+| G0 | Sentence-count consistency, length ratio, empty translations, terminology hits (source-only exact match) |
+| G1 | Focus on `pronoun` (person/gender pronouns), character-address consistency, verbal-tic consistency |
+| G2 | Evidence: glossary entries + previous-context character-address context |
+| G3 | Conflict arbitration focuses on cross-chapter consistency of character addresses/fixed expressions |
 
-**宽容度**：合理的语序调整、自然意译、风格润色**不算问题**——小说翻译容忍度高，审校宁缺毋滥。
+**Tolerance**: reasonable word-order adjustment, natural free translation and stylistic polishing **do not count as problems** — novel translation has high tolerance, and review should err on the side of omission rather than over-flagging.
 
-## 7. 语言特定优化（langprofile）
+## 7. Language-Specific Optimization (langprofile)
 
-| 源语言 | 要点 |
+| Source language | Key points |
 |---|---|
-| `ja` | 敬称策略；第一人称（私/僕/俺/あたし）定语域与代词；拟声拟态词按中文习惯；汉字词≠中文词勿照搬；振假名〘〙仅供判读严禁写入 |
-| `en` | 无敬称，Mr./Ms./Sir 全书统一；据姓名性别与上下文定"他/她/它"；时态/关系从句/长句按中文重组，被动酌情转主动；专名音译 |
+| `ja` | Honorific strategy; first person (私/僕/俺/あたし) domains and pronouns; onomatopoeia/mimetic words follow Chinese conventions; Han-character words ≠ Chinese words, do not copy directly; furigana 〘〙 for interpretation only, strictly forbidden to write in |
+| `en` | No honorifics, Mr./Ms./Sir consistent throughout; decide "he/she/it" from name gender and context; tense/relative clauses/long sentences restructured per Chinese, passive to active as appropriate; proper-noun transliteration |
 
-## 8. 特殊优化清单
+## 8. Special Optimization Checklist
 
-- [ ] 角色圣经提取并种入术语库
-- [ ] source-only 术语类型（称谓/敬称/口癖/固定表达）
-- [ ] 敬称策略声明（日文源）
-- [ ] 对话辨识度（口癖/自称/敬语）
-- [ ] 前文译文滚动注入（衔接代词/称谓/语气）
-- [ ] 审校 pronoun 加权 + 高宽容度
+- [ ] Character bible extracted and seeded into the glossary
+- [ ] source-only terminology types (appellations/honorifics/verbal tics/fixed expressions)
+- [ ] Honorific strategy declared (Japanese source)
+- [ ] Dialogue distinctiveness (verbal tics/self-reference/honorifics)
+- [ ] Rolling injection of previous translation (linking pronouns/addresses/tone)
+- [ ] Review pronoun weighting + high tolerance

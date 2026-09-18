@@ -1,62 +1,67 @@
-# 论文（IMRaD）· 翻译优化文档
+<!-- i18n: source=paper.zh.md sha256=39c2df2179862a289fbbca3826aaabd0356f9d78323f8e8c6ddebd9481953e1c -->
+> **English** | [中文](paper.zh.md)
 
-> 期刊论文/学术论文的专门优化规范。论文不采用图书的"装帧+序跋"体系，走国际通行的 IMRaD 结构。
+# Paper (IMRaD) · Translation Optimization Document
 
-## 1. 文体定位与识别特征
+> The dedicated optimization specification for journal articles/academic papers. Papers do
+> not adopt the book's "binding + preface/postscript" system; they follow the internationally
+> standard IMRaD structure.
 
-识别特征：
+## 1. Genre Positioning and Identification Features
 
-- 前置：标题 → 作者及单位 → 摘要 → 关键词（3–5 个）；
-- 主体：引言 → 方法 → 结果 → 讨论 → 结论（IMRaD）；
-- 后置：致谢/基金 → 参考文献 → 附录 → 补充材料/利益冲突声明/作者贡献说明；
-- 元数据为 DOI、卷期页码（非 ISBN/CIP）。
+Identification features:
 
-## 2. 结构特征与辅文侧重
+- Frontmatter: title → authors and affiliations → abstract → keywords (3–5);
+- Body: introduction → methods → results → discussion → conclusion (IMRaD);
+- Backmatter: acknowledgements/funding → references → appendix → supplementary materials/conflict-of-interest statement/author-contribution statement;
+- Metadata is DOI, volume/issue/page numbers (not ISBN/CIP).
 
-| 区域 | 处理 |
+## 2. Structural Features and Frontmatter/Backmatter Focus
+
+| Region | Handling |
 |---|---|
-| 标题/作者/单位 | 元数据著录，作者名按通用译名 |
-| 摘要 | 需译，结构式摘要保留结构 |
-| 关键词 | 需译，术语统一 |
-| 引言/方法/结果/讨论/结论 | 翻译主战场 |
-| 参考文献 | 格式统一、**不译** |
-| 致谢/基金 | 需译 |
+| Title/authors/affiliations | Metadata cataloguing, author names per conventional translation names |
+| Abstract | Needs translation, structured abstracts keep their structure |
+| Keywords | Needs translation, terminology unified |
+| Introduction/methods/results/discussion/conclusion | The main battlefield of translation |
+| References | Format unified, **not translated** |
+| Acknowledgements/funding | Needs translation |
 
-## 3. 分析维度（agent 撰写 analysis/ 时参照）
+## 3. Analysis Dimensions (consulted by the agent when writing analysis/)
 
-| 字段 | 含义 |
+| Field | Meaning |
 |---|---|
-| `research_question` | 研究问题 / 空白 |
-| `method` | 研究方法与设计 |
-| `findings` | 核心发现 |
-| `conclusion` | 结论与局限 |
+| `research_question` | Research question / gap |
+| `method` | Research method and design |
+| `findings` | Core findings |
+| `conclusion` | Conclusions and limitations |
 
-## 4. 术语与实体表
+## 4. Terminology and Entity Table
 
-| 类型 | 说明 | 处理 |
+| Type | Description | Handling |
 |---|---|---|
-| `领域术语` term | 学科核心概念 | 全书严格统一 |
-| `缩略语` abbreviation | 机构/方法/术语缩写 | 首次出现加注全称 |
+| `领域术语` term | Core concepts of the discipline | Strictly consistent throughout the book |
+| `缩略语` abbreviation | Institution/method/term abbreviations | Annotate the full name at first occurrence |
 
-## 5. 翻译指引
+## 5. Translation Guidance
 
-1. **结果与讨论分离**：结果客观呈现数据、不作解释，讨论才解释意义（可复现原则）；
-2. 术语严格统一；缩略语首次出现加注全称；
-3. 数据、图表题注规范；统计描述客观转达。
+1. **Separate results and discussion**: results objectively present data and offer no interpretation; only the discussion interprets meaning (reproducibility principle);
+2. Terminology strictly unified; abbreviations annotated with the full name at first occurrence;
+3. Data and figure/table captions standardized; statistical descriptions objectively relayed.
 
-## 6. 审校侧重（映射 QC）
+## 6. Review Focus (Mapping to QC)
 
-| QC 关卡 | 论文侧重 |
+| QC gate | Paper focus |
 |---|---|
-| G0 | 术语命中、缩略语加注 |
-| G1 | 侧重 `terminology`、结果/讨论边界（`mistranslation`） |
-| G2 | 取证：术语库 + 领域规范来源 |
-| G3 | 术语跨段统一 |
+| G0 | Terminology hits, abbreviation annotation |
+| G1 | Focus on `terminology`, results/discussion boundary (`mistranslation`) |
+| G2 | Evidence: glossary + discipline-standard sources |
+| G3 | Cross-paragraph terminology consistency |
 
-## 7. 特殊优化清单
+## 7. Special Optimization Checklist
 
-- [ ] IMRaD 结构保持（引言/方法/结果/讨论/结论不混）
-- [ ] 结果/讨论分离，数据客观
-- [ ] 术语统一 + 缩略语首次加注全称
-- [ ] 参考文献不译 + 格式统一
-- [ ] 摘要/关键词术语一致性
+- [ ] IMRaD structure preserved (introduction/methods/results/discussion/conclusion not mixed)
+- [ ] Results/discussion separated, data objective
+- [ ] Terminology unified + abbreviations annotated with the full name at first occurrence
+- [ ] References untranslated + format unified
+- [ ] Abstract/keywords terminology consistency
