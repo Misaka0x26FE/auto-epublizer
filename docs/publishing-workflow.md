@@ -1,111 +1,117 @@
-# 传统编校出版流程参考
+<!-- i18n: source=publishing-workflow.zh.md sha256=2e099466edac12790cf57528c167acbd72c389514d3499fa92dcba57df458e5b -->
+> **English** | [中文](publishing-workflow.zh.md)
 
-本文件整理传统图书出版与翻译出版的编校流程（以"三审三校"为核心），作为
-auto-epublizer 编辑/审校/校对环节设计的参照。来源：CY/T 172—2019《学术出版规范
-图书出版流程管理》、1998 年新闻出版署《图书编辑工作基本规程》、CY/T 123—2015
-《学术出版规范 中文译著》、T/TAC 1—2016《笔译服务规范》。
+# Traditional Editorial and Publishing Workflow Reference
 
-## 一、出版总流程
+This document organizes the editorial workflow of traditional book publishing and translation
+publishing (centered on the "three reviews and three proofreads") as a reference for the design of
+auto-epublizer's editing/review/proofreading stages. Sources: CY/T 172—2019 "Academic Publishing
+Specification: Book Publishing Process Management", the 1998 Press and Publication Administration
+"Basic Regulations for Book Editing Work", CY/T 123—2015 "Academic Publishing Specification: Chinese
+Translated Works", T/TAC 1—2016 "Specification for Translation Services".
 
-《图书编辑工作基本规程》定义的编辑工作环节（有次序）：
+## I. Overall publishing workflow
 
-```text
-信息 → 选题 → 组稿 → 审稿 → 加工整理 → 整体设计 → 发稿 → 校对 → 质量检查
-      → 宣传 → 评介 → 编务
-```
-
-其中与内容质量直接相关的核心是：**审稿（三审）→ 编辑加工 → 校对（三校一读）→ 质量检查**。
-
-## 二、三审制（审稿）
-
-三级审稿，角色与职责层层递进：
-
-| 审次 | 担任者 | 主要职责 |
-|---|---|---|
-| 初审 | 责任编辑（中级职称以上） | 通读全稿，消灭基础错误：错别字、标点、病句、体例（数字/大小写）、译名规范、图表位置、政治性与知识性错误；写初审报告；可退改/退稿 |
-| 复审 | 编辑室主任（副编审以上） | 消灭初审"拿不准"的问题与遗漏的基础错误；对整书架构进行规范（标题层级、分章分段、目录层级、脚注尾注、章节逻辑）；写复审报告 |
-| 终审 | 社长/总编辑（正副编审） | 解决初审、复审存疑；评价复审策划是否合理；政治敏感度与宏观把关；可打回初审/复审 |
-
-关键规则：
-
-- **任何两个环节不得由同一人担任**（角色分离，防阅读麻痹与既得立场）。
-- **退改权归三审**：作者修改后的稿子须重新审读直至通过。
-- "前三审"（选题/书稿价值把关）与"后三审"（编辑加工的三级审查）是两个层次。
-- 审稿是"对采用稿"的判断，编辑加工是"采用后"的整理，二者不应混淆（以编代审、以审代编都是失范）。
-
-## 三、编辑加工
-
-- 前提：三审通过、决定采用后才进入编辑加工。
-- 内容：全方位审核 + 修改润饰 + 规范化处理（注释、引文、译著、表格、插图遵循相应规范）。
-- **必须先制订编辑方案**：了解全书行文风格与文字质量，统一标准，避免前后不一致。
-- 疑难问题记入编辑加工报告，交复审、终审评判解决。
-- 用不同色笔区分审稿意见与编辑加工意见，做到有据可查。
-
-## 四、校对（三校一读）
-
-- 定义：**依原稿（或定本）核对校样，改正校样上的差错**。
-- 核心职能分两层：
-  - **校异同**：对照原稿，消灭排版/录入/改样产生的差错（忠实原稿）；
-  - **校是非**：尽量发现原稿中残留的疏漏与差错，**提请编辑核实**，校对员无自主处置权。
-- 三校由**三个不同校对员轮次**进行，防止多次阅读后的麻痹。
-- 校对员操作约定：板上钉钉的硬伤用红笔；出于判断、认为内容不妥的用铅笔，交责任编辑/策划编辑确认后红笔勾注。
-- **核红（对红）**：检查上一校次的修改是否改到位、是否改错、是否漏改。
-- 三校一读：责任校对完成文字技术整理 + 付印前通读。
-- 校对常见检查点：CIP 与版权页、目录与内文逐字一致、各级标题字体字号排式全书统一、图表位置、孤字成行、页码页眉等。
-
-## 五、翻译出版流程（译著）
-
-T/TAC 1—2016 笔译服务标准定义的环节（依次）：
+The editing stages defined by the "Basic Regulations for Book Editing Work" (in order):
 
 ```text
-译前准备 → 笔译(translation) → 自检(check) → 双语审校(revision)
-        → 单语审校(review) → 校对(proofread) → 核验交付
+information → topic selection → soliciting manuscripts → manuscript review → processing and arrangement → overall design → submission → proofreading → quality inspection
+      → publicity → review and introduction → editorial affairs
 ```
 
-术语定义：
+The core directly related to content quality is: **manuscript review (three reviews) → editing and processing → proofreading (three proofreads and one read) → quality inspection**.
 
-- **自检 check**：笔译员检查自己的译文。
-- **双语审校 revision**：目标语与源语**对照检查**（"双语编辑"同义）。
-- **单语审校 review**：只对目标语做**单语检查**（"单语编辑"同义）。
-- **校对 proofread**：印制前检查已审校的目标语内容并纠正。
+## II. Three-review system (manuscript review)
 
-翻译类图书的行业经验（译林社"四大尊重" + 引进版图书编校要点）：
+Three-level manuscript review, with roles and duties progressing level by level:
 
-1. **试译制度**：正式翻译前，选 2–3 名译者对典型章节试译比选。
-2. **术语表先行**：译稿前期由译者制作专业术语表，供编校对照，全书统一。
-3. **译名统一**：人名地名按音译规范与约定俗成；首次出现附原文，缩略语首次出现加注全称。
-4. **审读核查**：重点查漏译、错译；多人合译重点查风格一致与上下文过渡。
-5. **尊重文本**：不删改原著的引文、注释、参考文献、索引；有索引的加边码。
-6. **尊重译者**：不擅自改译者对关键词的译法，校样送译者过目。
-
-## 六、对 auto-epublizer 的映射
-
-> **范围边界**：auto-epublizer 只负责**交付质量**——准确性、完整性、一致性、规范性、
-> 结构正确、可复现。**不做内容的价值观 / 政治 / 思想性判断**。传统流程中"终审"的
-> 政治把关与思想性把关不在本项目职责范围内；下表中的对应只取其"整体一致性终局裁决"
-> 的**机制**，不取其价值判断。
-
-传统流程的每个质量环节都可在我们的管线中找到对应，且我们据此**强化**了角色分离与证据驱动：
-
-| 传统环节 | 要求/职责 | auto-epublizer 对应 |
+| Review level | Holder | Main duties |
 |---|---|---|
-| 收稿（齐、清、定） | 正文+辅文+图表齐全 | `init`/ingest：source → structured 四层结构 |
-| 了解全书、制订编辑方案 | 统一标准防前后矛盾 | `analyze`：overview/global/units/keypoints 生成并注入翻译 |
-| 术语表先行 | 译者前期建术语表 | agent 播种 glossary 三态 + `references/` 导入 |
-| 试译制度 | 2–3 译者试译比选 | 可选样章试译验证质量（探索阶段） |
-| 初审 | 消灭基础错误（错字/标点/体例/译名） | QA 第 0 道（零 token 确定性检查）+ 第 1 道逐批审校（cheap） |
-| 复审 | 架构 + 一致 + 存疑 | 第 2 道证据取证 Agent Loop + 第 3 道冲突仲裁 |
-| 终审（一致性终局裁决） | 整体一致与宏观把关（**不做价值观判断**） | 第 3 道盲复审 + 终局仲裁 |
-| 编辑加工 | 只改采用稿、保留记录、疑难上报 | shadow revision：影子译文只读、痕迹保留、正式只有 Autofix 可改 |
-| 校异同 | 对照原稿只查一致不一致 | 第 0 道对照表完整性 + `align/` 句级校验 |
-| 校是非 | 发现疏漏提请编辑确认 | 审校 Agent 报 issue（宁缺毋滥），不直接改 |
-| 核红（对红） | 检查修改到位/改错/漏改 | shadow 修订后的盲复审 + 振荡检测（摘要 SHA-256） |
-| 三校一读 | 多轮不同人 + 责任校对通读 | 连续 clean 确认 + 终局 QA（epubcheck 零 error） |
-| 译名统一 | 约定俗成 + 音译规范 | glossary + references 统一 + 冲突仲裁 |
-| 付印/清样 | 齐清定付印 | `build` + `qa` |
+| First review | Responsible editor (intermediate professional title or above) | Read the whole manuscript, eliminate basic errors: typos, punctuation, faulty sentences, style (numerals/capitalization), normalization of translated names, figure/table placement, political and knowledge errors; write the first-review report; may return for revision/reject |
+| Second review | Editorial office director (associate editor or above) | Eliminate problems the first review "was unsure about" and missed basic errors; standardize the whole-book architecture (heading levels, chapter/paragraph division, TOC levels, footnotes/endnotes, chapter logic); write the second-review report |
+| Final review | President/editor-in-chief (full/deputy editor) | Resolve doubts left by the first and second reviews; assess whether the second review's planning is reasonable; political sensitivity and macro-level gatekeeping; may send back to first/second review |
 
-### 传统流程带来的三个关键设计原则（已吸收）
+Key rules:
 
-1. **角色分离**：任何两个审次不得同一人 → 我们的审校 Agent 与翻译 Agent、Fixer 分离，盲复审不传旧说明。
-2. **校异同 / 校是非分层**：确定性检查（零 token、对照表、纯函数）与判断性检查（审校 Agent）分离——前者不花 token 先挡一道。
-3. **校对无自主处置权**：发现存疑用铅笔、不直接改 → 我们的审校只报 issue，修订走影子 overlay，正式译文只有显式 Autofix 才更新。
+- **No two stages may be held by the same person** (role separation, preventing reading paralysis and entrenched positions).
+- **The right to return for revision belongs to the three reviews**: a manuscript revised by the author must be re-reviewed until it passes.
+- The "first three reviews" (topic/manuscript-value gatekeeping) and the "last three reviews" (the three-level review of editing and processing) are two levels.
+- Manuscript review is the judgement "on the accepted manuscript", editing and processing is the arrangement "after acceptance"; the two should not be confused (editing in place of review, or reviewing in place of editing, are both irregular).
+
+## III. Editing and processing
+
+- Prerequisite: only after the three reviews pass and adoption is decided does editing and processing begin.
+- Content: all-round review + revision and polish + normalization processing (annotations, quotations, translated works, tables, illustrations follow the corresponding specifications).
+- **An editing plan must first be formulated**: understand the whole book's writing style and textual quality, unify standards, avoid inconsistency before and after.
+- Difficult problems are recorded in the editing-and-processing report, submitted to the second and final reviews for judgement and resolution.
+- Use pens of different colours to distinguish manuscript-review opinions from editing-and-processing opinions, so that there is a record to check.
+
+## IV. Proofreading (three proofreads and one read)
+
+- Definition: **check the proofs against the manuscript (or definitive text) and correct errors on the proofs**.
+- The core function has two layers:
+  - **Checking similarities and differences**: against the manuscript, eliminate errors produced by typesetting/input/revision (faithful to the manuscript);
+  - **Checking right and wrong**: discover as far as possible the omissions and errors remaining in the manuscript, **submit them to the editor for verification**; the proofreader has no independent authority to dispose.
+- The three proofreads are carried out by **three different proofreaders in rotation**, to prevent paralysis after multiple readings.
+- Proofreader operating conventions: use red pen for indisputable hard errors; use pencil for those based on judgement, deemed inappropriate in content, and after confirmation by the responsible editor/planning editor, mark with red pen.
+- **Checking red (comparing red)**: check whether the previous proofreading round's changes were made in place, made wrongly, or missed.
+- Three proofreads and one read: the responsible proofreader completes the textual-technical arrangement + a full read before printing.
+- Common proofreading checkpoints: CIP and copyright page, TOC and body text word-for-word consistency, fonts/sizes/arrangement of heading levels unified throughout the book, figure/table placement, single-character lines, page numbers and running heads, etc.
+
+## V. Translation publishing workflow (translated works)
+
+Stages defined by the T/TAC 1—2016 translation service standard (in order):
+
+```text
+pre-translation preparation → translation → check → bilingual revision
+        → monolingual review → proofread → verification and delivery
+```
+
+Terminology definitions:
+
+- **check**: the translator checks their own translation.
+- **bilingual revision**: a **comparative check** of the target language and the source language (synonymous with "bilingual editor").
+- **monolingual review**: a **monolingual check** of the target language only (synonymous with "monolingual editor").
+- **proofread**: check and correct the reviewed target-language content before printing.
+
+Industry experience for translation books (Yilin Press's "four respects" + key points for editing and proofreading imported books):
+
+1. **Trial translation system**: before formal translation, select 2–3 translators to trial-translate typical chapters for comparison and selection.
+2. **Glossary first**: in the early stage of the translation, the translator produces a professional terminology list, for editing and proofreading reference, unified throughout the book.
+3. **Unified translated names**: personal names and place names according to transliteration norms and established usage; append the original on first occurrence, add the full form as a note on first occurrence of abbreviations.
+4. **Review and verification**: focus on checking omissions and mistranslations; for multi-translator works, focus on checking style consistency and contextual transitions.
+5. **Respect the text**: do not delete or alter the original work's quotations, annotations, references, index; add edge indices to indexed works.
+6. **Respect the translator**: do not arbitrarily change the translator's rendering of keywords; send proofs to the translator for inspection.
+
+## VI. Mapping to auto-epublizer
+
+> **Scope boundary**: auto-epublizer is only responsible for **delivery quality** — accuracy, completeness,
+> consistency, compliance, structural correctness, reproducibility. It **makes no value/political/ideological
+> judgements about the content**. The political gatekeeping and ideological gatekeeping of the traditional
+> "final review" are outside this project's responsibility; the correspondences in the table below take only
+> the **mechanism** of "overall-consistency final arbitration", not its value judgements.
+
+Every quality stage of the traditional workflow can find a correspondence in our pipeline, and on that basis we have **strengthened** role separation and evidence-drivenness:
+
+| Traditional stage | Requirement/duty | auto-epublizer correspondence |
+|---|---|---|
+| Manuscript receipt (complete, clear, final) | Body + front/back matter + figures/tables complete | `init`/ingest: source → structured four-layer structure |
+| Understand the whole book, formulate an editing plan | Unify standards to prevent inconsistency | `analyze`: overview/global/units/keypoints generated and injected into translation |
+| Glossary first | Translator builds a glossary in the early stage | agent seeds glossary three states + `references/` import |
+| Trial translation system | 2–3 translators trial-translate for comparison | optional sample-chapter trial translation to verify quality (exploration stage) |
+| First review | Eliminate basic errors (typos/punctuation/style/translated names) | QA gate 0 (zero-token deterministic checks) + gate 1 per-batch review (cheap) |
+| Second review | Architecture + consistency + doubts | gate 2 evidence-gathering Agent Loop + gate 3 conflict arbitration |
+| Final review (consistency final arbitration) | Overall consistency and macro-level gatekeeping (**no value judgements**) | gate 3 blind re-review + final arbitration |
+| Editing and processing | Change only the accepted manuscript, keep records, report difficulties upward | shadow revision: shadow translation read-only, traces retained, only Autofix can change the official text |
+| Checking similarities and differences | Against the manuscript, check only consistency | gate 0 alignment completeness + `align/` sentence-level validation |
+| Checking right and wrong | Discover omissions and submit them to the editor for confirmation | review Agent reports issues (better to omit than to over-flag), does not directly change |
+| Checking red (comparing red) | Check changes in place/wrong/missed | blind re-review after shadow revision + oscillation detection (digest SHA-256) |
+| Three proofreads and one read | Multiple rounds by different people + responsible proofreader's full read | consecutive clean confirmations + final QA (epubcheck zero errors) |
+| Unified translated names | Established usage + transliteration norms | glossary + references unification + conflict arbitration |
+| Printing/final proof | Complete, clear, final, go to print | `build` + `qa` |
+
+### Three key design principles brought by the traditional workflow (already absorbed)
+
+1. **Role separation**: no two review levels may be the same person → our review Agent is separate from the translation Agent and the Fixer, and blind re-review does not pass on the old explanation.
+2. **Layered checking of similarities/differences vs right/wrong**: deterministic checks (zero-token, alignment, pure functions) are separated from judgemental checks (review Agent) — the former blocks one line first without spending tokens.
+3. **Proofreaders have no independent authority to dispose**: doubts found are marked in pencil, not directly changed → our review only reports issues, revision goes through the shadow overlay, and the official translation is updated only by an explicit Autofix.
