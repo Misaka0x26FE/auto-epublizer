@@ -1,0 +1,71 @@
+> **中文** | [English](configuration.md)
+
+# 配置参考（config.yaml 目标 schema）
+
+本文档汇总各环节的配置项，作为 `config.yaml` 的统一形状。
+实现以 `src/auto_common/config.py` 为契约，新增配置项须同步更新此处、根目录示例与测试。
+`init` 时仅把关键项快照进 `publication.json.config`（顶层字段，只含
+`bilingual` / `target_language` 两项，见 `workspace/models.py::ConfigSnapshot`），
+并非本表全量的镜像。
+
+**唯一 LLM 原则**：CLI 不调用任何 LLM，配置中没有 provider/密钥/档位段；
+一切语义工作（理解/翻译/审校）由操作 CLI 的 agent 用自身能力完成。
+
+```yaml
+# ── 语言与文体 ───────────────────────────────────────────────
+language:
+  source: auto          # auto=确定性脚本启发式检测；或写死 ISO 639-1（en/ja/ru/ko/fr/de/es…）
+  target: zh-CN         # 目标语言，任意可配
+  genre: auto           # auto=启发式判定；或显式 novel/academic/paper/poetry/newspaper
+
+# ── 管线开关 ────────────────────────────────────────────────
+pipeline:
+  bilingual: false
+
+# ── 质量控制 ─────────────────────────────────────────────────
+qc:
+  length_ratio: { too_short: 0.30, too_long: 3.0 }   # G0 长度比告警阈值
+  epubcheck:
+    jar: "~/.cache/epubcheck.jar"
+    strict: true
+
+# ── PDF 解析 ────────────────────────────────────────────────
+pdf:
+  backend: auto           # auto | pymupdf | mineru（auto=扫描件且 MINERU_API_KEY 存在时优先 MinerU）
+  ocr: auto               # auto | off | 强制 rapidocr
+  page_dpi: 300           # 页渲染分辨率（OCR 兜底）
+  mineru_effort: medium   # 未接线（MinerU v4 API 无此参数）；保留兼容旧配置
+  mineru_model: pipeline  # pipeline（默认，确定性、零幻觉）| vlm（高精度，内部为 VLM）
+  mineru_language: ch     # MinerU OCR 语言（PaddleOCR 语言码：ch/en/ja/…）
+  mineru_batch_pages: 200 # >此页数自动分批（MinerU 单文件 ≤200 页限制；≤0 关闭）
+
+# ── 术语表 ──────────────────────────────────────────────────
+glossary:
+  storage: csv            # csv（默认，权威存储）；sqlite 未实现（预留）
+  scope: chapter          # 未接线（预留；当前术语注入由 agent 按本章出现过滤）
+
+# ── 路径 ─────────────────────────────────────────────────────
+paths:
+  workspaces_dir: .       # 工作区根目录（每本书一个 <book-slug>/）
+
+# ── 输出 ─────────────────────────────────────────────────────
+output:
+  mono: true              # 未接线（预留；mono/bilingual 由 build --bilingual 决定）
+  bilingual: false        # 未接线（同上）
+  about_page: true        # 未接线（预留；"关于此翻译"页未实现）
+  theme: standard         # 排版主题：standard | compact | spacious（docs/epub-template-spec.md §5）
+                          # 仅排版微调（泛化字族/行距/缩进/对齐），无具体字体名/颜色/字号
+  nav_depth: 3            # 目录最大嵌套深度（1–6，docs/epub-template-spec.md §3 投影）
+                          # 超深单元不进 nav/NCX，但保留在 spine 阅读顺序与锚点中
+```
+
+## 配置快照与续跑
+
+`init` 成功后，把本次运行的关键配置（`language.target`、`pipeline.bilingual` 等）
+快照进 `publication.json.config`；续跑时优先用快照，避免配置漂移导致结果不一致。
+
+## 密钥
+
+本项目配置无任何密钥段（唯一 LLM = agent 本身，agent 自身的凭证与 CLI 无关）。
+仅有的外部凭据是可选的 `MINERU_API_KEY` 环境变量（MinerU 外部解析 API），只从环境变量读取，
+禁止写入配置文件、源码、测试或提交。

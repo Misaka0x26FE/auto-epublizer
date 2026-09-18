@@ -1,149 +1,170 @@
-# EPUB 文件规范：无样式标准模板 + 有限主题
+<!-- i18n: source=epub-template-spec.zh.md sha256=8135267d17fd9fd9057d5c20f35c682ce7a77553152d6dcc0f83e302e21a8b29 -->
+> **English** | [中文](epub-template-spec.zh.md)
 
-本文档规定 `auto-epublizer` 产出的 EPUB 3 文件的**形态规范**：内容与呈现分离，呈现权
-交给阅读系统，只保留功能性最小样式，并预留克制的主题选项。它是「后处理规范」
-（`docs/postprocessing-spec.md`）中媒体/样式验收标准的依据。
+# EPUB File Spec: Unstyled Standard Template + Limited Themes
 
-## 1. 设计理念
+This document specifies the **form spec** of the EPUB 3 files produced by `auto-epublizer`:
+content and presentation separated, presentation authority handed to the reading system,
+keeping only functional minimal styles, and reserving restrained theme options. It is the
+basis for the media/style acceptance criteria in the "post-processing spec"
+(`docs/postprocessing-spec.md`).
 
-> EPUB 3 的设计哲学是「内容与呈现分离」：结构层决定导航与无障碍，呈现层交给阅读器。
+## 1. Design Philosophy
 
-三条原则：
+> The design philosophy of EPUB 3 is "separation of content and presentation": the
+> structural layer determines navigation and accessibility; the presentation layer is
+> handed to the reader.
 
-1. **几乎无样式**：默认模板不设字体、颜色、字号，只保留防止内容溢出的功能性样式。
-2. **有限主题**：个性化只通过「预置的极简主题」表达，不开放任意 CSS，不破坏多阅读器兼容。
-3. **标准注释**：注释一律采用 EPUB 3 标准弹窗注释（`epub:type="noteref"`/`"footnote"`），
-   全书统一数字序号，支持双向跳转。
+Three principles:
 
-## 2. 三层框架
+1. **Almost no styling**: the default template sets no font, color, or font size, keeping
+   only functional styles that prevent content overflow.
+2. **Limited themes**: personalization is expressed only through "preset minimal themes";
+   arbitrary CSS is not opened up, and multi-reader compatibility is not broken.
+3. **Standard notes**: all notes use EPUB 3 standard popup notes
+   (`epub:type="noteref"`/`"footnote"`), with uniform numbering across the book and
+   bidirectional jumping.
+
+## 2. Three-Layer Framework
 
 ```text
-结构层（骨架，完全标准化，与样式无关）  ← 合法性与无障碍核心，阅读器据此导航
-呈现层（几乎无样式 = 模板默认）          ← 只保留功能性最小样式
-主题层（有限个性化）                     ← 克制开关，绝不碰字体/颜色/字号
+Structural layer (skeleton, fully standardized, style-independent)  ← core of validity and accessibility; the reader navigates by it
+Presentation layer (almost no styling = template default)           ← keeps only functional minimal styles
+Theme layer (limited personalization)                               ← restrained switch, never touches font/color/font size
 ```
 
-## 3. 结构层（完全标准化）
+## 3. Structural Layer (Fully Standardized)
 
-结构层是 EPUB 合法性的核心，全部确定性生成，与样式无关。已完成 ✅ / 待补 ⬜：
+The structural layer is the core of EPUB validity, entirely deterministically generated and
+style-independent. Completed ✅ / to be added ⬜:
 
-| 项 | 现状 | 规范要求 |
+| Item | Current state | Spec requirement |
 |---|---|---|
-| mimetype / container / OPF | ✅ | mimetype 首位未压缩、内容恰为 `application/epub+zip` |
-| nav.xhtml + toc.ncx | ✅ | 目录层级符合源文件层级（level 链路已通，嵌套渲染已落地） |
-| **目录深度投影** | ✅ | nav/NCX 最多嵌套 `output.nav_depth` 层（默认 3，1–6）；超深单元不进目录，但保留在 spine 阅读顺序与锚点；封面单元不进目录 |
-| 语义地标 landmarks | ✅ | frontmatter/bodymatter/backmatter 各取首个落地标 |
-| 每文档 `xml:lang` + 恰好一个 `h1` | ✅ | 全文档一致 |
-| 标题层级 h1–h6 语义 + 无跳级 | ✅ | `E_HEADING_SKIP` 校验（P2） |
-| **脚注语义化** | ✅ | `noteref`/`footnote` + `[N]` 注码 + 章内独立编号 + 双向跳转（§6） |
-| 封面 `cover-image` | ✅ | `properties="cover-image"` + `<meta name="cover">` + spine `linear="no"` |
-| 封面/目录页 `linear="no"` | ✅ | cover 单元内容文档不进正文阅读顺序 |
-| 目录锚点 | ✅ | 单元级嵌套（源文标题已切分为单元，h1–h6 锚点随层级实现覆盖） |
-| 语义标签 | ✅ | 引用 `blockquote`、诗行块 `p.verse`、列表 `ul/ol` 保留语义（P2） |
-| 双语版 src/tgt 各自 `lang` | ✅ | 每段标注源/目标语言 |
+| mimetype / container / OPF | ✅ | mimetype first and uncompressed, content exactly `application/epub+zip` |
+| nav.xhtml + toc.ncx | ✅ | TOC hierarchy matches the source file hierarchy (level chain connected, nested rendering landed) |
+| **TOC depth projection** | ✅ | nav/NCX nests at most `output.nav_depth` levels (default 3, 1–6); units beyond the depth do not enter the TOC but remain in the spine reading order and anchors; the cover unit does not enter the TOC |
+| Semantic landmarks | ✅ | frontmatter/bodymatter/backmatter each take the first landing landmark |
+| Per-document `xml:lang` + exactly one `h1` | ✅ | consistent across the whole document |
+| Heading level h1–h6 semantics + no skipped levels | ✅ | `E_HEADING_SKIP` validation (P2) |
+| **Footnote semanticization** | ✅ | `noteref`/`footnote` + `[N]` note reference + per-chapter independent numbering + bidirectional jumping (§6) |
+| Cover `cover-image` | ✅ | `properties="cover-image"` + `<meta name="cover">` + spine `linear="no"` |
+| Cover/TOC page `linear="no"` | ✅ | the cover unit content document does not enter the body reading order |
+| TOC anchors | ✅ | unit-level nesting (source headings already split into units; h1–h6 anchors implemented and covered along the hierarchy) |
+| Semantic tags | ✅ | quotes `blockquote`, verse blocks `p.verse`, lists `ul/ol` retain semantics (P2) |
+| Bilingual src/tgt each with `lang` | ✅ | each paragraph is annotated with source/target language |
 
-## 4. 呈现层（无样式默认模板）
+## 4. Presentation Layer (Unstyled Default Template)
 
-默认模板只保留**功能性样式**，其余交给阅读器：
+The default template keeps only **functional styles**, leaving the rest to the reader:
 
-| 项 | 规范 | 说明 |
+| Item | Spec | Note |
 |---|---|---|
-| 字体 | **不设** | 用阅读器字体 |
-| 颜色 | **不设** | 由阅读器处理（含夜间模式） |
-| 字号 | **不设** | 标题只用相对层级 h1–h6，无 pt/px |
-| 图片 | `max-width:100%` + 居中 + 不放大 | 功能性：防止图片溢出，小图原尺寸、大图等比例缩放 |
-| 强调 | `strong`/`em` 语义 | 渲染交阅读器默认 |
-| 链接 | `a href` 语义 | 危险 URL（javascript:/data:）降级纯文本 |
+| Font | **Not set** | use the reader's font |
+| Color | **Not set** | handled by the reader (including night mode) |
+| Font size | **Not set** | headings use only relative levels h1–h6, no pt/px |
+| Images | `max-width:100%` + centered + not enlarged | functional: prevent image overflow; small images at original size, large images scaled proportionally |
+| Emphasis | `strong`/`em` semantics | rendering left to reader default |
+| Links | `a href` semantics | dangerous URLs (javascript:/data:) degrade to plain text |
 
-### 当前实现的偏差（✅ 已修正 2026-09-04）
+### Deviation of the Current Implementation (✅ Fixed 2026-09-04)
 
-`build/__init__.py` 的 `_STYLE_CSS` 已完成瘦身：移除 `font-family`、`font-size`、
-`line-height`、`text-indent: 2em`、`text-align: justify`、标题居中等非功能性样式，
-只保留功能性规则（`img` 限宽、`p.imgp` 图片段居中、`section.footnotes`），
-并有回归测试锁定（禁止 font-family/color/font-size/line-height/justify 回潮）。
+`_STYLE_CSS` in `build/__init__.py` has been slimmed: removed `font-family`, `font-size`,
+`line-height`, `text-indent: 2em`, `text-align: justify`, heading centering, and other
+non-functional styles, keeping only functional rules (`img` width limit, `p.imgp` image
+paragraph centering, `section.footnotes`), with regression tests locking it down (forbids
+font-family/color/font-size/line-height/justify from returning).
 
-## 5. 主题层（有限个性化）
+## 5. Theme Layer (Limited Personalization)
 
-**边界**：主题只控排版微调，绝不碰字体/颜色/字号（阅读器领地）。唯一「字体相关」例外是
-**泛化字族基调**——用 `serif`/`sans-serif` 族名而非具体字体名，由阅读器映射到自己的字体。
+**Boundary**: themes only control typographic fine-tuning, never touching font/color/font
+size (the reader's domain). The only "font-related" exception is the **generic font-family
+base**—using `serif`/`sans-serif` family names rather than concrete font names, mapped by
+the reader to its own fonts.
 
-### 5.1 可选维度
+### 5.1 Optional Dimensions
 
-| 维度 | 取值 |
+| Dimension | Values |
 |---|---|
-| 字族基调 | `serif`（默认）/ `sans-serif` |
-| 行距密度 | `compact`(1.4) / `normal`(1.7，默认) / `spacious`(2.0) |
-| 段间距 | 紧 / 标准（默认）/ 松 |
-| 首行缩进 | 中文缩进 2em（默认）/ 无缩进（西式） |
-| 对齐 | 两端对齐（默认）/ 左对齐 |
-| 标题呈现 | 居中（默认）/ 左对齐 |
-| 脚注方式 | 弹窗（默认，标准）/ 章末列表（老阅读器降级） |
+| Font-family base | `serif` (default) / `sans-serif` |
+| Line-spacing density | `compact`(1.4) / `normal`(1.7, default) / `spacious`(2.0) |
+| Paragraph spacing | tight / standard (default) / loose |
+| First-line indent | Chinese indent 2em (default) / no indent (Western) |
+| Alignment | justified (default) / left-aligned |
+| Heading presentation | centered (default) / left-aligned |
+| Footnote method | popup (default, standard) / end-of-chapter list (legacy reader fallback) |
 
-### 5.2 预置主题（✅ 已实现 2026-09-04）
+### 5.2 Preset Themes (✅ Implemented 2026-09-04)
 
-不开放任意 CSS。预置三套极简主题，`--theme` / `config.output.theme` 选择：
+Arbitrary CSS is not opened up. Three minimal themes are preset, selected by `--theme` /
+`config.output.theme`:
 
 ```text
-standard  → serif + 1.7 行距 + 缩进 + 两端对齐 + 标题居中（默认）
-compact   → sans-serif + 1.4 行距 + 无缩进 + 左对齐
-spacious  → serif + 2.0 行距 + 缩进 + 两端对齐 + 标题居中
+standard  → serif + 1.7 line spacing + indent + justified + heading centered (default)
+compact   → sans-serif + 1.4 line spacing + no indent + left-aligned
+spacious  → serif + 2.0 line spacing + indent + justified + heading centered
 ```
 
-每套主题仅派生「排版微调」几个 CSS 属性，不引入字体名、颜色、字号；
-audit 拦截违规（`E_THEME_FONT`：具体字体名/字号；`E_THEME_COLOR`：颜色）。
+Each theme derives only a few CSS properties for "typographic fine-tuning", introducing no
+font names, colors, or font sizes; audit blocks violations (`E_THEME_FONT`: concrete font
+name/font size; `E_THEME_COLOR`: color).
 
-## 6. 注释标准化（标准弹窗 + 章内序号）
+## 6. Note Standardization (Standard Popup + In-Chapter Numbering)
 
-- 正文注码（句末注码）→ `<a epub:type="noteref" role="doc-noteref" id="ref-N" href="#fn-N">[N]</a>`（上标）
-- 注释正文 → 章末集中区 `<section epub:type="footnotes">`，条目
+- Body note reference (sentence-final note reference) → `<a epub:type="noteref" role="doc-noteref" id="ref-N" href="#fn-N">[N]</a>` (superscript)
+- Note text → concentrated area at the end of the chapter `<section epub:type="footnotes">`, entry
   `<aside epub:type="footnote" id="fn-N" role="doc-footnote"><p>[N] … <a epub:type="backlink" href="#ref-N">↩</a></p></aside>`
-- **章内序号**：每章从 `[1]` 起独立编号（构建期为每单元新建 `FootnoteState`）；
-  id 在各自 XHTML 文档内作用域唯一。
-- **双向跳转**：注码 → 注释（前进），注释回链（`#ref-N`）→ 注码（后退）；
-  回链是通用兜底（Kindle KDP 要求，不支持弹窗的阅读器靠它返回）。
-- **降级**：支持弹窗的阅读器弹窗显示，不支持的退化为章末列表（`<aside>` 本就位于章节末尾）。
-- 与 `{fig:NNN}`/`{table:NNN}` 区分：后者是**图/表占位标记**（插入元素），不走脚注语义。
+- **In-chapter numbering**: each chapter is numbered independently starting from `[1]` (a
+  new `FootnoteState` is created per unit at build time); ids are scoped and unique within
+  each XHTML document.
+- **Bidirectional jumping**: note reference → note (forward), note backlink (`#ref-N`) →
+  note reference (backward); the backlink is the universal fallback (required by Kindle
+  KDP; readers that do not support popups rely on it to return).
+- **Degradation**: readers supporting popups display them as popups; those that do not
+  degrade to an end-of-chapter list (`<aside>` is already located at the end of the
+  chapter).
+- Distinguished from `{fig:NNN}`/`{table:NNN}`: the latter are **figure/table placeholder
+  markers** (inserts) and do not use footnote semantics.
 
-## 7. 配置与实现影响
+## 7. Configuration and Implementation Impact
 
-### 7.1 配置
+### 7.1 Configuration
 
-`config.output` 的呈现与结构开关：
+Presentation and structure switches of `config.output`:
 
 ```yaml
 output:
   theme: standard        # standard | compact | spacious
-  nav_depth: 3           # 目录最大嵌套深度（1–6，投影：超深单元不进目录）
+  nav_depth: 3           # maximum TOC nesting depth (1–6, projection: beyond-depth units do not enter the TOC)
   mono: true
   bilingual: false
 ```
 
-### 7.2 实现影响清单（✅ 全部落地）
+### 7.2 Implementation Impact List (✅ All Landed)
 
-1. ✅ `build/__init__.py`：`_STYLE_CSS` 瘦身为功能性样式 + `_THEMES` 主题表；`build_epub` 接受 `theme`/`cover_media`/`nav_depth`。
-2. ✅ `build/html.py`：`render_document` 只产出语义 XHTML（含 blockquote/verse/ul/ol），CSS 从模板/主题注入（解耦）。
-3. ✅ 脚注语义化：`FootnoteState` 章内编号 + `[N]` 注码 + noteref/footnote 渲染 + 回链。
-4. ✅ 封面 `cover-image`：cover 单元首个图片自动识别 + `<meta name="cover">` + `linear="no"`。
-5. ✅ 语义标签保留 + 断页/图注样式（目录为单元级嵌套，无单元内子标题锚点需求）。
-6. ✅ `qa/audit.py`：`E_THEME_FONT`/`E_THEME_COLOR`/`E_COVER_META`/`E_HEADING_SKIP`/
+1. ✅ `build/__init__.py`: `_STYLE_CSS` slimmed to functional styles + `_THEMES` theme table; `build_epub` accepts `theme`/`cover_media`/`nav_depth`.
+2. ✅ `build/html.py`: `render_document` produces only semantic XHTML (including blockquote/verse/ul/ol), CSS injected from template/theme (decoupled).
+3. ✅ Footnote semanticization: `FootnoteState` in-chapter numbering + `[N]` note reference + noteref/footnote rendering + backlinks.
+4. ✅ Cover `cover-image`: first image of the cover unit automatically recognized + `<meta name="cover">` + `linear="no"`.
+5. ✅ Semantic tag retention + page-break/figure-caption styles (TOC is unit-level nesting; no need for in-unit sub-heading anchors).
+6. ✅ `qa/audit.py`: `E_THEME_FONT`/`E_THEME_COLOR`/`E_COVER_META`/`E_HEADING_SKIP`/
    `E_RESIDUE`/`W_RESIDUE`/`W_META_INCOMPLETE`/`E_ANCHOR`/`E_FN_BACKLINK`/`E_BI_PAIRS`/
-   `W_EPUB_SIZE`/`W_IMG_UNCOMPRESSED`；溯源审计 `W_NO_COVER`/`W_NAMING`。
-7. ✅ 目录深度投影：`nav_toc_entries`（封面排除 + `nav_depth` 截断）→ nav/NCX；
-   `dtb:depth` 为投影后深度；nav.xhtml 声明 `<meta name="nav-depth" content="K"/>`
-   （qa 审计以此为准）；`nav_exempt` 豁免 `E_TOC_COVERAGE`。
+   `W_EPUB_SIZE`/`W_IMG_UNCOMPRESSED`; provenance audit `W_NO_COVER`/`W_NAMING`.
+7. ✅ TOC depth projection: `nav_toc_entries` (cover excluded + `nav_depth` truncation) → nav/NCX;
+   `dtb:depth` is the post-projection depth; nav.xhtml declares `<meta name="nav-depth" content="K"/>`
+   (qa audit uses this as authoritative); `nav_exempt` exempts `E_TOC_COVERAGE`.
 
-## 8. 后续实现清单（按优先级）
+## 8. Follow-Up Implementation List (by Priority)
 
-| 优先级 | 项 | 归属 |
+| Priority | Item | Belongs to |
 |---|---|---|
-| P0 ✅ | 脚注语义化（弹窗 + 双向跳转；2026-09-13 起为 `[N]` 章内序号） | 结构层 |
-| P0 ✅ | 目录层级（嵌套 nav/NCX + `dtb:depth`，level 链路补全） | 结构层 |
-| P0 ✅ | `_STYLE_CSS` 瘦身（去字体/颜色/字号，回归测试锁定） | 呈现层 |
-| P1 ✅ | 主题机制（预置三套 + `--theme` + `output.theme` + audit 校验） | 主题层 |
-| P1 ✅ | 封面 `cover-image` + `linear="no"` + `W_NO_COVER` 对账 | 结构层 |
-| P2 ✅ | 语义标签保留（blockquote/verse/ul/ol） | 结构层 |
-| P2 ✅ | audit 补强（标题跳级/残留/锚点回链/双语成对/元数据完备/体积） | 结构层 |
-| P2 ✅ | 目录深度投影（`output.nav_depth` + 封面不进目录 + 覆盖审计豁免） | 结构层 |
+| P0 ✅ | Footnote semanticization (popup + bidirectional jumping; `[N]` in-chapter numbering since 2026-09-13) | Structural layer |
+| P0 ✅ | TOC hierarchy (nested nav/NCX + `dtb:depth`, level chain completed) | Structural layer |
+| P0 ✅ | `_STYLE_CSS` slimming (remove font/color/font size, regression-test locked) | Presentation layer |
+| P1 ✅ | Theme mechanism (three presets + `--theme` + `output.theme` + audit validation) | Theme layer |
+| P1 ✅ | Cover `cover-image` + `linear="no"` + `W_NO_COVER` reconciliation | Structural layer |
+| P2 ✅ | Semantic tag retention (blockquote/verse/ul/ol) | Structural layer |
+| P2 ✅ | Audit hardening (heading skips/residue/anchor backlinks/bilingual pairing/metadata completeness/size) | Structural layer |
+| P2 ✅ | TOC depth projection (`output.nav_depth` + cover excluded from TOC + coverage-audit exemption) | Structural layer |
 
-> P0/P1/P2 已于 2026-09-04 全部落地（详见 `docs/postprocessing-spec.md` §4）；
-> 目录深度投影与 `[N]` 章内序号于 2026-09-13 落地（`docs/plans/2026-09-13-toc-depth-footnotes.md`）。
+> P0/P1/P2 all landed on 2026-09-04 (see `docs/postprocessing-spec.md` §4);
+> TOC depth projection and `[N]` in-chapter numbering landed on 2026-09-13 (`docs/plans/2026-09-13-toc-depth-footnotes.md`).

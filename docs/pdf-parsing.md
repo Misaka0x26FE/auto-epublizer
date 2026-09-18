@@ -1,194 +1,181 @@
-# PDF 解析与转 EPUB 方案
+<!-- i18n: source=pdf-parsing.zh.md sha256=8aba86a33a6f733a25d8f7fe05bfedbcf819554fcb6b42a98d42a25bd0fd63f1 -->
+> **English** | [中文](pdf-parsing.zh.md)
 
-> **唯一 LLM 原则**：本文中的「多模态 LLM / 视觉 LLM」均指**操作 CLI 的 agent 自身的
-> 视觉能力**（multimodal 自报），不是 CLI 内部端点；CLI 只做确定性提取/检测/渲染，
-> 需要"看"的页由 agent 渲染后自行理解。后端可插拔：PyMuPDF（文字层）/ RapidOCR /
-> MinerU（外部 API）为确定性选项；「多模态 LLM 后端」= agent 视觉兜底。
+# PDF Parsing and EPUB Conversion Plan
 
-PDF 是我们最重要的输入格式（尤其扫描件）。本文记录 PDF → EPUB 的核心难点、现有技术路线，
-以及对 auto-epublizer 的设计建议。来源：MinerU / Docling / pdf2epub.ai 的技术资料与 2026 年评测数据。
+> **Single-LLM principle**: "multimodal LLM / visual LLM" in this document all refer to the **visual ability of the agent operating the CLI itself** (multimodal self-reported), not to a CLI-internal endpoint; the CLI only does deterministic extraction/detection/rendering, and pages that need to be "seen" are rendered by the agent and understood by the agent itself. Backends are pluggable: PyMuPDF (text layer) / RapidOCR / MinerU (external API) are deterministic options; "multimodal LLM backend" = agent visual fallback.
 
-## 1. 核心难点：为什么难
+PDF is our most important input format (especially scanned documents). This document records the core difficulties of PDF → EPUB, the current technical routes, and design suggestions for auto-epublizer. Sources: technical materials from MinerU / Docling / pdf2epub.ai and 2026 evaluation data.
 
-PDF 存储的是**坐标定位指令**（"在 (72,720) 放 12 号字"），不含任何语义结构；EPUB 是
-**语义化结构文档**（标题/段落/脚注/表格）。PDF 转 EPUB 的本质是**从坐标重建语义结构**。
+## 1. Core Difficulties: Why It Is Hard
 
-按严重程度排序的十大难点：
+PDF stores **coordinate positioning instructions** ("place 12-point type at (72,720)"), containing no semantic structure; EPUB is a **semantic structured document** (headings/paragraphs/footnotes/tables). The essence of PDF-to-EPUB is **reconstructing semantic structure from coordinates**.
 
-| # | 难点 | 现象 |
+Ten major difficulties ordered by severity:
+
+| # | Difficulty | Symptom |
 |---|---|---|
-| 1 | 多栏排版（双栏/三栏） | 栏间文字交错，阅读顺序错乱 |
-| 2 | 页眉页脚/页码 | 反复出现在每页、混入正文中间 |
-| 3 | 脚注/尾注 | 混入正文或直接丢失（最难，跨章节链接） |
-| 4 | 跨页段落 | 一段被拆成两段不相关内容 |
-| 5 | 数学公式 | 变成无意义散落的坐标字符 |
-| 6 | 表格 | 行列结构丢失，变成"数字汤" |
-| 7 | 代码块 | 缩进丢失、混入正文 |
-| 8 | 图文混排 | 图片丢失或错位 |
-| 9 | 扫描件 | 无文字层，需 OCR + 结构重建（两步工程） |
-| 10 | 竖排/繁体 | 阅读顺序完全不同，传统 OCR 重灾区 |
+| 1 | Multi-column typesetting (two-column/three-column) | text interleaves between columns, reading order is scrambled |
+| 2 | Running heads/footers/page numbers | appear repeatedly on every page, mixed into the middle of the body text |
+| 3 | Footnotes/endnotes | mixed into the body text or simply lost (the hardest, cross-chapter linking) |
+| 4 | Cross-page paragraphs | one paragraph split into two unrelated parts |
+| 5 | Mathematical formulas | become meaningless scattered coordinate characters |
+| 6 | Tables | row/column structure lost, become "number soup" |
+| 7 | Code blocks | indentation lost, mixed into the body text |
+| 8 | Mixed text and images | images lost or misplaced |
+| 9 | Scanned documents | no text layer, require OCR + structure reconstruction (two-step engineering) |
+| 10 | Vertical typesetting / Traditional Chinese | completely different reading order, a traditional OCR disaster zone |
 
-> 关键结论：**结构重建是成败关键，不是字符识别**。OCR 认字简单（第一步），重建标题/脚注/表格/
-> 阅读顺序难（第二步）。传统 OCR 只做第一步，把"一栋楼拆成一堆砖头"。
+> Key conclusion: **structure reconstruction is decisive for success, not character recognition**. OCR recognizing characters is easy (step one); reconstructing headings/footnotes/tables/reading order is hard (step two). Traditional OCR only does step one — "tearing a building down into a pile of bricks".
 
-## 2. 三条技术路线对比
+## 2. Comparison of Three Technical Routes
 
-| 路线 | 代表 | 原理 | 优点 | 缺点 |
+| Route | Representative | Principle | Pros | Cons |
 |---|---|---|---|---|
-| 传统确定性规则 | Calibre、PyMuPDF | 解析内部对象 → 文字块坐标+字体 → 启发式规则（"14pt 粗体=标题"）→ 按坐标排阅读顺序 | 快、免费、本地、单栏小说够用 | 规则覆盖不了多样排版，复杂场景必崩（多栏/公式/表格） |
-| 本地文档解析引擎 | MinerU、Docling | 版面分析 + 专用模型（OCR/公式/表格）→ 结构化 Markdown/JSON | 本地、结构化、人类阅读顺序、自动去页眉页脚 | 部署重（模型权重）、精度依赖后端选择 |
-| 多模态 VLM 视觉 | pdf2epub.ai 类 | 渲染页面为图片 → VLM（Gemini 等）"看"页面理解语义 → 语义化标记 | 复杂排版识别最强（95–99%）、像人一样理解 | 云端/付费、慢、逐页 token 成本 |
+| Traditional deterministic rules | Calibre, PyMuPDF | parse internal objects → text block coordinates + fonts → heuristic rules ("14pt bold = heading") → order reading by coordinates | fast, free, local, sufficient for single-column novels | rules cannot cover diverse layouts, collapses in complex scenarios (multi-column/formulas/tables) |
+| Local document parsing engines | MinerU, Docling | layout analysis + specialized models (OCR/formula/table) → structured Markdown/JSON | local, structured, human reading order, automatic header/footer removal | heavy deployment (model weights), accuracy depends on backend choice |
+| Multimodal VLM vision | pdf2epub.ai class | render pages as images → VLM (Gemini etc.) "sees" the page and understands semantics → semantic markup | strongest recognition of complex layouts (95–99%), understands like a human | cloud/paid, slow, per-page token cost |
 
-### 2.1 本地引擎 MinerU（重点评估）
+### 2.1 Local Engine MinerU (key evaluation)
 
-- 三路后端：`pipeline`（CPU 可跑、4GB 显存、86.47 分、零幻觉）/ `vlm-engine`（8GB、95.30）/
-  `hybrid`（默认 `effort=medium`、2GB、95.26，先抽原生文本、VLM 只补版面理解）；
-- 输出 `content_list.json`（按阅读顺序 + `type` + `bbox` + `text_level`），适合程序化后处理；
-- 公式→LaTeX、表格→HTML、109 语言 OCR、扫描件自动检测、跨页表格合并、竖排支持；
-- **许可证 2026-04 从 AGPLv3 → Apache 2.0 基（MinerU Open Source License）**，可商用。
+- Three backends: `pipeline` (runs on CPU, 4GB VRAM, 86.47 score, zero hallucination) / `vlm-engine` (8GB, 95.30) / `hybrid` (default `effort=medium`, 2GB, 95.26, extracts native text first, VLM only supplements layout understanding);
+- Outputs `content_list.json` (in reading order + `type` + `bbox` + `text_level`), suitable for programmatic post-processing;
+- Formula→LaTeX, table→HTML, 109-language OCR, automatic scanned-document detection, cross-page table merging, vertical typesetting support;
+- **License changed 2026-04 from AGPLv3 → Apache 2.0-based (MinerU Open Source License)**, commercially usable.
 
-### 2.2 脚注/尾注专项（pdf2epub.ai 六阶段流水线，最可借鉴）
+### 2.2 Footnote/Endnote Special Work (pdf2epub.ai six-stage pipeline, most referenceable)
 
-1. **逐页检测**：让 VLM 在 OCR 时顺手输出元数据（`has_note_refs` / `has_note_defs` / `ref_format` / `def_count` / `is_notes_section`）；
-2. **统计投票定类型**：全书聚合，判定 `footnote / endnote_book / endnote_chapter / mixed / none`（位置阈值 + 共现投票，抗单页误判）；
-3. **尾注预提取**：正则打底、AI 兜底，识别注释章节标题与三级模糊章节名匹配；
-4. **双标记体系**：脚注用 `[^N]`+`[^N]: 定义`，尾注用 `ⓝ`（先存原始 HTML 再对账）——**从格式层面堵死 AI 给尾注引用编造脚注定义**；
-5. **对账兜底**：脚注定义丢失恢复、尾注跨章节 `data-en-id` 链接；
-6. **EPUB 生成**：脚注用 markdown footnotes 扩展，尾注自建 `endnotes.xhtml` 跨文件链接。
+1. **Per-page detection**: have the VLM output metadata alongside OCR (`has_note_refs` / `has_note_defs` / `ref_format` / `def_count` / `is_notes_section`);
+2. **Statistical voting to determine type**: aggregate across the whole book, determine `footnote / endnote_book / endnote_chapter / mixed / none` (position thresholds + co-occurrence voting, robust against single-page misjudgement);
+3. **Endnote pre-extraction**: regex as the base, AI as the fallback, identifying note-section headings and matching three-level fuzzy chapter names;
+4. **Dual-marker system**: footnotes use `[^N]`+`[^N]: definition`, endnotes use `ⓝ` (store the original HTML first, then reconcile) — **blocking, at the format level, the AI from fabricating footnote definitions for endnote references**;
+5. **Reconciliation fallback**: recovery of lost footnote definitions, cross-chapter `data-en-id` links for endnotes;
+6. **EPUB generation**: footnotes use the markdown footnotes extension, endnotes get a self-built `endnotes.xhtml` with cross-file links.
 
-> 核心思想：**对账兜底比预防更实际**——AI 合并丢信息是常态，与其防住，不如拿原始 OCR 当 ground truth 建恢复机制。
+> Core idea: **reconciliation fallback is more practical than prevention** — AI losing information during merging is the norm; rather than preventing it, use the original OCR as ground truth to build a recovery mechanism.
 
-## 3. 扫描件 OCR + 结构重建
+## 3. Scanned-Document OCR + Structure Reconstruction
 
-- 文字型 PDF（有文字层）直接读；扫描 PDF 必须 OCR；
-- 判断方法：能否选中文字；复制是否乱码（乱码=文字层坏了，也需重新 OCR）；
-- OCR 错误扎堆在斜体/小字号/特殊字体（整段脚注或引文可能烂掉），抽查最难页而非最干净页。
+- Text-based PDFs (with a text layer) are read directly; scanned PDFs must be OCR'd;
+- How to judge: can text be selected; is copying garbled (garbled = the text layer is broken, also requiring re-OCR);
+- OCR errors cluster in italics/small font sizes/special fonts (an entire footnote or quotation may be ruined); spot-check the hardest pages, not the cleanest ones.
 
-## 4. 许可证约束
+## 4. License Constraints
 
-本项目自身代码采用 **AGPL-3.0**；第三方依赖保留各自许可证并在 `THIRD_PARTY_LICENSES.md` 登记。
-因项目为 AGPL，**AGPL 依赖可直接引入**（同许可兼容），无需像 MIT 项目那样做进程隔离：
+This project's own code uses **AGPL-3.0**; third-party dependencies retain their own licenses and are registered in `THIRD_PARTY_LICENSES.md`.
+Because the project is AGPL, **AGPL dependencies may be used directly** (same-license compatible), with no need for process isolation as in MIT projects:
 
-| 库 | 许可证 | 结论 |
+| Library | License | Conclusion |
 |---|---|---|
-| PyMuPDF / pymupdf4llm | **AGPL-3.0** | ✅ 可依赖（与项目同许可） |
-| pypdf / pdfplumber | BSD / MIT | ✅ 轻量文字层抽取备选 |
-| Docling | MIT | ✅ 结构化（较重） |
-| MinerU | Apache 2.0 基 | ✅ 可作本地后端（较重） |
+| PyMuPDF / pymupdf4llm | **AGPL-3.0** | ✅ can depend on it (same license as the project) |
+| pypdf / pdfplumber | BSD / MIT | ✅ lightweight text-layer extraction alternative |
+| Docling | MIT | ✅ structured (heavier) |
+| MinerU | Apache 2.0-based | ✅ can serve as a local backend (heavier) |
 
-> 说明：此前按 MIT 项目思路避开 PyMuPDF；现项目定位为 AGPL，PyMuPDF 是**文字层抽取首选**，
-> 无需再回避。第三方许可清单仍需登记，确保合规。
+> Note: previously, following the MIT-project mindset, PyMuPDF was avoided; now that the project is positioned as AGPL, PyMuPDF is the **first choice for text-layer extraction** and no longer needs to be avoided. The third-party license list still needs to be registered to ensure compliance.
 
-## 5. 对 auto-epublizer 的设计建议
+## 5. Design Suggestions for auto-epublizer
 
-### 5.1 按页切片处理模型（处理粒度 = 页）
+### 5.1 Page-Slicing Processing Model (processing granularity = page)
 
-PDF 的基本处理单元是**页**，不是章节：
+The basic processing unit of a PDF is the **page**, not the chapter:
 
 ```text
 source/book.pdf
-  ──按页切片──▶ 逐页处理：渲染页图 + 文字层抽取(或 OCR) + 版面分析
-                  └─▶ structured/raw/page-NNN.json（页级结构化结果：type/bbox/text/page_idx）
+  ──slice by page──▶ process page by page: render page image + text-layer extraction (or OCR) + layout analysis
+                  └─▶ structured/raw/page-NNN.json (page-level structured result: type/bbox/text/page_idx)
 ```
 
-- 每页独立处理、独立落盘、可单独重跑（断点续跑粒度 = 页）；
-- 页级结果保留完整坐标与类型信息，是后续聚合与对账的唯一依据。
+- Each page is processed independently, persisted independently, and can be re-run individually (resume granularity = page);
+- Page-level results retain complete coordinates and type information, and are the sole basis for subsequent aggregation and reconciliation.
 
-### 5.2 章节结构为目录基础（组织粒度 = 章）
+### 5.2 Chapter Structure as the TOC Basis (organization granularity = chapter)
 
-页级结果按**章节归属**聚合到 `structured/` 的目录结构（`body/ch01.md` 等），
-章节是目录组织边界、页是切片边界，二者通过映射表关联：
+Page-level results are aggregated by **chapter membership** into the directory structure of `structured/` (`body/ch01.md`, etc.); the chapter is the TOC organization boundary and the page is the slicing boundary, the two linked by a mapping table:
 
 ```jsonc
-// publication.json 里每单元记录页范围（page→chapter 映射）
+// in publication.json each unit records a page range (page→chapter mapping)
 { "id": "ch01", "kind": "chapter", "meta": { "page_range": [1, 24] } }
 { "id": "ch02", "kind": "chapter", "meta": { "page_range": [25, 48] } }
 ```
 
-- 页 → 章映射在解析阶段由目录（bookmarks/TOC/标题推断）确定；
-- 章节目录结构继承"出版物四层结构"契约，与翻译/审校/封装共用同一单元 ID。
+- The page → chapter mapping is determined at the parsing stage by the TOC (bookmarks/TOC/heading inference);
+- The chapter TOC structure inherits the "four-layer publication structure" contract and shares the same unit ID with translation/review/build.
 
-### 5.3 分层路由 + 复杂情况灵活处理（可插拔，逐页 fallback）
+### 5.3 Layered Routing + Flexible Handling of Complex Cases (pluggable, per-page fallback)
 
 ```text
-PDF 输入（按页判断）
-  ├─ 文字型（有文字层）→ PyMuPDF 确定性抽取（快、零幻觉）
-  ├─ 复杂排版（多栏/公式/表格）→ 可选 MinerU 本地后端（Apache 2.0）
-  └─ 扫描/图片型 → OCR（RapidOCR 离线默认）；需「看」的页由 agent 视觉兜底
+PDF input (judged per page)
+  ├─ text-based (has text layer) → PyMuPDF deterministic extraction (fast, zero hallucination)
+  ├─ complex layout (multi-column/formula/table) → optional MinerU local backend (Apache 2.0)
+  └─ scanned/image-based → OCR (RapidOCR offline default); pages needing "seeing" fall back to agent vision
 ```
 
-**灵活处理原则**：
+**Flexible handling principles**:
 
-- **后端可插拔**：PyMuPDF / RapidOCR / MinerU（外部 API）确定性后端，按页、按需选择；
-- **逐页降级**：单页解析失败或质量差（如版面复杂、OCR 置信低）→ 该页降级到更重后端
-  （如 agent 视觉兜底）重做，**不因一页难拖垮全书**；
-- **页面转图片**：PDF 中需要多模态理解的内容（表格、公式、图文混排、扫描页等），
-  把**需要处理的页**渲染成图片，由 agent 看图理解——只转需要
-  的页，不整本转；
-- **记录处理方式**：每页记下用了哪个后端、是否降级，供审查与审计。
+- **Pluggable backends**: PyMuPDF / RapidOCR / MinerU (external API) deterministic backends, selected per page and on demand;
+- **Per-page degradation**: if a single page fails to parse or is of poor quality (e.g. complex layout, low OCR confidence) → that page is degraded to a heavier backend (e.g. agent visual fallback) and redone, **without one difficult page dragging down the whole book**;
+- **Page-to-image conversion**: for PDF content requiring multimodal understanding (tables, formulas, mixed text-image layout, scanned pages, etc.), render **the pages that need processing** into images for the agent to understand by looking — convert only the needed pages, not the whole book;
+- **Record the processing method**: for each page, record which backend was used and whether it was degraded, for review and audit.
 
-### 5.4 全程可追溯（provenance，贯穿整个管线）
+### 5.4 End-to-End Traceability (provenance, throughout the whole pipeline)
 
-从成品 EPUB 一直能回溯到原始 PDF 的某页某块：
+From the finished EPUB, one can trace all the way back to a certain block on a certain page of the original PDF:
 
 ```text
 output/<slug>.epub
   └─ translation/body/ch01.md  /  structured/body/ch01.md
         └─ Segment.meta: { source_page: 12, source_bbox: [x0,y0,x1,y1] }
-              └─ structured/raw/page-012.json（页级结果，含 type/bbox/text/page_idx）
-                    └─ source/book.pdf（source_sha256 绑定）
+              └─ structured/raw/page-012.json (page-level result, containing type/bbox/text/page_idx)
+                    └─ source/book.pdf (bound by source_sha256)
 ```
 
-- **每个 Segment 记录 `source_page`**（源页号），可选 `source_bbox`（页内坐标）；
-- `align/<id>.jsonl` 对照表沿用同一溯源（译句 ↔ 原句 ↔ 源页）；
-- `structured/raw/` 保留逐页中间产物作为 ground truth，翻译/审校/封装全程引用同一页码；
-- `source_sha256` 绑定源文件内容，任何阶段都能定位"这段文字来自原书第几页"。
+- **Each Segment records `source_page`** (source page number), optionally `source_bbox` (in-page coordinates);
+- The `align/<id>.jsonl` alignment table reuses the same provenance (translated sentence ↔ original sentence ↔ source page);
+- `structured/raw/` retains per-page intermediate products as ground truth; translation/review/build all reference the same page number throughout;
+- `source_sha256` binds the source file content, so at any stage one can locate "which page of the original book this text comes from".
 
-### 5.5 结构重建是核心模块
+### 5.5 Structure Reconstruction Is the Core Module
 
-`structure/` 模块独立承担：标题层级推断、页眉页脚/页码剔除、多栏阅读顺序、脚注配对、
-表格保形、公式（MathML/LaTeX）、代码块。输出结构化中间产物，**含页码与坐标**，供审查。
+The `structure/` module independently handles: heading level inference, running head/footer/page number removal, multi-column reading order, footnote pairing, table shape preservation, formulas (MathML/LaTeX), code blocks. It outputs structured intermediate products **including page numbers and coordinates**, for review.
 
-### 5.6 中间产物持久化（对应 `structured/raw/`）
+### 5.6 Intermediate Product Persistence (corresponding to `structured/raw/`)
 
-- 页面渲染图、逐页解析结果 `page-NNN.json`、layout 可视化（调试阅读顺序）；
-- 这些是**审查与对账的 ground truth**，持久化保存（呼应目录设计，可重建但保留供审查）。
+- Page render images, per-page parsing results `page-NNN.json`, layout visualization (debugging reading order);
+- These are the **ground truth for review and reconciliation**, persisted (echoing the directory design: rebuildable but retained for review).
 
-### 5.7 脚注/尾注专项 + 对账
+### 5.7 Footnote/Endnote Special Work + Reconciliation
 
-- 学术书/译著转 EPUB 最容易丢的就是脚注尾注；
-- 采纳"双标记体系 + 统计投票定类型 + 对账兜底"，EPUB 侧确保双向跳转（QC G4 检查项）；
-- 脚注/尾注同样带页码溯源，丢失时能定位到源页补回。
+- The things most easily lost when converting academic books/translations to EPUB are footnotes and endnotes;
+- Adopt "dual-marker system + statistical voting to determine type + reconciliation fallback"; on the EPUB side ensure bidirectional navigation (a QC G4 check item);
+- Footnotes/endnotes also carry page-number provenance, so when lost they can be located to the source page and restored.
 
-### 5.8 与 QC 的衔接
+### 5.8 Interface with QC
 
-| PDF 难点 | QC 关卡 |
+| PDF difficulty | QC gate |
 |---|---|
-| 阅读顺序/多栏错乱 | G0 结构检查 + 人工审查 raw/ layout 可视化 |
-| 页眉页脚残留 | G0 残留产物检查 |
-| 脚注/尾注丢 | G4 脚注双向跳转审计 |
-| 表格/公式丢失 | G4 结构审计 + 抽查 |
-| OCR 错字 | G0 术语命中 + G1 审校（宁缺毋滥） |
-| 溯源断裂（找不到源页） | G0 溯源完整性检查（每 Segment 有 source_page） |
+| Reading order/multi-column scrambling | G0 structure check + manual review of raw/ layout visualization |
+| Running head/footer leftovers | G0 leftover artifact check |
+| Footnotes/endnotes lost | G4 footnote bidirectional navigation audit |
+| Tables/formulas lost | G4 structure audit + spot check |
+| OCR typos | G0 terminology hits + G1 review (better to omit than to over-flag) |
+| Provenance break (source page not found) | G0 provenance completeness check (every Segment has source_page) |
 
-## 6. 统一文件格式处理策略（全格式）
+## 6. Unified File Format Processing Strategy (all formats)
 
 ```text
-输入文件
+Input file
   ├─ TXT / Markdown / HTML / DOCX / EPUB
-  │     └─ pandoc 统一处理 → Markdown（纯文本）+ 抽取媒体 → structured/
-  │           └─ pandoc 处理不了 → 转 PDF → 走下方 PDF 管线
+  │     └─ pandoc unified processing → Markdown (plain text) + extracted media → structured/
+  │           └─ what pandoc cannot handle → convert to PDF → go through the PDF pipeline below
   └─ PDF
-        └─ 按页切片（§5.1）
-              ├─ 文字型 → PyMuPDF 确定性抽取
-              ├─ 扫描型 → OCR（RapidOCR 离线默认）
-              └─ 需「看」的内容 → 需要处理的页转成图片 → agent 视觉兜底
+        └─ slice by page (§5.1)
+              ├─ text-based → PyMuPDF deterministic extraction
+              ├─ scanned → OCR (RapidOCR offline default)
+              └─ content needing "seeing" → convert the pages that need processing into images → agent visual fallback
 ```
 
-- **非 PDF 一律先走 pandoc**：把结构（标题/段落/列表/表格）与媒体（图片等）拆开，
-  得到纯文本 Markdown + 插入媒体内容，落 `structured/`；
-- **pandoc 兜底转 PDF**：个别格式/文档 pandoc 处理不了时，转成 PDF 再走按页切片管线——
-  统一兜底，不写第二套解析；
-- **页面转图片给 agent**：PDF 中表格、公式、图文混排、扫描页等需要"看"的内容，
-  把对应页渲染成图片由 agent 看图理解，**只转需要处理的页，不整本转**；
-- 无论哪条路，最终都汇入 `structured/` 目录结构 + 全程溯源（§5.4）。
+- **Non-PDF always goes through pandoc first**: separate the structure (headings/paragraphs/lists/tables) from the media (images, etc.) to obtain plain-text Markdown + inserted media content, persisted to `structured/`;
+- **pandoc fallback to PDF**: when pandoc cannot handle an individual format/document, convert it to PDF and go through the page-slicing pipeline — a unified fallback, without writing a second parsing system;
+- **Page-to-image for the agent**: for PDF content that needs "seeing" such as tables, formulas, mixed text-image layout, and scanned pages, render the corresponding pages into images for the agent to understand by looking — **convert only the pages that need processing, not the whole book**;
+- Whichever route is taken, everything ultimately converges into the `structured/` directory structure + end-to-end provenance (§5.4).
