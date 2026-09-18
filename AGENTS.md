@@ -146,6 +146,12 @@ skills/auto-epublizer/
 「同型情况怎么判/怎么修」）；规范表（如 `quality-lessons.md` 的正向目标/负面限制）
 留在 `docs/` 作为 QC 设计依据。新教训一律写 `lessons/`，不往 plans 里塞经验正文。
 
+**文档 i18n（中英双语）**：文档采用「英文默认 `X.md` + 中文 `X.zh.md`」双语，
+**中文为权威源**、英文为派生译文；改中文源须同步英文并运行
+`python scripts/i18n.py --finalize X.md`（`--check`/`--links` 由 `tests/test_i18n.py`
+强制）；命名、范围、术语对照见 `docs/i18n.md`。历史计划（`docs/plans/`）、
+`template/`、`THIRD_PARTY_LICENSES.md`、CLI 输出与代码注释保持中文单语。
+
 ## 工作区目录契约
 
 ```text
