@@ -1,77 +1,95 @@
-# 扫描件 PDF 全流程问题清单（豆包 JS 权威指南 15 问题实录）
+<!-- i18n: source=2026-09-05-scanned-pdf-issue-checklist.zh.md sha256=94fb2d38209ea2849dee9d2a31b36fcdde736748ea1a620e035b7df3b1cee0f7 -->
+> **English** | [中文](2026-09-05-scanned-pdf-issue-checklist.zh.md)
 
-> 日期：2026-09-05　来源：豆包云端 agent 实测《JavaScript 权威指南》第 6 版
-> 扫描件（1018 页，中文版）→ EPUB 全程，15 个问题的根因与处置。
-> 状态：经验留存；其中**主仓库缺口已逐条核实**（下述 ✅/❌）。
+# Scanned-file PDF full-flow issue checklist (DouBao JS authoritative guide 15-issue measurement)
 
-## 触发场景
+> Date: 2026-09-05　Source: DouBao cloud agent's measurement of the《JavaScript: The
+> Definitive Guide》6th edition scanned file (1018 pages, Chinese edition) → EPUB full flow,
+> 15 issues' root causes and handling.
+> Status: experience retained; among them the **main-repo gaps have been verified item by
+> item** (the ✅/❌ below).
 
-扫描件 PDF（尤其代码/技术书）用传统 OCR 与 MinerU 两条路走完的完整问题集。
-本清单是「同一任务」的两份 lessons 的补充：`scanned-pdf-operations.md`
-（方案选择/分批/拆分）与 `agent-translation-workflow.md`（翻译工作流）。
+## Trigger scenario
 
-## 问题分类分析
+The complete problem set from running a scanned PDF (especially code/technical books)
+through both the traditional OCR and MinerU routes. This checklist supplements the two
+lessons of "the same task": `scanned-pdf-operations.md` (solution selection/batching/
+splitting) and `agent-translation-workflow.md` (translation workflow).
 
-### A 类：真实主仓库缺口（已核实，可合入修复）
+## Issue classification analysis
 
-| # | 问题 | 主仓库现状（2026-09-05 核实） |
+### Category A: real main-repo gaps (verified, can be merged as fixes)
+
+| # | Issue | Main-repo status (verified 2026-09-05) |
 |---|---|---|
-| 7 | `markdown_to_xhtml` 只支持行内反引号，不支持 ``` 围栏代码块 | ❌ `html.py` 仅 `_CODE_RE`（行内）；围栏代码会整块进 `<p>` |
-| 8 | `_inline` 不支持 `\[` 转义（先链接后转义，转义无效） | ❌ 无转义处理 |
-| 11 | 链接正则 `\[([^\]]+)\]\(([^)]+)\)` 不校验 URL，`[9](1个数字元素)` 误判为链接 → epubcheck RSC-007 | ❌ `_LINK_RE` 匹配任意 `[x](y)` |
-| 9 | 代码块占位符用 `\x00` → XML 非法字符 FATAL | ⚠️ 主仓库**尚无**代码块占位符（同上）；将来实现围栏支持时**禁止用控制字符作占位符** |
-| 12 | 手工建 publication.json 时 units.status 设 "built" → build 跳过 | ✅ 是使用陷阱，非代码 bug；状态机由 CLI 管，手工建工作区必须 `pending` |
-| 13 | 手工建 publication.json 时 units.meta 缺 `rel_path`/`region`/`level` → build 找不到源 | ✅ 使用陷阱；应让 CLI `init` 生成而非手写 |
+| 7 | `markdown_to_xhtml` only supports inline backticks, not ``` fenced code blocks | ❌ `html.py` only has `_CODE_RE` (inline); fenced code goes entirely into `<p>` |
+| 8 | `_inline` does not support `\[` escaping (link first then escape, escaping ineffective) | ❌ no escape handling |
+| 11 | link regex `\[([^\]]+)\]\(([^)]+)\)` does not validate the URL; `[9](1个数字元素)` is misjudged as a link → epubcheck RSC-007 | ❌ `_LINK_RE` matches any `[x](y)` |
+| 9 | code-block placeholder uses `\x00` → illegal XML character FATAL | ⚠️ the main repo **does not yet have** a code-block placeholder (same as above); when fenced support is implemented in the future, **control characters must not be used as placeholders** |
+| 12 | manually creating publication.json with units.status set to "built" → build skips | ✅ a usage trap, not a code bug; the state machine is managed by the CLI, and a manually created workspace must be `pending` |
+| 13 | manually creating publication.json with units.meta missing `rel_path`/`region`/`level` → build cannot find the source | ✅ usage trap; let CLI `init` generate it rather than hand-writing |
 
-> 封面（豆包报告#2 说「不支持」）：**主仓库现已支持** `cover_media` +
-> `<meta name="cover">` + spine `linear="no"`（cover 单元自动识别）。豆包当时
-> 是旧仓库状态 + 扫描件整页图难自动判定封面，手动注入的 spine/playOrder
-> 修补（报告#14/#15）在新仓库不再需要。
+> Cover (DouBao report #2 says "not supported"): **the main repo now supports**
+> `cover_media` + `<meta name="cover">` + spine `linear="no"` (the cover unit is recognized
+> automatically). DouBao was at the old repo state at the time, and it is hard to
+> automatically determine the cover from a full-page scanned image; the manual
+> spine/playOrder patch injected (reports #14/#15) is no longer needed in the new repo.
 
-### B 类：MinerU/OCR 方案性教训（与前两份 lessons 一致，此处聚焦新细节）
+### Category B: MinerU/OCR solution-level lessons (consistent with the previous two lessons; here focusing on new details)
 
-- **#1 换行未处理**：OCR 逐块落盘时每行一个文本块 → 每行独立 `<p>`。传统 OCR
-  必然要段落合并（v1 无效 / v2 合并过度 / v3 保守阈值，反复调）——**直接换 MinerU**。
-- **#3 单单元构建丢 nav**：整本 markdown 作单单元 → nav 只有 1 项。必须按章拆单元。
-- **#4 标题层级不一致**：MinerU 输出同一本书 `#`/`##` 混用（第1章 `#`、第2章 `##`、
-  第6章 `## 第6章`）；`build` 以单元 `title` 生成目录、structured md 首行 `#` 为标题。
-  → 统一每章首行为 `# 第X章 标题`。
-- **#5/#6 手动拆分**：第1章标题页是整页大图、无"第1章"前缀 → 目录页码定位失败；
-  拆分时写入路径错位覆盖原 ch01。→ 拆章**先写临时文件再从后往前重命名**，
-  且标题判定归 agent 手动（见 `scanned-pdf-operations.md` §3）。
-- **#10 代码块前后无空行**：占位符与文本同 block 无法被 `re.match` 识别 →
-  markdown 清理必须保证代码块前后有空行。
+- **#1 Line breaks not handled**: when OCR writes block by block, each line is one text
+  block → each line becomes an independent `<p>`. Traditional OCR inevitably requires
+  paragraph merging (v1 ineffective / v2 over-merged / v3 conservative threshold, tuned
+  repeatedly) — **switch directly to MinerU**.
+- **#3 Single-unit build loses nav**: the whole book's markdown as a single unit → nav has
+  only 1 item. Units must be split by chapter.
+- **#4 Inconsistent heading levels**: MinerU output for the same book mixes `#`/`##` (ch1
+  `#`, ch2 `##`, ch6 `## 第6章`); `build` generates the TOC from the unit `title`, and the
+  first line `#` of the structured md is the heading. → Unify each chapter's first line as
+  `# 第X章 标题`.
+- **#5/#6 Manual splitting**: ch1's title page is a full-page large image with no "第1章"
+  prefix → TOC page-number location fails; when splitting, the write path is misaligned and
+  overwrites the original ch01. → When splitting chapters, **first write a temporary file
+  then rename from back to front**, and heading determination is left to the agent manually
+  (see `scanned-pdf-operations.md` §3).
+- **#10 No blank line before/after code blocks**: the placeholder and text in the same block
+  cannot be recognized by `re.match` → markdown cleanup must ensure blank lines before and
+  after code blocks.
 
-### C 类：epubcheck 错误码 → 根因对照（调试速查）
+### Category C: epubcheck error codes → root cause cross-reference (debug quick reference)
 
-| epubcheck 错误 | 通常根因 | 处置 |
+| epubcheck error | Usual root cause | Handling |
 |---|---|---|
-| FATAL "invalid XML character (Unicode: 0x0)" | 占位符/内容含控制字符 | 清理空字符；占位符用可打印串 |
-| RSC-007 "Referenced resource … could not be found" | 方括号被误解析为链接；资源路径错 | 链接正则校验 URL；核对 href |
-| "Element type spine must be followed by attribute" | XML 注入时标签拼接错 | 只改标签内容不改结构 |
-| "playOrder value not 1 / gaps" | 手动插封面后未重排 NCX | 重新连续编号 |
+| FATAL "invalid XML character (Unicode: 0x0)" | placeholder/content contains control characters | clean null characters; use a printable string for the placeholder |
+| RSC-007 "Referenced resource … could not be found" | square brackets mis-parsed as a link; wrong resource path | link regex validates the URL; check href |
+| "Element type spine must be followed by attribute" | tag concatenation error during XML injection | only change tag content, not structure |
+| "playOrder value not 1 / gaps" | NCX not renumbered after manually inserting the cover | renumber consecutively |
 
-## 处置清单（合入主仓库时的修复建议）
+## Handling checklist (fix suggestions when merging into the main repo)
 
-1. **围栏代码块**：`html.py` block 级预处理——``` 块提取 → `<pre><code class="language-xxx">`；
-   占位符用可打印标记（如 `__AUTOEPUBLIZERCODEBLOCK__`），**禁用控制字符**。
-2. **`_inline` 转义顺序**：先处理 `\[`/`\]` 转义再链接匹配，或链接正则先排除转义。
-3. **`_LINK_RE` URL 校验**：仅 http/https/#/mailto 等合法协议才当链接，否则按纯文本
-   （`[9](1个数字元素)` 不是链接）。参考 `_DANGEROUS_URL` 的写法。
+1. **Fenced code blocks**: `html.py` block-level preprocessing — extract ``` blocks →
+   `<pre><code class="language-xxx">`; use a printable marker for the placeholder (e.g.
+   `__AUTOEPUBLIZERCODEBLOCK__`), **control characters forbidden**.
+2. **`_inline` escape order**: handle `\[`/`\]` escaping before link matching, or have the
+   link regex exclude escapes first.
+3. **`_LINK_RE` URL validation**: only treat legal protocols such as http/https/#/mailto as
+   links, otherwise treat as plain text (`[9](1个数字元素)` is not a link). Refer to the way
+   `_DANGEROUS_URL` is written.
 
-> 修复后须补回归：围栏代码块渲染、`\[` 转义不产生链接、`[x](非URL)` 不生成 `<a>`。
+> After fixing, regression must be added: fenced code-block rendering, `\[` escaping not
+> producing a link, `[x](non-URL)` not generating `<a>`.
 
-## 复现 / 验证
+## Reproduction / verification
 
 ```bash
-# 当前主仓库：`[9](1个数字元素)` 会被渲染成 <a>（RSC-007 源头）
+# Current main repo: `[9](1个数字元素)` will be rendered as <a> (the source of RSC-007)
 uv run python -c "from auto_epublizer.build.html import _inline; print(_inline('[9](1个数字元素)'))"
-# 围栏代码块当前会原样进 <p>：
+# Fenced code blocks currently go into <p> as-is:
 uv run python -c "from auto_epublizer.build.html import render_document; print('```' in render_document('T','```js\nlet a=1\n```', lang='zh-CN'))"
 ```
 
-## 关联
+## Related
 
-- 方案选择/拆分/分批：`2026-09-05-scanned-pdf-operations.md`
-- 翻译工作流：`2026-09-05-agent-translation-workflow.md`
-- MinerU 后端：`2026-09-05-scanned-pdf-mineru-first.md`、`src/auto_epublizer/ingest/mineru.py`
+- Solution selection/splitting/batching: `2026-09-05-scanned-pdf-operations.md`
+- Translation workflow: `2026-09-05-agent-translation-workflow.md`
+- MinerU backend: `2026-09-05-scanned-pdf-mineru-first.md`, `src/auto_epublizer/ingest/mineru.py`

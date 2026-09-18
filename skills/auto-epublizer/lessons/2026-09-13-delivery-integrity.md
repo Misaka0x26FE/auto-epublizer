@@ -1,67 +1,83 @@
-# 成品完整性对账：工具 QA 全过仍缺 38/72 张图（交付审计教训）
+<!-- i18n: source=2026-09-13-delivery-integrity.zh.md sha256=5e7d2a1ad1dfca234d4a2210553158d3e490d0c8904618c96a5bebc31fad3031 -->
+> **English** | [中文](2026-09-13-delivery-integrity.zh.md)
 
-> 日期：2026-09-13　来源：《俄国铁路史》中译任务交付前手动全量检验（外部工具链，
-> 本项目复盘）。状态：**已落地**——对账自动化见 `qa/provenance.py`（E_MEDIA_EPUB_LOST/
-> E_FN_EPUB_LOST/E_EPUB_PARA_LOST/E_ALIGN_MD_DRIFT）与
-> `docs/plans/2026-09-13-delivery-audit.md`；强制清单见 `references/delivery.md`。
+# Finished-product integrity reconciliation: tool QA all passes yet 38/72 images missing (delivery audit lesson)
 
-## 触发场景
+> Date: 2026-09-13　Source: manual full inspection before delivery of the《俄国铁路史》Chinese
+> translation task (external toolchain, retrospective in this project). Status: **landed** —
+> reconciliation automation is in `qa/provenance.py` (E_MEDIA_EPUB_LOST/
+> E_FN_EPUB_LOST/E_EPUB_PARA_LOST/E_ALIGN_MD_DRIFT) and
+> `docs/plans/2026-09-13-delivery-audit.md`; the mandatory checklist is in `references/delivery.md`.
 
-翻译任务流程已结束、工具 QA 全绿（epubcheck 0 error、结构审计 pass），准备交付/分发。
-此时**必须再做一次交付审计**：对成品做独立于工具契约的「源引用 ↔ 成品包含」对账。
+## Trigger scenario
 
-## 判据（怎么判断可能命中该情况）
+The translation task flow has ended and tool QA is all green (epubcheck 0 error, structure audit pass),
+preparing to deliver/distribute. At this point a **delivery audit must be done once more**: perform an
+independent-of-tool-contract "source references ↔ finished product inclusion" reconciliation on the
+finished product.
 
-工具校验它「知道」的契约，build 消费的却是另一些文件——两者可能脱节：
+## Criterion (how to judge that this situation may be hit)
 
-| 实际案例 | 根因 | 工具为何没抓到 |
+The tool validates the contract it "knows", while build consumes some other files — the two can be
+out of sync:
+
+| Actual case | Root cause | Why the tool did not catch it |
 |---|---|---|
-| EPUB 只含 34/72 张正文引用图 | 译文正文文件（translation/body）在翻译时丢了 38 处图片引用段 | 守恒校验查的是对照表（align，脚本回填过、完整），build 消费的是 md |
-| 脚注内容部分缺失 | 同一批 md 也丢了部分脚注标记 | 脚注守恒同样只看 align |
-| inserts 描述 80 条为空 | 语义层未补 | 工具只出 W 级提示，易被忽视 |
+| EPUB contains only 34/72 body-referenced images | the translated body files (translation/body) lost 38 image reference paragraphs during translation | the conservation check looked at the alignment (align, script-backfilled, complete), while build consumed md |
+| Part of the footnote content missing | the same batch of md also lost some footnote markers | footnote conservation likewise only looked at align |
+| 80 inserts descriptions empty | not filled in at the semantic layer | the tool only gives W-level warnings, easily overlooked |
 
-命中信号：
-- 用 `grep` 统计 structured 的图片引用数/脚注标记数，与 translation/成品实际数量对不上；
-- 译文 md 与 align 的文本量不一致（align 更长/更短）；
-- 成品解包后 `OEBPS/media/` 文件数 ≠ 正文 `<img>` 引用数；
-- 交付前从未做过「解包抽查」。
+Hit signals:
+- Using `grep` to count the image references / footnote markers in structured does not match the actual
+  counts in translation/finished product;
+- the text volume of the translated md and align are inconsistent (align longer/shorter);
+- after unpacking the finished product, the `OEBPS/media/` file count ≠ the body `<img>` reference count;
+- "unpack sampling" was never done before delivery.
 
-## 处置（怎么修）
+## Handling (how to fix)
 
-1. **独立对账（先量化）**：分别统计 structured/、translation/、成品解包三方的
-   图片引用、脚注标记、段落数——本案由此定位到 38 张缺图集中在 ch02/ch04/ch05/
-   ch06/ch07，与 EPUB 缺失清单完全吻合；
-2. **以 align 为准重建正文**（align 是经 import 校验的权威对照）：按序用 align 的
-   tgt 重建 md（同时修复图片段与脚注）；重建前**备份原文件**（`*_backup_pre_rebuild/`）；
-3. **验证重建无内容丢失**：译文探针与重建前做重叠率比对（本案 95–98%，未匹配项
-   均为标题/引号跨段边界的探针假阴性）；
-4. **重 build + 重 QA**：确认图片从 34 → 72、无断链无多余、epubcheck 0 error；
-5. **全量重验后同步所有分发副本**：本地成品、云盘、仓库三处字节核对一致；
-   修复记录写 ISSUES 报告/交付记录。
+1. **Independent reconciliation (quantify first)**: separately count the image references, footnote
+   markers, paragraph counts of structured/, translation/, and the unpacked finished product — this case
+   thereby located the 38 missing images concentrated in ch02/ch04/ch05/ch06/ch07, exactly matching the
+   EPUB missing list;
+2. **Rebuild the body using align as the authority** (align is the authoritative alignment validated by
+   import): rebuild md in order from align's tgt (fixing both image paragraphs and footnotes);
+   **back up the original files** before rebuilding (`*_backup_pre_rebuild/`);
+3. **Verify the rebuild has no content loss**: compare the overlap ratio of translation probes against
+   before the rebuild (95–98% in this case; the unmatched items were all probe false negatives at
+   heading/quote paragraph boundaries);
+4. **Rebuild + re-QA**: confirm images go from 34 → 72, no broken links, no extras, epubcheck 0 error;
+5. **After full re-verification, sync all distribution copies**: byte-check the local finished product,
+   cloud drive, and repository against each other; write the fix record into the ISSUES report/delivery record.
 
-## 复现/验证
+## Reproduction/verification
 
 ```bash
-# 自动化对账（主仓库已接线）：错误案例 → qa 应按 E_MEDIA_EPUB_LOST 阻断
+# Automated reconciliation (already wired in the main repo): error case → qa should block with E_MEDIA_EPUB_LOST
 uv run pytest -q tests/test_provenance.py -k "epub_media_lost or silent_media_drop"
 uv run pytest -q tests/test_provenance.py -k "epub_footnote_lost or epub_para_lost"
 uv run pytest -q tests/test_import.py -k drift
 ```
 
-端到端最小复现：工作区译文 md 引用 `raw/media/ghost.png` 但文件不存在 → build 静默
-丢弃（`events.jsonl` 记 `media_dropped`）→ `qa` 报 `E_MEDIA_EPUB_LOST` 且
-`released=False`（见 `tests/test_provenance.py::test_silent_media_drop_blocks_via_epub_reconciliation`）。
+Minimal end-to-end reproduction: the workspace translation md references `raw/media/ghost.png` but the
+file does not exist → build silently drops it (`events.jsonl` records `media_dropped`) → `qa` reports
+`E_MEDIA_EPUB_LOST` and `released=False` (see
+`tests/test_provenance.py::test_silent_media_drop_blocks_via_epub_reconciliation`).
 
-## 可复用判据（跨任务）
+## Reusable criteria (cross-task)
 
-- **成品校验必须独立做「源引用 ↔ 成品包含」对账**，不能只依赖工具 QA——工具全绿
-  不代表 build 输入与成品一致；
-- md 是 build 输入、align 是校验基准：二者必须一致（`E_ALIGN_MD_DRIFT` 已自动对账）；
-- 修复后必须**全量重验 + 全部分发副本同步**，不能只验修复点。
+- **Finished-product validation must independently do "source references ↔ finished product inclusion"
+  reconciliation**, and must not rely only on tool QA — tool all-green does not mean the build input
+  and the finished product are consistent;
+- md is the build input and align is the validation baseline: the two must be consistent
+  (`E_ALIGN_MD_DRIFT` is already automatically reconciled);
+- after a fix, **full re-verification + syncing all distribution copies** is mandatory; do not verify
+  only the fix point.
 
-## 关联
+## Related
 
-- 计划/设计：`docs/plans/2026-09-13-delivery-audit.md`（S1 对账自动化 + delivery.md）；
-- 强制清单：`references/delivery.md`（qa released 后的交付审计步骤与记录模板）；
-- 现行代码：`qa/provenance.py`（成品呈现对账）、`review/g0.py::md_align_drift`、
-  `build/__init__.py::collect_media`（丢弃清单 + `media_dropped` 事件）。
+- Plan/design: `docs/plans/2026-09-13-delivery-audit.md` (S1 reconciliation automation + delivery.md);
+- Mandatory checklist: `references/delivery.md` (delivery audit steps and record template after qa released);
+- Current code: `qa/provenance.py` (finished-product presentation reconciliation),
+  `review/g0.py::md_align_drift`,
+  `build/__init__.py::collect_media` (drop list + `media_dropped` event).

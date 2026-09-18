@@ -1,51 +1,60 @@
-# Lessons（实战经验沉淀）
+<!-- i18n: source=README.zh.md sha256=8124b22066a33407f83d64cc44e948b0e20a84c405705cd7dd8f5a45bb5869fc -->
+> **English** | [中文](README.zh.md)
 
-本子目录存放**真实工作（处理真实书籍/源站）中针对特定情况的经验**，区别于
-`references/`（面向每本书的常规操作指引）。每篇 lessons 对应一种**具体源站/脏源/
-边界情况**，供下游 agent 遇到同型情况时直接对照处置。
+# Lessons (distilled field experience)
 
-## 与 references 的分工
+This subdirectory holds **experience from real work (processing real books/source sites) for
+specific situations**, as distinct from `references/` (routine operational guidance for each book).
+Each lessons entry corresponds to one **specific source site/dirty source/edge case**, for
+downstream agents to directly consult and handle when they encounter the same type of situation.
 
-| 目录 | 回答 | 触发 |
+## Division of labour with references
+
+| Directory | Answers | Trigger |
 |---|---|---|
-| `references/` | 每本书每步怎么做 | 按阶段只读一份（SKILL.md 路由表） |
-| `lessons/` | 这个特殊情况遇到过，怎么判、怎么修 | 只在**源站/脏源/边界情况**匹配时读 |
+| `references/` | how to do each step for each book | read only one per stage (SKILL.md routing table) |
+| `lessons/` | this special situation was encountered, how to judge, how to fix | read only when a **source site/dirty source/edge case** matches |
 
-## 约定（写前必读）
+## Conventions (must-read before writing)
 
-1. **经验是「判据 + 处置」，不是结论**：必须写清「怎么判断命中该情况」与「怎么处置/验证」，
-   不照抄某次修复的最终字符串——下游 agent 据判据自行适配。
-2. **每篇一篇一主题**：命名 `YYYY-MM-DD-<主题>.md`，只覆盖一种特定情况。
-3. **必带「复现/验证」段**：如何本地重放该情况（如最小 fixture），确保经验可自证、不空谈。
-4. **引用可读代码位置**：涉及 build/provenance 等行为时给 `file:line`，并标注是否已在
-   主仓库修复（`已修复` 或 `见 plans/xxx`）。
-5. **用户数据不入门**：不含真实书源/译文/密钥；fixture 一律 tempfile 或匿名化。
+1. **Experience is "criterion + handling", not a conclusion**: you must clearly write "how to judge
+   that this situation is hit" and "how to handle/verify", and not copy the final strings of a
+   particular fix — the downstream agent adapts on its own per the criterion.
+2. **One entry per topic**: named `YYYY-MM-DD-<topic>.md`, covering only one specific situation.
+3. **Must include a "Reproduction/verification" section**: how to locally replay the situation (e.g. a
+   minimal fixture), ensuring the experience is self-proving and not empty talk.
+4. **Cite readable code locations**: when build/provenance and similar behaviour is involved, give
+   `file:line`, and mark whether it is already fixed in the main repo (`已修复` or `see plans/xxx`).
+5. **No user data in the entries**: no real book sources/translations/keys; fixtures are always
+   tempfile or anonymized.
 
-## 索引
+## Index
 
-| 文档 | 主题 | 状态 |
+| Document | Topic | Status |
 |---|---|---|
-| [2026-09-05-baka-tsuki-html-figures.md](2026-09-05-baka-tsuki-html-figures.md) | Baka-Tsuki 源站 HTML 的插图段结构（figure>a>img 三行）在 ingest/build 的保真与复原 | 已修复（1766e7a 等）+ 经验留存 |
-| [2026-09-05-scanned-pdf-mineru-first.md](2026-09-05-scanned-pdf-mineru-first.md) | 扫描件 PDF：MinerU 最优先（换行/插图识别），传统 OCR 只识别字符需 agent 逐页阅读兜底 | 已落地（ingest/mineru.py）+ 经验留存 |
-| [2026-09-05-scanned-pdf-operations.md](2026-09-05-scanned-pdf-operations.md) | 扫描件实操：>200 页分批/合并、**别脚本化拆分（agent 手动拆）**、单单元构建丢 nav、围栏代码块缺支持 | 经验留存（豆包四轮实测） |
-| [2026-09-05-agent-translation-workflow.md](2026-09-05-agent-translation-workflow.md) | agent 主进程翻译工作流：每 3–5 单元 build 验证、标题先定稿、Write 工具代替 heredoc、G0 告警不能全当噪声 | 经验留存（GT1/GT2/On Lisp 实测） |
-| [2026-09-05-scanned-pdf-issue-checklist.md](2026-09-05-scanned-pdf-issue-checklist.md) | 扫描件全流程 15 问题清单：主仓库缺口核实（围栏代码块/链接正则/转义）+ epubcheck 错误码速查 + 修复建议 | 经验留存（JS 权威指南实测；缺口待合入） |
-| [2026-09-05-dogfooding-pdf-lessons.md](2026-09-05-dogfooding-pdf-lessons.md) | 真书 dogfooding 5 个 PDF 管线缺陷：公式符号集/字体占比守卫/表格双守卫/qa jar 配置/OCR raw 目录 | 已修复 + 经验留存（来自 plan §6 验证记录） |
-| [2026-09-06-conservation-total-only.md](2026-09-06-conservation-total-only.md) | 守恒类 G0 校验必须做单元级总量比对（行级比对被拆并句误报）；源保真用规范化拼接子串匹配 | 已落地（review/g0.py + review/fidelity.py） |
-| [2026-09-11-epub-nonlinear-spine-tables.md](2026-09-11-epub-nonlinear-spine-tables.md) | EPUB 非线性 spine 项（表格）被 pandoc 跳过 + 标题锚点残留 + 前置辅文切碎 → 按 OPF spine 切分并内联非线性项 | 已修复（ingest/epub_reader.py + test_epub_reader.py） |
-| [2026-09-12-epub-internal-links-anchors.md](2026-09-12-epub-internal-links-anchors.md) | EPUB 内部链接/页码锚点/标题 id 带 pandoc 源文件前缀 → 按 spine 映射重写为成品单元（跨单元链接 / 同单元纯锚点） | 已修复（structure/links.py + build/html.py + ingest/epub_reader.py） |
-| [2026-09-13-delivery-integrity.md](2026-09-13-delivery-integrity.md) | 工具 QA 全过仍缺 38/72 张图（译文正文丢图片段，守恒只查 align）→ 交付审计独立对账 + 以 align 重建 + 全量重验 | 已落地（qa/provenance.py 对账自动化 + references/delivery.md 强制清单） |
+| [2026-09-05-baka-tsuki-html-figures.md](2026-09-05-baka-tsuki-html-figures.md) | Baka-Tsuki source-site HTML illustration paragraph structure (three lines figure>a>img) fidelity and restoration in ingest/build | fixed (1766e7a etc.) + experience retained |
+| [2026-09-05-scanned-pdf-mineru-first.md](2026-09-05-scanned-pdf-mineru-first.md) | Scanned PDF: MinerU first priority (line-break/illustration recognition), traditional OCR recognizes only characters and needs the agent to read page by page as fallback | landed (ingest/mineru.py) + experience retained |
+| [2026-09-05-scanned-pdf-operations.md](2026-09-05-scanned-pdf-operations.md) | Scanned-file operations: >200 pages batch/merge, **do not script the splitting (the agent splits manually)**, single-unit build loses nav, fenced code blocks lack support | experience retained (DouBao four-round measurement) |
+| [2026-09-05-agent-translation-workflow.md](2026-09-05-agent-translation-workflow.md) | agent main-process translation workflow: build and verify every 3–5 units, finalize headings first, use the Write tool instead of heredoc, G0 warnings cannot all be treated as noise | experience retained (GT1/GT2/On Lisp measurement) |
+| [2026-09-05-scanned-pdf-issue-checklist.md](2026-09-05-scanned-pdf-issue-checklist.md) | Scanned-file full-flow 15-issue checklist: main-repo gap verification (fenced code blocks/link regex/escaping) + epubcheck error code quick reference + fix suggestions | experience retained (JS authoritative guide measurement; gaps pending merge) |
+| [2026-09-05-dogfooding-pdf-lessons.md](2026-09-05-dogfooding-pdf-lessons.md) | Real-book dogfooding 5 PDF pipeline defects: formula symbol set/font ratio guard/table double guard/qa jar configuration/OCR raw directory | fixed + experience retained (from plan §6 verification record) |
+| [2026-09-06-conservation-total-only.md](2026-09-06-conservation-total-only.md) | Conservation-type G0 validation must do unit-level total comparison (line-level comparison produces false positives from split/merge sentences); source fidelity uses normalized concatenated substring matching | landed (review/g0.py + review/fidelity.py) |
+| [2026-09-11-epub-nonlinear-spine-tables.md](2026-09-11-epub-nonlinear-spine-tables.md) | EPUB nonlinear spine items (tables) skipped by pandoc + heading anchor leftovers + frontmatter fragmentation → split by OPF spine and inline nonlinear items | fixed (ingest/epub_reader.py + test_epub_reader.py) |
+| [2026-09-12-epub-internal-links-anchors.md](2026-09-12-epub-internal-links-anchors.md) | EPUB internal links/page anchors/heading id carrying pandoc source-file prefixes → rewrite by spine mapping to finished-product units (cross-unit links / same-unit pure anchors) | fixed (structure/links.py + build/html.py + ingest/epub_reader.py) |
+| [2026-09-13-delivery-integrity.md](2026-09-13-delivery-integrity.md) | Tool QA all passes yet 38/72 images missing (translated body loses image paragraphs, conservation only checks align) → delivery audit independent reconciliation + rebuild with align + full re-verification | landed (qa/provenance.py reconciliation automation + references/delivery.md mandatory checklist) |
 
-## 来源与去向（经验怎么进这里）
+## Source and destination (how experience gets here)
 
-- **豆包四轮实测**（GT1/GT2 HTML → On Lisp PDF → JS 权威指南扫描件 → MinerU 重做）：
-  经验直接落在 `scanned-pdf-operations` / `agent-translation-workflow` /
-  `scanned-pdf-issue-checklist`，产物在飞书云盘（魔法禁书目录 GT 系列 / On Lisp /
-  JavaScript 权威指南 文件夹）。
-- **真书 dogfooding**（2026-09-04）：计划 `docs/plans/2026-09-04-pdf-dogfooding.md`
-  §6 的验证记录是经验来源，本篇将其沉淀为 lessons；计划文档保留验证上下文。
-- **主仓库修复状态**：每篇「状态」列标注是否已修复（`已修复` + 提交号），未修复的
-  （如围栏代码块）是明确的后续开发缺口。
+- **DouBao four-round measurement** (GT1/GT2 HTML → On Lisp PDF → JS authoritative guide scanned file →
+  MinerU redo): experience lands directly in `scanned-pdf-operations` / `agent-translation-workflow` /
+  `scanned-pdf-issue-checklist`; the artifacts are on the Feishu cloud drive (A Certain Magical Index GT
+  series / On Lisp / JavaScript authoritative guide folders).
+- **Real-book dogfooding** (2026-09-04): the verification record in §6 of the plan
+  `docs/plans/2026-09-04-pdf-dogfooding.md` is the experience source, deposited in this entry as a
+  lesson; the plan document retains the verification context.
+- **Main-repo fix status**: each entry's "Status" column marks whether it is fixed (`已修复` + commit
+  hash); the unfixed ones (e.g. fenced code blocks) are clear follow-up development gaps.
 
-> 约定：新经验一律落 `lessons/`（判据/处置/验证三段式）；计划文档的验证记录若含
-> 可复用经验，完成后同步沉淀一篇 lessons 并互相引用。
+> Convention: new experience always lands in `lessons/` (criterion/handling/verification three-part
+> form); if a plan document's verification record contains reusable experience, after completion deposit
+> a lessons entry in sync and cross-reference each other.

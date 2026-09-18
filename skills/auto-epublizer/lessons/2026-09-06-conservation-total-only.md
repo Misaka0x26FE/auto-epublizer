@@ -1,36 +1,27 @@
-# 守恒类校验必须做单元级总量比对（行级比对会被拆并句误报）
+<!-- i18n: source=2026-09-06-conservation-total-only.zh.md sha256=05962ff198a03262d04398a42aafec7df426f4c8ff00734cfdf99c75b7324a73 -->
+> **English** | [中文](2026-09-06-conservation-total-only.zh.md)
 
-> 来源：`docs/plans/2026-09-06-adoption-plan.md` S1.2/S4.1 实施验证。
-> 去向：`review/g0.py::g0_unit_flags`（marker/footnote 总量守恒）、
-> `review/fidelity.py`（块级拼接匹配）。
+# Conservation checks must compare unit-level totals (line-level comparison false-positives on split/merged sentences)
 
-## 判据
+> Source: implementation verification of S1.2/S4.1 in `docs/plans/2026-09-06-adoption-plan.md`.
+> Destination: `review/g0.py::g0_unit_flags` (marker/footnote total conservation), `review/fidelity.py` (block-level concatenation matching).
 
-需要对「源文中的离散记号」（插入标记、脚注标记、图片引用、表格等）做
-src↔tgt 守恒校验时：
+## Criteria
 
-- **行级比对**（逐 align 行比 src/tgt 的记号数）会误报——拆句/并句会把记号
-  挪到相邻行（如 src 第 1 行的 `[^1]` 在译文里落在第 2 行），行级计数不相等
-  但单元总量相等，这不是缺陷。
-- **单元级总量比对**（sum over rows）恰好对应「一个都不能丢」的语义：总量
-  不等必是丢失/杜撰，总量相等则记号无论怎么挪位都安全。
+When you need to perform an src↔tgt conservation check on "discrete markers in the source text" (insert markers, footnote markers, image references, tables, etc.):
 
-同理，块级内容匹配（源保真）用**规范化拼接子串**（去全部空白后 concat 再
-`in` 判断），天然容忍拆并句与句序调整；不要做行级一一对应。
+- **Line-level comparison** (comparing the marker count of src/tgt line by line across align lines) produces false positives — sentence splitting/merging moves a marker to an adjacent line (e.g. the `[^1]` on line 1 of src lands on line 2 in the translation); the line-level counts are unequal but the unit totals are equal, and this is not a defect.
+- **Unit-level total comparison** (sum over rows) corresponds exactly to the semantics of "not a single one may be lost": unequal totals necessarily mean loss/fabrication, while equal totals mean the markers are safe no matter how they are moved around.
 
-## 处置
+Likewise, block-level content matching (source fidelity) uses **normalized concatenated substrings** (strip all whitespace, concat, then an `in` test), which naturally tolerates split/merged sentences and sentence-order adjustments; do not do line-level one-to-one correspondence.
 
-1. 守恒校验在循环内累计两侧总量，循环结束后比对一次，flag 的 data 带
-   `{src: N, tgt: M}` 供定位。
-2. 内容匹配用 `norm_text`（去空白）+ 拼接子串；反向校验（align src 是否
-   抄自源文）语料用**全部非空行**（含标题行），前向校验（源文块是否全被
-   翻译）语料**跳标题行**——agent 可把标题作为首行 src。
-3. 每个守恒不变量配两个测试：丢失必报 + 挪位不误报（见
-   `test_g0_marker_conservation` / `test_g0_footnote_conservation`）。
+## Handling
 
-## 验证
+1. The conservation check accumulates the totals on both sides inside the loop, compares once after the loop ends, and the flag's data carries `{src: N, tgt: M}` for locating.
+2. Content matching uses `norm_text` (whitespace-stripped) + concatenated substrings; the reverse check (whether align src is copied from the source text) uses **all non-empty lines** as the corpus (including heading lines), while the forward check (whether the source blocks are all translated) **skips heading lines** — the agent may put the heading as the first src line.
+3. Each conservation invariant ships with two tests: loss must be reported + moving positions must not false-positive (see `test_g0_marker_conservation` / `test_g0_footnote_conservation`).
 
-- `tests/test_review.py`：marker 丢失报 `{src:2, tgt:1}`、挪位 0 flag；
-  pandoc/数字式脚注同理。
-- `tests/test_review.py::test_fidelity_tolerates_split_merge`：拆并句/句序
-  调整 0 flag。
+## Verification
+
+- `tests/test_review.py`: marker loss reports `{src:2, tgt:1}`, moving positions gives 0 flags; the same for pandoc/numeric footnotes.
+- `tests/test_review.py::test_fidelity_tolerates_split_merge`: split/merged sentences / sentence-order adjustments give 0 flags.

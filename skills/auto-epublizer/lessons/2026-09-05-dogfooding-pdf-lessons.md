@@ -1,61 +1,83 @@
-# 真书 dogfooding：PDF 管线 5 个真实缺陷（判据/处置）
+<!-- i18n: source=2026-09-05-dogfooding-pdf-lessons.zh.md sha256=095cfcea17427145b083401be3ded5d6da87eb5523f203d08afb02350d0a0a65 -->
+> **English** | [中文](2026-09-05-dogfooding-pdf-lessons.zh.md)
 
-> 日期：2026-09-04（验证）　来源：`docs/plans/2026-09-04-pdf-dogfooding.md` §6——
-> 三类真实书籍（文字层+书签 / TeX 无书签 / 扫描件混合文字层 / 真扫描）跑 PDF 内容提取
-> 管线暴露的 5 个缺陷。本篇把该计划的验证记录**正式沉淀为 lessons**（判据/处置格式），
-> 计划文档保留验证上下文，此处是可复用的「遇到同型情况怎么判」。
+# Real-book dogfooding: 5 real defects in the PDF pipeline (criterion/handling)
 
-## 触发场景
+> Date: 2026-09-04 (verification)　Source: `docs/plans/2026-09-04-pdf-dogfooding.md` §6 —
+> the 5 defects exposed when running the PDF content-extraction pipeline on three kinds of
+> real books (text layer + bookmarks / TeX without bookmarks / scanned file mixed with a
+> text layer / true scan). This document **formally deposits the plan's verification record
+> as lessons** (criterion/handling format); the plan document retains the verification
+> context, and here is the reusable "how to judge when encountering the same type of
+> situation".
 
-新 PDF 管线（书签切章/多栏/插图路由/表格双路径/公式检测/inserts 溯源）只过合成
-fixture 测试，首次在真实书籍上跑——合成 fixture 暴露不了：真实字号分布、伪书签、
-表格线残缺、公式字体多样性、扫描件混合文字层。
+## Trigger scenario
 
-## 判据与处置（5 个缺陷）
+The new PDF pipeline (bookmark chaptering / multi-column / illustration routing / table
+dual path / formula detection / inserts provenance) had only passed synthetic fixture
+tests, and was run on real books for the first time — synthetic fixtures cannot expose:
+real font-size distributions, fake bookmarks, incomplete table rules, formula font
+diversity, scanned files mixed with a text layer.
 
-### 1. 中文正文误判公式（· / … 被当数学符号）
+## Criterion and handling (5 defects)
 
-- **判据**：C 语言教程 p1 正文（人名间隔号 `·`、省略号 `…`）被公式检测命中。
-- **根因**：公式符号集把 `·`(U+00B7) / `…`(U+2026) 当数学符号。
-- **处置**：从符号集移出，改纳真正的数学符号 `⋅`(U+22C5) / `∗`(U+2217)。`e4f21db`
-- **验证**：构造含「名·姓」「他…说」的中文段落 → 公式检测不命中。
+### 1. Chinese body text misjudged as formulas (· / … treated as mathematical symbols)
 
-### 2. qa 忽略配置的 epubcheck jar + `~` 路径不展开
+- **Criterion**: in the C language tutorial p1 body (name separator `·`, ellipsis `…`) was
+  hit by formula detection.
+- **Root cause**: the formula symbol set treated `·`(U+00B7) / `…`(U+2026) as mathematical
+  symbols.
+- **Handling**: remove them from the symbol set, and instead include the real mathematical
+  symbols `⋅`(U+22C5) / `∗`(U+2217). `e4f21db`
+- **Verification**: construct a Chinese paragraph containing "surname·given name" and
+  "he…said" → formula detection does not hit.
 
-- **判据**：`orch.qa` 传的 jar 路径没生效（一直在用默认）。
-- **根因**：`orch.qa` 未把 `config.qc.epubcheck.jar` 传下去；pydantic v2 默认值
-  不走 field_validator，`~` 未展开。
-- **处置**：两处修复 `e4f21db`/`5cd5a8a`。
-- **验证**：`Config().qc.epubcheck.jar` 断言展开为绝对路径。
+### 2. qa ignores the configured epubcheck jar + `~` path not expanded
 
-### 3. TeX 正文引号/尖括号 span 用数学字体 → 整段误判公式
+- **Criterion**: the jar path passed by `orch.qa` does not take effect (it has always been
+  using the default).
+- **Root cause**: `orch.qa` did not pass `config.qc.epubcheck.jar` down; pydantic v2
+  defaults do not go through field_validator, so `~` was not expanded.
+- **Handling**: two fixes `e4f21db`/`5cd5a8a`.
+- **Verification**: `Config().qc.epubcheck.jar` asserts expansion to an absolute path.
 
-- **判据**：On Lisp 86 条公式误报（正文正常引号/尖括号用了 CMSY 数学字体）。
-- **根因**：字体特征整段命中即判公式，未考虑占比。
-- **处置**：字体特征加占比守卫 `MATH_FONT_RATIO=0.5`（`0d47818`）。
-- **验证**：正文含少量 CMSY 字体的段落不整段误判。
+### 3. TeX body quotes/angle-bracket spans use a math font → the whole paragraph misjudged as a formula
 
-### 4. OCR 页无媒体时 raw 目录不创建 → page json 写入崩溃
+- **Criterion**: On Lisp 86 false formula reports (normal quotes/angle brackets in the body
+  used the CMSY math font).
+- **Root cause**: a font feature hitting the whole paragraph was judged a formula, without
+  considering the ratio.
+- **Handling**: add a ratio guard to font features `MATH_FONT_RATIO=0.5` (`0d47818`).
+- **Verification**: a paragraph containing a small amount of CMSY font in the body is not
+  wholly misjudged.
 
-- **判据**：真扫描件（黑客与画家）OCR 路径崩溃。
-- **根因**：`read_pdf` 只在有媒体时才 mkdir raw 目录；全扫描件无内嵌图时目录缺失。
-- **处置**：`read_pdf` 显式 mkdir（`0bd8adb`）。
-- **验证**：纯扫描件 PDF 走 OCR 路径不崩、page json 落盘。
+### 4. OCR page with no media does not create the raw directory → page json write crashes
 
-### 5. 边框代码盒被粘连成跨半页假表格
+- **Criterion**: the OCR path crashes on a true scanned file (Hackers & Painters).
+- **Root cause**: `read_pdf` only mkdirs the raw directory when there is media; for a fully
+  scanned file with no embedded images the directory is missing.
+- **Handling**: `read_pdf` explicitly mkdirs (`0bd8adb`).
+- **Verification**: a pure scanned PDF going through the OCR path does not crash and page
+  json is written to disk.
 
-- **判据**：36/108 表格记录单格 >300 字符；p29 裁剪图吞掉流程图+正文。
-- **根因**：`find_tables` 把边框代码盒误判为表格区域。
-- **处置**：双守卫 `TABLE_MAX_AREA_RATIO=0.5` + `MAX_TABLE_CELL_CHARS=300`。
-- **验证**：代码盒不触发表格；真表格仍走 md/裁剪图路径。
+### 5. Bordered code boxes stuck together into a cross-half-page fake table
 
-## 核心方法（可复用）
+- **Criterion**: 36/108 table records had a single cell > 300 characters; the p29 cropped
+  image swallowed the flowchart + body text.
+- **Root cause**: `find_tables` misjudged bordered code boxes as table regions.
+- **Handling**: double guard `TABLE_MAX_AREA_RATIO=0.5` + `MAX_TABLE_CELL_CHARS=300`.
+- **Verification**: code boxes do not trigger tables; real tables still go through the
+  md/cropped-image path.
 
-**视觉核对**：疑似页渲染 PNG 后由 agent 直接看图对账（p66 表格/代码边界、p29
-流程图归属）——定位缺陷 1/5 的关键手段。「看」是 agent 自身能力，不是脚本能替代的。
+## Core method (reusable)
 
-## 关联
+**Visual reconciliation**: render the suspected page to PNG and the agent directly looks at
+the image to reconcile (p66 table/code boundaries, p29 flowchart attribution) — the key
+means of locating defects 1/5. "Looking" is the agent's own ability and cannot be replaced
+by a script.
 
-- 计划/验证记录：`docs/plans/2026-09-04-pdf-dogfooding.md` §6
-- spec 阈值回填：`docs/pdf-content-spec.md` §4/§5/§7
-- 提交：`e4f21db`/`5cd5a8a`/`0d47818`/`0bd8adb`
+## Related
+
+- Plan/verification record: `docs/plans/2026-09-04-pdf-dogfooding.md` §6
+- spec threshold backfill: `docs/pdf-content-spec.md` §4/§5/§7
+- Commits: `e4f21db`/`5cd5a8a`/`0d47818`/`0bd8adb`

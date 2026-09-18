@@ -1,12 +1,17 @@
-# Baka-Tsuki 源站 HTML 的插图段保真
+<!-- i18n: source=2026-09-05-baka-tsuki-html-figures.zh.md sha256=be98777dfbe4dd633bbd55ad5d81c878741ea32946c9a25f1a70de201b841ae2 -->
+> **English** | [中文](2026-09-05-baka-tsuki-html-figures.zh.md)
 
-> 日期：2026-09-05　来源：豆包 GT2（创约魔法禁书目录 GT2）实测。
-> 状态：build 端缺陷已修复（1766e7a），本文留存「遇同型情况怎么判、怎么修」。
+# Illustration paragraph fidelity in Baka-Tsuki source-site HTML
 
-## 触发场景
+> Date: 2026-09-05　Source: DouBao GT2 (Genesis Testament A Certain Magical Index GT2)
+> measurement.
+> Status: the build-side defect is fixed (1766e7a); this document retains "how to judge and
+> how to fix when encountering the same type of situation".
 
-输入是 **Baka-Tsuki / MediaWiki 系源站导出的 HTML**（`init` 走 pandoc 抽取），正文中
-插图以三行结构出现：
+## Trigger scenario
+
+The input is **HTML exported from a Baka-Tsuki / MediaWiki-family source site** (`init`
+extracts via pandoc); in the body, illustrations appear in a three-line structure:
 
 ```html
 <figure class="mw-default-size" typeof="mw:File/Thumb">
@@ -14,46 +19,55 @@
 </figure>
 ```
 
-- 三行分别是 `<figure>`、`<a>…<img …/></a>`、`</figure>`；pandoc 抽取后 `<img src>`
-  常被改写为**工作区 media 的本地绝对路径**（`…/structured/raw/media/<hash>.jpg`）。
+- The three lines are `<figure>`, `<a>…<img …/></a>`, `</figure>` respectively; after
+  pandoc extraction, `<img src>` is often rewritten to an **absolute local path in the
+  workspace media** (`…/structured/raw/media/<hash>.jpg`).
 
-## 判据（怎么命中该情况）
+## Criterion (how to hit this situation)
 
-1. structured 单元 md 里出现 `<figure` 与 `<img src="…">`；
-2. build 后成品 EPUB 里对应插图**缺失**；
-3. 源站原图 URL 可下载，但 build 找不到本地文件。
+1. `<figure` and `<img src="…">` appear in the structured unit md;
+2. after build, the corresponding illustration in the finished EPUB is **missing**;
+3. the source-site original image URL is downloadable, but build cannot find the local file.
 
-**根因（实测校正）**：build 端 `collect_media`（`src/auto_epublizer/build/__init__.py`，其内 `_HTML_FIG_IMG`/`_HTML_IMG` 重写逻辑约 L426）
-用 `_HTML_FIG_IMG`/`_HTML_IMG` 提取 `<img src>` 并按 `raw/media/` 解析文件；**找不到文件
-→ 该引用被丢弃**。`\s*` 允许换行，所以「三行连续 / 中间有空行 / 夹带少量文本」都能识别
-（已实测）；真正丢图的场景是：
+**Root cause (measurement-corrected)**: the build side `collect_media`
+(`src/auto_epublizer/build/__init__.py`, whose `_HTML_FIG_IMG`/`_HTML_IMG` rewrite logic is
+around L426) uses `_HTML_FIG_IMG`/`_HTML_IMG` to extract `<img src>` and resolves the file
+by `raw/media/`; **if the file is not found → the reference is dropped**. `\s*` allows
+newlines, so "three consecutive lines / a blank line in between / carrying a little text"
+can all be recognized (measured); the scenario that actually loses the image is:
 
-- 译文段里 `<img …>` **整行被删/改写**（豆包 GT2：8 个单元译文图片段缺 `<img src>` 行）；
-- 或 `<img src>` 指向的文件不在 `structured/raw/media/`（pandoc 抽取失败 / 未下载）。
+- in the translated segment the `<img …>` **entire line was deleted/rewritten** (DouBao
+  GT2: 8 units' translated image segments lacked the `<img src>` line);
+- or the file pointed to by `<img src>` is not in `structured/raw/media/` (pandoc
+  extraction failed / not downloaded).
 
-## 处置
+## Handling
 
-1. **译文段保 `<img>` 行**：图片段在 `translation/<unit>.md` 与 `align/<unit>.jsonl` 中
-   必须**保留含 `<img src="…">` 的完整一行**（可连同 `<figure>/<a>` 一起保留），tgt=src
-   （不翻译 alt/srcset/路径）；不要拆成多段、不要删除 `<img>`。
-2. **校验文件存在**：确认 `<img src>` 相对路径能在 `structured/raw/media/` 解析到文件；
-   不存在则从源站下载原图放该目录、文件名对齐。
-3. **build 验证**：`auto-epublizer build` 后解包 `OEBPS/*.xhtml` 应含 `<img src="media/…">`；
-   `qa` 看 `media_lost == 0`。
-4. **多图单元**：一章内多处插图全部按此处理（本次 ch07/10/12/18/23/32/36/45）。
+1. **Keep the `<img>` line in the translated segment**: in `translation/<unit>.md` and
+   `align/<unit>.jsonl`, the image segment must **keep the complete line containing
+   `<img src="…">`** (it may be kept together with `<figure>/<a>`), tgt=src (do not
+   translate alt/srcset/path); do not split it into multiple segments, do not delete
+   `<img>`.
+2. **Verify the file exists**: confirm the `<img src>` relative path can resolve to a file
+   under `structured/raw/media/`; if not, download the original image from the source site
+   into that directory with the file name aligned.
+3. **build verification**: after `auto-epublizer build`, unpacking `OEBPS/*.xhtml` should
+   contain `<img src="media/…">`; `qa` should show `media_lost == 0`.
+4. **Multi-image units**: handle all the multiple illustrations within a chapter this way
+   (this time ch07/10/12/18/23/32/36/45).
 
-## 已修复的主仓库问题（同型缺陷，勿再踩）
+## Already-fixed main-repo problems (same-type defects, do not hit again)
 
-| 问题 | 根因 | 修复 |
+| Problem | Root cause | Fix |
 |---|---|---|
-| manifest media id 含 `/` → epubcheck RSC-005 | `item_id = epub_path`（含 `/` 非法 XML name） | `1766e7a`：`epub_path.replace("/", "_")` |
-| spine 缺 `toc="ncx"` → RSC-005 | NCX 恒生成但 spine 未引用 | `1766e7a`：`<spine toc="ncx">` |
-| `import --terms` 首次调用崩溃 | `row_to_entry` 对 None 值 `.strip()` | `1766e7a`：`(row.get(x) or "")` |
+| manifest media id contains `/` → epubcheck RSC-005 | `item_id = epub_path` (contains `/`, an invalid XML name) | `1766e7a`: `epub_path.replace("/", "_")` |
+| spine missing `toc="ncx"` → RSC-005 | NCX is always generated but the spine does not reference it | `1766e7a`: `<spine toc="ncx">` |
+| `import --terms` crashes on first call | `row_to_entry` calls `.strip()` on a None value | `1766e7a`: `(row.get(x) or "")` |
 
-## 复现 / 验证
+## Reproduction / verification
 
 ```python
-# collect_media 能识别三种形态（三行连续 / 中间空行 / 夹带文本），关键在文件存在
+# collect_media can recognize three forms (three consecutive lines / blank line in between / carrying text); the key is that the file exists
 from auto_epublizer.build import collect_media
 import pathlib
 
@@ -61,21 +75,23 @@ media = pathlib.Path("/tmp/opencode/med")
 media.mkdir(exist_ok=True)
 (media / "x.png").write_bytes(b"PNG")
 for md in [
-    '<figure>\n<a><img src="media/x.png"/></a>\n</figure>\n',  # 三行连续
-    '<figure>\n\n<a><img src="media/x.png"/></a>\n\n</figure>\n',  # 中间空行
-    '<figure>\n<a><img src="media/x.png"/></a>\n夹带文本\n</figure>\n',  # 夹带文本
+    '<figure>\n<a><img src="media/x.png"/></a>\n</figure>\n',  # three consecutive lines
+    '<figure>\n\n<a><img src="media/x.png"/></a>\n\n</figure>\n',  # blank line in between
+    '<figure>\n<a><img src="media/x.png"/></a>\n夹带文本\n</figure>\n',  # carrying text
 ]:
     out, files = collect_media(md, media)
     assert "![](media/x.png)" in out and len(files) == 1, md[:20]
 
-# 反例：`<img>` 存在但文件缺失 → 引用被替换为空（图被丢弃）
+# Counter-example: `<img>` exists but the file is missing → the reference is replaced with empty (the image is dropped)
 out, files = collect_media('<figure>\n<a><img src="media/gone.png"/></a>\n</figure>\n', media)
 assert "![](media/gone.png)" not in out and not files
 ```
 
-完整端到端：`tests/test_build.py::test_build_epub_embeds_media_files`（含 media id/spine 回归断言）。
+Full end-to-end: `tests/test_build.py::test_build_epub_embeds_media_files` (including media
+id/spine regression assertions).
 
-## 关联
+## Related
 
-- 源站 HTML 抽取：`references/ingest.md`（pandoc 路由）；
-- md 图片引用形态与 provenance 对账：`docs/pdf-content-spec.md` §2.3、`references/qa.md`（`media_lost`）。
+- Source-site HTML extraction: `references/ingest.md` (pandoc route);
+- md image-reference forms and provenance reconciliation: `docs/pdf-content-spec.md` §2.3,
+  `references/qa.md` (`media_lost`).
