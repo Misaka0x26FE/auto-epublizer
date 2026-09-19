@@ -19,11 +19,17 @@ def _boundary_pattern(source: str) -> re.Pattern[str]:
 
     ``\\w`` 在 Python 的 str 模式下涵盖西里尔/希腊等字母与数字，故 ``СС`` 不会命中
     ``СССР``/``АССР`` 内部（回归：曾用 ``[A-Za-z0-9]`` 作边界，俄文术语大量误报）。
+
+    但 ``\\w`` **也包含 CJK 表意文字**：中文译文里保留拉丁的术语（如 ``NATO成员国``）
+    会被误判为「无边界」而报缺失，故对 CJK 单独放行——CJK 术语本就走字面分支，
+    这里把 CJK 视为合法边界。
     """
     escaped = re.escape(source)
     if re.search(f"[{_CJK}]", source):
         return re.compile(escaped)
-    return re.compile(r"(?<!\w)" + escaped + r"(?!\w)")
+    return re.compile(
+        r"(?:(?<=[" + _CJK + r"])|(?<!\w))" + escaped + r"(?:(?=[" + _CJK + r"])|(?!\w))"
+    )
 
 
 @dataclass(frozen=True)
