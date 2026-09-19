@@ -15,11 +15,15 @@ _CJK = "\u3400-\u4dbf\u4e00-\u9fff\u3040-\u30ff\uac00-\ud7af"
 
 
 def _boundary_pattern(source: str) -> re.Pattern[str]:
-    """术语的正文匹配模式：CJK 术语用字面匹配，拉丁术语加词边界。"""
+    """术语的正文匹配模式：CJK 术语用字面匹配，非 CJK 术语加**Unicode 词边界**。
+
+    ``\\w`` 在 Python 的 str 模式下涵盖西里尔/希腊等字母与数字，故 ``СС`` 不会命中
+    ``СССР``/``АССР`` 内部（回归：曾用 ``[A-Za-z0-9]`` 作边界，俄文术语大量误报）。
+    """
     escaped = re.escape(source)
     if re.search(f"[{_CJK}]", source):
         return re.compile(escaped)
-    return re.compile(r"(?<![A-Za-z0-9])" + escaped + r"(?![A-Za-z0-9])")
+    return re.compile(r"(?<!\w)" + escaped + r"(?!\w)")
 
 
 @dataclass(frozen=True)
