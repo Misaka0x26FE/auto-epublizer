@@ -110,6 +110,24 @@ def test_terminology_hit_word_boundary_cyrillic() -> None:
     assert len(hits) == 1 and hits[0].expected == "党卫队"
 
 
+def test_terminology_hit_word_boundary_latin_adjacent_cjk() -> None:
+    """回归：非 CJK 术语紧邻中文仍是合法词边界（``\\w`` 含 CJK 的例外）。
+
+    ``\\w`` 包含 CJK，纯 ``\\w`` 边界会把「NATO成员国」判为无边界 → 假报「译文缺失」
+    （G0 硬缺陷）且 ``terms_in_text`` 漏命中；CJK 侧须单独放行。
+    """
+    g = Glossary(
+        [
+            _entry("NATO", "NATO", type="org", status=STATUS_CONFIRMED),
+            _entry("DNA", "DNA", type="term", status=STATUS_CONFIRMED),
+        ]
+    )
+    assert terminology_hits("NATO members", "NATO成员国", g) == []
+    assert terminology_hits("DNA sequence", "使用DNA序列", g) == []
+    assert terminology_hits("NATO members", "北约成员国", g)  # 真缺失仍须报
+    assert {e.source for e in terms_in_text("中文NATO中文", g)} == {"NATO"}
+
+
 def test_terminology_hit_uses_alias() -> None:
     g = Glossary(
         [_entry("IDF", "以色列国防军", type="org", aliases=["IDG"], status=STATUS_CONFIRMED)]
