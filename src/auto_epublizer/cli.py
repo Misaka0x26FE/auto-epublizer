@@ -148,6 +148,15 @@ def build(
         )
     except (ValueError, OSError, orch.OrchestrationError) as e:
         raise typer.Exit(f"封装失败：{e}") from None
+    # 源文回退提示（现场报告 #8）：build 对缺译单元回退源文，且不再推进其状态——
+    # 这里显式告知，避免「成品已是双语混排」而 operator 不知情。
+    st = orch.status(store)
+    missing = [u["id"] for u in st["units"] if not u["has_translation"]]
+    if missing:
+        shown = "、".join(missing[:8]) + ("…" if len(missing) > 8 else "")
+        console.print(
+            f"[yellow]⚠ {len(missing)} 个单元缺译文，已按源文打包（状态未推进 built）：{shown}[/yellow]"
+        )
     console.print(f"[green]EPUB 已生成：[/green]{out}")
 
 
