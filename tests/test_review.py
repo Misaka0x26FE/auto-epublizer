@@ -290,3 +290,19 @@ def test_md_align_drift_title_row_tolerated() -> None:
         {"seq": 2, "src": "Body.", "tgt": "正文。"},
     ]
     assert md_align_drift(md, rows, title="Chapter I") == []
+
+
+def test_md_align_drift_heading_row_without_trailing_newline() -> None:
+    """回归 #8：首行 tgt 以 `## ` 开头且行尾无换行时，不得把整串当作标题行删掉。
+
+    原实现用 `"".join(tgt)`（无分隔）拼接，`_HEADING_LINE` 逐行正则会吃掉整串 →
+    误报「align 0 字符」并阻断 import（真实案例：单元内首段即 `## ` 小标题）。
+    """
+    from auto_translator.review import md_align_drift
+
+    md = "# 标题\n\n## 第一章\n\n正文。\n"
+    rows = [
+        {"seq": 1, "src": "## ГЛАВАI", "tgt": "## 第一章"},
+        {"seq": 2, "src": "Текст.", "tgt": "正文。"},
+    ]
+    assert md_align_drift(md, rows) == []

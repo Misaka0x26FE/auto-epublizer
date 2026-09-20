@@ -168,7 +168,10 @@ def md_align_drift(
     align_has_defs = any(_FN_DEF_PREFIX.match(str(r.get("tgt") or "").lstrip()) for r in ordered)
     md_input = md_text if align_has_defs else _strip_def_blocks(md_text)
     md_norm = _drift_norm(md_input)
-    tgt_norm = _drift_norm("".join(str(r.get("tgt") or "") for r in ordered))
+    # 按行拼接（而不是无分隔 `"".join`）：`_HEADING_LINE` 是逐行正则，若拼接串里没有
+    # 换行，位于串首的 `## ` 标题行会把**整串**吃掉 → 误报「align 0 字符」并阻断
+    # import（回归 #8：单元内首段是 `## ` 小标题时必现）。
+    tgt_norm = _drift_norm("\n".join(str(r.get("tgt") or "") for r in ordered))
     if md_norm == tgt_norm:
         return []
     missing_in_md = [
