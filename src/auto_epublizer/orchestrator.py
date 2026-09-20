@@ -258,6 +258,8 @@ def _render_and_pack(
     media: dict[str, bytes] = {}
     media_dropped: dict[str, list[str]] = {}
     cover_media: str | None = None
+    built_ids: list[str] = []
+    fallback_ids: list[str] = []
     for e in entries:
         rel = e.get("rel_path")
         if not rel:
@@ -275,11 +277,14 @@ def _render_and_pack(
                     render_bilingual_document(e["title"], rows, lang_src=src_lang, lang_tgt=lang),
                 )
             )
+            built_ids.append(e["id"])
             continue
         structured = store.structured_dir / rel
         translation = store.translation_dir / rel
         if prefer_translation:
             md_path = translation if translation.is_file() else structured
+            if md_path is structured:
+                fallback_ids.append(e["id"])
         else:
             md_path = structured
         if not md_path.is_file():
@@ -297,6 +302,7 @@ def _render_and_pack(
             media[epub_path] = data
         if e.get("kind") == "cover" and unit_media and cover_media is None:
             cover_media = unit_media[0][0]
+        built_ids.append(e["id"])
         content.append(
             (
                 f"{slug_file(e['id'])}.xhtml",
@@ -324,9 +330,16 @@ def _render_and_pack(
         cover_media=cover_media,
         nav_depth=nav_depth,
     )
-    for e in entries:
-        store.set_unit_status(e["id"], "built")
-    store.log_event(event, slug=pub.slug, output=str(out_path))
+    # 状态推进：只把**确实打包了译文**的单元推进为 built。
+    # 源文回退（无译文）的单元保持原状态——否则 import 会把 built 当「已完成」永久
+    # 跳过，译文再也登记不进来（现场报告 #8：冒烟 build 之后登记路径整体失效）。
+    for uid in built_ids:
+        if prefer_translation and uid in fallback_ids:
+            continue
+        store.set_unit_status(uid, "built")
+    store.log_event(
+        event, slug=pub.slug, output=str(out_path), fallback_units=sorted(set(fallback_ids))
+    )
     return out_path
 
 
@@ -449,6 +462,7 @@ def import_translations(
 
     glossary = Glossary(load_glossary_csv(glossary_path))
     imported: list[str] = []
+    pending: list[dict[str, Any]] = []
     failed: list[dict[str, Any]] = []
     warned: list[dict[str, Any]] = []
     skipped: list[str] = []
@@ -472,11 +486,18 @@ def import_translations(
             structured_path.read_text(encoding="utf-8") if structured_path.is_file() else None
         )
         errors: list[str] = []
+        pending_reasons: list[str] = []
         if not tgt_path.is_file():
-            errors.append(f"缺少译文文件：{tgt_path}")
+            pending_reasons.append(f"缺少译文文件：{tgt_path}")
         rows = read_align(align_path) if align_path.is_file() else []
         if not rows:
-            errors.append(f"缺少对照表或对照表为空：{align_path}")
+            pending_reasons.append(f"缺少对照表或对照表为空：{align_path}")
+        if pending_reasons:
+            # 未译单元是「待译」不是「失败」：也不继续跑文档/表格/术语检查——
+            # 否则会为源文的**每个块**刷出一条「源文块未进对照表」告警
+            # （现场报告 #8：4 个已译单元 + 12 个未译单元 → 1318 条无效告警）。
+            pending.append({"unit": unit.id, "reasons": pending_reasons})
+            continue
         if rows:
             for f in check_alignment(rows):
                 # 结构性错误：断号/空原文/空译文；「对照表为空」已在上面覆盖
@@ -536,6 +557,7 @@ def import_translations(
         store.log_event("import_reviewed", units=reviewed)
     return {
         "imported": imported,
+        "pending": pending,
         "failed": failed,
         "warnings": warned,
         "skipped": skipped,
@@ -988,8 +1010,11 @@ def read_catalog(store: RunStore) -> list[dict[str, Any]] | None:
 
     文件不存在 → None（全部检查跳过，零破坏）。列契约：
     ``item,kind,status,locator,unit_id,note``——kind ∈ toc|figure|table|footnote|
-    section|physical；status ∈ included|physical|excluded|unresolved；
-    included 行 unit_id 必填。取值非法/列缺失 → OrchestrationError（带行号）。
+    section|physical；status ∈ included|physical|excluded|unresolved|absent；
+    included 行 unit_id 必填；excluded/absent 行 note 必填理由。
+    ``absent`` = 源件本身不含该内容（如题注所指插图不在源包里）——既非「有意排除」，
+    也非「未决」，因此不阻断放行（现场报告 #8：缺图只能记 unresolved 或谎称 excluded）。
+    取值非法/列缺失 → OrchestrationError（带行号）。
     """
     import csv
 
@@ -997,7 +1022,7 @@ def read_catalog(store: RunStore) -> list[dict[str, Any]] | None:
     if not path.is_file():
         return None
     kinds = {"toc", "figure", "table", "footnote", "section", "physical"}
-    statuses = {"included", "physical", "excluded", "unresolved"}
+    statuses = {"included", "physical", "excluded", "unresolved", "absent"}
     required = ["item", "kind", "status", "locator", "unit_id", "note"]
     rows: list[dict[str, Any]] = []
     with open(path, encoding="utf-8-sig", newline="") as f:
@@ -1014,8 +1039,8 @@ def read_catalog(store: RunStore) -> list[dict[str, Any]] | None:
                 raise OrchestrationError(f"catalog.csv 第 {i} 行：status 非法（{status_val}）")
             if status_val == "included" and not (row.get("unit_id") or "").strip():
                 raise OrchestrationError(f"catalog.csv 第 {i} 行：included 项缺 unit_id")
-            if status_val == "excluded" and not (row.get("note") or "").strip():
-                raise OrchestrationError(f"catalog.csv 第 {i} 行：excluded 项 note 必填理由")
+            if status_val in ("excluded", "absent") and not (row.get("note") or "").strip():
+                raise OrchestrationError(f"catalog.csv 第 {i} 行：{status_val} 项 note 必填理由")
             rows.append({k: (row.get(k) or "").strip() for k in required})
     return rows
 

@@ -58,12 +58,45 @@ def test_import_blocks_on_broken_align(tmp_path: Path) -> None:
     assert store.load_publication().units[0].status == "split"
 
 
-def test_import_reports_missing_files(tmp_path: Path) -> None:
+def test_import_reports_untranslated_as_pending(tmp_path: Path) -> None:
+    """回归 #8：未译单元记入 `pending`（待译），不再计为 failed。
+
+    旧行为把「还没有译文」当失败处理，并继续跑文档/表格/术语检查——于是源文的每个块
+    都刷一条「源文块未进对照表」告警（现场：4 个已译 + 12 个未译 → 1318 条无效告警）。
+    """
     store = _workspace(tmp_path)
     result = orch.import_translations(store)
     assert result["imported"] == []
-    assert any("缺少译文文件" in e for e in result["failed"][0]["errors"])
-    assert any("缺少对照表" in e for e in result["failed"][0]["errors"])
+    assert result["failed"] == []
+    assert [p["unit"] for p in result["pending"]] == ["ch01"]
+    assert any("缺少译文文件" in r for r in result["pending"][0]["reasons"])
+    assert any("缺少对照表" in r for r in result["pending"][0]["reasons"])
+    # 未译单元不产出任何告警（旧实现会为源文每个块刷 fidelity 前向缺块）
+    assert result["warnings"] == []
+    # 状态不得推进
+    assert store.load_publication().units[0].status == "split"
+
+
+def test_build_fallback_does_not_block_later_import(tmp_path: Path) -> None:
+    """回归 #8：源文回退打包的单元不推进 built，之后补的译文仍能 import。
+
+    旧行为：build 无条件把每个单元置 `built`，而 import 跳过 `built`——于是按
+    「每 3–5 单元 build 一次」做冒烟构建后，登记路径整体失效（现场只能靠伪造结构
+    变更把状态回退到 split）。
+    """
+    store = _workspace(tmp_path)
+    epub = orch.build(store)  # 无译文 → 打包源文
+    assert epub.is_file()
+    assert store.load_publication().units[0].status == "split"
+
+    _write_agent_products(store)  # 之后补上译文
+    result = orch.import_translations(store)
+    assert result["imported"] == ["ch01"]
+    assert result["skipped"] == []
+    assert store.load_publication().units[0].status == "aligned"
+
+    orch.build(store)  # 有译文时 build 照常推进
+    assert store.load_publication().units[0].status == "built"
 
 
 def test_import_detects_glossary_conflicts(tmp_path: Path) -> None:

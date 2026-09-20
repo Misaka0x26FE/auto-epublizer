@@ -148,6 +148,15 @@ def build(
         )
     except (ValueError, OSError, orch.OrchestrationError) as e:
         raise typer.Exit(f"封装失败：{e}") from None
+    # 源文回退提示（现场报告 #8）：build 对缺译单元回退源文，且不再推进其状态——
+    # 这里显式告知，避免「成品已是双语混排」而 operator 不知情。
+    st = orch.status(store)
+    missing = [u["id"] for u in st["units"] if not u["has_translation"]]
+    if missing:
+        shown = "、".join(missing[:8]) + ("…" if len(missing) > 8 else "")
+        console.print(
+            f"[yellow]⚠ {len(missing)} 个单元缺译文，已按源文打包（状态未推进 built）：{shown}[/yellow]"
+        )
     console.print(f"[green]EPUB 已生成：[/green]{out}")
 
 
@@ -178,7 +187,13 @@ def qa(
         f"结构违例 {report.get('g0_structure_open', 0)}；"
         f"术语冲突未裁决 {report.get('glossary_conflicts_open', 0)}"
     )
-    console.print(f"  G5 放行：{'是' if report['released'] else '否'}")
+    if report["released"]:
+        console.print("  G5 放行：是")
+    else:
+        # 放行失败时把原因打出来：只显示「否」会让人去翻 report.json（现场报告 #8）。
+        console.print(
+            f"  G5 放行：[red]否[/red]（原因：{report.get('released_reason') or '未知'}）"
+        )
 
 
 @app.command()
@@ -319,6 +334,11 @@ def import_cmd(
         console.print(f"[red]✗ {item['unit']}[/red]")
         for err in item["errors"]:
             console.print(f"    {err}")
+    pending = result.get("pending") or []
+    if pending:
+        # 未译单元单列：它们是「待译」，不是「失败」（现场报告 #8）
+        ids = "、".join(p["unit"] for p in pending)
+        console.print(f"[dim]待译 {len(pending)} 个单元（尚无译文/对照表）：{ids}[/dim]")
     # 硬缺陷类（术语命中/标记/脚注守恒等）：红色 ✗；advisory（长度比等）：黄色 ⚠
     _HARD_CHECKS = {"terminology", "marker", "footnote", "table", "fidelity"}
     for w in result["warnings"][:20]:
@@ -345,7 +365,8 @@ def import_cmd(
         )
     console.print(
         f"[green]导入完成：[/green]单元={len(result['imported'])} "
-        f"失败={len(result['failed'])} 告警={len(result['warnings'])}"
+        f"待译={len(result.get('pending') or [])} 失败={len(result['failed'])} "
+        f"告警={len(result['warnings'])}"
     )
 
 

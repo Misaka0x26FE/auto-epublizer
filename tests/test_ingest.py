@@ -19,6 +19,39 @@ from auto_epublizer.ingest.pandoc_reader import parse_markdown_units
 from auto_epublizer.ingest.text_reader import read_text
 
 
+def test_normalize_media_refs_flattens_relativizes_and_strips_attrs(tmp_path: Path) -> None:
+    """回归 #8：pandoc 抽出的媒体引用要相对化、拍平多余 media 层、剔除属性块。
+
+    现场：docx 经 `--extract-media=structured/raw/media` 后得到
+    `structured/raw/media/media/image1.png`，Markdown 里写的是**绝对路径**，图片后还带
+    `{width=… height=…}` —— 绝对路径写进持久化产物，属性块则字面漏进成品。
+    """
+    from auto_epublizer.ingest.pandoc_reader import normalize_media_refs
+
+    media_root = tmp_path / "structured" / "raw" / "media"
+    nested = media_root / "media"
+    nested.mkdir(parents=True)
+    (nested / "image1.png").write_bytes(b"\x89PNG")
+    (nested / "image2.png").write_bytes(b"\x89PNG")
+    md = (
+        f'![作者像]({nested}/image1.png){{width="1.527in" height="1.524in"}}\n\n'
+        f'<img src="{nested}/image2.png" width="10" />\n\n'
+        "![外链](https://example.com/x.png)\n"
+    )
+    out = normalize_media_refs(md, media_root)
+    assert "raw/media/image1.png" in out
+    assert "raw/media/image2.png" in out
+    assert "{width=" not in out and "height=" not in out
+    # 非本地资源（URL）不动
+    assert "https://example.com/x.png" in out
+    # 磁盘与引用一致：已拍平到 raw/media 下，嵌套目录消失
+    assert (media_root / "image1.png").is_file()
+    assert (media_root / "image2.png").is_file()
+    assert not nested.exists()
+    # 无媒体目录（如 EPUB 直读）→ 原样返回
+    assert normalize_media_refs(md, None) == md
+
+
 def test_read_text_units(tmp_path: Path) -> None:
     p = tmp_path / "book.md"
     p.write_text(
