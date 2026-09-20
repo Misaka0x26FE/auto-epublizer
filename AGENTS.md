@@ -1,4 +1,4 @@
-<!-- i18n: source=AGENTS.zh.md sha256=76e6e5e061be90e6ee2ae028e371ee374e70048ea21f3b83b83ebc759132a9f9 -->
+<!-- i18n: source=AGENTS.zh.md sha256=f9c27439c7ef8b267b67f5e04d493ad7278c6dc11a5e30a84511dd5038baf702 -->
 > **English** | [中文](AGENTS.zh.md)
 
 # auto-epublizer repository guide (for coding agents developing/maintaining this project)
@@ -42,6 +42,12 @@ shared pipeline:
 - **Responsible for delivery quality only** (accurate / complete / consistent / compliant /
   structurally correct / reproducible); it **makes no value, political or ideological
   judgements about the content**.
+- **Copyright and publishing responsibility**: the project **does not review whether the
+  processed object (source files, illustrations, etc.) carries copyright risk** — rights
+  are the user's responsibility. The working directory produced during processing
+  (including `source/`) is **fully tracked in git** and by default is uploaded as a
+  **private repository** to the configured git hosting platform (default GitHub); making
+  it public requires the user to handle it themselves or to make an explicit declaration.
 - **Division of labour**: the CLI does deterministic computation and validation/release;
   **content understanding, semantic judgement, quality gating, terminology arbitration and
   repair decisions** are done by the agent using this project with its own abilities

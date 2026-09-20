@@ -1,4 +1,7 @@
-# ── 成品与派生二进制（走 GitHub Releases / git-lfs，不入库）──────────
+# ── 工作区全量入库（含 source/ 源文件；无版权类排除）并默认作为私有仓库上传。
+#    以下仅按「体积/可重建/运行时」排除；转公开需用户显式声明。
+
+# ── 成品与派生二进制（体积大、走 GitHub Releases / git-lfs，不入库）──────────
 output/
 glossary.db
 glossary.db-wal
