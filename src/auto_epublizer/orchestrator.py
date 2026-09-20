@@ -449,6 +449,7 @@ def import_translations(
 
     glossary = Glossary(load_glossary_csv(glossary_path))
     imported: list[str] = []
+    pending: list[dict[str, Any]] = []
     failed: list[dict[str, Any]] = []
     warned: list[dict[str, Any]] = []
     skipped: list[str] = []
@@ -472,11 +473,18 @@ def import_translations(
             structured_path.read_text(encoding="utf-8") if structured_path.is_file() else None
         )
         errors: list[str] = []
+        pending_reasons: list[str] = []
         if not tgt_path.is_file():
-            errors.append(f"缺少译文文件：{tgt_path}")
+            pending_reasons.append(f"缺少译文文件：{tgt_path}")
         rows = read_align(align_path) if align_path.is_file() else []
         if not rows:
-            errors.append(f"缺少对照表或对照表为空：{align_path}")
+            pending_reasons.append(f"缺少对照表或对照表为空：{align_path}")
+        if pending_reasons:
+            # 未译单元是「待译」不是「失败」：也不继续跑文档/表格/术语检查——
+            # 否则会为源文的**每个块**刷出一条「源文块未进对照表」告警
+            # （现场报告 #8：4 个已译单元 + 12 个未译单元 → 1318 条无效告警）。
+            pending.append({"unit": unit.id, "reasons": pending_reasons})
+            continue
         if rows:
             for f in check_alignment(rows):
                 # 结构性错误：断号/空原文/空译文；「对照表为空」已在上面覆盖
@@ -536,6 +544,7 @@ def import_translations(
         store.log_event("import_reviewed", units=reviewed)
     return {
         "imported": imported,
+        "pending": pending,
         "failed": failed,
         "warnings": warned,
         "skipped": skipped,

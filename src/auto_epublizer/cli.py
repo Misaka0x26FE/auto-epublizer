@@ -325,6 +325,11 @@ def import_cmd(
         console.print(f"[red]✗ {item['unit']}[/red]")
         for err in item["errors"]:
             console.print(f"    {err}")
+    pending = result.get("pending") or []
+    if pending:
+        # 未译单元单列：它们是「待译」，不是「失败」（现场报告 #8）
+        ids = "、".join(p["unit"] for p in pending)
+        console.print(f"[dim]待译 {len(pending)} 个单元（尚无译文/对照表）：{ids}[/dim]")
     # 硬缺陷类（术语命中/标记/脚注守恒等）：红色 ✗；advisory（长度比等）：黄色 ⚠
     _HARD_CHECKS = {"terminology", "marker", "footnote", "table", "fidelity"}
     for w in result["warnings"][:20]:
@@ -351,7 +356,8 @@ def import_cmd(
         )
     console.print(
         f"[green]导入完成：[/green]单元={len(result['imported'])} "
-        f"失败={len(result['failed'])} 告警={len(result['warnings'])}"
+        f"待译={len(result.get('pending') or [])} 失败={len(result['failed'])} "
+        f"告警={len(result['warnings'])}"
     )
 
 
