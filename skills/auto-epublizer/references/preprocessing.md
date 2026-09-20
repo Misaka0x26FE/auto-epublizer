@@ -1,4 +1,4 @@
-<!-- i18n: source=preprocessing.zh.md sha256=34cf7bbc0c6575af93a3717ee34132a459a063c9bdf6aafaf67068adc61f9e96 -->
+<!-- i18n: source=preprocessing.zh.md sha256=46cbe270287ac72131b82fd787f8df66465eee0af5fd3e69d08c37444e8c4d08 -->
 > **English** | [中文](preprocessing.zh.md)
 
 # Preprocessing (fact collection + agent-authored understanding)
@@ -194,7 +194,9 @@ set, how terminology is unified, where the risks are, how big the scale is".
 Table-of-contents completeness contract: declare the destination of each item of source
 content — `included` (included, unit_id required), `physical` (physical elements such as
 dust jacket/belly band/spine, intentionally not in the EPUB), `excluded` (intentionally
-excluded, note must give the reason), `unresolved` (undecided, **qa blocks release**).
+excluded, note must give the reason), `absent` (**absent from the source itself**, e.g. an
+illustration the caption refers to but the source package does not contain; note must give
+the evidence, **does not block release**), `unresolved` (undecided, **qa blocks release**).
 Complementary to provenance: catalog governs "whether anything was missed on the source
 side", provenance governs "whether anything was untranslated on the translation side".
 When the facts to-do list has this item, it is recommended to write it; if not written,
