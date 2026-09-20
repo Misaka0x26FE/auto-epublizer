@@ -212,6 +212,31 @@ def test_ocr_routing_no_backend_asks_user() -> None:
     assert "询问用户" in lines[1]
 
 
+def test_route_suggestions_single_unit_non_pdf_hints_structure_rebuild() -> None:
+    """回归 #8：非 PDF 源只解析出一个大单元时，必须提示结构需按源文题行重建。
+
+    现场案例：无标题样式（w:pStyle 计数 0）的 docx 62.6 万字符 → pandoc 只出 1 个
+    单元，是整本书最大的结构风险，而旧 facts 不给任何提示。
+    """
+    from auto_epublizer.preprocess.facts import _route_suggestions
+
+    caps = _caps_summary()
+    big = [{"id": "ch01", "chars": 620000}]
+    hints = _route_suggestions({"kind": "docx"}, caps, big)
+    assert any("1 个单元" in h and "restructure" in h for h in hints)
+
+    # 单元不大（真有标题样式的短文档）→ 不提示
+    small = [{"id": "ch01", "chars": 320}]
+    assert not any("restructure" in h for h in _route_suggestions({"kind": "docx"}, caps, small))
+
+    # 多单元（源件有标题结构）→ 不提示
+    many = [{"id": "ch01", "chars": 300000}, {"id": "ch02", "chars": 300000}]
+    assert not any("restructure" in h for h in _route_suggestions({"kind": "docx"}, caps, many))
+
+    # PDF 走自己的路由，不受此提示影响
+    assert not any("restructure" in h for h in _route_suggestions({"kind": "pdf"}, caps, big))
+
+
 def _workspace(tmp_path: Path):
     src = tmp_path / "book.md"
     src.write_text(
