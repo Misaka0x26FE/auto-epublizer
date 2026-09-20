@@ -16,6 +16,17 @@ _MAX_EPUB_BYTES = 50 * 1024 * 1024
 _MAX_IMG_BYTES = 2 * 1024 * 1024
 _MEDIA_EXTS = (".png", ".jpg", ".jpeg", ".gif", ".bmp", ".webp", ".avif")
 
+# markdown 残留标记（供 W_RESIDUE）。`**` 只在**恰好两个**星号时算残留：以星号作行内
+# 脚注标记的书籍（现场报告 #8：源文 `…«行为矫正»****`）必须原样保留这些符号——
+# `marker` 守恒是硬门，而渲染层也不会把 `****` 解释为强调，它在成品里就是显示文本。
+_MD_RESIDUE: tuple[tuple[str, re.Pattern[str]], ...] = (
+    ("![", re.compile(r"!\[")),
+    ("**", re.compile(r"(?<!\*)\*\*(?!\*)")),
+    (":::", re.compile(r":::")),
+    ("{.", re.compile(r"\{\.")),
+    ("[^", re.compile(r"\[\^")),
+)
+
 
 @dataclass
 class AuditFinding:
@@ -307,9 +318,9 @@ def audit_epub(path: str | Path, *, nav_exempt: set[str] | None = None) -> Audit
             content = zf.read(name).decode("utf-8")
             if "<!--" in content:
                 result.add("error", "E_RESIDUE", f"HTML 注释残留：{name}")
-            for marker in ("![", "**", ":::", "{.", "[^"):
-                if marker in content:
-                    result.add("warning", "W_RESIDUE", f"markdown 标记残留（{marker}）：{name}")
+            for label, pattern in _MD_RESIDUE:
+                if pattern.search(content):
+                    result.add("warning", "W_RESIDUE", f"markdown 标记残留（{label}）：{name}")
                     break
 
         # 10. 元数据完备（postprocessing-spec P2）：次级 DC 项缺失**或空白**提示（供 agent 补全）
