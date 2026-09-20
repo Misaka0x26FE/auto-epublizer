@@ -77,6 +77,28 @@ def test_import_reports_untranslated_as_pending(tmp_path: Path) -> None:
     assert store.load_publication().units[0].status == "split"
 
 
+def test_build_fallback_does_not_block_later_import(tmp_path: Path) -> None:
+    """回归 #8：源文回退打包的单元不推进 built，之后补的译文仍能 import。
+
+    旧行为：build 无条件把每个单元置 `built`，而 import 跳过 `built`——于是按
+    「每 3–5 单元 build 一次」做冒烟构建后，登记路径整体失效（现场只能靠伪造结构
+    变更把状态回退到 split）。
+    """
+    store = _workspace(tmp_path)
+    epub = orch.build(store)  # 无译文 → 打包源文
+    assert epub.is_file()
+    assert store.load_publication().units[0].status == "split"
+
+    _write_agent_products(store)  # 之后补上译文
+    result = orch.import_translations(store)
+    assert result["imported"] == ["ch01"]
+    assert result["skipped"] == []
+    assert store.load_publication().units[0].status == "aligned"
+
+    orch.build(store)  # 有译文时 build 照常推进
+    assert store.load_publication().units[0].status == "built"
+
+
 def test_import_detects_glossary_conflicts(tmp_path: Path) -> None:
     """agent 更新术语表后 import 应把冲突外置到 glossary_conflicts.jsonl（阶段 3 接线）。"""
     store = _workspace(tmp_path)

@@ -258,6 +258,8 @@ def _render_and_pack(
     media: dict[str, bytes] = {}
     media_dropped: dict[str, list[str]] = {}
     cover_media: str | None = None
+    built_ids: list[str] = []
+    fallback_ids: list[str] = []
     for e in entries:
         rel = e.get("rel_path")
         if not rel:
@@ -275,11 +277,14 @@ def _render_and_pack(
                     render_bilingual_document(e["title"], rows, lang_src=src_lang, lang_tgt=lang),
                 )
             )
+            built_ids.append(e["id"])
             continue
         structured = store.structured_dir / rel
         translation = store.translation_dir / rel
         if prefer_translation:
             md_path = translation if translation.is_file() else structured
+            if md_path is structured:
+                fallback_ids.append(e["id"])
         else:
             md_path = structured
         if not md_path.is_file():
@@ -297,6 +302,7 @@ def _render_and_pack(
             media[epub_path] = data
         if e.get("kind") == "cover" and unit_media and cover_media is None:
             cover_media = unit_media[0][0]
+        built_ids.append(e["id"])
         content.append(
             (
                 f"{slug_file(e['id'])}.xhtml",
@@ -324,9 +330,16 @@ def _render_and_pack(
         cover_media=cover_media,
         nav_depth=nav_depth,
     )
-    for e in entries:
-        store.set_unit_status(e["id"], "built")
-    store.log_event(event, slug=pub.slug, output=str(out_path))
+    # 状态推进：只把**确实打包了译文**的单元推进为 built。
+    # 源文回退（无译文）的单元保持原状态——否则 import 会把 built 当「已完成」永久
+    # 跳过，译文再也登记不进来（现场报告 #8：冒烟 build 之后登记路径整体失效）。
+    for uid in built_ids:
+        if prefer_translation and uid in fallback_ids:
+            continue
+        store.set_unit_status(uid, "built")
+    store.log_event(
+        event, slug=pub.slug, output=str(out_path), fallback_units=sorted(set(fallback_ids))
+    )
     return out_path
 
 
