@@ -1,4 +1,4 @@
-<!-- i18n: source=ingest.zh.md sha256=f7bb8a6ee9be64687fff8f18adfc3657c0d1fe72fa04eac58d6f35b5d0343a87 -->
+<!-- i18n: source=ingest.zh.md sha256=9d9d9d1291fdcda47c4342a22fc9aa45f72472d5f6afb733e1ca795d2a817d91 -->
 > **English** | [中文](ingest.zh.md)
 
 # Ingest (file parsing)
@@ -82,6 +82,15 @@ to fill in:
 | `.pdf` (with text layer) | pymupdf slices by page to extract the text layer, writing `structured/raw/page-NNN.json` page by page |
 | `.pdf` (scanned copy, MinerU) | MinerU API parses the whole book (>200 pages automatically batched, `pdf.mineru_batch_pages`): `raw/media/` illustrations + `raw/mineru/` (content_list.json + full.md audit artifacts) + `raw/inserts/` records; body chapters split according to MinerU heading hierarchy |
 | `.pdf` (scanned copy, no key) | OCR fallback: render page by page to images → OCR → use as that page's text block (`ocr:true`); rendered page images persisted to `raw/pages/pNNN.png` |
+
+**pandoc media references are normalized on ingest** (2026-09 fix): `--extract-media`
+lays DOCX `word/media/*` out under `<media_dir>/media/*` and writes **absolute paths**
+into the Markdown, and pandoc appends `{width="…" height="…"}` attribute blocks. All
+three would otherwise persist into `structured/`. Ingest now flattens the extra `media/`
+level into `raw/media/`, rewrites references to workspace-relative `raw/media/<name>`
+(matching the layout documented under "Intermediates"), and drops image attribute blocks
+(the renderer does not handle that syntax, so they used to leak into the EPUB as literal
+text). Non-local references (http/…) are left untouched.
 
 Other unsupported formats: convert to PDF/TXT/Markdown first, or process with `pandoc`
 and fall back to PDF.
