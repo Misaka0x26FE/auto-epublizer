@@ -988,8 +988,11 @@ def read_catalog(store: RunStore) -> list[dict[str, Any]] | None:
 
     文件不存在 → None（全部检查跳过，零破坏）。列契约：
     ``item,kind,status,locator,unit_id,note``——kind ∈ toc|figure|table|footnote|
-    section|physical；status ∈ included|physical|excluded|unresolved；
-    included 行 unit_id 必填。取值非法/列缺失 → OrchestrationError（带行号）。
+    section|physical；status ∈ included|physical|excluded|unresolved|absent；
+    included 行 unit_id 必填；excluded/absent 行 note 必填理由。
+    ``absent`` = 源件本身不含该内容（如题注所指插图不在源包里）——既非「有意排除」，
+    也非「未决」，因此不阻断放行（现场报告 #8：缺图只能记 unresolved 或谎称 excluded）。
+    取值非法/列缺失 → OrchestrationError（带行号）。
     """
     import csv
 
@@ -997,7 +1000,7 @@ def read_catalog(store: RunStore) -> list[dict[str, Any]] | None:
     if not path.is_file():
         return None
     kinds = {"toc", "figure", "table", "footnote", "section", "physical"}
-    statuses = {"included", "physical", "excluded", "unresolved"}
+    statuses = {"included", "physical", "excluded", "unresolved", "absent"}
     required = ["item", "kind", "status", "locator", "unit_id", "note"]
     rows: list[dict[str, Any]] = []
     with open(path, encoding="utf-8-sig", newline="") as f:
@@ -1014,8 +1017,8 @@ def read_catalog(store: RunStore) -> list[dict[str, Any]] | None:
                 raise OrchestrationError(f"catalog.csv 第 {i} 行：status 非法（{status_val}）")
             if status_val == "included" and not (row.get("unit_id") or "").strip():
                 raise OrchestrationError(f"catalog.csv 第 {i} 行：included 项缺 unit_id")
-            if status_val == "excluded" and not (row.get("note") or "").strip():
-                raise OrchestrationError(f"catalog.csv 第 {i} 行：excluded 项 note 必填理由")
+            if status_val in ("excluded", "absent") and not (row.get("note") or "").strip():
+                raise OrchestrationError(f"catalog.csv 第 {i} 行：{status_val} 项 note 必填理由")
             rows.append({k: (row.get(k) or "").strip() for k in required})
     return rows
 
