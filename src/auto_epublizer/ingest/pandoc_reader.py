@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import contextlib
 import os
+import re
 import shutil
 import subprocess
 from pathlib import Path
@@ -108,6 +110,51 @@ def _split_md_paragraphs(block: str) -> list[str]:
     return [p.strip("\n") for p in parts if p.strip()]
 
 
+_IMG_ATTR_BLOCK = re.compile(r"(!\[[^\]]*\]\([^)]*\))\{[^}]*\}")
+_MD_IMG_REF = re.compile(r"(!\[[^\]]*\]\()([^)]+)(\))")
+_HTML_IMG_REF = re.compile(r"(<img\b[^>]*?\bsrc=\")([^\"]+)(\")", re.DOTALL)
+
+
+def normalize_media_refs(md_text: str, media_dir: str | Path | None) -> str:
+    """把 pandoc 抽出的媒体引用规范成工作区相对路径，并剔除图片属性块。
+
+    pandoc ``--extract-media=<dir>`` 会把 docx 的 ``word/media/*`` 铺成 ``<dir>/media/*``，
+    且在 Markdown 里写**绝对路径**；图片后还常带 ``{width="…" height="…"}`` 属性块。
+    三者都会落进持久化的 ``structured/``：绝对路径把机器路径写进工作区产物；属性块在
+    渲染层无人处理，会作为字面文本漏进成品（现场报告 #8）。
+
+    本函数：① 把多出的那层 ``media/`` 拍平到 ``<media_dir>`` 下（引用与磁盘一致）；
+    ② 引用改写为工作区相对的 ``raw/media/<name>``（与 ingest.md 的约定一致）；
+    ③ 剔除图片属性块。非本地资源（http/相对外链）原样保留。
+    """
+    if media_dir is None:
+        return md_text
+    root = Path(media_dir).resolve()
+    nested = root / "media"
+    if nested.is_dir():
+        for item in sorted(nested.iterdir()):
+            target = root / item.name
+            if item.is_file() and not target.exists():
+                shutil.move(str(item), str(target))
+        with contextlib.suppress(OSError):
+            nested.rmdir()
+
+    def _rel(src: str) -> str:
+        try:
+            rel = Path(src).resolve().relative_to(root)
+        except (OSError, ValueError):
+            return src
+        parts = rel.parts
+        if len(parts) > 1 and not (root / rel).exists() and (root / Path(*parts[1:])).exists():
+            # 拍平后引用仍指向旧的多余层（media/x.png）→ 去掉该层，引用与磁盘一致
+            rel = Path(*parts[1:])
+        return f"raw/media/{rel.as_posix()}"
+
+    text = _HTML_IMG_REF.sub(lambda m: f"{m.group(1)}{_rel(m.group(2))}{m.group(3)}", md_text)
+    text = _MD_IMG_REF.sub(lambda m: f"{m.group(1)}{_rel(m.group(2))}{m.group(3)}", text)
+    return _IMG_ATTR_BLOCK.sub(r"\1", text)
+
+
 def read_pandoc(
     path: str | Path,
     *,
@@ -115,7 +162,7 @@ def read_pandoc(
     media_dir: str | Path | None = None,
 ) -> SourceDocument:
     """用 pandoc 读取 HTML/DOCX/EPUB，返回结构化的 Document。"""
-    content = run_pandoc(path, media_dir=media_dir)
+    content = normalize_media_refs(run_pandoc(path, media_dir=media_dir), media_dir)
     units = parse_markdown_units(content)
     return SourceDocument(
         title=os.path.splitext(os.path.basename(str(path)))[0],
