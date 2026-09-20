@@ -113,6 +113,17 @@ def test_count_footnote_refs_keeps_true_marker_forms() -> None:
     assert count_footnote_refs("a long sentence.1The next one") == 1
 
 
+def test_count_footnote_refs_keeps_cjk_sentence_final_markers() -> None:
+    """回归：#8 缩写启发式不得吞掉中文真注码（点前中文词 ≤2 字也须计数）。
+
+    「正文。1」「城。1」点前是 1~2 字中文词——若照搬「≤2 字符即缩写点」会被排除，
+    译文侧真注码漏计、脚注守恒误报。
+    """
+    assert count_footnote_refs("正文。1") == 1
+    assert count_footnote_refs("城。1 下一句") == 1
+    assert count_footnote_refs("中华人民共和国。1") == 1
+
+
 def test_g0_footnote_conservation_tolerates_stats_numbers() -> None:
     """统计数字（句末标点后紧跟中文/%）不触发守恒硬缺陷；真注码仍守恒（回归 #3）。"""
     g = Glossary()

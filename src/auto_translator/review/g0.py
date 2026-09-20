@@ -91,12 +91,24 @@ _ABBREV_STEMS = frozenset(
 )
 
 
+# 中文词：缩写启发式不适用（CJK 无「点号缩写」；「正文。1」是真注码）
+_CJK_CHARS_RE = re.compile(r"[\u3400-\u4dbf\u4e00-\u9fff\u3040-\u30ff\uac00-\ud7af]")
+
+
 def _is_abbrev_dot(text: str, dot_index: int) -> bool:
-    """判断 ``dot_index`` 处的标点是否为缩写点（而非句末点）。"""
+    """判断 ``dot_index`` 处的标点是否为缩写点（而非句末点）。
+
+    缩写启发式只对**非 CJK** 词生效：中文句子以「正文。1」收尾时，点前是 1~2 字的
+    中文词（正文/城/部…），若照搬「≤2 字符即缩写」会把它误判成缩写点而吞掉真注码
+    （回归 #8 修复所引入；这里把 CJK 词排除在外）。
+    """
     m = _ABBREV_BEFORE_RE.search(text[:dot_index])
     if not m:
         return False
-    token = m.group(1).lower()
+    token = m.group(1)
+    if _CJK_CHARS_RE.search(token):
+        return False
+    token = token.lower()
     return token in _ABBREV_STEMS or len(token) <= 2
 
 
