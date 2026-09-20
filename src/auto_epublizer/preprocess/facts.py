@@ -130,7 +130,7 @@ def collect_facts(store: RunStore, config) -> dict[str, Any]:
     }
     capabilities = capabilities_summary(collect_capabilities(config, ping=False))
 
-    suggestions = _route_suggestions(sniff_facts, capabilities)
+    suggestions = _route_suggestions(sniff_facts, capabilities, units)
     signal_units = [u for u in units if any(u["signals"].values())]
     repair_signal_facts = {
         "units": len(signal_units),
@@ -208,7 +208,13 @@ def _ocr_routing(caps: dict[str, Any]) -> list[str]:
     return out
 
 
-def _route_suggestions(sniff_facts: dict[str, Any], capabilities: dict[str, Any]) -> list[str]:
+# 单单元提示阈值：非 PDF 源只出一个单元且规模超过此值 → 提示结构重建
+_SINGLE_UNIT_HINT_CHARS = 20000
+
+
+def _route_suggestions(
+    sniff_facts: dict[str, Any], capabilities: dict[str, Any], units: list[dict[str, Any]]
+) -> list[str]:
     """确定性路由提示（非决策；决策由 agent 写 plan.md）。"""
     caps = capabilities["capabilities"]
     out: list[str] = []
@@ -217,6 +223,16 @@ def _route_suggestions(sniff_facts: dict[str, Any], capabilities: dict[str, Any]
         out.append("pandoc 缺失：该输入需先安装 pandoc，或由用户转为 PDF/TXT/MD")
     if kind == "epub" and sniff_facts.get("drm"):
         out.append("EPUB 含加密描述（DRM）：无法直接解析，需用户提供无 DRM 来源")
+    # 非 PDF 源塌缩为单一单元：源件多半没有标题样式，结构要由 agent 重建
+    # （现场报告 #8：无 w:pStyle 的 docx 62.6 万字符被 pandoc 解析成 1 个单元）
+    if kind in ("docx", "html", "epub") and len(units) == 1:
+        chars = int(units[0].get("chars") or 0)
+        if chars >= _SINGLE_UNIT_HINT_CHARS:
+            out.append(
+                f"仅解析出 1 个单元（{chars} 字符）：源件很可能没有标题样式，"
+                "章节结构需按源文自身的题行重建——写 preprocessing/structure.csv 后跑 "
+                "restructure（见 references/structure.md）"
+            )
     if kind == "pdf":
         if sniff_facts.get("scanned"):
             out.extend(_ocr_routing(capabilities))
