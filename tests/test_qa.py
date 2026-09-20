@@ -595,9 +595,7 @@ def test_audit_asterisk_note_symbols_not_residue(tmp_path: Path) -> None:
         with zipfile.ZipFile(out) as zin, zipfile.ZipFile(target, "w") as zout:
             for item in zin.infolist():
                 data = (
-                    zin.read(item.filename).replace(
-                        b"<h1>", f"<h1>{marker}</h1>".encode("utf-8"), 1
-                    )
+                    zin.read(item.filename).replace(b"<h1>", f"<h1>{marker}</h1>".encode(), 1)
                     if item.filename.endswith("front-preface.xhtml")
                     else zin.read(item.filename)
                 )

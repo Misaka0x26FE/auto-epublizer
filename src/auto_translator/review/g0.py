@@ -48,9 +48,45 @@ _FOOTNOTE_REF_RE = re.compile(
 _ABBREV_BEFORE_RE = re.compile(r"([^\W\d_]{1,5}|№)\s*$", re.UNICODE)
 _ABBREV_STEMS = frozenset(
     {
-        "стр", "с", "п", "ст", "стp", "гл", "рис", "табл", "см", "ср", "т", "тт", "др",
-        "им", "проф", "акад", "сб", "изд", "ред", "н", "n", "no", "p", "pp", "fig", "ch",
-        "vol", "ed", "jan", "feb", "mar", "apr", "jun", "jul", "aug", "sep", "oct", "nov", "dec",
+        "стр",
+        "с",
+        "п",
+        "ст",
+        "стp",
+        "гл",
+        "рис",
+        "табл",
+        "см",
+        "ср",
+        "т",
+        "тт",
+        "др",
+        "им",
+        "проф",
+        "акад",
+        "сб",
+        "изд",
+        "ред",
+        "н",
+        "n",
+        "no",
+        "p",
+        "pp",
+        "fig",
+        "ch",
+        "vol",
+        "ed",
+        "jan",
+        "feb",
+        "mar",
+        "apr",
+        "jun",
+        "jul",
+        "aug",
+        "sep",
+        "oct",
+        "nov",
+        "dec",
     }
 )
 
@@ -62,6 +98,7 @@ def _is_abbrev_dot(text: str, dot_index: int) -> bool:
         return False
     token = m.group(1).lower()
     return token in _ABBREV_STEMS or len(token) <= 2
+
 
 # pandoc 脚注标记：[^label] 引用与 [^label]: 定义 统一计数
 _FN_PANDOC_RE = re.compile(r"\[\^[^\]\s]+\]")
