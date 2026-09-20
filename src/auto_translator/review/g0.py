@@ -37,7 +37,31 @@ _MARKER_RE = re.compile(r"\{\w+:\d+\}")
 # 不是注码，否则会把统计数字误判为脚注标记而触发守恒硬缺陷。
 # 另排除紧跟中文/百分号的数字（回归 issue #3）：「。82个车站」「。46%的机车」是
 # 统计数字而非注码；真注码是句末最后 token，后不会紧跟中文或百分号。
-_FOOTNOTE_REF_RE = re.compile(r"(?<!\d)[.!?…。！？](\d{1,3})(?!\d)(?![\u4e00-\u9fff%％])")
+# 再排除**枚举号位**（回归 #8）：数字后紧跟 `.`/`)`/`）`/`、`/`]` 时是列表序号
+# （「结婚礼。1. 订婚」「正文。2) 婚礼」），不是注码。
+_FOOTNOTE_REF_RE = re.compile(
+    r"(?<!\d)[.!?…。！？](\d{1,3})(?!\d)(?![\u4e00-\u9fff%％])(?![.)）、\]])"
+)
+
+# 缩写点（回归 #8）：`стр.66` `п.5` `ст.3` `гл.2` `рис.3` `20.Х.77` 这类页码/条款引用，
+# 点号属于缩写词而非句末，后随数字不是注码。
+_ABBREV_BEFORE_RE = re.compile(r"([^\W\d_]{1,5}|№)\s*$", re.UNICODE)
+_ABBREV_STEMS = frozenset(
+    {
+        "стр", "с", "п", "ст", "стp", "гл", "рис", "табл", "см", "ср", "т", "тт", "др",
+        "им", "проф", "акад", "сб", "изд", "ред", "н", "n", "no", "p", "pp", "fig", "ch",
+        "vol", "ed", "jan", "feb", "mar", "apr", "jun", "jul", "aug", "sep", "oct", "nov", "dec",
+    }
+)
+
+
+def _is_abbrev_dot(text: str, dot_index: int) -> bool:
+    """判断 ``dot_index`` 处的标点是否为缩写点（而非句末点）。"""
+    m = _ABBREV_BEFORE_RE.search(text[:dot_index])
+    if not m:
+        return False
+    token = m.group(1).lower()
+    return token in _ABBREV_STEMS or len(token) <= 2
 
 # pandoc 脚注标记：[^label] 引用与 [^label]: 定义 统一计数
 _FN_PANDOC_RE = re.compile(r"\[\^[^\]\s]+\]")
@@ -81,8 +105,14 @@ def markers_conserved(src: str, tgt: str, pattern: re.Pattern[str] = _MARKER_RE)
 
 
 def count_footnote_refs(text: str) -> int:
-    """统计句末注码（脚注引用）数量（PDF 文字层数字式注码）。"""
-    return len(_FOOTNOTE_REF_RE.findall(text or ""))
+    """统计句末注码（脚注引用）数量（PDF 文字层数字式注码）。
+
+    排除两类误报（现场报告 #8）：① 缩写点后的数字——``(стр.66)`` ``на стр.168``
+    ``с.859`` ``гл.2`` ``20.Х.77`` 属页码/条款引用；② 枚举号位——``结婚礼。1. 订婚``
+    的 ``1`` 后紧跟 `.`/`)`/`）`/`、`，是列表序号。
+    """
+    text = text or ""
+    return sum(1 for m in _FOOTNOTE_REF_RE.finditer(text) if not _is_abbrev_dot(text, m.start()))
 
 
 def count_footnote_marks(text: str) -> int:
