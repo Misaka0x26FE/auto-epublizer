@@ -59,11 +59,29 @@ def terms_in_text(text: str, glossary: Glossary) -> list[GlossaryEntry]:
     return list(seen.values())
 
 
+# 可省略的结构助词（仅用于术语命中的形态容错）
+_CJK_PARTICLES = "的地得"
+
+
+def _target_forms(target: str) -> list[str]:
+    """target 的可接受形态：原形 + 去尾部结构助词（的/地/得）的构词形。
+
+    中文术语表常把定语形式写进 target（`犹太-共济会的`、`反锡安主义的`），而正文里
+    作定语时不带「的」（`犹太-共济会三角形`、`反锡安主义反共济会阵线`）。现场报告
+    #8 中 6 处硬缺陷全部来自这一形态差：译文是对的，却只能靠改术语表才能放行。
+    """
+    forms = [target]
+    if len(target) > 1 and target[-1] in _CJK_PARTICLES:
+        forms.append(target[:-1])
+    return forms
+
+
 def terminology_hits(src: str, tgt: str, glossary: Glossary) -> list[TerminologyHit]:
     """源句出现术语 source（或其别名），译文缺失对应 target 时报违例（G0 术语命中）。
 
     source/alias/target 与正文一致做 NFKC 归一化后比较（回归 issue #4：
     target 含全角括号时与归一化后的译文形式不一致，曾全部误报）。
+    target 以结构助词结尾时，同时接受去助词的构词形（回归 #8）。
     """
     src_norm = normalize(src)
     tgt_norm = normalize(tgt)
@@ -82,7 +100,7 @@ def terminology_hits(src: str, tgt: str, glossary: Glossary) -> list[Terminology
         if not matched:
             continue
         seen.add(entry.source)
-        # 译文须含确认译法（按词边界）；缺失即违例
-        if not _boundary_pattern(target).search(tgt_norm):
+        # 译文须含确认译法（按词边界，允许去尾部结构助词的构词形）；缺失即违例
+        if not any(_boundary_pattern(f).search(tgt_norm) for f in _target_forms(target)):
             hits.append(TerminologyHit(source=entry.source, expected=entry.target, found=None))
     return hits

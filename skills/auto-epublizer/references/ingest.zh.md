@@ -68,6 +68,13 @@ agent 在 plan.md 记录最终路由与依据（含「是否已询问用户 Mine
 | `.pdf`（扫描件，MinerU） | MinerU API 整本解析（>200 页自动分批，`pdf.mineru_batch_pages`）：`raw/media/` 插图 + `raw/mineru/`（content_list.json + full.md 审计产物）+ `raw/inserts/` 记录；正文按 MinerU 标题层级切章 |
 | `.pdf`（扫描件，无 key） | OCR 兜底：逐页渲染为图片 → OCR → 作为该页文本块（`ocr:true`）；渲染页图持久化 `raw/pages/pNNN.png` |
 
+**pandoc 媒体引用在 ingest 时归一化**（2026-09 修复）：`--extract-media` 会把 DOCX 的
+`word/media/*` 铺到 `<媒体目录>/media/*` 并往 Markdown 里写**绝对路径**，pandoc 还会在
+图片后附 `{width="…" height="…"}` 属性块——三者都会落进持久化的 `structured/`。现在
+ingest 会把多出的那层 `media/` 拍平到 `raw/media/`、把引用改写成工作区相对的
+`raw/media/<name>`（与下文「中间产物」的布局一致），并剔除图片属性块（渲染层不处理该
+语法，原先会作为字面文本漏进成品）。非本地引用（http/…）保持原样。
+
 不支持的其他格式：先转 PDF/TXT/Markdown，或 `pandoc` 处理后转 PDF 兜底。
 
 ## EPUB 按 spine 切分（2026-09 修复）

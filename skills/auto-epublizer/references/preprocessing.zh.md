@@ -163,7 +163,8 @@ facts.md「可疑信号（语义整备线索）」表命中时（OCR/扫描件�
 
 目录完整性契约：逐项声明源内容去向——`included`（已收录，unit_id 必填）、
 `physical`（护封/腰封/书脊等实体元素，有意不进 EPUB）、`excluded`（有意排除，
-note 必填理由）、`unresolved`（未决，**qa 阻断放行**）。与 provenance 互补：
+note 必填理由）、`absent`（**源件本身不含**，如题注所指插图不在源包里；note 必填依据，
+**不阻断放行**）、`unresolved`（未决，**qa 阻断放行**）。与 provenance 互补：
 catalog 管「源侧有没有漏收」，provenance 管「译侧有没有漏译」。
 facts 待办有该项时建议写；不写则全部检查跳过。
 

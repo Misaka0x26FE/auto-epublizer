@@ -106,6 +106,61 @@ def test_qa_catalog_unresolved_blocks_release(tmp_path: Path) -> None:
     assert result["released_reason"] == "catalog_open"
 
 
+def test_read_catalog_absent_status(tmp_path: Path) -> None:
+    """回归 #8：`absent`（源件本身不含该内容）合法、需给依据、且不计入未决项。
+
+    现场案例：题注所指插图不在源包里，既非「有意排除」也非「未决」——旧枚举只能记
+    `unresolved`（阻断放行）或谎称 `excluded`。
+    """
+    store = _workspace(tmp_path)
+    _write_catalog(
+        store,
+        [
+            "Chapter I,toc,included,page 1,ch01,",
+            "Illustration for ch09,figure,absent,,,源 docx 包内无此图（全书仅 3 图，均在卷首）",
+        ],
+    )
+    rows = orch.read_catalog(store)
+    assert rows is not None and [r["status"] for r in rows] == ["included", "absent"]
+    assert orch.status(store)["catalog"]["unresolved"] == 0
+
+    # absent 必填依据
+    _write_catalog(store, ["Ghost figure,figure,absent,,,"])
+    with pytest.raises(orch.OrchestrationError, match="note"):
+        orch.read_catalog(store)
+
+
+def test_qa_absent_does_not_block_release(tmp_path: Path) -> None:
+    """qa：`absent` 不阻断放行（与 unresolved 相对照）。"""
+    import json
+
+    store = _workspace(tmp_path)
+    _write_catalog(
+        store,
+        [
+            "Chapter I,toc,included,page 1,ch01,",
+            "Illustration for ch09,figure,absent,,,源 docx 包内无此图",
+        ],
+    )
+    (store.translation_dir / "body").mkdir(parents=True, exist_ok=True)
+    (store.translation_dir / "body" / "ch01.md").write_text(
+        "# Chapter I\n\n第一句。\n\n第二句。\n", encoding="utf-8"
+    )
+    rows = [
+        {"seq": 1, "src": "First sentence here.", "tgt": "第一句。", "note": None},
+        {"seq": 2, "src": "Second sentence here.", "tgt": "第二句。", "note": None},
+    ]
+    (store.translation_dir / "align").mkdir(parents=True, exist_ok=True)
+    with open(store.unit_align_path("ch01"), "w", encoding="utf-8") as f:
+        for row in rows:
+            f.write(json.dumps(row, ensure_ascii=False) + "\n")
+    orch.import_translations(store)
+    epub = orch.build(store)
+    result = orch.qa(store, epub_path=str(epub))
+    assert result["catalog_unresolved_open"] == 0
+    assert result["released_reason"] != "catalog_open"
+
+
 def test_generate_report_catalog_open() -> None:
     """report 级：catalog_unresolved_open=1 → 不放行，reason=catalog_open。"""
     from auto_epublizer.qa import AuditResult, EpubcheckResult, generate_report

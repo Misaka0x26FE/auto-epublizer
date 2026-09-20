@@ -75,6 +75,37 @@ def test_count_footnote_refs_ignores_cjk_and_percent_adjacent() -> None:
     assert count_footnote_refs("占比过半。50％来自顿巴斯") == 0
 
 
+def test_count_footnote_refs_ignores_abbreviation_refs() -> None:
+    """回归 #8：缩写点后的数字是页码/条款引用，不是脚注注码。
+
+    现场案例（俄文政论/学术书）：源文 13 处 `стр.66` 一类的页码引用被误判为注码，
+    因 `footnote` 守恒是硬门，只能去改源文排印。这里按「点号前是缩写词」排除。
+    """
+    assert count_footnote_refs("(стр.66)") == 0
+    assert count_footnote_refs("Папюс на стр.168 своего сочинения") == 0
+    assert count_footnote_refs("опубликованы на стр.146--158 посмертно") == 0
+    assert count_footnote_refs("(с.859)") == 0
+    assert count_footnote_refs("«За рубежом», стр.8)") == 0
+    assert count_footnote_refs("в соответствии с п.5 настоящей статьи") == 0
+    assert count_footnote_refs("перечисленные в п.1, ст.3 комиссии") == 0
+    assert count_footnote_refs("Монте-Карло 11--12.Х.79 г.") == 0
+    assert count_footnote_refs("«Правда», 20.Х.77 г.") == 0
+    assert count_footnote_refs("см. рис.3 и табл.2") == 0
+
+
+def test_count_footnote_refs_ignores_enumerators() -> None:
+    """回归 #8：句末标点后的枚举号（列表序号）不是注码。
+
+    现场案例（中文译文）：「结婚礼。1. 订婚。」里的 `1` 被当成注码，导致
+    「脚注标记数量不守恒」硬缺陷，而源文根本没有脚注。
+    """
+    assert count_footnote_refs("结婚礼。1. 订婚。") == 0
+    assert count_footnote_refs("正文。2) 婚礼。") == 0
+    assert count_footnote_refs("标题。3、正文。") == 0
+    assert count_footnote_refs("结束。4）婚礼。") == 0
+    assert count_footnote_refs("见上文。5] 附录。") == 0
+
+
 def test_count_footnote_refs_keeps_true_marker_forms() -> None:
     """真注码形态不受排除集影响：行尾 / 空格 / 英文粘连（此为已知残余风险边界）。"""
     assert count_footnote_refs("whole villages.1") == 1
@@ -290,3 +321,19 @@ def test_md_align_drift_title_row_tolerated() -> None:
         {"seq": 2, "src": "Body.", "tgt": "正文。"},
     ]
     assert md_align_drift(md, rows, title="Chapter I") == []
+
+
+def test_md_align_drift_heading_row_without_trailing_newline() -> None:
+    """回归 #8：首行 tgt 以 `## ` 开头且行尾无换行时，不得把整串当作标题行删掉。
+
+    原实现用 `"".join(tgt)`（无分隔）拼接，`_HEADING_LINE` 逐行正则会吃掉整串 →
+    误报「align 0 字符」并阻断 import（真实案例：单元内首段即 `## ` 小标题）。
+    """
+    from auto_translator.review import md_align_drift
+
+    md = "# 标题\n\n## 第一章\n\n正文。\n"
+    rows = [
+        {"seq": 1, "src": "## ГЛАВАI", "tgt": "## 第一章"},
+        {"seq": 2, "src": "Текст.", "tgt": "正文。"},
+    ]
+    assert md_align_drift(md, rows) == []

@@ -110,6 +110,28 @@ def test_terminology_hit_word_boundary_cyrillic() -> None:
     assert len(hits) == 1 and hits[0].expected == "党卫队"
 
 
+def test_terminology_hit_accepts_attributive_stem_form() -> None:
+    """回归 #8：target 以结构助词「的」结尾时，定语用法（去「的」）也应命中。
+
+    现场案例：术语表写「犹太-共济会的」（定语形式），而正文作定语时不带「的」
+    （「犹太-共济会三角形」）——译文正确却报硬缺陷，只能去改术语表。缺失仍要报。
+    """
+    g = Glossary(
+        [_entry("иудо-масонский", "犹太-共济会的"), _entry("антисионистский", "反锡安主义的")]
+    )
+    assert terminology_hits("иудо-масонский треугольник", "犹太-共济会三角形", g) == []
+    assert terminology_hits("антисионистский фронт", "反锡安主义反共济会阵线", g) == []
+    # 原形（带「的」）仍命中
+    assert terminology_hits("иудо-масонский треугольник", "犹太-共济会的三角形", g) == []
+    # 完全没译到该术语仍报违例
+    hits = terminology_hits("иудо-масонский треугольник", "某个三角形", g)
+    assert len(hits) == 1 and hits[0].expected == "犹太-共济会的"
+    # 不以助词结尾的 target 不做形态容错
+    g2 = Glossary([_entry("сионизм", "锡安主义")])
+    assert terminology_hits("сионизм опасен", "锡安主义是危险的", g2) == []
+    assert len(terminology_hits("сионизм опасен", "复国主义是危险的", g2)) == 1
+
+
 def test_terminology_hit_word_boundary_latin_adjacent_cjk() -> None:
     """回归：非 CJK 术语紧邻中文仍是合法词边界（``\\w`` 含 CJK 的例外）。
 

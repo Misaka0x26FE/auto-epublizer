@@ -582,6 +582,35 @@ def test_audit_heading_skip_residue_anchor_pairs(tmp_path: Path) -> None:
     assert not result.ok
 
 
+def test_audit_asterisk_note_symbols_not_residue(tmp_path: Path) -> None:
+    """回归 #8：源文以星号作行内脚注标记时，成品里的 `****` 不是 markdown 残留。
+
+    `marker` 守恒是硬门，译文必须原样保留这些星号；渲染层也不会把 `****` 解释为
+    强调，它就是显示文本。只有**恰好两个**星号（真·未解析强调）才算残留。
+    """
+    out = _make_epub(tmp_path)
+
+    def _inject(marker: str) -> Path:
+        target = out.with_name(f"inject-{abs(hash(marker))}.epub")
+        with zipfile.ZipFile(out) as zin, zipfile.ZipFile(target, "w") as zout:
+            for item in zin.infolist():
+                data = (
+                    zin.read(item.filename).replace(b"<h1>", f"<h1>{marker}</h1>".encode(), 1)
+                    if item.filename.endswith("front-preface.xhtml")
+                    else zin.read(item.filename)
+                )
+                zout.writestr(item, data)
+        return target
+
+    # 源文注记符号：必须保留 → 不报 W_RESIDUE
+    codes = {f.code for f in audit_epub(_inject("「行为矫正」****")).findings}
+    assert "W_RESIDUE" not in codes
+
+    # 真·未解析强调 → 仍报 W_RESIDUE
+    codes = {f.code for f in audit_epub(_inject("**未解析强调**")).findings}
+    assert "W_RESIDUE" in codes
+
+
 def test_audit_footnote_backlink_ok_and_missing(tmp_path: Path) -> None:
     """P2 audit：脚注回链——正常 noteref/footnote 无告警；删回链 → E_FN_BACKLINK。"""
     from auto_epublizer.build.html import FootnoteState
