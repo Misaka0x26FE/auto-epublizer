@@ -65,6 +65,25 @@ def test_llm_commands_removed(tmp_path: Path) -> None:
         assert "No such command" in result.output
 
 
+def test_qa_prints_release_reason(tmp_path: Path) -> None:
+    """回归 #8：放行失败时控制台必须给出原因（否则只能去翻 report.json）。"""
+    src = tmp_path / "book.md"
+    src.write_text("# 第一章\n\n正文。\n", encoding="utf-8")
+    ws = tmp_path / "ws"
+    _invoke("init", str(src), "--workspace", str(ws))
+    # init 的 --workspace 是「根目录」，实际工作区是 <根>/<slug>/
+    book = ws / "book"
+    pre = book / "preprocessing"
+    pre.mkdir(parents=True, exist_ok=True)
+    (pre / "catalog.csv").write_text(
+        "item,kind,status,locator,unit_id,note\n未知插图,figure,unresolved,page ??,,待确认\n",
+        encoding="utf-8",
+    )
+    _invoke("build", "--workspace", str(book))
+    out = _invoke("qa", "--workspace", str(book)).output
+    assert "G5 放行：否（原因：catalog_open）" in out
+
+
 def test_meta_command_updates_fields(tmp_path: Path) -> None:
     """S2.1：meta 命令更新元数据 + events 账本；空串清空；无参数报错。"""
     src = tmp_path / "book.md"

@@ -178,7 +178,13 @@ def qa(
         f"结构违例 {report.get('g0_structure_open', 0)}；"
         f"术语冲突未裁决 {report.get('glossary_conflicts_open', 0)}"
     )
-    console.print(f"  G5 放行：{'是' if report['released'] else '否'}")
+    if report["released"]:
+        console.print("  G5 放行：是")
+    else:
+        # 放行失败时把原因打出来：只显示「否」会让人去翻 report.json（现场报告 #8）。
+        console.print(
+            f"  G5 放行：[red]否[/red]（原因：{report.get('released_reason') or '未知'}）"
+        )
 
 
 @app.command()
