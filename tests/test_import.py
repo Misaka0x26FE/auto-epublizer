@@ -58,12 +58,23 @@ def test_import_blocks_on_broken_align(tmp_path: Path) -> None:
     assert store.load_publication().units[0].status == "split"
 
 
-def test_import_reports_missing_files(tmp_path: Path) -> None:
+def test_import_reports_untranslated_as_pending(tmp_path: Path) -> None:
+    """回归 #8：未译单元记入 `pending`（待译），不再计为 failed。
+
+    旧行为把「还没有译文」当失败处理，并继续跑文档/表格/术语检查——于是源文的每个块
+    都刷一条「源文块未进对照表」告警（现场：4 个已译 + 12 个未译 → 1318 条无效告警）。
+    """
     store = _workspace(tmp_path)
     result = orch.import_translations(store)
     assert result["imported"] == []
-    assert any("缺少译文文件" in e for e in result["failed"][0]["errors"])
-    assert any("缺少对照表" in e for e in result["failed"][0]["errors"])
+    assert result["failed"] == []
+    assert [p["unit"] for p in result["pending"]] == ["ch01"]
+    assert any("缺少译文文件" in r for r in result["pending"][0]["reasons"])
+    assert any("缺少对照表" in r for r in result["pending"][0]["reasons"])
+    # 未译单元不产出任何告警（旧实现会为源文每个块刷 fidelity 前向缺块）
+    assert result["warnings"] == []
+    # 状态不得推进
+    assert store.load_publication().units[0].status == "split"
 
 
 def test_import_detects_glossary_conflicts(tmp_path: Path) -> None:
