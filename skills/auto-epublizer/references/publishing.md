@@ -1,4 +1,4 @@
-<!-- i18n: source=publishing.zh.md sha256=596179ea16caa4171b4bf9470cfabed8d96fb3cb1816aff475caf96dbf3197ff -->
+<!-- i18n: source=publishing.zh.md sha256=4175969c1b81f24e200666514fc8db2660df918cc36026cfa7b04f2d8d61bb7b -->
 > **English** | [中文](publishing.zh.md)
 
 # Publishing and distribution (publishing gate)
@@ -18,6 +18,11 @@
 - Confirm the **redistribution permission** of the original book: public domain / authorized translation publication / own copyright self-translation self-publishing.
 - Basis sources: the authorization materials in `references/user/`, publisher permission, the original book's copyright page statement
   (`publication.json.meta.rights`).
+- **This project does not review the copyright risk of the processed object**: rights to
+  the source files etc. are the user's responsibility; the workspace (including `source/`)
+  is **fully tracked in git** and by default is a **private repository** (host configurable,
+  default GitHub); making it public requires an explicit user declaration or the user
+  handling it themselves.
 - **Unclear rights → default to private repository distribution, or stop and ask the user**; do not make legal assumptions on the user's behalf.
 - The rights conclusion is recorded in the publishing notes (one sentence + basis), not written into code or configuration.
 
@@ -30,7 +35,7 @@ Scan target: all content to be pushed in the publishing repository. Check items:
 | Credentials/keys | Full-text scan for API key/token patterns (`sk-`, `AKIA`, long random string assignments, `MINERU_API_KEY=` etc.) | Delete the content + revoke the credential (once committed it is considered leaked) |
 | Local paths | Scan for `/home/<user>/`, `/Users/`, `C:\Users\`, host names | Replace with portable forms (`~/`, relative paths) |
 | User personal data | Real names, emails, addresses in reports/lessons/README/commit messages | Anonymize or obtain consent |
-| Original book body copyright material | Source files (`source/`) **are not included in the repo**; templates/examples contain no copyrightable original text | Publish only the translated product and workspace structure |
+| Original book body copyright material | Source files (`source/`) are **fully tracked** with the workspace (private repo by default; copyright risk is the user's responsibility, not reviewed by this project) | Complete this privacy scan, and obtain an explicit user declaration, before making the repo public |
 | Image/cover rights | Consistent with the original book (see §2 cover gate) | Do not use when rights are unclear |
 
 - **`.gitignore` cannot remove already-tracked files** — when sensitive files have been committed, you must `git rm --cached`
@@ -64,8 +69,9 @@ The publishing README must contain (missing = do not publish):
   sha256.
 - **Publish a new version to fix errors**: on discovering a finished-product issue → fix `translation/`+`align/` → rebuild → re-qa →
   publish `-v<N+1>`; **do not force-push, do not overwrite an already-published tag**.
-- **Forbidden to `git add -A` in a directory containing source files**: confirm `source/` is not in the publishing tree before staging;
-  prefer explicitly listing file names.
+- **The workspace is fully tracked (including `source/`) and is private by default**: the
+  repository defaults to **private** (host configurable, default GitHub); before making it
+  public, complete the §1.2 privacy scan and obtain an explicit user declaration.
 - The publishing record (version/date/change summary) is appended to the publishing repository's CHANGELOG or release note,
   not written back to this workspace.
 

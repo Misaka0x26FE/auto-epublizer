@@ -1,4 +1,4 @@
-<!-- i18n: source=SKILL.zh.md sha256=e11ec4ad130dcecaa27bf37a689581b0db56c31a237f05d9ee5921eb9e62813a -->
+<!-- i18n: source=SKILL.zh.md sha256=e65ede2e9bc3df1e9568cb0377abe2d69d02982a9a96b2924dbaf9995884f7e2 -->
 > **English** | [中文](SKILL.zh.md)
 
 ---
@@ -93,8 +93,11 @@ the reference needed for the current stage.
    intelligent artifacts.
 4. Review artifacts are written only to `reviews/review-<ts>/` (shadow translation,
    result.json); the official `translation/` is overwritten only after an explicit agent fix.
-5. Only process public-domain or licensed text; do not commit copyrighted body text or
-   user-local data.
+5. This project **does not review the copyright risk of the processed object** (rights are
+   the user's responsibility); the workspace (including `source/` and all processing
+   artifacts) is **fully tracked in git** and by default is uploaded as a **private
+   repository** to the configured hosting platform (default GitHub); making it public
+   requires an explicit user declaration or the user handling it themselves.
 
 ## Command Discipline
 

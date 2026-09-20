@@ -76,7 +76,9 @@ multimodal / search**（能否看图、有无搜索工具，CLI 无法探测）�
    `reviews/`、`output/` 是智能产物。
 4. 审校产物只写 `reviews/review-<ts>/`（影子译文、result.json）；正式 `translation/` 只在
    agent 明确修复后覆盖。
-5. 只处理公有领域或已获授权文本；不提交受版权保护的正文与用户本地数据。
+5. 本项目**不审查处理对象的版权风险**（权属由用户负责）；工作区（含 `source/` 源文件
+   与全部处理产物）**全量纳入 git 仓库**，默认作为**私有仓库**上传到指定托管平台
+   （默认 GitHub）；转公开需用户显式声明或自行处理。
 
 ## Command Discipline
 

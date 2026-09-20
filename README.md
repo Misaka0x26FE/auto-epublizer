@@ -1,4 +1,4 @@
-<!-- i18n: source=README.zh.md sha256=b00eea0b2ecaf78bc1d6337f3d6d426d4e8f970df2a99be5ca030e3274e7c4bf -->
+<!-- i18n: source=README.zh.md sha256=bb2b852df60bc545c92698b49f2ca58ccbc9f25bd731314fcd2846e03a140c85 -->
 > **English** | [中文](README.zh.md)
 
 # auto-epublizer
@@ -38,6 +38,13 @@ You only need to do three things:
 2. Provide the file to process (book source PDF/EPUB/DOCX/HTML/TXT/MD, etc.).
 3. Optionally provide the target language, metadata (title/author/copyright-page fields),
    reference material or notes.
+
+> **Copyright & publishing**: this project **does not review whether the processed object
+> (source files, illustrations, etc.) carries copyright risk** — rights are your
+> responsibility. The working directory produced during processing (including `source/`)
+> is **fully tracked in git** and by default is uploaded as a **private repository** to the
+> configured git hosting platform (default GitHub); making it public requires you to handle
+> it yourself or make an explicit declaration.
 
 > **Scanned-PDF note**: if the source is a scanned PDF (no text layer), the agent will
 > prefer the MinerU external parsing API (best layout/illustration recognition). In that
