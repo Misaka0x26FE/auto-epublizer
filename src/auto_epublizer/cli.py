@@ -518,6 +518,50 @@ def knowledge_import_cmd(
         )
 
 
+@knowledge_app.command("import-csv")
+def knowledge_import_csv_cmd(
+    csv_path: str = typer.Argument(
+        ..., help="术语 CSV 路径（旧案例 category,source,target,note 或标准格式）"
+    ),
+    src_lang: str = typer.Option(..., "--src-lang", help="源语言（如 en/ru/es）"),
+    book: str = typer.Option(..., "--book", help="来源书名/slug（写入溯源列）"),
+    tgt_lang: str = typer.Option("zh-CN", "--tgt-lang", help="目标语言"),
+    status: str | None = typer.Option(
+        None, "--status", help="强制覆盖条目态（seed/confirmed）；缺省沿用 CSV 的 status"
+    ),
+    no_commit: bool = typer.Option(False, "--no-commit", help="只写文件，不自动 git 提交"),
+    directory: str | None = typer.Option(None, "--dir", help="统一库目录（覆盖环境变量/配置）"),
+    config: str | None = typer.Option(None, "--config", help="配置文件路径"),
+) -> None:
+    """把任意术语 CSV 导入统一库（历史项目不是工作区时的确定性入口）。"""
+    cfg = load_config(config or _CONFIG_PATH)
+    store_dir = knowledge.resolve_store_dir(cfg, override=directory)
+    try:
+        result = knowledge.knowledge_import_file(
+            store_dir,
+            csv_path,
+            src_lang=src_lang,
+            tgt_lang=tgt_lang,
+            book=book,
+            status=status,
+            commit=not no_commit,
+        )
+    except (ValueError, OSError) as e:
+        raise typer.Exit(f"导入失败：{e}") from None
+    console.print(
+        f"[green]已导入统一库：[/green]《{result['book']}》"
+        f"（{result['src_lang']}→{result['tgt_lang']}）"
+    )
+    console.print(
+        f"  读取 {result['merged']} 条；新增 {result['added']}、更新 {result['updated']}、"
+        f"跨书冲突 {result['conflicts']}"
+    )
+    if result["committed"]:
+        console.print("  git：已提交")
+    else:
+        console.print(f"  git：[dim]{result['commit_message']}[/dim]")
+
+
 @knowledge_app.command("export")
 def knowledge_export_cmd(
     workspace: str | None = typer.Option(None, "--workspace", help="工作区目录"),

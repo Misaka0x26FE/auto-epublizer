@@ -18,8 +18,10 @@ from pathlib import Path
 from auto_common.config import Config
 from auto_common.workspace import RunStore
 from auto_translator.glossary import (
+    GlossaryEntry,
     export_for_workspace,
     load_glossary_csv,
+    load_legacy_category_csv,
     load_store_csv,
     merge_workspace_glossary,
     read_store_conflicts,
@@ -287,6 +289,67 @@ def knowledge_import(
     }
 
 
+def _load_any_glossary(path: Path) -> list[GlossaryEntry]:
+    """读取任意术语 CSV：表头含 category 且无 type 视为旧案例格式。"""
+    first_line = path.read_text(encoding="utf-8").splitlines()[:1]
+    header = first_line[0].lower() if first_line else ""
+    if "category" in header and "type" not in header:
+        return load_legacy_category_csv(path)
+    return load_glossary_csv(path)
+
+
+def knowledge_import_file(
+    store_dir: Path,
+    csv_path: str | Path,
+    *,
+    src_lang: str,
+    tgt_lang: str,
+    book: str,
+    status: str | None = None,
+    commit: bool = True,
+) -> dict:
+    """把任意术语 CSV 导入统一库（历史项目不是工作区时的确定性入口）。
+
+    - 自动识别旧案例格式（``category,source,target,note``）与标准格式；
+    - ``status`` 可强制覆盖条目态（如历史建议统一为 ``seed``）；
+    - 幂等合并 + 冲突外置 + 自动 git 提交。
+    """
+    _ensure_skeleton(store_dir)
+    p = Path(csv_path)
+    if not p.is_file():
+        raise ValueError(f"术语 CSV 不存在：{p}")
+    entries = _load_any_glossary(p)
+    if status:
+        for entry in entries:
+            entry.status = status
+    store_entries = load_store_csv(store_dir / "terminology.csv")
+    result = merge_workspace_glossary(
+        store_entries, entries, src_lang=src_lang, tgt_lang=tgt_lang, book=book
+    )
+    save_store_csv(store_dir / "terminology.csv", result.entries)
+    conflicts_written = write_store_conflicts(store_dir / "conflicts.jsonl", result.conflicts)
+
+    committed, commit_msg = (False, "跳过提交")
+    if commit:
+        committed, commit_msg = git_commit(
+            store_dir,
+            f"chore(knowledge): 导入《{book}》术语 {len(entries)} 条"
+            f"（+{result.added} ~{result.updated} 冲突{conflicts_written}）",
+        )
+    return {
+        "store": str(store_dir),
+        "book": book,
+        "src_lang": src_lang,
+        "tgt_lang": tgt_lang,
+        "merged": len(entries),
+        "added": result.added,
+        "updated": result.updated,
+        "conflicts": conflicts_written,
+        "committed": committed,
+        "commit_message": commit_msg,
+    }
+
+
 def knowledge_export(
     store_dir: Path,
     store: RunStore,
@@ -360,6 +423,7 @@ __all__ = [
     "is_git_repo",
     "knowledge_export",
     "knowledge_import",
+    "knowledge_import_file",
     "knowledge_init",
     "knowledge_push",
     "knowledge_status",
