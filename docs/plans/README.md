@@ -33,4 +33,4 @@
 | [2026-09-13-delivery-audit.md](2026-09-13-delivery-audit.md) | 已完成（7041126 / ece1790 / c9ae1ba） | 交付审计：交付前全量完整性与可靠性校验（md↔align 一致性 + EPUB 媒体/脚注/段落呈现对账 + delivery.md 强制清单与记录） |
 | [2026-09-13-issue-triage.md](2026-09-13-issue-triage.md) | 已完成（320201a / 13240bd / 9a58459 / 5bacc1d） | Issue 清理（#3–#6）：术语命中 NFKC 归一化 + 句末注码排除集 + MinerU >200 页自动分批 + #6 验证关闭 |
 | [2026-09-18-i18n-english-docs.md](2026-09-18-i18n-english-docs.md) | 已完成（8226135 / deb26a5 / 8a3d9e0 / 072d6f8 / da52a03 / 11553dc / 293b03b / 5f59985 + 收尾回写） | 文档 i18n：50 份英文版（英文默认 `X.md` / 中文 `X.zh.md`）+ sha256 同步契约（脚本 + 测试强制） |
-| [2026-09-25-unified-terminology-store.md](2026-09-25-unified-terminology-store.md) | 实施中 | 统一术语库/知识库：跨工作区持久化（默认 `~/Documents/auto-epublizer`）+ agent 自行维护 + git 持续维护/跨设备同步（`knowledge` 命令组） |
+| [2026-09-25-unified-terminology-store.md](2026-09-25-unified-terminology-store.md) | 已完成（34d6d2b） | 统一术语库/知识库：跨工作区持久化（默认 `~/Documents/auto-epublizer`）+ agent 自行维护 + git 持续维护/跨设备同步（`knowledge` 命令组） |

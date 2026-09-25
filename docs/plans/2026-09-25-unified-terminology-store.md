@@ -1,6 +1,6 @@
 # 统一术语库 / 知识库（跨工作区持久化 + git 持续维护）
 
-> 状态：实施中
+> 状态：已完成（34d6d2b）
 > 立项：2026-09-25
 > 关联：`AGENTS.md`「版权与发布责任」、`skills/auto-epublizer/references/publishing.md`、`references/preprocessing.md`、`references/translation.md`
 
@@ -131,4 +131,19 @@ auto-epublizer knowledge push [--remote origin]         # 推送（跨设备同�
 
 ## 7. 实施记录
 
-（实施完成后回写提交号与验证结果。）
+已完成（`34d6d2b`）：
+
+- 领域层 `auto_translator/glossary/store.py`：统一库 schema/键/合并/导出/冲突账本。
+- 编排层 `auto_epublizer/knowledge.py`：目录解析 + git init/commit/push + 五个命令实现。
+- CLI `knowledge` 子命令组（path/init/import/export/status/push）+ `paths.knowledge_dir` /
+  `paths.knowledge_remote` 配置。
+- 测试 `tests/test_knowledge_store.py`：17 例（解析覆盖链、git 骨架/提交/幂等、合并去重/
+  跨书冲突、导出语对隔离/拒覆盖、未裁决自动归零、CLI 全链路）。
+- 文档双语同步：AGENTS / README / configuration / translation-flow / SKILL / workflow /
+  preprocessing / translation / publishing（i18n 9 对重盖戳）+ config 示例 + 本计划。
+
+验证：`uv run pytest -q` **375 passed**；`ruff check .` / `ruff format --check .` 全绿；
+`scripts/i18n.py --check/--links` OK；`knowledge init/status` 真实冒烟通过。
+
+> 真实用户目录 `~/Documents/auto-epublizer/` 未创建（冒烟与测试均在 `/tmp` 与 `tmp_path`），
+> 由 agent 首次运行 `knowledge init` 时按需建立。
