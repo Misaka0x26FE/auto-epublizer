@@ -377,3 +377,71 @@ def test_cli_knowledge_import_requires_src_lang(tmp_path: Path) -> None:
     )
     assert result.exit_code != 0
     assert "--src-lang" in result.output
+
+
+# ── 任意术语 CSV 导入（历史项目入口）────────────────────────────────────────
+
+
+def test_knowledge_import_file_legacy_categories_and_status(tmp_path: Path) -> None:
+    store_dir = tmp_path / "store"
+    csv_path = tmp_path / "legacy.csv"
+    csv_path.write_text(
+        "category,source,target,note\n"
+        "机构,НКВД,内务人民委员部,苏联秘密警察\n"
+        "组织机构,El Colegio de México,墨西哥学院,出版社\n"
+        "概念,caudillo,考迪罗,\n"
+        "职衔,Генеральный комиссар,国家安全总委员,\n"
+        "政治派系,Partido,党,\n",
+        encoding="utf-8",
+    )
+    result = knowledge.knowledge_import_file(
+        store_dir, csv_path, src_lang="ru", tgt_lang="zh-CN", book="hist", status="confirmed"
+    )
+    assert result["added"] == 5
+    entries = load_store_csv(store_dir / "terminology.csv")
+    by = {e.source: e for e in entries}
+    assert by["НКВД"].type == "org"
+    assert by["El Colegio de México"].type == "org"
+    assert by["caudillo"].type == "term"
+    assert by["Генеральный комиссар"].type == "term"
+    assert by["Partido"].type == "org"
+    assert all(e.status == STATUS_CONFIRMED for e in entries)
+    assert all(e.book == "hist" and e.src_lang == "ru" for e in entries)
+
+
+def test_knowledge_import_file_standard_format(tmp_path: Path) -> None:
+    store_dir = tmp_path / "store"
+    csv_path = tmp_path / "std.csv"
+    csv_path.write_text(
+        _HEADER + "fedayeen,费达因,term,,,,seed,敢死队\n",
+        encoding="utf-8",
+    )
+    knowledge.knowledge_import_file(store_dir, csv_path, src_lang="en", tgt_lang="zh-CN", book="b1")
+    entries = load_store_csv(store_dir / "terminology.csv")
+    assert [(e.source, e.status) for e in entries] == [("fedayeen", STATUS_SEED)]
+
+
+def test_cli_knowledge_import_csv(tmp_path: Path) -> None:
+    store_dir = tmp_path / "store"
+    csv_path = tmp_path / "legacy.csv"
+    csv_path.write_text(
+        "category,source,target,note\n人物,Peter Fleming,彼得·弗莱明,记者\n",
+        encoding="utf-8",
+    )
+    result = runner.invoke(
+        app,
+        [
+            "knowledge",
+            "import-csv",
+            str(csv_path),
+            "--src-lang",
+            "en",
+            "--book",
+            "fleming-china",
+            "--dir",
+            str(store_dir),
+        ],
+    )
+    assert result.exit_code == 0, result.output
+    assert "已导入统一库" in result.output
+    assert "Peter Fleming" in (store_dir / "terminology.csv").read_text(encoding="utf-8")
