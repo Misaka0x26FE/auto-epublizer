@@ -1,4 +1,4 @@
-<!-- i18n: source=workflow.zh.md sha256=ed21023da2244f34a2439c3887491c1954d294b5c59209434bf79aad4951f99a -->
+<!-- i18n: source=workflow.zh.md sha256=081734516a6070117dda706511088a49cc1d264b6b6734401aac637f70e1bb39 -->
 > **English** | [中文](workflow.zh.md)
 
 # Workflow (stage routing + command overview)
@@ -114,6 +114,7 @@ auto-epublizer knowledge init [--remote <url>] [--push] [--dir <dir>]  # skeleto
 auto-epublizer knowledge export [--workspace <dir>] [--src-lang en]    # same-pair confirmed terms → preprocessing/terms.csv
 auto-epublizer knowledge import [--workspace <dir>] [--src-lang en]    # workspace glossary.csv → store (merge + auto commit)
 auto-epublizer knowledge status [--json] | push [--remote <name|url>] | path
+auto-epublizer knowledge import-csv <csv> --src-lang en --book <slug>  # historical/arbitrary term CSV (legacy format auto-detected)
 
 # unit-boundary rebuild registration (after the agent re-splits/merges; preprocessing/structure.csv → publication.json)
 auto-epublizer restructure [--workspace <dir>]

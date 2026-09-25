@@ -147,3 +147,13 @@ auto-epublizer knowledge push [--remote origin]         # 推送（跨设备同�
 
 > 真实用户目录 `~/Documents/auto-epublizer/` 未创建（冒烟与测试均在 `/tmp` 与 `tmp_path`），
 > 由 agent 首次运行 `knowledge init` 时按需建立。
+
+### 后续增量
+
+- **`3f3bd43`**：补 `knowledge import-csv <csv> --src-lang --book [--status]`（历史项目不是
+  工作区时的确定性导入入口；自动识别旧案例 `category,source,target,note` 格式），并补全
+  `_CATEGORY_TO_TYPE` 映射（专名/概念/职衔/机构/组织机构/政治派系）。
+- **历史数据开荒**：真实目录 `~/Documents/auto-epublizer/` 已建立并入库 `~/work/translate/`
+  的 6 份权威 `GLOSSARY.csv`（confirmed）+ morris 报告表外术语 1024 条（seed），
+  共 **1199 条**（en→zh 1107 / es→zh 72 / ru→zh 20）；裁决 40 个跨章变体键后未裁决键归零；
+  另写 4 篇 `knowledge/` 事实知识（项目索引 / 术语体例与裁决 / 源文缺陷模式 / OCR 勘误先例）。
