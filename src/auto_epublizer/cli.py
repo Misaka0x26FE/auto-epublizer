@@ -11,7 +11,7 @@ from rich.console import Console
 from auto_common.config import load_config
 from auto_common.workspace import RunStore
 
-from . import __version__
+from . import __version__, knowledge
 from . import orchestrator as orch
 
 app = typer.Typer(help="auto-epublizer：翻译 + 转 EPUB 的 Python CLI")
@@ -427,6 +427,187 @@ def g0(
 def version() -> None:
     """显示版本。"""
     console.print(f"auto-epublizer {__version__}")
+
+
+# ── 统一术语库/知识库（跨工作区持久化 + git 持续维护）────────────────────────
+
+knowledge_app = typer.Typer(help="统一术语库/知识库：跨工作区持久化 + git 持续维护")
+app.add_typer(knowledge_app, name="knowledge")
+
+
+@knowledge_app.command("path")
+def knowledge_path(
+    directory: str | None = typer.Option(None, "--dir", help="统一库目录（覆盖环境变量/配置）"),
+    config: str | None = typer.Option(None, "--config", help="配置文件路径"),
+) -> None:
+    """打印解析后的统一库目录与覆盖来源。"""
+    cfg = load_config(config or _CONFIG_PATH)
+    store_dir = knowledge.resolve_store_dir(cfg, override=directory)
+    console.print(str(store_dir))
+    console.print(
+        f"  [dim]存在：{'是' if store_dir.is_dir() else '否'}；"
+        f"git：{'是' if knowledge.is_git_repo(store_dir) else '否'}[/dim]"
+    )
+
+
+@knowledge_app.command("init")
+def knowledge_init_cmd(
+    directory: str | None = typer.Option(None, "--dir", help="统一库目录（覆盖环境变量/配置）"),
+    remote: str | None = typer.Option(None, "--remote", help="git 远端 URL（如 GitHub 私有仓）"),
+    push: bool = typer.Option(False, "--push", help="初始化后立即推送（需凭据/网络）"),
+    config: str | None = typer.Option(None, "--config", help="配置文件路径"),
+) -> None:
+    """创建统一库骨架 + git init + 首次提交（可选配置远端并首推）。"""
+    cfg = load_config(config or _CONFIG_PATH)
+    store_dir = knowledge.resolve_store_dir(cfg, override=directory)
+    remote_url = knowledge.resolve_remote(cfg, override=remote)
+    try:
+        result = knowledge.knowledge_init(store_dir, remote=remote_url, push=push)
+    except OSError as e:
+        raise typer.Exit(f"统一库初始化失败：{e}") from None
+    console.print(f"[green]统一库已就绪：[/green]{result['store']}")
+    console.print(
+        f"  git：{'已初始化' if result['initialized'] else '不可用'}；"
+        f"首次提交：{'是' if result['committed'] else result['message']}"
+    )
+    if result["remote"]:
+        console.print(f"  远端：{result['remote']}")
+    if result["pushed"]:
+        ok = result["pushed"]["ok"]
+        color = "green" if ok else "yellow"
+        console.print(f"  [{color}]推送：{result['pushed']['message']}[/{color}]")
+
+
+@knowledge_app.command("import")
+def knowledge_import_cmd(
+    workspace: str | None = typer.Option(None, "--workspace", help="工作区目录"),
+    src_lang: str | None = typer.Option(
+        None, "--src-lang", help="源语言（meta.language 为 auto 未回写时必填，如 en/ru/ja）"
+    ),
+    tgt_lang: str | None = typer.Option(None, "--tgt-lang", help="目标语言（缺省取 publication）"),
+    no_commit: bool = typer.Option(False, "--no-commit", help="只写文件，不自动 git 提交"),
+    directory: str | None = typer.Option(None, "--dir", help="统一库目录（覆盖环境变量/配置）"),
+    config: str | None = typer.Option(None, "--config", help="配置文件路径"),
+) -> None:
+    """工作区 glossary.csv → 统一库（合并 + 跨书冲突外置 + 自动提交）。"""
+    cfg = load_config(config or _CONFIG_PATH)
+    store = _store_from(workspace, cfg)
+    store_dir = knowledge.resolve_store_dir(cfg, override=directory)
+    try:
+        result = knowledge.knowledge_import(
+            store_dir, store, src_lang=src_lang, tgt_lang=tgt_lang, commit=not no_commit
+        )
+    except (ValueError, OSError) as e:
+        raise typer.Exit(f"合并失败：{e}") from None
+    console.print(
+        f"[green]已合并进统一库：[/green]《{result['book']}》"
+        f"（{result['src_lang']}→{result['tgt_lang']}）"
+    )
+    console.print(
+        f"  读取 {result['merged']} 条；新增 {result['added']}、更新 {result['updated']}、"
+        f"跨书冲突 {result['conflicts']}"
+    )
+    if result["committed"]:
+        console.print("  git：已提交")
+    else:
+        console.print(f"  git：[dim]{result['commit_message']}[/dim]")
+    if result["conflicts"]:
+        console.print(
+            f"[yellow]  跨书冲突已外置到 {store_dir / 'conflicts.jsonl'}，"
+            f"请裁决后编辑 terminology.csv[/yellow]"
+        )
+
+
+@knowledge_app.command("export")
+def knowledge_export_cmd(
+    workspace: str | None = typer.Option(None, "--workspace", help="工作区目录"),
+    src_lang: str | None = typer.Option(
+        None, "--src-lang", help="源语言（meta.language 为 auto 未回写时必填，如 en/ru/ja）"
+    ),
+    tgt_lang: str | None = typer.Option(None, "--tgt-lang", help="目标语言（缺省取 publication）"),
+    include_pending: bool = typer.Option(
+        False, "--include-pending", help="同时导出 seed/candidate 态（默认仅 confirmed）"
+    ),
+    force: bool = typer.Option(False, "--force", help="覆盖已有内容的 preprocessing/terms.csv"),
+    directory: str | None = typer.Option(None, "--dir", help="统一库目录（覆盖环境变量/配置）"),
+    config: str | None = typer.Option(None, "--config", help="配置文件路径"),
+) -> None:
+    """统一库同语对术语 → 工作区 preprocessing/terms.csv（agent 审阅后 import --terms）。"""
+    cfg = load_config(config or _CONFIG_PATH)
+    store = _store_from(workspace, cfg)
+    store_dir = knowledge.resolve_store_dir(cfg, override=directory)
+    try:
+        result = knowledge.knowledge_export(
+            store_dir,
+            store,
+            src_lang=src_lang,
+            tgt_lang=tgt_lang,
+            include_pending=include_pending,
+            force=force,
+        )
+    except (ValueError, OSError) as e:
+        raise typer.Exit(f"导出失败：{e}") from None
+    if result["written"]:
+        console.print(
+            f"[green]已导出：[/green]{result['count']} 条 → {result['target']}"
+            f"（{result['src_lang']}→{result['tgt_lang']}）"
+        )
+        console.print("  [dim]请审阅增删后运行 import --terms preprocessing/terms.csv[/dim]")
+    else:
+        console.print(f"[yellow]未写入：[/yellow]{result['reason']}（匹配 {result['count']} 条）")
+
+
+@knowledge_app.command("status")
+def knowledge_status_cmd(
+    directory: str | None = typer.Option(None, "--dir", help="统一库目录（覆盖环境变量/配置）"),
+    json_output: bool = typer.Option(False, "--json", help="输出 JSON"),
+    config: str | None = typer.Option(None, "--config", help="配置文件路径"),
+) -> None:
+    """统一库统计 + git 状态（只读）。"""
+    cfg = load_config(config or _CONFIG_PATH)
+    store_dir = knowledge.resolve_store_dir(cfg, override=directory)
+    data = knowledge.knowledge_status(store_dir)
+    if json_output:
+        console.print_json(json.dumps(data, ensure_ascii=False))
+        return
+    console.print(f"统一库：{data['store']}（存在：{'是' if data['exists'] else '否'}）")
+    stats = data["stats"]
+    console.print(
+        f"  术语 {stats['total']} 条；未裁决 {stats['unresolved']} 个键；"
+        f"冲突账本 {stats['conflicts_ledger']} 条"
+    )
+    if stats["by_lang"]:
+        pairs = "、".join(f"{k} {v}" for k, v in sorted(stats["by_lang"].items()))
+        console.print(f"  语对：{pairs}")
+    if stats["books"]:
+        console.print(f"  来源书：{len(stats['books'])} 本")
+    if data["knowledge_files"]:
+        console.print(f"  知识库：{len(data['knowledge_files'])} 篇")
+    git = data["git"]
+    if git.get("repo"):
+        console.print(
+            f"  git：{'有未提交改动' if git['dirty'] else '干净'}；"
+            f"远端 {git['remote'] or '（未配置）'}；最近提交 {git['last_commit'] or '（无）'}"
+        )
+    else:
+        console.print("  git：[dim]尚未初始化（运行 knowledge init）[/dim]")
+
+
+@knowledge_app.command("push")
+def knowledge_push_cmd(
+    directory: str | None = typer.Option(None, "--dir", help="统一库目录（覆盖环境变量/配置）"),
+    remote: str | None = typer.Option(None, "--remote", help="远端名或 URL（缺省 origin）"),
+    config: str | None = typer.Option(None, "--config", help="配置文件路径"),
+) -> None:
+    """推送统一库到远端（跨设备同步；需网络与凭据）。"""
+    cfg = load_config(config or _CONFIG_PATH)
+    store_dir = knowledge.resolve_store_dir(cfg, override=directory)
+    remote_url = knowledge.resolve_remote(cfg, override=remote) or "origin"
+    result = knowledge.knowledge_push(store_dir, remote=remote_url)
+    if result["pushed"]:
+        console.print(f"[green]已推送：[/green]{result['store']} → {result['remote']}")
+    else:
+        console.print(f"[yellow]推送未完成：[/yellow]{result['message']}")
 
 
 def main() -> None:

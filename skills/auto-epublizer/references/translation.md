@@ -1,4 +1,4 @@
-<!-- i18n: source=translation.zh.md sha256=c3e2d31fce53cd0aeb7f76f7059dbd8f7e39cb79b3257596e59a9b16fff259ec -->
+<!-- i18n: source=translation.zh.md sha256=881bff3359b97588c248dab67de04791beb6a3a21907744a094e16e836500301 -->
 > **English** | [中文](translation.zh.md)
 
 # Translation (chunk translation + sentence alignment + terminology loop)
@@ -96,12 +96,20 @@ import ── terminology-conflict detection; same source with a different targe
 record ── conflicts are appended to analysis/glossary_conflicts.jsonl (done automatically by import)
     │
 resolve ── agent reads the conflict file and makes the final arbitration, writing back to glossary.csv (authoritative)
+    │
+store ── knowledge import: merge the workspace's confirmed terms into the unified store (cross-book reuse + auto git commit)
 ```
 
 **After the arbitration is written back to glossary.csv, re-run `g0` on all translated
 units** — old-translation violations (`terminology`) are cleared on the spot; do not only
 check the newly translated units; before unresolved conflicts are written back, `qa` will
 not release (`glossary_conflict_open`).
+
+- **Cross-book reuse**: seed `preprocessing/terms.csv` from the unified store with
+  `knowledge export` before starting; after this workspace's terminology is finalized, write
+  it back with `knowledge import` (default `~/Documents/auto-epublizer/`, a private git
+  repository; `knowledge push` syncs across devices); the same key with a different target
+  across books is externalized to the store's `conflicts.jsonl` pending your arbitration.
 
 - Conflicts do not automatically override confirmed translations; the candidate is kept
   pending arbitration (corresponding to "unified translated names + established usage").

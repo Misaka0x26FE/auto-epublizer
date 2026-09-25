@@ -29,6 +29,7 @@ CLI 探测不到的五维能力边界，由你（agent）开工前自报，写 `
 | OS 环境 | 本机可达的 CLI 工具（doctor 已探测部分） | ingest/OCR 路由 |
 | 外部 API 边界 | 可用外部解析 API（MinerU key）、网络可达 | 解析/检索可用性 |
 | 待处理文件工作量 | 规模粗估（facts 有 token 粗估）、难点预估 | 切分与分阶段计划 |
+| 持久化统一库 | 是否可写持久化目录（`knowledge path` 查看）、是否使用统一术语库/知识库 | 跨书术语与知识复用（无写权限时仅用本地工作区术语） |
 
 `multimodal` / `search` 也可从 `facts.md` 的「环境能力快照」里确认（CLI 探测不到的显示
 「待 agent 自报」）。
@@ -148,6 +149,10 @@ facts.md「可疑信号（语义整备线索）」表命中时（OCR/扫描件�
 `source,target,type,aliases,gender,reading,status,note`
 覆盖：人名/地名/机构/专名、source-only 口癖/称谓/固定表达、缩写与已知勘误先例。
 翻译前导入术语库：`auto-epublizer import --terms preprocessing/terms.csv`。
+
+**优先播种（跨书复用）**：先跑 `auto-epublizer knowledge export --workspace .`
+（源语言为 `auto` 时加 `--src-lang <code>`），把统一库同语对的已确认术语写入本文件，
+你再增删校订——避免重复考据与跨书译名不一致（统一库见 `references/workflow.md`）。
 
 ### 2.5 `risks.md`（风险标注）
 

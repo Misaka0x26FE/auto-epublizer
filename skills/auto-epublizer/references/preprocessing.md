@@ -1,4 +1,4 @@
-<!-- i18n: source=preprocessing.zh.md sha256=46cbe270287ac72131b82fd787f8df66465eee0af5fd3e69d08c37444e8c4d08 -->
+<!-- i18n: source=preprocessing.zh.md sha256=b24e1b5a1d1ed149d9aa92f127be568c5d486cf36bea022e319d3f0afe492b7f -->
 > **English** | [中文](preprocessing.zh.md)
 
 # Preprocessing (fact collection + agent-authored understanding)
@@ -34,6 +34,7 @@ The five-dimension capability boundary that the CLI cannot probe is self-reporte
 | OS environment | Locally reachable CLI tools (the part doctor already probed) | ingest/OCR routing |
 | External API boundary | Available external parsing API (MinerU key), network reachability | Parsing/retrieval availability |
 | Workload of files to process | Rough size estimate (facts has a rough token estimate), difficulty estimate | Splitting and phased plan |
+| Persistent unified store | Whether the persistent directory is writable (check with `knowledge path`), whether the unified terminology/knowledge store is used | Cross-book terminology/knowledge reuse (without write permission, only the local workspace glossary is used) |
 
 `multimodal` / `search` can also be confirmed from the "environment capability snapshot"
 in `facts.md` (what the CLI cannot probe shows "awaiting agent self-report").
@@ -176,6 +177,11 @@ Coverage: personal names/place names/institutions/proper names, source-only verb
 tics/forms of address/fixed expressions, abbreviations and known erratum precedents.
 Import the terminology store before translation:
 `auto-epublizer import --terms preprocessing/terms.csv`.
+
+**Seed first (cross-book reuse)**: run `auto-epublizer knowledge export --workspace .`
+(add `--src-lang <code>` when the source language is `auto`) to write the unified store's
+same-language-pair confirmed terms into this file; then add/remove/revise as you see fit —
+avoiding repeated research and cross-book name inconsistency (see `references/workflow.md`).
 
 ### 2.5 `risks.md` (risk annotation)
 

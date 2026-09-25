@@ -1,4 +1,4 @@
-<!-- i18n: source=README.zh.md sha256=bb2b852df60bc545c92698b49f2ca58ccbc9f25bd731314fcd2846e03a140c85 -->
+<!-- i18n: source=README.zh.md sha256=782e9f911e4eda6bab129f8913d49a3ecb947098ffb99686ad01b7d56099f49c -->
 > **English** | [中文](README.zh.md)
 
 # auto-epublizer
@@ -113,7 +113,7 @@ read from the environment only).
 | Scanned PDF | **MinerU external API preferred** (layout/line-break/illustration recognition); without a key, traditional OCR + agent page-by-page reading as fallback |
 | Output | Translation-only or bilingual; standard EPUB 3 (navigation, illustrations, cover, bidirectional footnote links) |
 | Quality control | Six gates G0–G5: static validation → batch review → evidence gathering → arbitration / shadow revision → epubcheck + unpack audit → delivery release |
-| Terminology | Three-state glossary (seed → candidate → conflict → confirmed) with externalized conflict arbitration; consistent across chapters and books |
+| Terminology | Three-state glossary (seed → candidate → conflict → confirmed) with externalized conflict arbitration; a **cross-book unified store** (`knowledge export/import`, default `~/Documents/auto-epublizer`, a private git repository) reuses terminology and knowledge |
 | Reproducibility | The same input always yields the same output; resume skips completed units by unit state |
 
 Translation-flow details: [docs/translation-flow.md](docs/translation-flow.md);
@@ -140,6 +140,11 @@ per-genre tuning (novel / academic / paper / poetry / newspaper):
 ```
 
 Unit state machine: `pending → split → analyzed → translated → aligned → reviewed → built`.
+
+> **Unified terminology/knowledge store (outside the workspace)**: default
+> `~/Documents/auto-epublizer/`, persistent across books, maintained by the agent itself,
+> and itself a **private git repository** (`knowledge push` syncs across devices); seed with
+> `knowledge export` when starting and write back with `knowledge import` when finalized.
 
 ---
 

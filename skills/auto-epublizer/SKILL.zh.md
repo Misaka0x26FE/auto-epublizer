@@ -98,6 +98,9 @@ auto-epublizer preprocess <input>                         # 预处理：init + �
 auto-epublizer meta --translator OpenCode                             # 元数据核对写回 + 译者署名（默认=agent 框架名）
 auto-epublizer import [--unit <id>] [--terms preprocessing/terms.csv]  # 登记 agent 手写翻译产物
 auto-epublizer import --reviewed                                    # 审校通过后：aligned → reviewed
+auto-epublizer knowledge export --workspace .             # 从统一库播种同语对已确认术语 → preprocessing/terms.csv
+auto-epublizer knowledge import --workspace .             # 工作区术语回写统一库（跨书复用 + 自动 git 提交）
+#   统一库默认 ~/Documents/auto-epublizer（私有 git 仓库）；init/path/status/push 见 references/workflow.md
 auto-epublizer g0                                         # 静态校验（术语命中=真实缺陷须清零；长度比=advisory）
 #   agent 写审校产物 reviews/review-<ts>/（含 result.json，见 references/review.md）
 auto-epublizer build [--bilingual] [--theme standard|compact|spacious]  # 封装 EPUB → output/

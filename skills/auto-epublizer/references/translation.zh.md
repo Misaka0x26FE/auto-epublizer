@@ -82,10 +82,17 @@ PDF ingest 会产出三类非纯文本段（来源见 `references/ingest.md`；�
 外置(record) ── 冲突追加到 analysis/glossary_conflicts.jsonl（import 自动完成）
     │
 裁决(resolve) ── agent 读冲突文件终局裁决，写回 glossary.csv（权威）
+    │
+回写统一库 ── knowledge import：工作区已确认术语合并进统一库（跨书复用 + 自动 git 提交）
 ```
 
 **裁决写回 glossary.csv 后，对全部已译单元重跑 `g0`**——旧译法违例（terminology）
 当场清零，不要只查新译单元；未决冲突未写回前 `qa` 不放行（`glossary_conflict_open`）。
+
+- **跨书复用**：开工先用 `knowledge export` 从统一库播种 `preprocessing/terms.csv`；
+  本工作区术语定稿后用 `knowledge import` 回写统一库（默认 `~/Documents/auto-epublizer/`，
+  私有 git 仓库，可 `knowledge push` 跨设备同步）；跨书同键异译外置到统一库
+  `conflicts.jsonl` 待你裁决。
 
 - 冲突不自动覆盖已确认译法，保留候选待裁决（对应"译名统一 + 约定俗成"）。
 - `import --terms <csv>` 可批量导入 agent 提取的新术语提案（三态自动判定：新 source→seed，

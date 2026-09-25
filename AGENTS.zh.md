@@ -66,6 +66,12 @@ auto-epublizer meta [--translator OpenCode] [--publisher ...] [--date ...] [--ri
 # 4. 理解（agent 任务）：analysis/*.md 与术语表由 agent 自身能力撰写
 #    （概述/全局/每单元/重点；上下文也可只来自 preprocessing/）
 
+# 4.5 统一术语库/知识库（跨工作区持久化，agent 自行维护；默认 ~/Documents/auto-epublizer，
+#     私有 git 仓库，可 knowledge push 跨设备）：开工前先 knowledge path/init，
+#     再从统一库播种同语对已确认术语（源语言为 auto 时加 --src-lang <code>）
+auto-epublizer knowledge export --workspace .   # → preprocessing/terms.csv（agent 审阅增删后 import --terms）
+auto-epublizer knowledge status                 # 统计 + git 状态（--json 供机器判定）
+
 # 5. 翻译（agent 任务）：agent 读 structured/ 自己翻译，写 translation/ + align/，
 #    然后「import」登记：G0 校验 + 状态推进 + 术语冲突外置（terms.csv 可经 --terms 导入）
 auto-epublizer import [--unit <id>] [--terms preprocessing/terms.csv] [--reviewed]
@@ -80,6 +86,10 @@ auto-epublizer restructure [--workspace <dir>]   # 登记重建的单元结构�
 
 # 6. 审校（agent 任务）：agent 按 G1–G3 语义自行审校，写 reviews/review-<ts>/
 #    （issues/patches/summary/result.json；qa 从 result.json 读 g1/g2/g3 计数）
+
+# 6.5 统一库回写（术语定稿后）：工作区 glossary.csv 合并进统一库（自动 git 提交；
+#     条件允许时 knowledge push 推送托管平台跨设备同步）
+auto-epublizer knowledge import --workspace .   # 跨书同键异译外置到统一库 conflicts.jsonl 待 agent 裁决
 
 # 7. 封装输出
 auto-epublizer build          # 纯译文 / 双语 EPUB → output/（--theme 选排版主题）
@@ -192,6 +202,11 @@ skills/auto-epublizer/
 实际断点续跑 = 按 `publication.json` 单元状态跳过已完成单元）；
 `publication.json`、`glossary.db` 是权威真相。
 
+**统一术语库/知识库（工作区之外）**：默认 `~/Documents/auto-epublizer/`（配置
+`paths.knowledge_dir` 可改），跨工作区持久化、由 agent 自行维护、本身是**私有 git 仓库**
+（`knowledge push` 可跨设备同步）；经 `knowledge export`（播种）/ `knowledge import`
+（回写）与工作区 `analysis/glossary.csv` 双向流转（见「标准工作流」4.5 / 6.5）。
+
 **预处理分工**：`preprocess` 命令只产出零 token 事实（嗅探/元数据/TOC/体检/规模）；
 **方案决策与分层理解是 agent 任务**——读 facts.md 与 docs 决策表写 `plan.md`，
 用自身能力完成全局理解/章节理解/术语预提取/风险标注。理解上下文的读取优先级：
@@ -199,6 +214,7 @@ skills/auto-epublizer/
 
 术语表三态：`种子 → 候选 → 冲突 → 确认`。`analysis/glossary.csv` 是权威（人类/agent 可读），
 冲突外置到 `glossary_conflicts.jsonl`；翻译 worker 只读快照 + 追加提案，由单线程合并器裁决后写回 CSV。
+**跨书复用**由工作区之外的统一库承担（`knowledge export/import`，见上）。
 
 句级对照表 `translation/align/<unit-id>.jsonl` 每行一句：
 

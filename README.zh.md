@@ -95,7 +95,7 @@ uv run auto-epublizer status [--json]      # 进度 / 状态机 / 产物对账
 | 扫描件 PDF | **MinerU 外部 API 最优先**（版面/换行/插图识别），无 key 退传统 OCR + agent 逐页阅读兜底 |
 | 输出 | 纯译文 / 双语对照两种；标准 EPUB 3（目录导航、插图、封面、脚注双向跳转） |
 | 质量控制 | 六道关 G0–G5：静态校验 → 逐批审校 → 取证 → 仲裁/影子修订 → epubcheck+解包审计 → 交付放行 |
-| 术语管理 | 三态术语表（种子→候选→冲突→确认）+ 冲突外置裁决，跨章/跨书一致 |
+| 术语管理 | 三态术语表（种子→候选→冲突→确认）+ 冲突外置裁决；**跨书统一库**（`knowledge export/import`，默认 `~/Documents/auto-epublizer`，私有 git 仓库）复用术语与知识 |
 | 可复现 | 同一输入必得同一产物；断点续跑按单元状态跳过已完成单元 |
 
 翻译流程细节见 [docs/translation-flow.md](docs/translation-flow.zh.md)；
@@ -121,6 +121,10 @@ PDF 解析难点与方案见 [docs/pdf-parsing.md](docs/pdf-parsing.zh.md)。
 ```
 
 每单元状态机：`pending → split → analyzed → translated → aligned → reviewed → built`。
+
+> **统一术语库/知识库（工作区之外）**：默认 `~/Documents/auto-epublizer/`，跨书持久化、
+> 由 agent 自行维护、本身是**私有 git 仓库**（`knowledge push` 可跨设备同步）；
+> 开工 `knowledge export` 播种、定稿 `knowledge import` 回写。
 
 ---
 

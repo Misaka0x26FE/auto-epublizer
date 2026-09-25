@@ -1,4 +1,4 @@
-<!-- i18n: source=SKILL.zh.md sha256=e65ede2e9bc3df1e9568cb0377abe2d69d02982a9a96b2924dbaf9995884f7e2 -->
+<!-- i18n: source=SKILL.zh.md sha256=a5702ca40b07dface00db0d36887e37ce2724ef247a97fe36e33f9907d9e7f7e -->
 > **English** | [中文](SKILL.zh.md)
 
 ---
@@ -121,6 +121,9 @@ auto-epublizer preprocess <input>                         # preprocessing: init 
 auto-epublizer meta --translator OpenCode                             # metadata verification write-back + translator credit (default = agent framework name)
 auto-epublizer import [--unit <id>] [--terms preprocessing/terms.csv]  # register agent-written translation artifacts
 auto-epublizer import --reviewed                                    # after review passes: aligned → reviewed
+auto-epublizer knowledge export --workspace .             # seed same-pair confirmed terms from the unified store → preprocessing/terms.csv
+auto-epublizer knowledge import --workspace .             # write workspace terms back to the unified store (cross-book reuse + auto git commit)
+#   unified store defaults to ~/Documents/auto-epublizer (a private git repository); see references/workflow.md for init/path/status/push
 auto-epublizer g0                                         # static validation (terminology hits = real defects that must be zeroed; length ratio = advisory)
 #   agent writes review artifacts reviews/review-<ts>/ (including result.json, see references/review.md)
 auto-epublizer build [--bilingual] [--theme standard|compact|spacious]  # build EPUB → output/
