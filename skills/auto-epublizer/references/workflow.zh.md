@@ -35,9 +35,13 @@ doctor（能力自检：工具链 + 自报 multimodal/search）
   -> 语义整备 （可选/条件：facts 可疑信号触发；OCR/扫描件路径必做——按
                  references/repair.md 对照 raw 证据修复 structured/ 并写
                  preprocessing/repairs.jsonl 留痕）
+  -> 术语播种  （knowledge export：同语对已确认术语 -> preprocessing/terms.csv；
+                 agent 审阅增删后 import --terms 导入工作区）
   -> 翻译      （agent 手写 translation/ + align/，然后 import 登记）
   -> g0        （静态校验：术语命中=真实缺陷须清零；长度比=advisory）
   -> review    （QC G1–G3，agent 语义审校后写 reviews/review-<ts>/result.json）
+  -> 统一库回写（knowledge import：工作区已确认术语合并进统一库并自动 git 提交；
+                 条件允许时 knowledge push 推送托管平台跨设备同步）
   -> build     （EPUB 封装 -> output/）
   -> qa        （epubcheck + 解包审计 + G5 放行 -> report.json）
   -> delivery  （交付审计：按 references/delivery.md 全量校验 + 写
@@ -90,6 +94,12 @@ auto-epublizer preprocess <input> [--reference <path...>] [--target zh-CN] [--wo
 # agent 手写翻译后的登记入口（G0 结构校验 + 状态推进 + 术语冲突外置）
 auto-epublizer meta [--translator X] [--publisher P] [--date D] [--rights R] [--workspace <dir>]
 auto-epublizer import [--unit <id>] [--terms <csv>] [--reviewed] [--workspace <dir>]
+
+# 统一术语库/知识库（跨工作区持久化 + git 持续维护；默认 ~/Documents/auto-epublizer）
+auto-epublizer knowledge init [--remote <url>] [--push] [--dir <dir>]  # 建骨架 + git 初始化
+auto-epublizer knowledge export [--workspace <dir>] [--src-lang en]    # 同语对已确认术语 → preprocessing/terms.csv
+auto-epublizer knowledge import [--workspace <dir>] [--src-lang en]    # 工作区 glossary.csv → 统一库（合并 + 自动提交）
+auto-epublizer knowledge status [--json] | push [--remote <name|url>] | path
 
 # 单元边界重建登记（agent 重切/合并后；preprocessing/structure.csv → publication.json）
 auto-epublizer restructure [--workspace <dir>]

@@ -1,4 +1,4 @@
-<!-- i18n: source=workflow.zh.md sha256=c8242f29749ede06164294c5b3907f45a66eb63ac409fb7467cd6d0b51e0c478 -->
+<!-- i18n: source=workflow.zh.md sha256=ed21023da2244f34a2439c3887491c1954d294b5c59209434bf79aad4951f99a -->
 > **English** | [中文](workflow.zh.md)
 
 # Workflow (stage routing + command overview)
@@ -40,9 +40,14 @@ doctor (capability self-check: toolchain + self-reported multimodal/search)
   -> semantic repair (optional/conditional: triggered by suspicious signals in facts; mandatory
                  for OCR/scanned paths — per references/repair.md, repair structured/ against
                  raw evidence and write preprocessing/repairs.jsonl as a trace)
+  -> terminology seeding (knowledge export: same-language-pair confirmed terms -> preprocessing/terms.csv;
+                 after agent review, import --terms into the workspace)
   -> translation (agent hand-writes translation/ + align/, then import to register)
   -> g0        (static validation: terminology hits = real defects that must be zeroed; length ratio = advisory)
   -> review    (QC G1–G3; after agent semantic review, write reviews/review-<ts>/result.json)
+  -> unified store write-back (knowledge import: merge the workspace's confirmed terms into
+                 the unified store and auto git commit; when possible knowledge push to a
+                 hosting platform for cross-device sync)
   -> build     (EPUB build -> output/)
   -> qa        (epubcheck + unpack audit + G5 release -> report.json)
   -> delivery  (delivery audit: full validation per references/delivery.md + write
@@ -103,6 +108,12 @@ auto-epublizer preprocess <input> [--reference <path...>] [--target zh-CN] [--wo
 # registration entry after agent hand-writes translation (G0 structural validation + state advance + terminology-conflict externalization)
 auto-epublizer meta [--translator X] [--publisher P] [--date D] [--rights R] [--workspace <dir>]
 auto-epublizer import [--unit <id>] [--terms <csv>] [--reviewed] [--workspace <dir>]
+
+# unified terminology/knowledge store (cross-workspace persistent + git-maintained; default ~/Documents/auto-epublizer)
+auto-epublizer knowledge init [--remote <url>] [--push] [--dir <dir>]  # skeleton + git init
+auto-epublizer knowledge export [--workspace <dir>] [--src-lang en]    # same-pair confirmed terms → preprocessing/terms.csv
+auto-epublizer knowledge import [--workspace <dir>] [--src-lang en]    # workspace glossary.csv → store (merge + auto commit)
+auto-epublizer knowledge status [--json] | push [--remote <name|url>] | path
 
 # unit-boundary rebuild registration (after the agent re-splits/merges; preprocessing/structure.csv → publication.json)
 auto-epublizer restructure [--workspace <dir>]

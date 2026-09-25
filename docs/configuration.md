@@ -1,4 +1,4 @@
-<!-- i18n: source=configuration.zh.md sha256=26bbb96cc5418b8a16cdf64725f41a69a9439ead73725200163d34238778d9b6 -->
+<!-- i18n: source=configuration.zh.md sha256=e2b378fd8b3e52e3fe1b628c604de2ebed55db82f1a2788b8a800dfc640c3104 -->
 > **English** | [中文](configuration.zh.md)
 
 # Configuration reference (target `config.yaml` schema)
@@ -51,6 +51,10 @@ glossary:
 # ── paths ────────────────────────────────────────────────────
 paths:
   workspaces_dir: .       # workspace root directory (one <book-slug>/ per book)
+  knowledge_dir: ""       # unified terminology/knowledge store; empty = default ~/Documents/auto-epublizer
+                          # override: --dir > AUTO_EPUBLIZER_HOME > this field > default
+  knowledge_remote: ""    # unified store git remote (cross-device sync); empty = not auto-configured
+                          # override: --remote > AUTO_EPUBLIZER_REMOTE > this field
 
 # ── output ───────────────────────────────────────────────────
 output:
@@ -62,6 +66,26 @@ output:
   nav_depth: 3            # maximum TOC nesting depth (1–6, docs/epub-template-spec.md §3 projection)
                           # overly deep units do not enter nav/NCX, but are kept in the spine reading order and anchors
 ```
+
+## Unified terminology / knowledge store
+
+A cross-workspace persistent terminology store and knowledge base (maintained by the agent
+itself, avoiding repeated research and repeated arbitration). The directory defaults to
+`~/Documents/auto-epublizer/` and is itself a **git repository** (private by default; push
+to a hosting platform for cross-device sync when possible). See
+`auto-epublizer knowledge --help`:
+
+- `knowledge path` resolves the directory; `knowledge init [--remote URL] [--push]` creates
+  the skeleton + git initialization;
+- `knowledge export --workspace <ws>` seeds the same-language-pair confirmed terms into
+  `preprocessing/terms.csv`;
+- `knowledge import --workspace <ws>` merges the workspace `analysis/glossary.csv` into the
+  unified store and auto-commits;
+- `knowledge status` / `knowledge push` show statistics and push.
+
+When the source language is `auto` (`publication.json.meta.language` not written back),
+`import`/`export` require `--src-lang` to declare the source language explicitly, so the
+unified store stays isolated per language pair.
 
 ## Configuration snapshot and resume
 

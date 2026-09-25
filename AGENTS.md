@@ -1,4 +1,4 @@
-<!-- i18n: source=AGENTS.zh.md sha256=f9c27439c7ef8b267b67f5e04d493ad7278c6dc11a5e30a84511dd5038baf702 -->
+<!-- i18n: source=AGENTS.zh.md sha256=fc9b2c2a292d213479af649d9cf8dc5e92b1af35e50ff52bfd58982965d40da1 -->
 > **English** | [中文](AGENTS.zh.md)
 
 # auto-epublizer repository guide (for coding agents developing/maintaining this project)
@@ -90,6 +90,13 @@ auto-epublizer meta [--translator OpenCode] [--publisher ...] [--date ...] [--ri
 # 4. Analysis (agent task): analysis/*.md and the glossary are written by the agent itself
 #    (overview/global/per-unit/key points; context may also come from preprocessing/)
 
+# 4.5 Unified terminology/knowledge store (cross-workspace persistent, maintained by the
+#     agent itself; default ~/Documents/auto-epublizer, a private git repository, pushable
+#     across devices via knowledge push): run knowledge path/init first, then seed the
+#     same-language-pair confirmed terms (add --src-lang <code> when the source is auto)
+auto-epublizer knowledge export --workspace .   # → preprocessing/terms.csv (agent reviews, then import --terms)
+auto-epublizer knowledge status                 # statistics + git state (--json for machine decisions)
+
 # 5. Translation (agent task): the agent reads structured/ and translates, writing
 #    translation/ + align/, then "import" registers it: G0 validation + state advance +
 #    terminology-conflict externalization (terms.csv may be imported via --terms)
@@ -108,6 +115,11 @@ auto-epublizer restructure [--workspace <dir>]   # register rebuilt unit structu
 # 6. Review (agent task): the agent performs G1–G3 semantic review itself and writes
 #    reviews/review-<ts>/ (issues/patches/summary/result.json; qa reads g1/g2/g3 counts
 #    from result.json)
+
+# 6.5 Unified store write-back (after terminology is finalized): merge the workspace
+#     glossary.csv into the unified store (auto git commit; knowledge push syncs across
+#     devices when possible)
+auto-epublizer knowledge import --workspace .   # cross-book same-key different-target is externalized to the store's conflicts.jsonl pending agent arbitration
 
 # 7. Package output
 auto-epublizer build          # translation-only / bilingual EPUB → output/ (--theme selects the layout theme)
@@ -233,6 +245,13 @@ artifacts; `events.jsonl` is an append-only ledger; `.progress.json` is a reserv
 checkpoint file (not written today — resume is actually done by skipping completed units
 per `publication.json`); `publication.json` and `glossary.db` are the authoritative truth.
 
+**Unified terminology/knowledge store (outside the workspace)**: default
+`~/Documents/auto-epublizer/` (configurable via `paths.knowledge_dir`), persistent across
+workspaces, maintained by the agent itself, and itself a **private git repository**
+(`knowledge push` syncs across devices); it flows both ways with the workspace's
+`analysis/glossary.csv` via `knowledge export` (seed) / `knowledge import` (write-back)
+(see "Standard workflow" 4.5 / 6.5).
+
 **Preprocessing division of labour**: the `preprocess` command produces only zero-token
 facts (sniff/metadata/TOC/health/size); **approach decisions and layered understanding are
 the agent's job** — read facts.md and the docs decision tables to write `plan.md`, and use
@@ -244,6 +263,8 @@ Terminology three states: `seed → candidate → conflict → confirmed`.
 `analysis/glossary.csv` is authoritative (human/agent readable); conflicts are externalized
 to `glossary_conflicts.jsonl`; translation workers read a snapshot and append proposals
 only, and a single-threaded merger arbitrates and writes back to the CSV.
+**Cross-book reuse** is handled by the unified store outside the workspace
+(`knowledge export/import`, see above).
 
 Sentence-level alignment `translation/align/<unit-id>.jsonl`, one sentence per line:
 

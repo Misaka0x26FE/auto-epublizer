@@ -73,7 +73,7 @@ structured/
 | 风格指南/全局 | `analysis/global.md` | 叙事人称、语气、语域、对话风格、跨章依赖 | 书级静态 |
 | 本章梗概 | `analysis/units/<id>.md` | 本章情节/论证推进、登场人物、术语注意 | 章级静态 |
 | 重点内容 | `analysis/keypoints.md` | 高风险段落、复杂排版、多语片段提醒 | 书级静态（命中注入） |
-| 术语子集 | `glossary.db` / `glossary.csv` | 本批正文**实际出现**的术语（`terms_in_text`） | 批级动态 |
+| 术语子集 | 统一库 + `glossary.csv` | 本批正文**实际出现**的术语（`terms_in_text`）；统一库经 `knowledge export` 播种 | 批级动态 |
 | 前文译文 | 上一批 `align/` 的 `tgt` | 最近 N 段，保持代词/称谓/语气衔接 | 批级动态 |
 | 待译正文 | 本批 `src` 段落（带编号） | 翻译对象 | 批级动态 |
 
@@ -111,10 +111,16 @@ translation/<rel>.md + align/<id>.jsonl  ← 每段一句或数句：{seq, src, 
     │
     ▼
 裁决(resolve) ── 单线程合并：同 source 异 target 记冲突，人工/agent 确认后写回 glossary.csv
+    │
+    ▼
+回写(record) ── knowledge import：工作区已确认术语合并进统一库（跨书复用 + 自动 git 提交）
 ```
 
 - 称谓/敬称/口癖/固定表达只按完整 source 精确匹配，避免裸名 alias 误注入；
 - 冲突不自动覆盖已确认译法，保留候选待裁决（对应传统"译名统一 + 约定俗成"）。
+- **统一库**（默认 `~/Documents/auto-epublizer/`，本身是私有 git 仓库）跨书共享术语决策：
+  新书开工用 `knowledge export` 播种、收尾用 `knowledge import` 回写；跨书同键不同已确认
+  译法外置到统一库 `conflicts.jsonl` 待 agent 裁决（见 `references/workflow.md`）。
 
 ## 7. 状态机与续跑
 

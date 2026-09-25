@@ -1,4 +1,4 @@
-<!-- i18n: source=translation-flow.zh.md sha256=10e4711895e8ed24ce0bd716506185615727b82ec3415a4436ad0d0453f305c1 -->
+<!-- i18n: source=translation-flow.zh.md sha256=998ec3f500bef3fb48b9de1a940dc9310a131fd972fe4523c7404d485d4a49eb -->
 > **English** | [中文](translation-flow.zh.md)
 
 # Translation Flow Design
@@ -80,7 +80,7 @@ Before translating each batch, assemble context in "static → dynamic" order (p
 | Style guide/global | `analysis/global.md` | Narrative person, tone, register, dialogue style, cross-chapter dependencies | Book-level static |
 | Chapter summary | `analysis/units/<id>.md` | Plot/argument progression of this chapter, characters appearing, terminology notes | Chapter-level static |
 | Key points | `analysis/keypoints.md` | High-risk paragraphs, complex layout, multilingual-fragment reminders | Book-level static (injected on hit) |
-| Terminology subset | `glossary.db` / `glossary.csv` | Terms **actually appearing** in this batch's body text (`terms_in_text`) | Batch-level dynamic |
+| Terminology subset | unified store + `glossary.csv` | Terms **actually appearing** in this batch's body text (`terms_in_text`); the unified store is seeded via `knowledge export` | Batch-level dynamic |
 | Prior translation | `tgt` of the previous batch's `align/` | Most recent N paragraphs, maintaining pronoun/appellation/tone continuity | Batch-level dynamic |
 | Text to translate | This batch's `src` paragraphs (with numbers) | Translation object | Batch-level dynamic |
 
@@ -119,10 +119,18 @@ propose ── after translation, extract new terms/appellation variants, append
     │
     ▼
 resolve ── single-threaded merge: same source with different target records a conflict; after human/agent confirmation write back to glossary.csv
+    │
+    ▼
+record ── knowledge import: merge the workspace's confirmed terms into the unified store (cross-book reuse + auto git commit)
 ```
 
 - Appellations/honorifics/catchphrases/fixed expressions match exactly only by the complete source, avoiding false injection of bare-name aliases;
 - Conflicts do not automatically overwrite confirmed translations; candidates are retained pending arbitration (corresponding to the traditional "unified translated names + established usage").
+- **Unified store** (default `~/Documents/auto-epublizer/`, itself a private git repository)
+  shares terminology decisions across books: seed with `knowledge export` when a new book
+  starts and write back with `knowledge import` at the end; the same key with different
+  confirmed targets across books is externalized to the store's `conflicts.jsonl` pending
+  agent arbitration (see `references/workflow.md`).
 
 ## 7. State machine and resume
 

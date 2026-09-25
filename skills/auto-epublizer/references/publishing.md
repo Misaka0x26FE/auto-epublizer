@@ -1,4 +1,4 @@
-<!-- i18n: source=publishing.zh.md sha256=4175969c1b81f24e200666514fc8db2660df918cc36026cfa7b04f2d8d61bb7b -->
+<!-- i18n: source=publishing.zh.md sha256=5faf477865057c4d6545adf5368e8a1ba01fc7c8b5bd957f7e55f51704e3bb46 -->
 > **English** | [中文](publishing.zh.md)
 
 # Publishing and distribution (publishing gate)
@@ -25,6 +25,10 @@
   handling it themselves.
 - **Unclear rights → default to private repository distribution, or stop and ask the user**; do not make legal assumptions on the user's behalf.
 - The rights conclusion is recorded in the publishing notes (one sentence + basis), not written into code or configuration.
+- The **unified terminology/knowledge store** (outside the workspace, default
+  `~/Documents/auto-epublizer`) is likewise a **private git repository**, pushable across
+  devices; its content is also the user's responsibility, and this privacy scan must be
+  completed before making it public.
 
 ### 1.2 Privacy scan (publishing tree + git history)
 

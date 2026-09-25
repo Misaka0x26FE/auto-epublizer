@@ -38,6 +38,10 @@ glossary:
 # ── 路径 ─────────────────────────────────────────────────────
 paths:
   workspaces_dir: .       # 工作区根目录（每本书一个 <book-slug>/）
+  knowledge_dir: ""       # 统一术语库/知识库目录；空=默认 ~/Documents/auto-epublizer
+                          # 覆盖：--dir > 环境变量 AUTO_EPUBLIZER_HOME > 本项 > 默认
+  knowledge_remote: ""    # 统一库 git 远端（跨设备同步）；空=不自动配置（agent 用 gh 建私有仓）
+                          # 覆盖：--remote > 环境变量 AUTO_EPUBLIZER_REMOTE > 本项
 
 # ── 输出 ─────────────────────────────────────────────────────
 output:

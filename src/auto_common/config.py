@@ -58,6 +58,12 @@ class GlossaryConfig(BaseModel):
 
 class PathsConfig(BaseModel):
     workspaces_dir: str = "."
+    # 统一术语库/知识库持久化目录；空串=默认 ~/Documents/auto-epublizer
+    # 覆盖优先级：--dir > 环境变量 AUTO_EPUBLIZER_HOME > 本项 > 默认
+    knowledge_dir: str = ""
+    # 统一库 git 远端（跨设备同步）；空串=不自动配置，由 agent 用 gh/git 建私有仓
+    # 覆盖优先级：--remote > 环境变量 AUTO_EPUBLIZER_REMOTE > 本项
+    knowledge_remote: str = ""
 
 
 class OutputConfig(BaseModel):
