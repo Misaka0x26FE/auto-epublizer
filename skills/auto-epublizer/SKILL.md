@@ -1,4 +1,4 @@
-<!-- i18n: source=SKILL.zh.md sha256=a5702ca40b07dface00db0d36887e37ce2724ef247a97fe36e33f9907d9e7f7e -->
+<!-- i18n: source=SKILL.zh.md sha256=14766b0e8387b227a665f76da30302ca3b7066b3e640c0040f6a3d3c0e9535de -->
 > **English** | [中文](SKILL.zh.md)
 
 ---
@@ -123,6 +123,7 @@ auto-epublizer import [--unit <id>] [--terms preprocessing/terms.csv]  # registe
 auto-epublizer import --reviewed                                    # after review passes: aligned → reviewed
 auto-epublizer knowledge export --workspace .             # seed same-pair confirmed terms from the unified store → preprocessing/terms.csv
 auto-epublizer knowledge import --workspace .             # write workspace terms back to the unified store (cross-book reuse + auto git commit)
+auto-epublizer knowledge import-csv <csv> --src-lang en --book <slug>  # import historical/arbitrary term CSV
 #   unified store defaults to ~/Documents/auto-epublizer (a private git repository); see references/workflow.md for init/path/status/push
 auto-epublizer g0                                         # static validation (terminology hits = real defects that must be zeroed; length ratio = advisory)
 #   agent writes review artifacts reviews/review-<ts>/ (including result.json, see references/review.md)

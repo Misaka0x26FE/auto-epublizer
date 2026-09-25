@@ -100,6 +100,7 @@ auto-epublizer knowledge init [--remote <url>] [--push] [--dir <dir>]  # 建骨�
 auto-epublizer knowledge export [--workspace <dir>] [--src-lang en]    # 同语对已确认术语 → preprocessing/terms.csv
 auto-epublizer knowledge import [--workspace <dir>] [--src-lang en]    # 工作区 glossary.csv → 统一库（合并 + 自动提交）
 auto-epublizer knowledge status [--json] | push [--remote <name|url>] | path
+auto-epublizer knowledge import-csv <csv> --src-lang en --book <slug>  # 历史/任意术语 CSV（旧案例格式自动识别）
 
 # 单元边界重建登记（agent 重切/合并后；preprocessing/structure.csv → publication.json）
 auto-epublizer restructure [--workspace <dir>]
