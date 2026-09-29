@@ -61,7 +61,11 @@ DC metadata comes from `publication.json.meta`: `dc:title`, `dc:creator`, `dc:la
   `dtb:depth` is the actual depth after projection (anchors included).
 - **Images**: only shrink, never enlarge, centered + page-break (`page-break-inside: avoid`); standalone image paragraphs (non-empty alt) →
   `figure+figcaption` captions.
-- **Semantic tags**: quote `>` → `blockquote`; verse block `|` → `p.verse`; `- `/`1. ` → `ul/ol`.
+- **Semantic tags**: quote `>` → `blockquote`; verse block `|` → `p.verse`; `- ` → `ul`;
+  ordered lists render as `<ol>` **only when the markers run consecutively from 1 with `. `/`、`**
+  (native auto-numbering then matches the source numbers); all other `N.`/`N、`/`N)` blocks —
+  e.g. critical-edition apparatus notes `1) 2) 5)…` whose numbers are real note ids — render
+  as literal paragraphs with the numbers preserved (`p.fnlist`), never renumbered by `<ol>`.
 - **Tables**: md pipe tables (`| a | b |` + separator row) and pandoc simple/grid tables (rows of `---` column boundaries)
   are rendered as `<table class="data">` (`th`/`td` + functional borders); cell text is translated normally,
   structure stays unchanged. **Do not change column boundaries and separator lines during translation** (G0 table shape conservation).

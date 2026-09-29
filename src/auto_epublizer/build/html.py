@@ -251,6 +251,8 @@ _BQ_LINE = re.compile(r"^\s*>\s?(.*)$")
 _VERSE_LINE = re.compile(r"^\s*\|\s?(.*)$")
 _UL_LINE = re.compile(r"^\s*[-*]\s+(.*)$")
 _OL_LINE = re.compile(r"^\s*\d{1,3}[.、)]\s+(.*)$")
+# 有序列表标记（分捕获组）：编号 / 分隔符 / 内容
+_OL_MARK = re.compile(r"^\s*(\d{1,3})([.、)])\s+(.*)$")
 
 # 表格：pandoc 简单/网格表（成排的 `---` 列界 + 内容行）与 md 管道表
 _TABLE_DASH_ROW = re.compile(r"^\s*-{3,}(?:\s+-{3,})+\s*$")
@@ -423,11 +425,22 @@ def markdown_to_xhtml(md: str, *, unit_id: str = "", fn_state: FootnoteState | N
             out.append(f"<ul>{lis}</ul>")
             continue
         if non_empty and all(_OL_LINE.match(line) for line in non_empty):
-            lis = "".join(
-                f"<li>{_inline(escape(_OL_LINE.match(line).group(1).strip()))}</li>"  # type: ignore[union-attr]
-                for line in non_empty
-            )
-            out.append(f"<ol>{lis}</ol>")
+            marks = [_OL_MARK.match(line) for line in non_empty]
+            nums = [int(m.group(1)) for m in marks if m]
+            delims = {m.group(2) for m in marks if m}
+            # 仅「编号 1 起连续递增 + `. / 、` 分隔」的块按真有序列表渲染（<ol> 自动编号
+            # 恰好与原编号一致）。其余（如校异/脚注式 `1) 2) 5)…`，数字是真实注号）：
+            # <ol> 自动编号会整体重写为 1,2,3…，隔断的单条块甚至会全部显示为 1——
+            # 必须保留原文数字、按普通段落输出。
+            if nums == list(range(1, len(nums) + 1)) and delims <= {".", "、"}:
+                lis = "".join(
+                    f"<li>{_inline(escape(m.group(3).strip()))}</li>"  # type: ignore[union-attr]
+                    for m in marks
+                )
+                out.append(f"<ol>{lis}</ol>")
+            else:
+                body = "<br/>".join(_inline(escape(line.strip())) for line in non_empty)
+                out.append(f'<p class="fnlist">{body}</p>')
             continue
         m = _HEADING_RE.match(lines[0])
         if m:
