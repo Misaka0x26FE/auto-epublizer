@@ -54,6 +54,9 @@ class PDFConfig(BaseModel):
     mineru_model: str = "pipeline"  # pipeline（默认，确定性）| vlm（高精度，内部为 VLM）
     mineru_language: str = "ch"  # MinerU OCR 语言（PaddleOCR 语言码：ch/en/ja/…）
     mineru_batch_pages: int = 200  # >此页数自动分批（MinerU 单文件 ≤200 页限制；≤0 关闭）
+    # PDF 文字层 RTL（从右向左）处理：auto=按文字层自动判定；on/off=强制。
+    # RTL 书逐行做方向控制符剥离 + NFKC 归一化 + 逻辑词序还原（见 ingest/rtl.py）。
+    rtl: str = "auto"
 
 
 class GlossaryConfig(BaseModel):

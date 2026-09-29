@@ -29,6 +29,7 @@ pdf:
   mineru_effort: medium   # 未接线（MinerU v4 API 无此参数）；保留兼容旧配置
   mineru_model: pipeline  # pipeline（默认，确定性）| vlm（高精度）
   mineru_language: ch     # MinerU OCR 语言（PaddleOCR 语言码：ch/en/ja/…）
+  rtl: auto               # PDF 文字层 RTL 处理：auto（自动判定）| on | off
 
 # ── 术语表 ──────────────────────────────────────────────────
 glossary:

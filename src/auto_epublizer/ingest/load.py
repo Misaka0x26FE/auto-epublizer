@@ -38,12 +38,14 @@ def load_document(
     mineru_model: str = "pipeline",
     mineru_language: str = "ch",
     mineru_batch_pages: int = 200,
+    rtl: str = "auto",
 ) -> SourceDocument:
     """按扩展名读取源文件并归一化为 SourceDocument。
 
     - ``ocr_backend``：pymupdf 路径下扫描页的 OCR 后端（None 则报错提示走 OCR）；
     - ``mineru_client``：提供时 PDF 走 MinerU 外部解析（扫描件最优先路径），
-      版面/换行/插图/表格/公式由 MinerU 识别，优先级高于 pymupdf+OCR。
+      版面/换行/插图/表格/公式由 MinerU 识别，优先级高于 pymupdf+OCR；
+    - ``rtl``：PDF 文字层 RTL 处理（``auto``/``on``/``off``），见 ``ingest/rtl.py``。
     """
     path = Path(source_path)
     ext = path.suffix.lower()
@@ -70,7 +72,7 @@ def load_document(
             except MineruError as e:
                 raise IngestError(str(e)) from e
         try:
-            return read_pdf(path, raw_dir=raw_dir, ocr_backend=ocr_backend)
+            return read_pdf(path, raw_dir=raw_dir, ocr_backend=ocr_backend, rtl=rtl)
         except PdfError as e:
             raise IngestError(str(e)) from e
     # EPUB：按 OPF spine 切分并内联非线性项（表格等）；结构异常回退通用 pandoc 路径
