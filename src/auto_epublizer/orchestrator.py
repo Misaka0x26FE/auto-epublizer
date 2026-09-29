@@ -142,6 +142,7 @@ def prepare_structure(store: RunStore, *, config: Config | None = None) -> list[
         mineru_model=cfg.pdf.mineru_model,
         mineru_language=cfg.pdf.mineru_language,
         mineru_batch_pages=cfg.pdf.mineru_batch_pages,
+        rtl=cfg.pdf.rtl,
     )
     pub = store.load_publication()
     entries = rebuild_structure(doc, pub)

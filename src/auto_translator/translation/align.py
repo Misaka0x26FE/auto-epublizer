@@ -7,8 +7,9 @@ import re
 from pathlib import Path
 from typing import Any
 
-# 句末标点（中英文），拆分时保留标点
-_SENT_SPLIT = re.compile(r"(?<=[。！？!?；;.])\s*|\n+")
+# 句末标点（中英文 + 阿拉伯字母系），拆分时保留标点：
+# ؟=阿拉伯问号(U+061F) ؛=阿拉伯分号(U+061B) ۔=乌尔都/波斯句号(U+06D4)
+_SENT_SPLIT = re.compile(r"(?<=[。！？!?；;.؟؛۔])\s*|\n+")
 
 
 def split_sentences(text: str) -> list[str]:
