@@ -29,11 +29,17 @@ _COPYRIGHT_MARKERS = (
 
 _CJK = re.compile(r"[\u3400-\u4dbf\u4e00-\u9fff\u3040-\u30ff\uac00-\ud7af]")
 _LATIN = re.compile(r"[A-Za-z]+")
+# 阿拉伯字母系（波斯/阿拉伯/乌尔都等），按空格词计数
+_ARABIC = re.compile(r"[\u0600-\u06ff\u0750-\u077f\u08a0-\u08ff\ufb50-\ufdff\ufe70-\ufeff]+")
 
 
 def _count_words(text: str) -> int:
-    """粗略词数：CJK 按字符、拉丁按空格词。"""
-    return len(_CJK.findall(text)) + len(_LATIN.findall(text))
+    """粗略词数：CJK 按字符、拉丁/阿拉伯字母系按空格词。"""
+    return (
+        len(_CJK.findall(text))
+        + len(_LATIN.findall(text))
+        + len(_ARABIC.findall(text))
+    )
 
 
 def _unit_facts(store: RunStore) -> list[dict[str, Any]]:
