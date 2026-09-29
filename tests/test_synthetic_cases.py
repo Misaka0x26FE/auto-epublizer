@@ -7,6 +7,7 @@ from pathlib import Path
 from auto_translator.glossary import (
     Glossary,
     GlossaryEntry,
+    load_glossary_csv,
     load_legacy_category_csv,
     terminology_hits,
 )
@@ -43,6 +44,35 @@ def test_load_legacy_b_glossary() -> None:
     assert by_source["Sample B entry 05"].type == "term"
     assert by_source["Sample B entry 13"].target == "示例B词语13"
     assert by_source["Sample B entry 52"].type == "place"
+
+
+def test_load_synthetic_rtl_persian_glossary() -> None:
+    """波斯语合成术语表（RTL，权威 schema）：别名用 ``|`` 分隔、全部 confirmed。"""
+    entries = load_glossary_csv(FIXTURES / "glossary_synthetic_rtl_fa.csv")
+
+    by_source = {e.source: e for e in entries}
+    assert by_source["واژه نمونه 4"].target == "示例词语04"
+    assert by_source["واژه نمونه 4"].type == "person"
+    assert "نام آزمایشی 4 2" in by_source["واژه نمونه 4"].aliases
+    assert by_source["واژه نمونه 6"].type == "place"
+    assert by_source["واژه نمونه 7"].target == "示例词语07"
+    assert by_source["واژه نمونه 5"].target == "示例词语05"
+    assert all(e.status == "confirmed" for e in entries)
+
+
+def test_terminology_hit_rtl_persian() -> None:
+    """合成边界（RTL）：波斯语源出现术语（或别名）而译文缺失中文对应时必须命中。"""
+    g = Glossary(load_glossary_csv(FIXTURES / "glossary_synthetic_rtl_fa.csv"))
+    src = "و واژه نمونه 4 به واژه نمونه 7 رفت و واژه نمونه 6 را گرفت"
+    # 主词条已译、只漏示例词语06 → 只报 واژه نمونه 6
+    hits = terminology_hits(src, "示例词语04去了示例词语07", g)
+    assert [h.source for h in hits] == ["واژه نمونه 6"]
+    assert hits[0].expected == "示例词语06"
+    # 全部译出 → 零命中
+    assert terminology_hits(src, "示例词语04去了示例词语07并夺取了示例词语06", g) == []
+    # 别名 نام آزمایشی 4 2 同样命中主词条 واژه نمونه 4（译文缺对应 target 时报）
+    hits2 = terminology_hits("نام آزمایشی 4 2 لشکر آراست", "整军", g)
+    assert [(h.source, h.expected) for h in hits2] == [("واژه نمونه 4", "示例词语04")]
 
 
 def test_terminology_conflict_sample_area() -> None:
