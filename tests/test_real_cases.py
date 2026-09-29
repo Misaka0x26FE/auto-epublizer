@@ -3,11 +3,14 @@
 数据来源（见 tests/fixtures/real_cases/）：
 - glossary_fleming.csv —— 《One's Company》真实术语表（category,source,target,note）；
 - glossary_morris.csv —— 《Israel's Border Wars》真实术语表；
+- glossary_samarqandi_fa.csv —— 波斯语真实术语表（RTL，权威 schema：
+  source,target,type,aliases,gender,reading,status,note），摘自 15 世纪波斯编年史
+  《مطلع سعدین و مجمع بحرین》第一卷中译（workspace matla-al-sadayn-1）；
 - 错误向量 —— 摘自 fleming/morris 的 QA 报告与 quality-lessons.md。
 
 这些是「真实任务质量」的检验：术语冲突（赤区/苏区）、人名用字错误（韩复渠→韩复榘）、
 标记守恒（{fig:NNN} 32/32）、h1/h2 层级一致、段落 1:1、断字符修复、排印讹误（IDG→IDF）、
-版权残句剔除、标点规范化（«»→《》）。
+版权残句剔除、标点规范化（«»→《》）、以及 RTL 源语言的术语命中（波斯语 → 中文）。
 """
 
 from __future__ import annotations
@@ -17,6 +20,7 @@ from pathlib import Path
 from auto_translator.glossary import (
     Glossary,
     GlossaryEntry,
+    load_glossary_csv,
     load_legacy_category_csv,
     terminology_hits,
 )
@@ -53,6 +57,35 @@ def test_load_morris_glossary() -> None:
     assert by_source["fedayeen"].type == "term"
     assert by_source["David Ben-Gurion"].target == "戴维·本-古里安"
     assert by_source["Qibya"].type == "place"
+
+
+def test_load_samarqandi_persian_glossary() -> None:
+    """波斯语真实术语表（RTL，权威 schema）：别名用 ``|`` 分隔、全部 confirmed。"""
+    entries = load_glossary_csv(FIXTURES / "glossary_samarqandi_fa.csv")
+    assert len(entries) >= 30
+    by_source = {e.source: e for e in entries}
+    assert by_source["امیر تیمور"].target == "帖木儿"
+    assert by_source["امیر تیمور"].type == "person"
+    assert "تیمور گورکان" in by_source["امیر تیمور"].aliases
+    assert by_source["خراسان"].type == "place"
+    assert by_source["ماوراء النهر"].target == "河中地区"
+    assert by_source["صاحبقران"].target == "幸运之主"
+    assert all(e.status == "confirmed" for e in entries)
+
+
+def test_terminology_hit_rtl_persian() -> None:
+    """真实教训（RTL）：波斯语源出现术语（或别名）而译文缺失中文对应时必须命中。"""
+    g = Glossary(load_glossary_csv(FIXTURES / "glossary_samarqandi_fa.csv"))
+    src = "و امیر تیمور به ماوراء النهر رفت و خراسان را گرفت"
+    # 主词条已译、只漏呼罗珊 → 只报 خراسان
+    hits = terminology_hits(src, "帖木儿去了河中地区", g)
+    assert [h.source for h in hits] == ["خراسان"]
+    assert hits[0].expected == "呼罗珊"
+    # 全部译出 → 零命中
+    assert terminology_hits(src, "帖木儿去了河中地区并夺取了呼罗珊", g) == []
+    # 别名 تیمور گورکان 同样命中主词条 امیر تیمور（译文缺对应 target 时报）
+    hits2 = terminology_hits("تیمور گورکان لشکر آراست", "整军", g)
+    assert [(h.source, h.expected) for h in hits2] == [("امیر تیمور", "帖木儿")]
 
 
 def test_terminology_conflict_soviet_area() -> None:
