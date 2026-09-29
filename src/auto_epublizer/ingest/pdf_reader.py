@@ -31,6 +31,7 @@ from .inserts import InsertRecord, InsertSource, next_insert_id, write_inserts
 from .models import KIND_HEADING, KIND_TEXT, SourceDocument, SourceSegment, SourceUnit
 from .ocr import OcrBackend
 from .reading_order import sort_reading_order
+from .rtl import detect_book_rtl, normalize_and_reorder
 from .tables import extract_tables
 
 
@@ -200,8 +201,12 @@ def aggregate_pdf_chapters(
     return units
 
 
-def _page_blocks(page: fitz.Page) -> list[dict]:
-    """抽取一页的版面块（text），保留 bbox、字体与数学字体标记。"""
+def _page_blocks(page: fitz.Page, *, rtl: bool = False) -> list[dict]:
+    """抽取一页的版面块（text），保留 bbox、字体与数学字体标记。
+
+    ``rtl=True``（书级判定为 RTL）时，逐行先做 RTL 归一化（剥方向控制符 + NFKC），
+    再对 RTL 为主的行做 token 逆序，还原逻辑词序；LTR 行原样保留。
+    """
     blocks: list[dict] = []
     for block in page.get_text("dict", flags=fitz.TEXTFLAGS_TEXT)["blocks"]:
         if block.get("type") != 0:
@@ -221,6 +226,8 @@ def _page_blocks(page: fitz.Page) -> list[dict]:
                         math_font = font
                     math_font_chars += len(span.get("text", ""))
             text = "".join(span.get("text", "") for span in line.get("spans", []))
+            if rtl:
+                text = normalize_and_reorder(text)
             if text.strip():
                 lines.append(text)
                 max_size = max(max_size, line_size)
@@ -347,17 +354,39 @@ def _ocr_page(
     return [{"type": "text", "bbox": None, "text": text.strip(), "ocr": True}]
 
 
+def _resolve_rtl(doc: fitz.Document, rtl: str) -> bool:
+    """把 ``pdf.rtl``（auto|on|off）解析为书级 RTL 标志。
+
+    auto：预扫描前若干页文字层，强方向性字符中 RTL 占比 ≥ 50% 判为 RTL 书。
+    ``on``/``off`` 强制开关（供配置覆盖自动判定）。
+    """
+    mode = (rtl or "auto").strip().lower()
+    if mode == "on":
+        return True
+    if mode == "off":
+        return False
+    limit = min(doc.page_count, 20)
+    if limit <= 0:
+        return False
+    texts = [doc[i].get_text() for i in range(limit)]
+    return detect_book_rtl(texts)
+
+
 def read_pdf(
     path: str | Path,
     *,
     raw_dir: str | Path | None = None,
     ocr_backend: OcrBackend | None = None,
     page_dpi: int = 150,
+    rtl: str = "auto",
 ) -> SourceDocument:
     """读取 PDF：按页切片抽文字层，逐页写 page-NNN.json 到 raw_dir；扫描页走 OCR。
 
     扫描页（无文字层）渲染图持久化到 ``raw/pages/pNNN.png``，OCR 文本以
     ``ocr:true`` 块写入 page-NNN.json。
+
+    ``rtl``：RTL 文本处理开关（``auto`` 自动判定 / ``on`` / ``off``）。判定为 RTL 的书
+    逐行做方向控制符剥离 + NFKC 归一化 + 逻辑词序还原（见 ``ingest/rtl.py``）。
     """
     try:
         doc = fitz.open(str(path))
@@ -369,6 +398,7 @@ def read_pdf(
     records: list[InsertRecord] = []
     text_blocks_total = 0
     page_count = doc.page_count
+    rtl_flag = _resolve_rtl(doc, rtl)
     toc = doc.get_toc(simple=True)
     raw_path: Path | None = Path(raw_dir) if raw_dir is not None else None
     # 扫描页渲染目录：有 raw_dir 时持久化（raw/pages/，供 agent 看图找插图），
@@ -383,7 +413,7 @@ def read_pdf(
     try:
         for page_no in range(page_count):
             page = doc[page_no]
-            blocks = _page_blocks(page)
+            blocks = _page_blocks(page, rtl=rtl_flag)
             ocr_used = False
             if not blocks and ocr_backend is not None:
                 blocks = _ocr_page(page, ocr_backend, dpi=page_dpi, render_dir=pages_dir)
@@ -419,6 +449,7 @@ def read_pdf(
                         {
                             "page_idx": page_no + 1,
                             "blocks": blocks,
+                            "rtl": rtl_flag,
                             "source": str(path),
                         },
                         ensure_ascii=False,
@@ -468,5 +499,5 @@ def read_pdf(
         source_path=os.path.abspath(str(path)),
         fmt="pdf",
         units=units,
-        meta={"pages": page_count},
+        meta={"pages": page_count, "rtl": rtl_flag},
     )
