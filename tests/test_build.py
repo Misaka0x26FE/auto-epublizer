@@ -724,6 +724,22 @@ def test_markdown_semantic_tags() -> None:
     assert "<ol><li>第一</li><li>第二</li></ol>" in out
 
 
+def test_ol_numbering_fidelity_footnote_style() -> None:
+    """有序列表编号保真（回归）：`N)` 校异/脚注式编号是真实注号，不得被 <ol> 自动编号
+    重写为 1,2,3…（单条块会全部显示为 1）；仅「1 起连续 + `. / 、` 分隔」才是真列表。"""
+    # 注号非从 1 起（如 5)）→ 保留原文数字，普通段落输出
+    out = markdown_to_xhtml("5) 其母为哈只·哈图尼。\n")
+    assert "<ol>" not in out
+    assert '<p class="fnlist">5) 其母为哈只·哈图尼。</p>' in out
+    # 注号不连续（1) 2)）→ 逐条保留原文，<br/> 分隔
+    out = markdown_to_xhtml("1) 甲本作 x。\n2) 乙本作 y。\n")
+    assert "<ol>" not in out
+    assert '<p class="fnlist">1) 甲本作 x。<br/>2) 乙本作 y。</p>' in out
+    # 真有序列表（1. 2. 连续）仍渲染原生 <ol>
+    out = markdown_to_xhtml("1. 一则\n2. 二则\n")
+    assert "<ol><li>一则</li><li>二则</li></ol>" in out
+
+
 def test_build_epub_translator_creator_role(tmp_path: Path) -> None:
     """S2.1：translator 非空 → OPF 输出第二个 dc:creator（id=creator-trl）+ role trl；
     原作者带 creator-aut + role aut；translator 为空则整段不输出。"""

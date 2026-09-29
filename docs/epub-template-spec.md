@@ -50,7 +50,7 @@ style-independent. Completed ✅ / to be added ⬜:
 | Cover `cover-image` | ✅ | `properties="cover-image"` + `<meta name="cover">` + spine `linear="no"` |
 | Cover/TOC page `linear="no"` | ✅ | the cover unit content document does not enter the body reading order |
 | TOC anchors | ✅ | unit-level nesting + **in-unit sub-heading anchors** (`file.xhtml#anchor`, stable `{unit_id}-h{n}` ids, since 2026-09-29; bilingual documents are the exception — rendered from align rows with no sub-heading elements) |
-| Semantic tags | ✅ | quotes `blockquote`, verse blocks `p.verse`, lists `ul/ol` retain semantics (P2) |
+| Semantic tags | ✅ | quotes `blockquote`, verse blocks `p.verse`, `- ` lists `ul` retain semantics (P2); `<ol>` only for markers consecutive from 1 with `. `/`、` — other `N)`/`N.`/`N、` blocks (critical-apparatus notes) keep their literal numbers (`p.fnlist`), never renumbered |
 | Bilingual src/tgt each with `lang` | ✅ | each paragraph is annotated with source/target language |
 
 ## 4. Presentation Layer (Unstyled Default Template)
