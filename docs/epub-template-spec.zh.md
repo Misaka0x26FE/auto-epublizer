@@ -41,7 +41,7 @@
 | 封面 `cover-image` | ✅ | `properties="cover-image"` + `<meta name="cover">` + spine `linear="no"` |
 | 封面/目录页 `linear="no"` | ✅ | cover 单元内容文档不进正文阅读顺序 |
 | 目录锚点 | ✅ | 单元级嵌套（源文标题已切分为单元，h1–h6 锚点随层级实现覆盖） |
-| 语义标签 | ✅ | 引用 `blockquote`、诗行块 `p.verse`、列表 `ul/ol` 保留语义（P2） |
+| 语义标签 | ✅ | 引用 `blockquote`、诗行块 `p.verse`、`- ` 列表 `ul` 保留语义（P2）；`<ol>` 仅用于**编号从 1 起连续且用 `. `/`、` 分隔**的块——其余 `N)`/`N.`/`N、` 起首块（如校异注）保留原文数字（`p.fnlist`），不得被自动编号改写 |
 | 双语版 src/tgt 各自 `lang` | ✅ | 每段标注源/目标语言 |
 
 ## 4. 呈现层（无样式默认模板）

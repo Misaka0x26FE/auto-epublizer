@@ -1,4 +1,4 @@
-<!-- i18n: source=epub-template-spec.zh.md sha256=8135267d17fd9fd9057d5c20f35c682ce7a77553152d6dcc0f83e302e21a8b29 -->
+<!-- i18n: source=epub-template-spec.zh.md sha256=423860b66725a639d18dfb0917ec0c7801ec8c6c2beb008f5a07cde7588e7633 -->
 > **English** | [中文](epub-template-spec.zh.md)
 
 # EPUB File Spec: Unstyled Standard Template + Limited Themes
@@ -50,7 +50,7 @@ style-independent. Completed ✅ / to be added ⬜:
 | Cover `cover-image` | ✅ | `properties="cover-image"` + `<meta name="cover">` + spine `linear="no"` |
 | Cover/TOC page `linear="no"` | ✅ | the cover unit content document does not enter the body reading order |
 | TOC anchors | ✅ | unit-level nesting (source headings already split into units; h1–h6 anchors implemented and covered along the hierarchy) |
-| Semantic tags | ✅ | quotes `blockquote`, verse blocks `p.verse`, lists `ul/ol` retain semantics (P2) |
+| Semantic tags | ✅ | quotes `blockquote`, verse blocks `p.verse`, `- ` lists `ul` retain semantics (P2); `<ol>` only for markers consecutive from 1 with `. `/`、` — other `N)`/`N.`/`N、` blocks (critical-apparatus notes) keep their literal numbers (`p.fnlist`), never renumbered |
 | Bilingual src/tgt each with `lang` | ✅ | each paragraph is annotated with source/target language |
 
 ## 4. Presentation Layer (Unstyled Default Template)

@@ -1,4 +1,4 @@
-<!-- i18n: source=build.zh.md sha256=bda3e1a27a250b015ddde8e380fb22d35205777ee3e9399fcfb76d0a987a11d9 -->
+<!-- i18n: source=build.zh.md sha256=dc8bb32d4562e3aec0e341f687c8b84996b0713de39b94ba1c21598b9922dde4 -->
 > **English** | [中文](build.zh.md)
 
 # Build (EPUB packaging)
@@ -56,7 +56,11 @@ DC metadata comes from `publication.json.meta`: `dc:title`, `dc:creator`, `dc:la
   `dtb:depth` is the actual depth after projection.
 - **Images**: only shrink, never enlarge, centered + page-break (`page-break-inside: avoid`); standalone image paragraphs (non-empty alt) →
   `figure+figcaption` captions.
-- **Semantic tags**: quote `>` → `blockquote`; verse block `|` → `p.verse`; `- `/`1. ` → `ul/ol`.
+- **Semantic tags**: quote `>` → `blockquote`; verse block `|` → `p.verse`; `- ` → `ul`;
+  ordered lists render as `<ol>` **only when the markers run consecutively from 1 with `. `/`、`**
+  (native auto-numbering then matches the source numbers); all other `N.`/`N、`/`N)` blocks —
+  e.g. critical-edition apparatus notes `1) 2) 5)…` whose numbers are real note ids — render
+  as literal paragraphs with the numbers preserved (`p.fnlist`), never renumbered by `<ol>`.
 - **Tables**: md pipe tables (`| a | b |` + separator row) and pandoc simple/grid tables (rows of `---` column boundaries)
   are rendered as `<table class="data">` (`th`/`td` + functional borders); cell text is translated normally,
   structure stays unchanged. **Do not change column boundaries and separator lines during translation** (G0 table shape conservation).
