@@ -3,10 +3,11 @@
 输入来自 ``translation/align/<id>.jsonl``、``structured/<id>.md`` 与 ``analysis/glossary.csv``。
 G0 不烧 token、不出"裁决"，只出确定性告警，作为 G1 的输入线索。
 
-**接线状态**：``g0_unit_flags``（import 与 g0 命令的唯一入口）当前执行五类检查——
+**接线状态**：``g0_unit_flags``（import 与 g0 命令的唯一入口）当前执行六类检查——
 align（对照表完整性）/ length（长度比，advisory）/ terminology（术语命中）/
-marker（插入标记守恒）/ footnote（脚注标记守恒，含 pandoc 与数字式两种表示）。
-本模块其余函数（标题层级、段落块、断字符修复、排印讹误、
+marker（插入标记守恒）/ footnote（脚注标记守恒，含 pandoc 与数字式两种表示）/
+heading（标题层级守恒，structured 与 translation 逐层计数对账）。
+本模块其余函数（段落块、断字符修复、排印讹误、
 标点规范化）是历史实践提炼的纯函数工具，供 agent 审校时人工比对使用，
 尚未接入自动校验（后续扩展点）。
 
@@ -395,16 +396,20 @@ def g0_unit_flags(
     too_short: float = 0.30,
     too_long: float = 3.0,
     structured_md: str | None = None,
+    translation_md: str | None = None,
 ) -> list[G0Flag]:
     """对一个单元执行全部 G0 检查，返回告警列表。
 
     检查项：align（对照表完整性）/ length（长度比，advisory）/ terminology（术语
-    命中）/ marker（插入标记守恒）/ footnote（脚注标记守恒）。守恒类做**单元级
-    总量比对**而非行级——拆句/并句会把标记挪到相邻行，总量守恒恰好对应
-    「一个都不能丢」且不误报。
+    命中）/ marker（插入标记守恒）/ footnote（脚注标记守恒）/ heading（标题层级
+    守恒）。守恒类做**单元级总量比对**而非行级——拆句/并句会把标记挪到相邻行，
+    总量守恒恰好对应「一个都不能丢」且不误报。
 
     ``structured_md`` 非空时追加**源保真（fidelity）双向检查**（见 fidelity.py）：
     前向缺块=advisory、反向 src 失配=硬缺陷（import 阻断）。
+    ``structured_md`` 与 ``translation_md`` 同时给出时执行**标题守恒**（issue #12）：
+    逐层（h1~h6）计数对账——丢标题/换级（``##``→``###``）/补标题均报
+    ``heading``（真实缺陷：目录节点在成品中丢失或错位）。
     """
     flags = list(check_alignment(rows))
     sum_marker_src = sum_marker_tgt = 0
@@ -448,6 +453,17 @@ def g0_unit_flags(
                 {"src": sum_fn_src, "tgt": sum_fn_tgt},
             )
         )
+    if structured_md is not None and translation_md is not None:
+        src_levels = count_heading_levels(structured_md)
+        tgt_levels = count_heading_levels(translation_md)
+        if src_levels != tgt_levels:
+            flags.append(
+                G0Flag(
+                    "heading",
+                    "标题层级数量不守恒",
+                    {"src": src_levels, "tgt": tgt_levels},
+                )
+            )
     if structured_md is not None:
         from .fidelity import fidelity_flags
 

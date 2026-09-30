@@ -27,7 +27,7 @@
 |---|---|---|
 | 逐句溯源锚点 | ✅ `align/<id>.jsonl` 每行 `{seq,src,tgt,note}` | — |
 | 对照表完整性 | ✅ G0 `check_alignment`（seq 连续、src/tgt 非空） | — |
-| 结构守恒 | ✅ G0（段落块/标记/脚注/标题 1:1） | — |
+| 结构守恒 | ✅ G0（段落块/标记/脚注 1:1；标题层级逐层计数对账 `heading`——2026-09-29 接线，issue #12，计入 `g0_structure_open` 放行硬门） | — |
 | **三边对账**（structured↔translation↔output） | ⬜ | 新增：逐单元三边存在、顺序一致、无遗漏/多余 |
 | **媒体溯源**（图片数量/顺序与源文一致） | ⬜ | 新增：译文图片引用 vs 源文，防丢图/多图/错位 |
 | **逐段溯源覆盖率** | ✅ | structured 每段 ↔ align 全覆盖，产出 `provenance_coverage` |
@@ -56,7 +56,7 @@
 |---|---|---|
 | epubcheck 0 error | ✅ | — |
 | G4 解包审计 | ✅ mimetype/container/OPF/nav/NCX/landmarks/img 悬空/URL/lang/h1 | — |
-| **目录层级** | ⬜ | nav/NCX 当前扁平单层，源文 h2/h3 不进目录 |
+| **目录层级** | ✅ | 单元级嵌套 + 单元内子标题锚点（`file.xhtml#anchor`，2026-09-29）；层级经 PDF level≥2 书签 / 标题段原层级全链路保真，g0 `heading` 守恒门兜底译文侧 |
 | **TOC 对账** | ⬜ | preprocess 抽的源 TOC vs nav 条目对照，漏条目告警 |
 | 脚注双向跳转 | ⬜ | 见 epub-template-spec §6（脚注语义化） |
 | 标题无跳级 | ⬜ | h1→h3 跳级告警 |
@@ -130,9 +130,12 @@
    - ✅ `structure/rebuild.py`：`rebuild_structure` 把 `heading_level` 写进 entry（`entry["level"]`）
    - ✅ `orchestrator`/`store`：level 存进 `Unit.meta`，`structure_entries` 回填
    - ✅ `build/__init__.py`：`_render_nav` 嵌套 `<ol>`、`_render_ncx` 嵌套 `<navPoint>`（含 `dtb:depth`）
-   - ✅ 目录层级审计：`E_TOC_FLAT`（源有层级 nav 扁平）/ `W_TOC_DEPTH`（深度序列不一致）
+   - ✅ 目录层级审计：`E_TOC_FLAT`（源有层级 nav 扁平；2026-09-29 起期望序列含**单元内
+     子标题锚点**——单元链平但正文有 `##`/`###` 而目录扁平也报）/ `W_TOC_DEPTH`
+     （深度序列不一致，锚点级对账）
      ——在 `qa/provenance.py`（需对照源 level，非 audit_epub）
-   - PDF 源：单 unit 无层级，依赖 agent 在 preprocessing 切分并登记 level（CLI 提供机制）
+   - PDF 源：level≥2 书签由 `_apply_sub_toc` 落为章内标题段（全等升级 / 子串切分 /
+     无匹配插入三策略）；无书签时依赖 agent 在 preprocessing 切分并登记 level
 2. ✅ **三边对账**：`qa/provenance.py`（`E_UNIT_MISSING`/`E_UNIT_ORDER`），接入 `qa`
 3. ✅ **媒体溯源**：`E_MEDIA_LOST`/`E_MEDIA_ORDER`
 4. ✅ **逐段覆盖率**：`provenance_coverage` 进 report.json（无翻译产物为 null）

@@ -1,4 +1,4 @@
-<!-- i18n: source=qa.zh.md sha256=9797a535913fe277482e8d182163ceec8ac988427029b8fe2b5abd4a11efb5c0 -->
+<!-- i18n: source=qa.zh.md sha256=a78b5f1433ff27e22866eb61211c3d7c5a3c30c78f6c0a6ebec3c36c8889c648 -->
 > **English** | [中文](qa.zh.md)
 
 # QA (epubcheck + unpack audit)
@@ -157,5 +157,7 @@ the provenance result object and are not persisted — when a count is needed, t
     changed — supplement against the `structured/` source text;
   - coverage < 1.0: `report.json` has no per-paragraph list; run `g0` and use its warnings
     to locate omitted paragraphs;
-  - `E_TOC_FLAT`: the source text has hierarchy but the TOC is flat — confirm the source
-    unit `level` is registered (rerun init/preprocess).
+  - `E_TOC_FLAT`: the source text has hierarchy (unit level chain or in-body sub-headings)
+    but the TOC is flat — confirm the source unit `level` is registered (rerun init/preprocess);
+    since 2026-09-29 in-unit sub-heading anchors participate in the expected-sequence
+    reconciliation; bilingual documents are exempted automatically.

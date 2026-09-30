@@ -1,4 +1,4 @@
-<!-- i18n: source=build.zh.md sha256=bda3e1a27a250b015ddde8e380fb22d35205777ee3e9399fcfb76d0a987a11d9 -->
+<!-- i18n: source=build.zh.md sha256=5362c4be730d13adc2dc4e3881531409c2e07d136d322cedce3a5ebdca7bab1a -->
 > **English** | [中文](build.zh.md)
 
 # Build (EPUB packaging)
@@ -51,9 +51,14 @@ DC metadata comes from `publication.json.meta`: `dc:title`, `dc:creator`, `dc:la
 - **Footnotes**: `[^label]` → standard popup notes (noteref/footnote), note reference `[N]`, **restarting from 1 per chapter**
   with independent numbering + bidirectional backlink (readers that do not support popups degrade to an end-of-chapter note area).
 - **TOC hierarchy**: source heading levels (`level`) → nested nav `<ol>` + nested NCX navPoint;
-  **nav depth projection** (`--nav-depth` / `config.output.nav_depth`, default 3, 1–6): units beyond the
-  depth do not enter nav/NCX (they remain in spine reading order, anchors preserved), the cover unit does not enter the TOC;
-  `dtb:depth` is the actual depth after projection.
+  **in-unit sub-heading anchors** (since 2026-09-29): in-unit h2+ headings automatically get stable ids
+  (`{unit_id}-h{n}`; explicit `{#id}` takes precedence) and enter nav/NCX as children of the unit entry
+  via `file.xhtml#anchor` — translations should preserve these sub-headings (checked by the g0 `heading`
+  conservation gate);
+  **nav depth projection** (`--nav-depth` / `config.output.nav_depth`, default 3, 1–6): units/anchors beyond the
+  depth do not enter nav/NCX (they remain in spine reading order, anchors preserved), the cover unit does not enter the TOC,
+  bilingual documents have no anchor entries;
+  `dtb:depth` is the actual depth after projection (anchors included).
 - **Images**: only shrink, never enlarge, centered + page-break (`page-break-inside: avoid`); standalone image paragraphs (non-empty alt) →
   `figure+figcaption` captions.
 - **Semantic tags**: quote `>` → `blockquote`; verse block `|` → `p.verse`; `- `/`1. ` → `ul/ol`.

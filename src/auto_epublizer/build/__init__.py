@@ -19,7 +19,18 @@ from urllib.parse import quote
 
 from auto_common.workspace import Publication
 
-from .html import slug_file
+from .html import slug_file, subheading_anchors
+
+__all__ = [
+    "build_epub",
+    "collect_media",
+    "nav_depth_sequence",
+    "nav_toc_entries",
+    "slug_file",
+    "subheading_anchors",
+    "theme_css",
+    "toc_depths",
+]
 
 _IMG_REF = re.compile(r"!\[([^\]]*)\]\(([^()]*(?:\([^()]*\)[^()]*)*)\)")
 # pandoc 对「段落内仅一张图片」输出占位语法（小说插图常见形态）：
@@ -237,18 +248,60 @@ def nav_toc_entries(entries: list[dict[str, Any]], nav_depth: int) -> list[dict[
 
     深度用 ``_toc_depths`` 归一化（首条为 1）。超深节点不进目录，但仍保留在
     spine 阅读顺序与锚点中（epub-template-spec §3 目录深度投影）。
+    entry 可携带 ``anchors``（``subheading_anchors`` 产物）：单元进目录时其锚点
+    以「单元深度 + 相对深度」参与投影，超深锚点剔除；单元被剔除则锚点一并剔除。
     """
     visible = [e for e in entries if e.get("kind") != "cover"]
     depths = _toc_depths(visible)
-    return [e for e, d in zip(visible, depths, strict=False) if d <= nav_depth]
+    out: list[dict[str, Any]] = []
+    for e, d in zip(visible, depths, strict=False):
+        if d > nav_depth:
+            continue
+        anchors = e.get("anchors") or []
+        if anchors:
+            rel = _toc_depths(anchors)
+            kept = [a for a, r in zip(anchors, rel, strict=False) if d + r <= nav_depth]
+            if len(kept) != len(anchors):
+                e = {**e, "anchors": kept}
+        out.append(e)
+    return out
+
+
+def _anchor_nodes(e: dict[str, Any]) -> list[dict[str, Any]]:
+    """把 entry 的锚点清单组织成嵌套树节点：[{"href","label","children"}]。
+
+    锚点相对深度用 ``_toc_depths`` 归一化（首个锚点为单元的直接子级）；href
+    指向单元文档内的锚点（``file.xhtml#anchor``）。
+    """
+    anchors = e.get("anchors") or []
+    if not anchors:
+        return []
+    href_base = f"{slug_file(e['id'])}.xhtml"
+    tree: list[dict[str, Any]] = []
+    stack: list[tuple[int, list[dict[str, Any]]]] = [(0, tree)]
+    for a, r in zip(anchors, _toc_depths(anchors), strict=False):
+        node: dict[str, Any] = {
+            "href": f"{href_base}#{a['anchor']}",
+            "label": a["title"],
+            "children": [],
+        }
+        while stack and stack[-1][0] >= r:
+            stack.pop()
+        stack[-1][1].append(node)
+        stack.append((r, node["children"]))
+    return tree
 
 
 def _toc_tree(entries: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """按嵌套深度把单元清单组织成目录树：[{entry, children: […]}]。"""
+    """按嵌套深度把单元清单组织成目录树：[{entry, children: […]}]。
+
+    携带 ``anchors`` 的单元，锚点子树**前插**为其 children（阅读顺序：单元
+    文档内的子标题先于子单元文档）。
+    """
     tree: list[dict[str, Any]] = []
     stack: list[tuple[int, list[dict[str, Any]]]] = [(0, tree)]
     for e, d in zip(entries, _toc_depths(entries), strict=False):
-        node: dict[str, Any] = {"entry": e, "children": []}
+        node: dict[str, Any] = {"entry": e, "children": _anchor_nodes(e)}
         while stack and stack[-1][0] >= d:
             stack.pop()
         stack[-1][1].append(node)
@@ -256,13 +309,30 @@ def _toc_tree(entries: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return tree
 
 
+def nav_depth_sequence(entries: list[dict[str, Any]]) -> list[int]:
+    """nav 树先序遍历的完整深度序列（单元 + 锚点；qa 对账与 build 同源）。"""
+    seq: list[int] = []
+
+    def walk(nodes: list[dict[str, Any]], depth: int) -> None:
+        for node in nodes:
+            seq.append(depth)
+            walk(node["children"], depth + 1)
+
+    walk(_toc_tree(entries), 1)
+    return seq
+
+
 def _render_nav_items(nodes: list[dict[str, Any]]) -> str:
-    """递归渲染 nav 嵌套 <li>（含子级 <ol>）。"""
+    """递归渲染 nav 嵌套 <li>（单元条目 + 锚点条目，含子级 <ol>）。"""
     lis: list[str] = []
     for node in nodes:
-        e = node["entry"]
-        href = f"{slug_file(e['id'])}.xhtml"
-        label = escape(e["title"] or e["id"])
+        if "entry" in node:
+            e = node["entry"]
+            href = f"{slug_file(e['id'])}.xhtml"
+            label = escape(e["title"] or e["id"])
+        else:  # 锚点节点（_anchor_nodes 产物）
+            href = node["href"]
+            label = escape(node["label"])
         if node["children"]:
             lis.append(
                 f'      <li><a href="{href}">{label}</a>\n'
@@ -316,9 +386,13 @@ def _render_ncx_points(nodes: list[dict[str, Any]], counter: list[int]) -> str:
     for node in nodes:
         counter[0] += 1
         n = counter[0]
-        e = node["entry"]
-        href = f"{slug_file(e['id'])}.xhtml"
-        label = e["title"] or e["id"]
+        if "entry" in node:
+            e = node["entry"]
+            href = f"{slug_file(e['id'])}.xhtml"
+            label = e["title"] or e["id"]
+        else:  # 锚点节点（_anchor_nodes 产物）
+            href = node["href"]
+            label = node["label"]
         head = (
             f'    <navPoint id="navpoint-{n}" playOrder="{n}">\n'
             f"      <navLabel><text>{escape(label)}</text></navLabel>\n"
@@ -340,8 +414,7 @@ def _render_ncx(
     """渲染 NCX（toc.ncx，向后兼容）；层级嵌套（同 nav 投影），只引用实际内容文档防悬空。"""
     uid = pub.slug
     entries = nav_toc_entries(content_entries, nav_depth)
-    depths = _toc_depths(entries)
-    depth = max(depths) if depths else 1
+    depth = max(nav_depth_sequence(entries), default=1)
     body = _render_ncx_points(_toc_tree(entries), [0]) or "    <!-- 无目录条目 -->"
     return (
         '<?xml version="1.0" encoding="utf-8"?>\n'

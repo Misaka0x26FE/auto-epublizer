@@ -392,7 +392,14 @@ def _blocks_to_segments(lines: list[str]) -> list[SourceSegment]:
             flush()
             text = _clean_heading(m.group(2))
             if text:
-                segments.append(SourceSegment(index=0, source=text, kind=KIND_HEADING))
+                segments.append(
+                    SourceSegment(
+                        index=0,
+                        source=text,
+                        kind=KIND_HEADING,
+                        meta={"heading_level": min(len(m.group(1)), 6)},
+                    )
+                )
         else:
             buffer.append(line)
     flush()

@@ -348,3 +348,33 @@ def test_md_align_drift_heading_row_without_trailing_newline() -> None:
         {"seq": 2, "src": "Текст.", "tgt": "正文。"},
     ]
     assert md_align_drift(md, rows) == []
+
+
+def test_g0_heading_conservation() -> None:
+    """标题守恒（issue #12）：丢标题/换级/补标题告警；一致或缺 md 侧不告警。"""
+    g = Glossary()
+    rows = [{"seq": 1, "src": "text", "tgt": "正文"}]
+    structured = "# 第一章\n\n## 第一节\n\n正文\n"
+    # 一致 → 无 heading 告警
+    assert not [
+        f
+        for f in g0_unit_flags(rows, g, structured_md=structured, translation_md=structured)
+        if f.check == "heading"
+    ]
+    # 丢 ### → 告警（src/tgt 逐层计数入 data）
+    lost = "# 第一章\n\n正文\n"
+    flags = [
+        f
+        for f in g0_unit_flags(rows, g, structured_md=structured, translation_md=lost)
+        if f.check == "heading"
+    ]
+    assert len(flags) == 1
+    assert flags[0].data == {"src": {1: 1, 2: 1}, "tgt": {1: 1}}
+    # 换级（##→###）→ 告警（现场报告 #10-B1 的 ch04 形态）
+    shifted = "# 第一章\n\n### 第一节\n\n正文\n"
+    assert any(
+        f.check == "heading"
+        for f in g0_unit_flags(rows, g, structured_md=structured, translation_md=shifted)
+    )
+    # 只给 structured 不给 translation → 跳过（convert / 未译场景）
+    assert not [f for f in g0_unit_flags(rows, g, structured_md=structured) if f.check == "heading"]

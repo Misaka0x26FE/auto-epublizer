@@ -97,19 +97,107 @@ def _level1_toc(toc: list[list] | None, page_count: int) -> list[tuple[int, str]
     return entries if len(entries) >= 2 else []
 
 
+def _sub_toc(toc: list[list] | None, page_count: int) -> list[tuple[int, str, int]]:
+    """提取有效 level≥2 书签（页号越界过滤、标题非空）→ [(page, title, level)]。
+
+    书签层级是子章结构的唯一可靠来源：此前被整体丢弃（导航扁平化根因之一），
+    现在落入单元内作为标题段（``_apply_sub_toc``）。
+    """
+    if not toc:
+        return []
+    subs: list[tuple[int, str, int]] = []
+    for item in toc:
+        try:
+            level, title, page = int(item[0]), str(item[1]).strip(), int(item[2])
+        except (TypeError, ValueError, IndexError):
+            continue
+        if level < 2 or not title or page < 1 or page > page_count:
+            continue
+        subs.append((page, title, level))
+    return subs
+
+
+_TOC_TITLE_NORM = re.compile(r"\s+")
+
+
+def _apply_sub_toc(segs: list[SourceSegment], subs: list[tuple[int, str, int]]) -> None:
+    """把 level≥2 书签落到章内段流（原位修改；处理后 index 重排）。
+
+    三策略（确定性，按序尝试）：
+    ① 全等升级——书签页首个文字段与书签标题（去空白）相等 → 原段升级为标题段；
+    ② 子串切分——标题是段内子串 → 切成「标题段 + 余文段」（防整段误升）；
+    ③ 无匹配插入——在首个 ``source_page ≥ 书签页`` 的段前插入新标题段
+      （书签无 y 坐标，页边界是确定性最优近似；页内位置误差由 restructure
+      语义重建吸收，见 skills references/repair.md）。
+    """
+    if not subs:
+        return
+    for page, title, level in subs:
+        norm_title = _TOC_TITLE_NORM.sub("", title)
+        pos = len(segs)
+        for i, s in enumerate(segs):
+            if _seg_page(s) >= page and s.kind != KIND_HEADING:
+                pos = i
+                break
+        if pos < len(segs) and _seg_page(segs[pos]) == page:
+            text = segs[pos].source
+            if _TOC_TITLE_NORM.sub("", text) == norm_title:
+                segs[pos] = segs[pos].model_copy(
+                    update={
+                        "kind": KIND_HEADING,
+                        "meta": {**segs[pos].meta, "heading_level": level},
+                    }
+                )
+                continue
+            idx = text.find(title)
+            if idx >= 0:
+                rest = (text[:idx] + text[idx + len(title) :]).strip()
+                head = segs[pos].model_copy(
+                    update={
+                        "source": title,
+                        "kind": KIND_HEADING,
+                        "meta": {**segs[pos].meta, "heading_level": level},
+                    }
+                )
+                if rest:
+                    tail = segs[pos].model_copy(update={"source": rest})
+                    segs[pos : pos + 1] = [head, tail]
+                else:
+                    segs[pos] = head
+                continue
+        segs.insert(
+            pos,
+            SourceSegment(
+                index=0,
+                source=title,
+                kind=KIND_HEADING,
+                meta={"source_page": page, "heading_level": level},
+            ),
+        )
+    for i, s in enumerate(segs):
+        s.index = i
+
+
 def _aggregate_by_toc(
     segments: list[SourceSegment],
     *,
     book_title: str,
     page_count: int,
     entries: list[tuple[int, str]],
+    subs: list[tuple[int, str, int]] | None = None,
 ) -> list[SourceUnit]:
-    """按书签切章：首个条目前的页 → frontmatter；末章延伸到全书末页。"""
+    """按书签切章：首个条目前的页 → frontmatter；末章延伸到全书末页。
+
+    ``subs``（level≥2 书签）按页归属落入各单元（含 frontmatter），落为单元内
+    标题段——子章结构进入 structured/ 与导航层级链路。
+    """
+    subs = subs or []
     units: list[SourceUnit] = []
     first_start = entries[0][0]
     if first_start > 1:
         front = [s for s in segments if _seg_page(s) < first_start]
         if front:
+            _apply_sub_toc(front, [s for s in subs if s[0] < first_start])
             units.append(
                 SourceUnit(
                     id="fm01",
@@ -122,6 +210,7 @@ def _aggregate_by_toc(
     for i, (start_page, title) in enumerate(entries):
         end_page = entries[i + 1][0] - 1 if i + 1 < len(entries) else page_count
         segs = [s for s in segments if start_page <= _seg_page(s) <= end_page]
+        _apply_sub_toc(segs, [s for s in subs if start_page <= s[0] <= end_page])
         units.append(
             SourceUnit(
                 id=f"ch{i + 1:02d}",
@@ -151,7 +240,11 @@ def aggregate_pdf_chapters(
     entries = _level1_toc(toc, page_count)
     if entries:
         return _aggregate_by_toc(
-            segments, book_title=book_title, page_count=page_count, entries=entries
+            segments,
+            book_title=book_title,
+            page_count=page_count,
+            entries=entries,
+            subs=_sub_toc(toc, page_count),
         )
 
     body_median = _median_font_size(segments)

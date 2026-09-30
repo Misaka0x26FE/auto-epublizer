@@ -52,9 +52,12 @@ DC 元数据来自 `publication.json.meta`：`dc:title`、`dc:creator`、`dc:lan
 - **脚注**：`[^label]` → 标准弹窗注释（noteref/footnote），注码 `[N]`、**每章从 1 起**
   独立编号 + 双向回链（不支持弹窗的阅读器退化为章末注释区）。
 - **目录层级**：源文标题层级（`level`）→ nav 嵌套 `<ol>` + NCX 嵌套 navPoint；
+  **单元内子标题锚点**（2026-09-29 起）：单元内 h2+ 标题自动获得稳定 id
+  （`{unit_id}-h{n}`；显式 `{#id}` 优先），以 `file.xhtml#anchor` 作为单元条目的
+  子级进 nav/NCX——译文中应保留这些子标题（g0 `heading` 守恒门校验）；
   **目录深度投影**（`--nav-depth` / `config.output.nav_depth`，默认 3，1–6）：超出
-  深度的单元不进 nav/NCX（仍在 spine 阅读顺序、锚点保留），封面单元不进目录；
-  `dtb:depth` 为投影后实际深度。
+  深度的单元/锚点不进 nav/NCX（仍在 spine 阅读顺序、锚点保留），封面单元不进目录，
+  双语文档无锚点条目；`dtb:depth` 为投影后实际深度（含锚点）。
 - **图片**：只缩不放大居中 + 断页（`page-break-inside: avoid`）；独立图段（alt 非空）→
   `figure+figcaption` 图注。
 - **语义标签**：引用 `>` → `blockquote`；诗行块 `|` → `p.verse`；`- `/`1. ` → `ul/ol`。

@@ -1,4 +1,4 @@
-<!-- i18n: source=epub-template-spec.zh.md sha256=8135267d17fd9fd9057d5c20f35c682ce7a77553152d6dcc0f83e302e21a8b29 -->
+<!-- i18n: source=epub-template-spec.zh.md sha256=0105fce5b440a003cb0ef93f77b460d4c3a636c86130a977953f3048100d4ec1 -->
 > **English** | [中文](epub-template-spec.zh.md)
 
 # EPUB File Spec: Unstyled Standard Template + Limited Themes
@@ -49,7 +49,7 @@ style-independent. Completed ✅ / to be added ⬜:
 | **Footnote semanticization** | ✅ | `noteref`/`footnote` + `[N]` note reference + per-chapter independent numbering + bidirectional jumping (§6) |
 | Cover `cover-image` | ✅ | `properties="cover-image"` + `<meta name="cover">` + spine `linear="no"` |
 | Cover/TOC page `linear="no"` | ✅ | the cover unit content document does not enter the body reading order |
-| TOC anchors | ✅ | unit-level nesting (source headings already split into units; h1–h6 anchors implemented and covered along the hierarchy) |
+| TOC anchors | ✅ | unit-level nesting + **in-unit sub-heading anchors** (`file.xhtml#anchor`, stable `{unit_id}-h{n}` ids, since 2026-09-29; bilingual documents are the exception — rendered from align rows with no sub-heading elements) |
 | Semantic tags | ✅ | quotes `blockquote`, verse blocks `p.verse`, lists `ul/ol` retain semantics (P2) |
 | Bilingual src/tgt each with `lang` | ✅ | each paragraph is annotated with source/target language |
 
@@ -145,7 +145,7 @@ output:
 2. ✅ `build/html.py`: `render_document` produces only semantic XHTML (including blockquote/verse/ul/ol), CSS injected from template/theme (decoupled).
 3. ✅ Footnote semanticization: `FootnoteState` in-chapter numbering + `[N]` note reference + noteref/footnote rendering + backlinks.
 4. ✅ Cover `cover-image`: first image of the cover unit automatically recognized + `<meta name="cover">` + `linear="no"`.
-5. ✅ Semantic tag retention + page-break/figure-caption styles (TOC is unit-level nesting; no need for in-unit sub-heading anchors).
+5. ✅ Semantic tag retention + page-break/figure-caption styles (TOC is unit-level nesting + in-unit sub-heading anchors, since 2026-09-29).
 6. ✅ `qa/audit.py`: `E_THEME_FONT`/`E_THEME_COLOR`/`E_COVER_META`/`E_HEADING_SKIP`/
    `E_RESIDUE`/`W_RESIDUE`/`W_META_INCOMPLETE`/`E_ANCHOR`/`E_FN_BACKLINK`/`E_BI_PAIRS`/
    `W_EPUB_SIZE`/`W_IMG_UNCOMPRESSED`; provenance audit `W_NO_COVER`/`W_NAMING`.

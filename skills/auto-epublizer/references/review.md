@@ -1,4 +1,4 @@
-<!-- i18n: source=review.zh.md sha256=4ca5f85b55cf7ca7280f7d97149c9f76bec06c5ba62260ff90782b2ee6878b9a -->
+<!-- i18n: source=review.zh.md sha256=8f1d8ea910388466c8a2e6d7adb49d519200d7996b591e64042b1aaac970f1f8 -->
 > **English** | [中文](review.zh.md)
 
 # Review (six-gate QC operational guide)
@@ -15,7 +15,7 @@ and convergence state from `result.json`.
 
 | Gate | What it does | Who does it | Output |
 |---|---|---|---|
-| G0 | Zero-token static validation (alignment completeness / length ratio / terminology hit / marker conservation / footnote conservation / source fidelity) | CLI (`g0`/`import`) | static warning list |
+| G0 | Zero-token static validation (alignment completeness / length ratio / terminology hit / marker conservation / footnote conservation / heading conservation / source fidelity) | CLI (`g0`/`import`) | static warning list |
 | G1 | Segment-by-segment bilingual review (omission / addition / mistranslation / terminology / person) | agent | `issues` candidates |
 | G2 | Evidence-gathering review (confirm against source text / context) | agent | `issues` confirmed / rejected |
 | G3 | Arbitration + revision + convergence determination | agent | `patches` + `termination` |
@@ -120,6 +120,7 @@ insidious quality problem"; after arbitration write back to `analysis/glossary.c
 | Length ratio | `0.30 ≤ len(tgt)/len(src) ≤ 3.0` (G0 warning, advisory) |
 | **Insert marker conservation** | **`{fig:NNN}` etc. markers consistent in src/tgt unit-level totals (hard defect; if not cleared, G5 reports `structure_open`)** |
 | **Footnote conservation** | **pandoc `[^label]` and sentence-final numeric note references consistent in total (hard defect, as above)** |
+| **Heading conservation** | **per-level (h1~h6) counts consistent between structured and translation (hard defect, as above; issue #12) — lost sub-headings or shifted levels make TOC nodes disappear from or misplace in the product** |
 | **Terminology conflict** | **`glossary_conflicts_open == 0` (qa does not release before arbitration is written back to glossary.csv, `glossary_conflict_open`)** |
 | **Terminology hit** | **0 (G0 `terminology` is a real defect, not advisory — the translation is missing a glossary source term; it must be verified and cleared item by item, otherwise G5 does not release, `released_reason=terminology_open`)** |
 | Empty translation | forbidden (`import` blocks that unit) |

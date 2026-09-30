@@ -40,7 +40,7 @@
 | **脚注语义化** | ✅ | `noteref`/`footnote` + `[N]` 注码 + 章内独立编号 + 双向跳转（§6） |
 | 封面 `cover-image` | ✅ | `properties="cover-image"` + `<meta name="cover">` + spine `linear="no"` |
 | 封面/目录页 `linear="no"` | ✅ | cover 单元内容文档不进正文阅读顺序 |
-| 目录锚点 | ✅ | 单元级嵌套（源文标题已切分为单元，h1–h6 锚点随层级实现覆盖） |
+| 目录锚点 | ✅ | 单元级嵌套 + **单元内子标题锚点**（`file.xhtml#anchor`，`{unit_id}-h{n}` 稳定 id，2026-09-29 起；双语文档例外——由 align 行渲染、无子标题元素） |
 | 语义标签 | ✅ | 引用 `blockquote`、诗行块 `p.verse`、列表 `ul/ol` 保留语义（P2） |
 | 双语版 src/tgt 各自 `lang` | ✅ | 每段标注源/目标语言 |
 
@@ -126,7 +126,7 @@ output:
 2. ✅ `build/html.py`：`render_document` 只产出语义 XHTML（含 blockquote/verse/ul/ol），CSS 从模板/主题注入（解耦）。
 3. ✅ 脚注语义化：`FootnoteState` 章内编号 + `[N]` 注码 + noteref/footnote 渲染 + 回链。
 4. ✅ 封面 `cover-image`：cover 单元首个图片自动识别 + `<meta name="cover">` + `linear="no"`。
-5. ✅ 语义标签保留 + 断页/图注样式（目录为单元级嵌套，无单元内子标题锚点需求）。
+5. ✅ 语义标签保留 + 断页/图注样式（目录为单元级嵌套 + 单元内子标题锚点，2026-09-29 起）。
 6. ✅ `qa/audit.py`：`E_THEME_FONT`/`E_THEME_COLOR`/`E_COVER_META`/`E_HEADING_SKIP`/
    `E_RESIDUE`/`W_RESIDUE`/`W_META_INCOMPLETE`/`E_ANCHOR`/`E_FN_BACKLINK`/`E_BI_PAIRS`/
    `W_EPUB_SIZE`/`W_IMG_UNCOMPRESSED`；溯源审计 `W_NO_COVER`/`W_NAMING`。
@@ -148,4 +148,6 @@ output:
 | P2 ✅ | 目录深度投影（`output.nav_depth` + 封面不进目录 + 覆盖审计豁免） | 结构层 |
 
 > P0/P1/P2 已于 2026-09-04 全部落地（详见 `docs/postprocessing-spec.md` §4）；
-> 目录深度投影与 `[N]` 章内序号于 2026-09-13 落地（`docs/plans/2026-09-13-toc-depth-footnotes.md`）。
+> 目录深度投影与 `[N]` 章内序号于 2026-09-13 落地（`docs/plans/2026-09-13-toc-depth-footnotes.md`）；
+> 单元内子标题锚点目录 + 标题层级保真/守恒（PDF level≥2 书签、g0 heading 门）于
+> 2026-09-29 落地（`docs/plans/2026-09-29-nav-depth.md`）。

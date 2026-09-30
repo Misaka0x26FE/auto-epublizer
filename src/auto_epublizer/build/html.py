@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import re
 from html import escape
+from typing import Any
 
 _HEADING_RE = re.compile(r"^(#{1,6})\s+(.*)$")
 _IMG_RE = re.compile(r"!\[([^\]]*)\]\(([^)]+)\)")
@@ -321,6 +322,7 @@ def markdown_to_xhtml(md: str, *, unit_id: str = "", fn_state: FootnoteState | N
                 fn_items.append((fn_state.number(unit_id, label), text))
         fn_items.sort(key=lambda t: t[0])
     out: list[str] = []
+    hcount = 0  # level≥2 标题计数（与 subheading_anchors 同规则，保证 nav 锚点不悬空）
     for block in re.split(r"\n\s*\n", md):
         block = block.strip("\n")
         if not block.strip():
@@ -375,6 +377,11 @@ def markdown_to_xhtml(md: str, *, unit_id: str = "", fn_state: FootnoteState | N
         if m:
             level = min(len(m.group(1)), 6)
             heading, hid = _split_heading_id(m.group(2))
+            if level >= 2 and unit_id:
+                # 单元内子标题自动稳定 id（nav 锚点用）：显式 {#id} 优先，
+                # 缺省 {unit_id}-h{n}；计数含显式 id 者（与扫描器规则一致）
+                hcount += 1
+                hid = hid or f"{unit_id}-h{hcount}"
             id_attr = f' id="{hid}"' if hid else ""
             out.append(f"<h{level}{id_attr}>{_inline(escape(heading))}</h{level}>")
             rest = "\n".join(lines[1:]).strip()
@@ -410,6 +417,35 @@ def _page(title: str, body: str, *, lang: str) -> str:
         f"<body>\n{body}\n</body>\n"
         "</html>\n"
     )
+
+
+def subheading_anchors(md: str, unit_id: str) -> list[dict[str, Any]]:
+    """扫描单元 md 的 level≥2 子标题，返回 nav 锚点清单（纯函数）。
+
+    块遍历语义与 ``markdown_to_xhtml`` 逐字一致（按空行切块、块首行匹配、
+    ``{#id}`` 剥离、level≥2 计数含显式 id 者）——保证此处返回的 ``anchor``
+    与渲染产物中的 ``id`` 一一对应，nav 链接不悬空。
+    返回 ``[{"level": 2..6, "title": str, "anchor": str}]``（文档顺序）。
+    """
+    anchors: list[dict[str, Any]] = []
+    n = 0
+    for block in re.split(r"\n\s*\n", md):
+        block = block.strip("\n")
+        if not block.strip():
+            continue
+        lines = block.splitlines()
+        m = _HEADING_RE.match(lines[0])
+        if not m:
+            continue
+        level = min(len(m.group(1)), 6)
+        if level < 2:
+            continue
+        n += 1
+        title, hid = _split_heading_id(m.group(2))
+        title = title.strip()
+        if title:
+            anchors.append({"level": level, "title": title, "anchor": hid or f"{unit_id}-h{n}"})
+    return anchors
 
 
 def render_document(
