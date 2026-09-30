@@ -49,6 +49,17 @@ class StructureError(RuntimeError):
     """结构重建失败。"""
 
 
+def _heading_level(seg) -> int:
+    """标题段的层级：meta.heading_level（epub_reader/PDF 书签）优先，
+    其次 mineru_text_level，缺省 2；夹取 [2, 6]（每文档恰好一个 h1，
+    由单元的 ``# 行`` 保证）。"""
+    raw = seg.meta.get("heading_level") or seg.meta.get("mineru_text_level") or 2
+    try:
+        return max(2, min(int(raw), 6))
+    except (TypeError, ValueError):
+        return 2
+
+
 def _render_markdown(title: str, segments, heading_id: str | None = None) -> str:
     head = f"# {title}" + (f" {{#{heading_id}}}" if heading_id else "")
     lines = [head, ""]
@@ -57,7 +68,7 @@ def _render_markdown(title: str, segments, heading_id: str | None = None) -> str
             if s.source.strip() == title.strip():
                 # 单元标题已在 # 行呈现，heading segment 不重复写入
                 continue
-            lines.append(f"## {s.source}")
+            lines.append(f"{'#' * _heading_level(s)} {s.source}")
             lines.append("")
         else:
             lines.append(s.source)

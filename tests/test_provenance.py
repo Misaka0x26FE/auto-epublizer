@@ -573,3 +573,85 @@ def test_delivery_audit_missing_warning(tmp_path: Path) -> None:
     (store.reviews_dir / "delivery-20260913-000000.md").write_text("# 交付审计\n", encoding="utf-8")
     report2 = orch.qa(store, epub_path=str(epub))
     assert not any(f["code"] == "W_DELIVERY_AUDIT_MISSING" for f in report2["provenance_findings"])
+
+
+def test_provenance_anchor_toc_flat_detection(tmp_path: Path) -> None:
+    """单元链平但正文有子标题而 nav 扁平 → E_TOC_FLAT（断点 5：源文链本身平的书）。"""
+    store, entries = _make_workspace(
+        tmp_path,
+        [
+            {"id": "ch01", "rel": "body/ch01.md", "md": "# 一\n\n## 子节\n\n甲。\n", "level": 1},
+        ],
+        translate=False,
+    )
+    # 模拟旧构建（未挂锚点）→ nav 扁平
+    epub = _build(store, entries)
+    result = audit_provenance(store, entries, epub)
+    assert result.toc_flat
+    assert any(f["code"] == "E_TOC_FLAT" for f in result.findings)
+    assert result.toc_depths_expected == [1, 2]
+    assert result.toc_depths_nav == [1]
+
+
+def test_provenance_anchor_toc_consistent(tmp_path: Path) -> None:
+    """锚点级构建（orchestrator 同款挂接）→ 期望序列与 nav 对账一致，零告警。"""
+    from auto_epublizer.build import subheading_anchors
+
+    store, entries = _make_workspace(
+        tmp_path,
+        [
+            {
+                "id": "ch01",
+                "rel": "body/ch01.md",
+                "md": "# 一\n\n## 子节甲\n\n甲。\n\n### 子节乙\n\n乙。\n",
+                "level": 1,
+            },
+        ],
+        translate=False,
+    )
+    # 与 _render_and_pack 一致：从渲染源 md 提取锚点挂到 entry
+    for e in entries:
+        md = (store.structured_dir / e["rel_path"]).read_text(encoding="utf-8")
+        e["anchors"] = subheading_anchors(md, e["id"])
+    epub = _build(store, entries)
+    result = audit_provenance(store, entries, epub)
+    assert result.toc_depths_expected == [1, 2, 3]
+    assert result.toc_depths_nav == [1, 2, 3]
+    assert not result.toc_flat and not result.toc_depth_mismatch
+    assert not [f for f in result.findings if f["code"] in ("E_TOC_FLAT", "W_TOC_DEPTH")]
+
+
+def test_provenance_bilingual_anchor_exempt(tmp_path: Path) -> None:
+    """双语文档（class="src"，由 align 行渲染、无子标题元素）锚点期望豁免。"""
+    from auto_epublizer.build.html import render_bilingual_document
+    from auto_translator.translation.align import write_align
+
+    store, entries = _make_workspace(
+        tmp_path,
+        [
+            {"id": "ch01", "rel": "body/ch01.md", "md": "# 一\n\n## 子节\n\n甲。\n", "level": 1},
+        ],
+        translate=False,
+    )
+    # 双语构建：内容由 align 行渲染（无子标题元素 → 无锚点条目）
+    rows = [{"seq": 1, "src": "甲。", "tgt": "译文甲。", "note": None}]
+    write_align(store.unit_align_path("ch01"), rows)
+    content = [
+        ("ch01.xhtml", render_bilingual_document("一", rows, lang_src="en", lang_tgt="zh-CN"))
+    ]
+    out = store.output_dir / "book.epub"
+    build_epub(
+        _pub(),
+        entries,
+        content,
+        lang="zh-CN",
+        modified="2026-01-01T00:00:00Z",
+        out_path=out,
+    )
+    # 译文 md 存在（带 ## 子标题）：audit 按双语文档豁免锚点期望
+    tp = store.translation_dir / "body/ch01.md"
+    tp.parent.mkdir(parents=True, exist_ok=True)
+    tp.write_text("# 一\n\n## 子节\n\n译文甲。\n", encoding="utf-8")
+    result = audit_provenance(store, entries, out)
+    assert not result.toc_flat and not result.toc_depth_mismatch
+    assert not [f for f in result.findings if f["code"] in ("E_TOC_FLAT", "W_TOC_DEPTH")]

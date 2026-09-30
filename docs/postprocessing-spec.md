@@ -1,4 +1,4 @@
-<!-- i18n: source=postprocessing-spec.zh.md sha256=401b75a6e7b005b4330699469be064b705db4c71c0138c68e723e17de429d1d8 -->
+<!-- i18n: source=postprocessing-spec.zh.md sha256=207a54eef703fe7dd442d31f85091d11d09fb4d9b1ea1aa798589f3053d86c7b -->
 > **English** | [中文](postprocessing-spec.zh.md)
 
 # Post-Processing Spec: Acceptance and Implementation of Content Integrity / Media / EPUB Structure
@@ -35,7 +35,7 @@ into G0/G5, media into build+G4, structure into G4.
 |---|---|---|
 | Sentence-by-sentence provenance anchor | ✅ `align/<id>.jsonl` each line `{seq,src,tgt,note}` | — |
 | Alignment completeness | ✅ G0 `check_alignment` (seq consecutive, src/tgt non-empty) | — |
-| Structural conservation | ✅ G0 (paragraph blocks/markers/footnotes/headings 1:1) | — |
+| Structural conservation | ✅ G0 (paragraph blocks/markers/footnotes 1:1; per-level heading count reconciliation `heading` — wired 2026-09-29, issue #12, counted into the `g0_structure_open` release hard gate) | — |
 | **Tri-lateral reconciliation** (structured↔translation↔output) | ⬜ | new: per-unit tri-lateral existence, consistent order, no omission/extra |
 | **Media provenance** (image count/order matches the source) | ⬜ | new: translated image references vs source, to prevent lost/extra/misplaced images |
 | **Per-paragraph provenance coverage** | ✅ | every structured paragraph ↔ full align coverage, producing `provenance_coverage` |
@@ -65,7 +65,7 @@ into G0/G5, media into build+G4, structure into G4.
 |---|---|---|
 | epubcheck 0 error | ✅ | — |
 | G4 unpack audit | ✅ mimetype/container/OPF/nav/NCX/landmarks/img dangling/URL/lang/h1 | — |
-| **TOC hierarchy** | ⬜ | nav/NCX currently flat single-level, source h2/h3 do not enter the TOC |
+| **TOC hierarchy** | ✅ | unit-level nesting + in-unit sub-heading anchors (`file.xhtml#anchor`, 2026-09-29); hierarchy is preserved end-to-end via PDF level≥2 bookmarks / heading-segment original levels, backstopped on the translation side by the g0 `heading` gate |
 | **TOC reconciliation** | ⬜ | source TOC extracted by preprocess vs nav entries, missing entries warning |
 | Footnote bidirectional jumping | ⬜ | see epub-template-spec §6 (footnote semanticization) |
 | No heading level skips | ⬜ | h1→h3 skip warning |
@@ -142,9 +142,9 @@ into report.json):
    - ✅ `structure/rebuild.py`: `rebuild_structure` writes `heading_level` into entry (`entry["level"]`)
    - ✅ `orchestrator`/`store`: level stored into `Unit.meta`, `structure_entries` backfilled
    - ✅ `build/__init__.py`: `_render_nav` nests `<ol>`, `_render_ncx` nests `<navPoint>` (including `dtb:depth`)
-   - ✅ TOC hierarchy audit: `E_TOC_FLAT` (source has hierarchy but nav is flat) / `W_TOC_DEPTH` (depth sequence inconsistent)
+   - ✅ TOC hierarchy audit: `E_TOC_FLAT` (source has hierarchy but nav is flat; since 2026-09-29 the expected sequence includes **in-unit sub-heading anchors** — a book whose unit chain is flat but whose body carries `##`/`###` while the TOC is flat is also flagged) / `W_TOC_DEPTH` (depth sequence inconsistent, anchor-level reconciliation)
      ——in `qa/provenance.py` (needs to compare against source level, not audit_epub)
-   - PDF source: a single unit has no hierarchy; relies on the agent splitting and registering level in preprocessing (the CLI provides the mechanism)
+   - PDF source: level≥2 bookmarks are materialized as in-chapter heading segments by `_apply_sub_toc` (three strategies: exact upgrade / substring split / no-match insert); without bookmarks, relies on the agent splitting and registering level in preprocessing
 2. ✅ **Tri-lateral reconciliation**: `qa/provenance.py` (`E_UNIT_MISSING`/`E_UNIT_ORDER`), wired into `qa`
 3. ✅ **Media provenance**: `E_MEDIA_LOST`/`E_MEDIA_ORDER`
 4. ✅ **Per-paragraph coverage**: `provenance_coverage` into report.json (null when there is no translation artifact)

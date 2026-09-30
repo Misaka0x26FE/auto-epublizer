@@ -690,3 +690,127 @@ def test_markdown_to_xhtml_simple_table_columns_after_attr_cleanup() -> None:
     out = markdown_to_xhtml(md)
     assert "<th>Item</th><th>Value</th>" in out
     assert "<td>Foo</td><td>42</td>" in out
+
+
+def test_markdown_to_xhtml_auto_heading_ids() -> None:
+    """level≥2 标题自动稳定 id：缺省 {unit_id}-h{n}；显式 {#id} 优先且计数一致。"""
+    md = "# 章\n\n## 甲\n\n正文。\n\n### 乙 {#custom}\n\n## 丙\n"
+    html = markdown_to_xhtml(md, unit_id="ch01")
+    assert '<h2 id="ch01-h1">' in html
+    assert '<h3 id="custom">' in html
+    assert '<h2 id="ch01-h3">' in html  # 计数含显式 id 者（与扫描器规则一致）
+    # h1 不自动加 id
+    assert "<h1>" in html
+    # unit_id 为空不加 id（旧行为）
+    html2 = markdown_to_xhtml(md)
+    assert "ch01-h" not in html2
+    assert 'id="custom"' in html2
+
+
+def test_subheading_anchors_matches_render() -> None:
+    """subheading_anchors 与渲染产物 id 逐字一致（nav 链接不悬空）。"""
+    from auto_epublizer.build.html import subheading_anchors
+
+    md = "# 章\n\n## 甲节\n\n正文。\n\n### 乙节 {#custom}\n\n#### 深节\n"
+    anchors = subheading_anchors(md, "ch01")
+    assert [(a["level"], a["title"], a["anchor"]) for a in anchors] == [
+        (2, "甲节", "ch01-h1"),
+        (3, "乙节", "custom"),
+        (4, "深节", "ch01-h3"),
+    ]
+    # 渲染产物中存在对应 id
+    html = markdown_to_xhtml(md, unit_id="ch01")
+    for a in anchors:
+        assert f'id="{a["anchor"]}"' in html
+
+
+def _anchor_pub() -> Publication:
+    return Publication(
+        slug="book",
+        meta=PublicationMeta(title="书", language="en", target_language="zh-CN"),
+    )
+
+
+def test_nav_anchor_subheadings(tmp_path: Path) -> None:
+    """锚点级目录：单元内子标题以 file.xhtml#anchor 进 nav/NCX，嵌套渲染。"""
+    pub = _anchor_pub()
+    entries = [
+        {
+            "id": "ch01",
+            "region": "body",
+            "title": "第一章",
+            "level": 1,
+            "anchors": [
+                {"level": 2, "title": "第一节", "anchor": "ch01-h1"},
+                {"level": 3, "title": "小节", "anchor": "ch01-h2"},
+            ],
+        },
+        {"id": "ch02", "region": "body", "title": "第二章", "level": 1},
+    ]
+    content = [
+        ("ch01.xhtml", render_document("第一章", "正文。", lang="zh-CN")),
+        ("ch02.xhtml", render_document("第二章", "正文。", lang="zh-CN")),
+    ]
+    out = build_epub(
+        pub,
+        entries,
+        content,
+        lang="zh-CN",
+        modified="2026-01-01T00:00:00Z",
+        out_path=tmp_path / "a.epub",
+    )
+    with zipfile.ZipFile(out) as zf:
+        nav = zf.read("OEBPS/nav.xhtml").decode("utf-8")
+        ncx = zf.read("OEBPS/toc.ncx").decode("utf-8")
+    # 锚点条目嵌套在第一章 li 内（先于子单元），第二章不受影响
+    inner = nav.split('<a href="ch01.xhtml">')[1].split("</ol>")[0]
+    assert 'href="ch01.xhtml#ch01-h1"' in inner and "第一节" in inner
+    assert 'href="ch01.xhtml#ch01-h2"' in inner and "小节" in inner
+    assert "ch02.xhtml" in nav
+    # NCX 同步：content src 带锚点
+    assert 'src="ch01.xhtml#ch01-h1"' in ncx
+    # dtb:depth 含锚点层级（1→2→3）
+    assert 'dtb:depth" content="3"' in ncx
+
+
+def test_nav_anchor_depth_projection(tmp_path: Path) -> None:
+    """锚点参与 nav_depth 投影：超深锚点不进目录；超深单元的锚点一并剔除。"""
+    pub = _anchor_pub()
+    entries = [
+        {
+            "id": "ch01",
+            "region": "body",
+            "title": "第一章",
+            "level": 1,
+            "anchors": [
+                {"level": 2, "title": "第一节", "anchor": "ch01-h1"},
+                {"level": 4, "title": "深节", "anchor": "ch01-h2"},
+            ],
+        },
+        {
+            "id": "ch02",
+            "region": "body",
+            "title": "乙章",
+            "level": 3,
+            "anchors": [{"level": 2, "title": "不出现", "anchor": "ch02-h1"}],
+        },
+    ]
+    content = [
+        (f"{e['id']}.xhtml", render_document(e["title"], "正文。", lang="zh-CN")) for e in entries
+    ]
+    out = build_epub(
+        pub,
+        entries,
+        content,
+        lang="zh-CN",
+        modified="2026-01-01T00:00:00Z",
+        out_path=tmp_path / "p.epub",
+        nav_depth=2,
+    )
+    with zipfile.ZipFile(out) as zf:
+        nav = zf.read("OEBPS/nav.xhtml").decode("utf-8")
+    assert 'href="ch01.xhtml#ch01-h1"' in nav
+    assert "ch01-h2" not in nav and "深节" not in nav
+    # ch02（level 3 归一化为深度 2）仍在目录，但其锚点深度 3 被投影剔除
+    assert "ch02.xhtml" in nav
+    assert "ch02-h1" not in nav and "不出现" not in nav

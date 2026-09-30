@@ -415,3 +415,67 @@ def test_load_document_pdf_scan_background_not_extracted(tmp_path: Path) -> None
     raw_dir = store.structured_dir / "raw"
     assert read_inserts(raw_dir) == []
     assert not (raw_dir / "media").exists() or not list((raw_dir / "media").iterdir())
+
+
+def test_apply_sub_toc_three_strategies() -> None:
+    """level≥2 书签落段三策略：全等升级 / 子串切分 / 无匹配插入；index 重排。"""
+    from auto_epublizer.ingest.models import KIND_HEADING, KIND_TEXT, SourceSegment
+    from auto_epublizer.ingest.pdf_reader import _apply_sub_toc
+
+    def seg(text: str, page: int) -> SourceSegment:
+        return SourceSegment(index=0, source=text, kind=KIND_TEXT, meta={"source_page": page})
+
+    segs = [
+        seg("Chapter intro.", 1),
+        seg("Section A", 2),  # 全等升级
+        seg("Section B body continues here.", 3),  # 子串切分
+        seg("Unrelated paragraph.", 5),
+    ]
+    subs = [
+        (2, "Section A", 2),
+        (3, "Section B", 2),
+        (4, "Inserted Section", 3),
+    ]
+    _apply_sub_toc(segs, subs)
+    assert [(s.kind, s.source) for s in segs[:4]] == [
+        (KIND_TEXT, "Chapter intro."),
+        (KIND_HEADING, "Section A"),
+        (KIND_HEADING, "Section B"),
+        (KIND_TEXT, "body continues here."),
+    ]
+    inserted = segs[4]
+    assert inserted.kind == KIND_HEADING and inserted.source == "Inserted Section"
+    assert inserted.meta["heading_level"] == 3 and inserted.meta["source_page"] == 4
+    # 升级段携带层级；index 重排为 0..n-1
+    assert segs[1].meta["heading_level"] == 2
+    assert segs[2].meta["heading_level"] == 2
+    assert [s.index for s in segs] == list(range(len(segs)))
+
+
+def test_load_document_pdf_sub_toc(tmp_path: Path) -> None:
+    """多级书签：level≥2 落为章内标题段（导航层级链路打通）。"""
+    import fitz
+
+    pdf_path = tmp_path / "book.pdf"
+    pdf = fitz.open()
+    for i in range(3):
+        page = pdf.new_page()
+        page.insert_text((72, 72), f"Page {i + 1} body text.")
+    pdf.set_toc(
+        [
+            [1, "Chapter One", 2],
+            [2, "Section A", 2],
+            [1, "Chapter Two", 3],
+        ]
+    )
+    pdf.save(str(pdf_path))
+    pdf.close()
+
+    store = init_workspace(pdf_path, workspace_dir=tmp_path / "ws")
+    doc = load_document(pdf_path, store=store)
+    ch01 = doc.units[1]
+    assert ch01.id == "ch01"
+    heads = [s for s in ch01.segments if s.kind == "heading"]
+    assert len(heads) == 1
+    assert heads[0].source == "Section A"
+    assert heads[0].meta["heading_level"] == 2

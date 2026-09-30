@@ -1,4 +1,4 @@
-<!-- i18n: source=AGENTS.zh.md sha256=fc9b2c2a292d213479af649d9cf8dc5e92b1af35e50ff52bfd58982965d40da1 -->
+<!-- i18n: source=AGENTS.zh.md sha256=6fbb07369cfacdb42035a9f9cb3fe877ea708c53a826c51390f5afe1bf4281e2 -->
 > **English** | [中文](AGENTS.zh.md)
 
 # auto-epublizer repository guide (for coding agents developing/maintaining this project)
@@ -351,9 +351,10 @@ multi-column/bookmark chaptering) is in
 1. **Zero-token cheap validation**: alignment completeness, abnormal length ratio
    (<0.30 / >3.0 / empty, advisory), terminology hits (hard), insert-marker/footnote-marker
    conservation (hard, unit-level total comparison, covering both pandoc `[^N]` and
-   sentence-final digit forms), source fidelity (align src ↔ structured bidirectional
-   block-level binding; reverse mismatch = src was rewritten/fabricated, blocks import;
-   forward missing block = advisory).
+   sentence-final digit forms), heading conservation (hard, per-level h1–h6 count
+   reconciliation between structured and translation; issue #12), source fidelity
+   (align src ↔ structured bidirectional block-level binding; reverse mismatch = src was
+   rewritten/fabricated, blocks import; forward missing block = advisory).
 2. **Batch review agent (cheap)**: missing/added/mistranslation/terminology/pronoun; better
    to omit than to over-flag; the JSON protocol must end with `reviewed_segments` +
    `complete:true`, otherwise the whole batch is retried.

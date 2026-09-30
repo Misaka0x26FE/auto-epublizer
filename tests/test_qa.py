@@ -269,6 +269,33 @@ def test_generate_report_structure_blocks_release() -> None:
     assert result.released_reason == "structure_open"
 
 
+def test_generate_report_heading_blocks_release() -> None:
+    """G0 标题守恒违例（issue #12）计入结构门并阻断放行。"""
+    from auto_epublizer.qa import EpubcheckResult
+
+    audit = AuditResult(ok=True)
+    review = {
+        "g1_candidates": 0,
+        "g2_confirmed": 0,
+        "g3_patched": 0,
+        "termination": "clean_confirmed",
+        "rounds": 2,
+    }
+    result = generate_report(
+        "book",
+        audit,
+        EpubcheckResult(available=True, ran=True, errors=0, warnings=0),
+        review=review,
+        g0_flags=[
+            {"unit": "ch01", "check": "heading", "message": "标题层级数量不守恒", "data": {}},
+        ],
+        total_sentences=50,
+    )
+    assert result.g0_structure_open == 1
+    assert result.released is False
+    assert result.released_reason == "structure_open"
+
+
 def test_generate_report_provenance_error_finding_blocks_release() -> None:
     """溯源 error 级发现（E_UNIT_ORDER/E_MEDIA_ORDER/E_INSERT_BAD_SOURCE 等）阻断放行。
 

@@ -14,7 +14,7 @@ from auto_common.config import Config
 from auto_common.workspace import RunStore, init_workspace, read_json
 from auto_translator.translation.align import read_align
 
-from .build import build_epub, collect_media
+from .build import build_epub, collect_media, subheading_anchors
 from .build.html import render_bilingual_document, render_document, slug_file
 from .ingest import load_document
 from .qa import audit_epub, generate_report, run_epubcheck
@@ -295,6 +295,10 @@ def _render_and_pack(
         heading = unit_heading(md_text)
         if heading:
             e["title"] = heading
+        # 锚点级目录（epub-template-spec §3）：与渲染源同一 md 提取子标题锚点
+        # （id 与 markdown_to_xhtml 自动 id 规则一致，nav 链接不悬空）。
+        # 双语文档不挂锚点（由 align 行渲染，无子标题元素）。
+        e["anchors"] = subheading_anchors(md_text, e["id"])
         md_text, unit_media, dropped = collect_media(md_text, media_root)
         if dropped:
             media_dropped[e["id"]] = dropped
@@ -509,19 +513,24 @@ def import_translations(
             errors.append(f"表格形状：{f.message}（{f.data}）")
         # md↔align 全文一致性（交付审计 S1.1）：md 是 build 输入、align 是校验基准，
         # 一侧缺内容（图片段/脚注/段落）即阻断登记——防缺陷直达成品
+        translation_md: str | None = None
         if tgt_path.is_file() and rows:
             from auto_translator.review import md_align_drift
 
-            for d in md_align_drift(tgt_path.read_text(encoding="utf-8"), rows, title=unit.title):
+            translation_md = tgt_path.read_text(encoding="utf-8")
+            for d in md_align_drift(translation_md, rows, title=unit.title):
                 errors.append(f"文档一致性：{d}")
-        for f in g0_unit_flags(rows, glossary, structured_md=structured_md):
+        for f in g0_unit_flags(
+            rows, glossary, structured_md=structured_md, translation_md=translation_md
+        ):
             # 源保真反向违例（src 不在源文中）= 对照表不可信，阻断登记；
-            # 其余硬缺陷类（terminology/marker/footnote）与前向缺块（fidelity）、
-            # advisory（length）收进告警：import 期不阻断，漏修被 G5 放行门兜底
+            # 其余硬缺陷类（terminology/marker/footnote/heading）与前向缺块
+            # （fidelity）、advisory（length）收进告警：import 期不阻断，
+            # 漏修被 G5 放行门兜底
             if f.check == "fidelity" and "不在源文中" in f.message:
                 errors.append(f"源保真：{f.message}（seq={f.data.get('seq')}）")
                 continue
-            if f.check in ("length", "terminology", "marker", "footnote", "fidelity"):
+            if f.check in ("length", "terminology", "marker", "footnote", "heading", "fidelity"):
                 warned.append({"unit": unit.id, "check": f.check, "message": f.message})
         if errors:
             failed.append({"unit": unit.id, "errors": errors})
@@ -622,10 +631,15 @@ def g0_check(store: RunStore, *, unit_id: str | None = None) -> dict[str, Any]:
             if structured_path and structured_path.is_file()
             else None
         )
+        tgt_path = store.translation_dir / rel_path if rel_path else None
+        translation_md = (
+            tgt_path.read_text(encoding="utf-8") if tgt_path and tgt_path.is_file() else None
+        )
         for f in g0_unit_flags(
             rows,
             Glossary(load_glossary_csv(store.analysis_dir / "glossary.csv")),
             structured_md=structured_md,
+            translation_md=translation_md,
         ):
             flags.append({"unit": unit.id, "check": f.check, "message": f.message, "data": f.data})
         for f in _unit_doc_flags(store, rel_path) if rel_path else []:
@@ -652,12 +666,17 @@ def _collect_g0_flags(store: RunStore, config: Config | None = None) -> list[dic
             if structured_path and structured_path.is_file()
             else None
         )
+        tgt_path = store.translation_dir / rel_path if rel_path else None
+        translation_md = (
+            tgt_path.read_text(encoding="utf-8") if tgt_path and tgt_path.is_file() else None
+        )
         for f in g0_unit_flags(
             rows,
             glossary,
             too_short=float(cfg.qc.length_ratio.get("too_short", 0.30)),
             too_long=float(cfg.qc.length_ratio.get("too_long", 3.0)),
             structured_md=structured_md,
+            translation_md=translation_md,
         ):
             flags.append({"unit": unit.id, "check": f.check, "message": f.message, "data": f.data})
         for f in _unit_doc_flags(store, rel_path) if rel_path else []:

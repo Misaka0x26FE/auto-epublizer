@@ -27,7 +27,7 @@ from auto_translator.review.fidelity import norm_text as _norm
 from auto_translator.review.g0 import md_align_drift
 from auto_translator.translation.align import read_align
 
-from ..build import nav_toc_entries, slug_file, toc_depths
+from ..build import nav_depth_sequence, nav_toc_entries, slug_file, subheading_anchors
 from ..ingest.inserts import read_inserts
 from ..structure import skip_empty_unit
 
@@ -267,6 +267,7 @@ def audit_provenance(
     translation_dir = store.translation_dir
 
     # 期望内容集：与 _render_and_pack 的跳过逻辑镜像（译文优先 → 空壳跳过）
+    # 同步提取子标题锚点（与 build 同一 md 输入、同一 subheading_anchors 实现）
     expected: list[dict[str, Any]] = []
     for e in entries:
         rel = e.get("rel_path")
@@ -280,9 +281,10 @@ def audit_provenance(
             continue
         if not md_path.is_file():
             continue
-        if skip_empty_unit(md_path.read_text(encoding="utf-8"), e.get("title") or ""):
+        md_text = md_path.read_text(encoding="utf-8")
+        if skip_empty_unit(md_text, e.get("title") or ""):
             continue
-        expected.append(e)
+        expected.append({**e, "anchors": subheading_anchors(md_text, e["id"])})
     result.units_total = len(expected)
     expected_names = [f"{slug_file(e['id'])}.xhtml" for e in expected]
 
@@ -466,11 +468,19 @@ def audit_provenance(
             "译文文档与对照表不一致（疑缺内容）：" + "；".join(result.align_md_drift[:3]),
         )
 
-    # ── 目录层级：nav 嵌套深度 vs 源文 level 序列（按 nav_depth 投影后对账）──
+    # ── 目录层级：nav 嵌套深度 vs 期望深度序列（单元 + 锚点；按 nav_depth 投影）──
     # 投影深度以产物声明为准（构建期写入 nav.xhtml），配置/参数仅兜底旧产物。
+    # 双语文档由 align 行渲染、无子标题元素——锚点期望豁免（与 build 挂接策略镜像）。
     effective_depth = declared_depth if declared_depth is not None else nav_depth
     name2entry = dict(zip(expected_names, expected, strict=False))
-    spine_entries = [name2entry[n] for n in spine_docs if n in name2entry]
+    spine_entries = []
+    for n in spine_docs:
+        e = name2entry.get(n)
+        if e is None:
+            continue
+        if doc_bilingual.get(n):
+            e = {**e, "anchors": []}
+        spine_entries.append(e)
     nav_candidates = nav_toc_entries(spine_entries, effective_depth)
     nav_names = {f"{slug_file(e['id'])}.xhtml" for e in nav_candidates}
     result.nav_exempt = [
@@ -478,7 +488,7 @@ def audit_provenance(
         for e in spine_entries
         if f"{slug_file(e['id'])}.xhtml" not in nav_names
     ]
-    result.toc_depths_expected = toc_depths(nav_candidates)
+    result.toc_depths_expected = nav_depth_sequence(nav_candidates)
     result.toc_depths_nav = nav_depths
     if (
         result.toc_depths_expected

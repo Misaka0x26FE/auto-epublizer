@@ -93,9 +93,9 @@ def generate_report(
     g3_rounds = int(rev.get("rounds", 0) or 0)
     flags = list(g0_flags or [])
     g0_terminology_open = sum(1 for f in flags if f.get("check") == "terminology")
-    # 结构违例：标记/脚注守恒（S1.2）+ 表格形状/源保真（S4.1/S4.2 预留）
+    # 结构违例：标记/脚注守恒（S1.2）+ 标题守恒（issue #12）+ 表格形状/源保真（S4.1/S4.2 预留）
     g0_structure_open = sum(
-        1 for f in flags if f.get("check") in ("marker", "footnote", "table", "fidelity")
+        1 for f in flags if f.get("check") in ("marker", "footnote", "heading", "table", "fidelity")
     )
     error_rate = (g2_confirmed / total_sentences) if total_sentences else 0.0
 

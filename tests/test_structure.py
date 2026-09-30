@@ -144,3 +144,31 @@ def test_write_structured_writes_front_and_back(tmp_path: Path) -> None:
     assert (store.structured_dir / "frontmatter/preface.md").is_file()
     assert (store.structured_dir / "body/ch01.md").is_file()
     assert (store.structured_dir / "backmatter/afterword.md").is_file()
+
+
+def test_render_markdown_heading_levels() -> None:
+    """结构重建按段原层级写标题（不再一律 ##）；h1 夹取为 h2；单元题去重。"""
+    from auto_epublizer.ingest.models import KIND_HEADING, KIND_TEXT, SourceSegment, SourceUnit
+    from auto_epublizer.structure.rebuild import _render_markdown
+
+    unit = SourceUnit(
+        id="ch01",
+        title="第一章",
+        segments=[
+            SourceSegment(index=0, source="第一章", kind=KIND_HEADING),  # 与单元题同文 → 去重
+            SourceSegment(index=1, source="第一节", kind=KIND_HEADING, meta={"heading_level": 2}),
+            SourceSegment(index=2, source="正文。", kind=KIND_TEXT),
+            SourceSegment(index=3, source="小节", kind=KIND_HEADING, meta={"heading_level": 3}),
+            SourceSegment(index=4, source="高层级", kind=KIND_HEADING, meta={"heading_level": 1}),
+            SourceSegment(
+                index=5, source="MinerU 节", kind=KIND_HEADING, meta={"mineru_text_level": 3}
+            ),
+        ],
+    )
+    md = _render_markdown(unit.title, unit.segments)
+    assert md.startswith("# 第一章\n")
+    assert "## 第一节\n" in md
+    assert "### 小节\n" in md
+    assert "## 高层级\n" in md  # h1 夹取为 h2（每文档恰好一个 h1）
+    assert "### MinerU 节\n" in md  # mineru_text_level 兜底
+    assert "\n## 第一章" not in md  # 单元题不重复写入

@@ -130,4 +130,6 @@ report.json 落盘的计数字段只有 `inserts_missing_files`（进放行门�
   - `E_UNIT_MISSING`：spine 缺单元——检查该单元译文/源文是否存在、是否为空壳被跳过；
   - `E_MEDIA_LOST`/`E_MEDIA_ORDER`：译文丢图或图片顺序变了——对照 `structured/` 原文补齐；
   - 覆盖率 < 1.0：`report.json` 无逐段清单，跑 `g0` 看告警定位漏译段落；
-  - `E_TOC_FLAT`：源文有层级但目录扁平——确认源单元 `level` 已登记（重跑 init/preprocess）。
+  - `E_TOC_FLAT`：源文有层级（单元 level 链或正文子标题）但目录扁平——确认源单元 `level`
+    已登记（重跑 init/preprocess）；单元内子标题锚点自 2026-09-29 起参与期望序列对账，
+    双语文档自动豁免。
