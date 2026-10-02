@@ -78,6 +78,35 @@ def test_classify_duplicate_aux_unit_ids_get_suffix() -> None:
     assert ids[2] == "back-appendix-3"
 
 
+def test_classify_cover_keyword_uses_word_boundary() -> None:
+    """``cover`` 不得命中 ``Covert``（真实事故：Pentagon Papers 的
+    "Chapter 5 The Covert War…" 被误判为封面，与真封面同 id 互相覆盖）。"""
+    doc = SourceDocument(
+        title="B",
+        units=[_unit("Chapter 5 The Covert War and Tonkin Gulf", [_seg("正文")])],
+    )
+    entries = classify_units(doc)
+    assert entries[0].region == "body"
+    assert entries[0].unit_id == "ch01"
+    assert entries[0].rel_path == "body/ch01.md"
+
+
+def test_classify_multiple_covers_get_unique_ids() -> None:
+    """多个封面（front/back cover）必须分配唯一 id/rel_path，否则互相覆盖丢内容。"""
+    doc = SourceDocument(
+        title="B",
+        units=[
+            _unit("Cover", [_seg("front")]),
+            _unit("Back Cover", [_seg("back")]),
+        ],
+    )
+    entries = classify_units(doc)
+    ids = [e.unit_id for e in entries]
+    paths = [e.rel_path for e in entries]
+    assert ids == ["cover", "cover-2"], ids
+    assert paths == ["cover.md", "cover-2.md"], paths
+
+
 def test_strip_page_numbers() -> None:
     segs = [_seg("正文1"), _seg("  12  "), _seg("正文2"), _seg("- 8 -")]
     out = strip_page_numbers(segs)
