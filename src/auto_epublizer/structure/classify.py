@@ -47,11 +47,25 @@ class ClassifiedUnit:
     rel_path: str  # 相对 structured/ 的 md 路径
 
 
+def _keyword_hit(lowered: str, kw: str) -> bool:
+    """判断标题是否命中关键词。
+
+    ASCII 关键词（cover/titlepage/index…）按**词边界**匹配，避免子串误判——
+    如 ``cover`` 不应命中 ``Covert``（真实事故：Pentagon Papers 的
+    "Chapter 5 The Covert War…" 被误判为封面，与真正的封面同 id 而互相覆盖）。
+    含中文的关键词仍按子串匹配（中文无词边界，且关键词本身即完整词）。
+    """
+    if kw.isascii():
+        pattern = r"(?<![a-z0-9])" + re.escape(kw) + r"(?![a-z0-9])"
+        return re.search(pattern, lowered) is not None
+    return kw in lowered
+
+
 def _classify_title(title: str) -> tuple[str, str]:
     lowered = (title or "").lower()
     for keywords, region, kind in _TITLE_KEYWORDS:
         for kw in keywords:
-            if kw in lowered:
+            if _keyword_hit(lowered, kw):
                 return region, kind
     return _REGION_BODY, "chapter"
 
@@ -68,7 +82,13 @@ def classify_units(doc: SourceDocument) -> list[ClassifiedUnit]:
     for unit in doc.units:
         region, kind = _classify_title(unit.title)
         if region == _REGION_COVER:
-            unit_id, rel_path = "cover", "cover.md"
+            # 封面也可能有多个（front/back cover 等）：与辅文一致地加序号，
+            # 否则多个覆盖单元共用 id/rel_path 会互相覆盖并丢内容。
+            aux_counts[(region, kind)] = aux_counts.get((region, kind), 0) + 1
+            n = aux_counts[(region, kind)]
+            suffix = "" if n == 1 else f"-{n}"
+            unit_id = f"cover{suffix}"
+            rel_path = f"cover{suffix}.md"
         elif region == _REGION_FRONT:
             aux_counts[(region, kind)] = aux_counts.get((region, kind), 0) + 1
             n = aux_counts[(region, kind)]
