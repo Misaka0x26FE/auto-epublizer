@@ -155,7 +155,8 @@ def audit_epub(path: str | Path, *, nav_exempt: set[str] | None = None) -> Audit
         for ncx in (n for n in names if n.endswith(".ncx")):
             content = zf.read(ncx).decode("utf-8")
             for src in re.findall(r'<content src="([^"]+)"', content):
-                full = (Path(ncx).parent / src).as_posix()
+                # NCX src 可带 #fragment；解析 zip 成员时须剥离片段
+                full = (Path(ncx).parent / src.split("#", 1)[0]).as_posix()
                 if full not in names:
                     result.add("error", "E_NCX_HREF", f"NCX content src 无法解析：{src}")
 
