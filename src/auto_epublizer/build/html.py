@@ -38,6 +38,8 @@ _FN_DEF = re.compile(r"^\[\^([^\]\s]+)\]:\s*(.*)$")
 # - 容器 div：`:::`、`::: gallerytext`、`::: {.thumb …}`、`-   ::: {…}`
 # - 纯反斜杠装饰行：`\`
 _CONTAINER_LINE = re.compile(r"^\s*-*\s*:+\s*(?:\{[^}]*\}|[a-zA-Z][a-zA-Z ]*)?\s*$")
+# 容器行上的显式锚点 id（::: {#page0026} / ::: {#calibre_pb_10}）
+_CONTAINER_ID_RE = re.compile(r"^\s*-*\s*:+\s*\{#([\w:.-]+)\}\s*$")
 _SLASH_LINE = re.compile(r"^\s*\\\s*$")
 
 
@@ -131,6 +133,11 @@ def _clean_pandoc_markers(md: str) -> str:
     for line in md.splitlines():
         s = line.strip()
         if _CONTAINER_LINE.match(s) or _SLASH_LINE.match(s):
+            # 带 {#id} 的容器行承载源文档的页码/位置锚点（如 ::: {#page0026}）：
+            # 删除栅栏本身，但保留一个等价的内联锚点，供目录与交叉引用跳转。
+            m_anchor = _CONTAINER_ID_RE.match(s)
+            if m_anchor:
+                cleaned.append(f"[]{{#{m_anchor.group(1)}}}")
             continue
         line = line.replace("\\>\\>", "——").replace("\\>", "——")
         cleaned.append(line)
