@@ -152,8 +152,10 @@ def _render_img(alt: str, src: str) -> str:
     # 空 alt 兜底为文件名（纯计算，不 IO）：MediaWiki 系源站图片常无 alt，
     # 空 alt 会被审计 W_IMG_NO_ALT 标记；agent 可在译文里显式写 alt 覆盖。
     alt = alt.strip() or _fallback_alt(src)
+    # 调用方契约：_render_img 收到的 alt/src 已经过 escape()（与 _inline 的文本同源），
+    # 此处不再转义，避免 &quot; 等实体被二次转义（&amp;quot;）。
     return (
-        f'<img src="{escape(src, quote=True)}" alt="{escape(alt, quote=True)}" '
+        f'<img src="{src}" alt="{alt}" '
         'style="max-width:100%;height:auto;display:block;margin:1em auto;"/>'
     )
 
@@ -182,8 +184,10 @@ def _inline(text: str) -> str:
     def _link(m: re.Match[str]) -> str:
         label, href = m.group(1), m.group(2).strip()
         if _DANGEROUS_URL.match(href):
-            return escape(label)
-        return f'<a href="{escape(href, quote=True)}">{escape(label)}</a>'
+            return label
+        # 注意：_inline 的所有调用方传入的文本已先经 escape()，label 不得再次转义，
+        # 否则 &quot; 等实体会被二次转义成 &amp;quot; 直接显示给读者。
+        return f'<a href="{escape(href, quote=True)}">{label}</a>'
 
     # 正文导航锚点 []{#id} → <a id="id"></a>（id 已由白名单正则约束，无需转义）
     text = _ANCHOR_INLINE_RE.sub(r'<a id="\1"></a>', text)
@@ -342,7 +346,7 @@ def markdown_to_xhtml(md: str, *, unit_id: str = "", fn_state: FootnoteState | N
         if m_img:
             # 图注段落：figure + figcaption（alt 即图注）
             out.append(
-                f'<figure class="imgfig">{_render_img(m_img.group(1), m_img.group(2))}'
+                f'<figure class="imgfig">{_render_img(escape(m_img.group(1), quote=True), escape(m_img.group(2), quote=True))}'
                 f"<figcaption>{escape(m_img.group(1))}</figcaption></figure>"
             )
             continue
