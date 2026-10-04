@@ -179,6 +179,29 @@ def _split_heading_id(text: str) -> tuple[str, str | None]:
     return text[: m.start()].rstrip(), m.group(1)
 
 
+# 目录（nav）标签用的行内 markdown 剥离：nav 标签是纯文本，不经 _inline 渲染，
+# 故须在此去掉强调与行内锚点，否则读者在目录里看到字面 `**`、`[]{#…}`
+# （Pentagon Papers 全书 83% 标题行含 markdown；W_RESIDUE 豁免 nav.xhtml）。
+_LABEL_ANCHOR = re.compile(r"\{[^{}]*\}")  # 裸 {…} 属性块（含 {#id}）
+# pandoc 行内属性形态 `[]{#id}` / `[文本]{attrs}`：先吃掉方括号包裹再剥属性
+_LABEL_INLINE_ATTR = re.compile(r"\[([^\]]*)\]\{[^{}]*\}")
+_LABEL_IMG = re.compile(r"!\[([^\]]*)\]\([^)]*\)")  # 图片 → 取 alt
+_LABEL_LINK = re.compile(r"\[([^\]]*)\]\([^)]*\)")  # 链接 → 取标签文本
+_LABEL_EMPH = re.compile(r"(\*{1,3}|_{1,3})(.+?)\1", re.S)
+_LABEL_CODE = re.compile(r"`([^`]*)`")
+
+
+def plain_label(text: str) -> str:
+    """把标题/条目标题降为纯文本（用于 nav 标签等不渲染 markdown 的场合）。"""
+    out = _LABEL_IMG.sub(r"\1", text or "")
+    out = _LABEL_LINK.sub(r"\1", out)
+    out = _LABEL_CODE.sub(r"\1", out)
+    out = _LABEL_INLINE_ATTR.sub(r"\1", out)
+    out = _LABEL_EMPH.sub(r"\2", out)
+    out = _LABEL_ANCHOR.sub("", out)
+    return re.sub(r"\s+", " ", out).strip()
+
+
 def _inline(text: str) -> str:
     """行内 markdown → XHTML；危险 URL（javascript:/data:）降级为纯文本。"""
 
@@ -457,7 +480,7 @@ def subheading_anchors(md: str, unit_id: str) -> list[dict[str, Any]]:
             continue
         n += 1
         title, hid = _split_heading_id(m.group(2))
-        title = title.strip()
+        title = plain_label(title)
         if title:
             anchors.append({"level": level, "title": title, "anchor": hid or f"{unit_id}-h{n}"})
     return anchors
