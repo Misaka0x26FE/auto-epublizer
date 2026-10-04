@@ -743,6 +743,31 @@ def test_subheading_anchors_matches_render() -> None:
         assert f'id="{a["anchor"]}"' in html
 
 
+def test_subheading_anchors_title_is_plain_text() -> None:
+    """nav 锚点标题须是纯文本：剥离 `**`/`*` 强调与 `[]{#…}` 行内锚点。
+
+    回归：Pentagon Papers 的 nav.xhtml 把子标题原文当标签渲染，读者在目录里
+    看到字面 `**杜鲁门与艾森豪威尔时期：**`、`[]{#page_4}***第 1 章***`
+    （全书 83% 标题行含 markdown）。audit 的 W_RESIDUE 检查豁免 nav.xhtml，
+    因此此前无告警。
+    """
+    from auto_epublizer.build.html import subheading_anchors
+
+    md = (
+        "# 第 1 章 甲\n\n"
+        "## **子标题甲**\n\n"
+        "### []{#page_4}***第 1 章***\n\n"
+        "#### []{#h3}**诉讼经过概要**\n\n"
+        "##### *斜体节*\n\n"
+        "###### `代码`节\n"
+    )
+    anchors = subheading_anchors(md, "ch01")
+    titles = [a["title"] for a in anchors]
+    assert titles == ["子标题甲", "第 1 章", "诉讼经过概要", "斜体节", "代码节"]
+    # 锚点（nav href 目标）不受标题剥离影响
+    assert [a["anchor"] for a in anchors] == ["ch01-h1", "ch01-h2", "ch01-h3", "ch01-h4", "ch01-h5"]
+
+
 def _anchor_pub() -> Publication:
     return Publication(
         slug="book",
