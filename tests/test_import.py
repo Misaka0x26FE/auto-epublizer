@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 
 from auto_epublizer import orchestrator as orch
+from auto_translator.glossary import load_glossary_csv
 
 
 def _workspace(tmp_path: Path):
@@ -136,6 +137,28 @@ def test_import_terms_option_proposes_new_entries(tmp_path: Path) -> None:
     orch.import_translations(store, terms_path=str(terms_file))
     content = (store.analysis_dir / "glossary.csv").read_text(encoding="utf-8")
     assert "criticize" in content and "批评" in content
+
+
+def test_import_terms_preserves_aliases(tmp_path: Path) -> None:
+    """回归：`import --terms` 曾经把 aliases/gender/reading 整列丢掉。
+
+    G0 术语命中读的是落盘的 glossary.csv；别名一丢，扫描件的 OCR 损坏变体
+    （ü→ii 之类）永远进不了候选集，g0 就会「假绿」。
+    """
+    store = _workspace(tmp_path)
+    _write_agent_products(store)
+    store.analysis_dir.mkdir(parents=True, exist_ok=True)
+    terms_file = tmp_path / "new_terms.csv"
+    terms_file.write_text(
+        "source,target,type,aliases,gender,reading,status,note\n"
+        'Gruppenführer,党卫队集团领袖,org,"Gruppenfiihrer|Gruppenfuhrer",male,,seed,OCR 变体\n',
+        encoding="utf-8",
+    )
+    orch.import_translations(store, terms_path=str(terms_file))
+    loaded = load_glossary_csv(store.analysis_dir / "glossary.csv")
+    entry = next(e for e in loaded if e.source == "Gruppenführer")
+    assert entry.aliases == ["Gruppenfiihrer", "Gruppenfuhrer"]
+    assert entry.gender == "male"
 
 
 def test_g0_check_reports_flags(tmp_path: Path) -> None:

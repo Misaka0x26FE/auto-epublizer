@@ -35,6 +35,51 @@ def test_init_and_status(tmp_path: Path) -> None:
     assert '"status": "split"' in result.output
 
 
+def test_status_json_is_parseable_with_newline_bearing_titles(tmp_path: Path) -> None:
+    """回归：`status --json` 曾被 Rich 按终端宽度硬换行，输出不是合法 JSON。
+
+    长中文书名或含内嵌换行的单元标题必然触发，json.loads 报 Invalid control
+    character —— 而 --json 的唯一用途就是给机器读。
+    """
+    src = tmp_path / "book.md"
+    src.write_text("# 第一章\n\n正文。\n", encoding="utf-8")
+    ws = tmp_path / "ws"
+    _invoke("init", str(src), "--workspace", str(ws))
+
+    pub_path = ws / "book" / "publication.json"
+    pub = json.loads(pub_path.read_text(encoding="utf-8"))
+    # 故意塞入长中文书名 + 含换行的单元标题（真实 PDF 抽取的常见形态）
+    pub["meta"]["title"] = (
+        "强制劳动与灭绝：党卫队的经济帝国——奥斯瓦尔德·波尔与党卫队经济管理总局（1933—1945）"
+    )
+    pub["units"][0]["title"] = (
+        "1. Allocation of Inmates to the Central Construction\nOffice\nfor Work"
+    )
+    pub_path.write_text(json.dumps(pub, ensure_ascii=False, indent=2), encoding="utf-8")
+
+    result = _invoke("status", "--workspace", str(ws), "--json")
+    data = json.loads(result.output)  # 解析失败即回归
+    assert data["preprocessing_complete"] is False
+    assert "1945" in data["title"]
+    assert "\n" in data["units"][0]["title"]
+
+
+def test_status_json_not_mangled_by_rich_markup(tmp_path: Path) -> None:
+    """回归：console.print 还会把书名里的 ``[bold]`` 之类当 Rich 标记解析掉。"""
+    src = tmp_path / "book.md"
+    src.write_text("# 第一章\n\n正文。\n", encoding="utf-8")
+    ws = tmp_path / "ws"
+    _invoke("init", str(src), "--workspace", str(ws))
+
+    pub_path = ws / "book" / "publication.json"
+    pub = json.loads(pub_path.read_text(encoding="utf-8"))
+    pub["meta"]["title"] = "序言 [bold]与[/bold] 附录"
+    pub_path.write_text(json.dumps(pub, ensure_ascii=False, indent=2), encoding="utf-8")
+
+    data = json.loads(_invoke("status", "--workspace", str(ws), "--json").output)
+    assert data["title"] == "序言 [bold]与[/bold] 附录"
+
+
 def test_convert_end_to_end(tmp_path: Path) -> None:
     src = tmp_path / "book.md"
     src.write_text("# 第一章\n\n正文。\n", encoding="utf-8")

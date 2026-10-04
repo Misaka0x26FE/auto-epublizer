@@ -110,7 +110,11 @@ def status(
     store = _store_from(workspace, cfg)
     data = orch.status(store)
     if json_output:
-        console.print(json.dumps(data, ensure_ascii=False, indent=2))
+        # 用内置 print 而非 console.print：Rich 会按终端宽度硬换行，把真实换行插进
+        # JSON 字符串内部（长书名/含换行的单元标题必然触发，json.loads 报
+        # Invalid control character）；同时 Rich 还会把 "[bold]" 之类标记当语法解析。
+        # --json 的契约是「逐字节可被 json.loads 解析」，故绕开 Rich。
+        print(json.dumps(data, ensure_ascii=False, indent=2))
         return
     console.print(f"工作区：{store.dir}")
     console.print(f"  书名：{data['title']}（{data['slug']}）")
