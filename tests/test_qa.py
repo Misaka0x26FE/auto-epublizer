@@ -638,6 +638,36 @@ def test_audit_asterisk_note_symbols_not_residue(tmp_path: Path) -> None:
     assert "W_RESIDUE" in codes
 
 
+def test_audit_backslash_escape_residue(tmp_path: Path) -> None:
+    """反斜杠转义未脱（`\\(1\\)` / `p\\. cm.` / `\\[编辑插入\\]`）应报 W_RESIDUE。
+
+    回归：四本书成品出现成片可见反斜杠（合计 1000+ 处），却长期无告警——
+    根因是 _MD_RESIDUE 不含该形态，检测与渲染两层同时漏。
+    """
+    out = _make_epub(tmp_path)
+
+    def _inject(text: str) -> Path:
+        target = out.with_name(f"inject-esc-{abs(hash(text))}.epub")
+        with zipfile.ZipFile(out) as zin, zipfile.ZipFile(target, "w") as zout:
+            for item in zin.infolist():
+                data = (
+                    zin.read(item.filename).replace(b"<h1>", f"<h1>{text}</h1>".encode(), 1)
+                    if item.filename.endswith("front-preface.xhtml")
+                    else zin.read(item.filename)
+                )
+                zout.writestr(item, data)
+        return target
+
+    for leaked in ("\\(1\\) 法国继续承认责任。", "p\\. cm.", "听见\\[一年后\\]的巨响"):
+        codes = {f.code for f in audit_epub(_inject(leaked)).findings}
+        assert "W_RESIDUE" in codes, leaked
+
+    # 脱转义后的成品、以及路径里的反斜杠形态，都不该误报
+    for clean in ("(1) 法国继续承认责任。", "p. cm.", "听见[一年后]的巨响"):
+        codes = {f.code for f in audit_epub(_inject(clean)).findings}
+        assert "W_RESIDUE" not in codes, clean
+
+
 def test_audit_footnote_backlink_ok_and_missing(tmp_path: Path) -> None:
     """P2 audit：脚注回链——正常 noteref/footnote 无告警；删回链 → E_FN_BACKLINK。"""
     from auto_epublizer.build.html import FootnoteState
