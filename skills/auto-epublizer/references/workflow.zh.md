@@ -41,7 +41,8 @@ doctor（能力自检：工具链 + 自报 multimodal/search）
   -> g0        （静态校验：术语命中=真实缺陷须清零；长度比=advisory）
   -> review    （QC G1–G3，agent 语义审校后写 reviews/review-<ts>/result.json）
   -> 统一库回写（knowledge import：工作区已确认术语合并进统一库并自动 git 提交；
-                 条件允许时 knowledge push 推送托管平台跨设备同步）
+                 knowledge push 推送远端跨设备同步；远端地址已固化为公共库
+                 auto-epublizer-knowledge，init 无需 --remote）
   -> build     （EPUB 封装 -> output/）
   -> qa        （epubcheck + 解包审计 + G5 放行 -> report.json）
   -> delivery  （交付审计：按 references/delivery.md 全量校验 + 写
@@ -96,7 +97,10 @@ auto-epublizer meta [--translator X] [--publisher P] [--date D] [--rights R] [--
 auto-epublizer import [--unit <id>] [--terms <csv>] [--reviewed] [--workspace <dir>]
 
 # 统一术语库/知识库（跨工作区持久化 + git 持续维护；默认 ~/Documents/auto-epublizer）
-auto-epublizer knowledge init [--remote <url>] [--push] [--dir <dir>]  # 建骨架 + git 初始化
+#   远端已固化为公共库 https://github.com/Misaka0x26FE/auto-epublizer-knowledge
+#   （内容 CC BY-SA 4.0）；init 无需 --remote，自建库/fork 用 --remote 或
+#   AUTO_EPUBLIZER_REMOTE / paths.knowledge_remote 覆盖
+auto-epublizer knowledge init [--remote <url>] [--push] [--dir <dir>]  # 建骨架 + git 初始化（写 CC BY-SA 4.0 LICENSE）
 auto-epublizer knowledge export [--workspace <dir>] [--src-lang en]    # 同语对已确认术语 → preprocessing/terms.csv
 auto-epublizer knowledge import [--workspace <dir>] [--src-lang en]    # 工作区 glossary.csv → 统一库（合并 + 自动提交）
 auto-epublizer knowledge status [--json] | push [--remote <name|url>] | path

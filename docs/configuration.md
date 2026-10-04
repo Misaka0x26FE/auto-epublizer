@@ -1,4 +1,4 @@
-<!-- i18n: source=configuration.zh.md sha256=e2b378fd8b3e52e3fe1b628c604de2ebed55db82f1a2788b8a800dfc640c3104 -->
+<!-- i18n: source=configuration.zh.md sha256=ea34e9e8eb136cb37f7a6d5405b47c27d77109432b38a4646d335fe0ffbc19fb -->
 > **English** | [中文](configuration.zh.md)
 
 # Configuration reference (target `config.yaml` schema)
@@ -53,8 +53,10 @@ paths:
   workspaces_dir: .       # workspace root directory (one <book-slug>/ per book)
   knowledge_dir: ""       # unified terminology/knowledge store; empty = default ~/Documents/auto-epublizer
                           # override: --dir > AUTO_EPUBLIZER_HOME > this field > default
-  knowledge_remote: ""    # unified store git remote (cross-device sync); empty = not auto-configured
-                          # override: --remote > AUTO_EPUBLIZER_REMOTE > this field
+  knowledge_remote: ""    # unified store git remote (cross-device sync + public knowledge base);
+                          #   empty = use the built-in default
+                          #   https://github.com/Misaka0x26FE/auto-epublizer-knowledge.git
+                          # override: --remote > AUTO_EPUBLIZER_REMOTE > this field > default
 
 # ── output ───────────────────────────────────────────────────
 output:
@@ -71,9 +73,20 @@ output:
 
 A cross-workspace persistent terminology store and knowledge base (maintained by the agent
 itself, avoiding repeated research and repeated arbitration). The directory defaults to
-`~/Documents/auto-epublizer/` and is itself a **git repository** (private by default; push
-to a hosting platform for cross-device sync when possible). See
-`auto-epublizer knowledge --help`:
+`~/Documents/auto-epublizer/` and is itself a **git repository**. The remote address is
+**built into the software**:
+
+- Default remote: `https://github.com/Misaka0x26FE/auto-epublizer-knowledge` — a **public**
+  repository; the constant is `auto_common.config.DEFAULT_KNOWLEDGE_REMOTE`.
+- That repository's content is licensed under
+  **[CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/)**: anyone may subscribe
+  read-only, reuse with attribution, and redistribute adaptations under the same license.
+- Override order: `--remote` > `AUTO_EPUBLIZER_REMOTE` > `paths.knowledge_remote` > the
+  default above (use this for a self-hosted store or a fork).
+
+Because the address is built in, `knowledge init` configures the remote **without requiring
+`--remote`**, which removes the "remote not found / each device configures its own" failure
+mode. See `auto-epublizer knowledge --help`:
 
 - `knowledge path` resolves the directory; `knowledge init [--remote URL] [--push]` creates
   the skeleton + git initialization;
@@ -82,6 +95,12 @@ to a hosting platform for cross-device sync when possible). See
 - `knowledge import --workspace <ws>` merges the workspace `analysis/glossary.csv` into the
   unified store and auto-commits;
 - `knowledge status` / `knowledge push` show statistics and push.
+
+Read-only subscription (reuse without maintaining):
+
+```bash
+git clone https://github.com/Misaka0x26FE/auto-epublizer-knowledge.git
+```
 
 When the source language is `auto` (`publication.json.meta.language` not written back),
 `import`/`export` require `--src-lang` to declare the source language explicitly, so the

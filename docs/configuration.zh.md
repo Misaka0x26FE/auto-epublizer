@@ -49,8 +49,9 @@ paths:
   workspaces_dir: .       # 工作区根目录（每本书一个 <book-slug>/）
   knowledge_dir: ""       # 统一术语库/知识库目录；空=默认 ~/Documents/auto-epublizer
                           # 覆盖：--dir > 环境变量 AUTO_EPUBLIZER_HOME > 本项 > 默认
-  knowledge_remote: ""    # 统一库 git 远端（跨设备同步）；空=不自动配置（agent 用 gh 建私有仓）
-                          # 覆盖：--remote > 环境变量 AUTO_EPUBLIZER_REMOTE > 本项
+  knowledge_remote: ""    # 统一库 git 远端（跨设备同步 + 公共知识库）；空=用已固化默认值
+                          #   https://github.com/Misaka0x26FE/auto-epublizer-knowledge.git
+                          # 覆盖：--remote > 环境变量 AUTO_EPUBLIZER_REMOTE > 本项 > 默认
 
 # ── 输出 ─────────────────────────────────────────────────────
 output:
@@ -66,13 +67,28 @@ output:
 ## 统一术语库 / 知识库
 
 跨工作区的持久化术语表与知识库（由 agent 自行维护，避免重复考据与重复裁决），目录默认为
-`~/Documents/auto-epublizer/`，本身是一个 **git 仓库**（默认私有；条件允许时推送托管平台
-跨设备同步）。相关命令见 `auto-epublizer knowledge --help`：
+`~/Documents/auto-epublizer/`，本身是一个 **git 仓库**。远端地址**已固化在软件里**：
+
+- 默认远端：`https://github.com/Misaka0x26FE/auto-epublizer-knowledge`（**公共**仓库）
+  —— 常量 `auto_common.config.DEFAULT_KNOWLEDGE_REMOTE`；
+- 该仓库内容采用 **[CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/)**：
+  他人可只读订阅、按位署名、改编后再发布（须以相同许可证共享）；
+- 覆盖顺序：`--remote` > 环境变量 `AUTO_EPUBLIZER_REMOTE` > `paths.knowledge_remote` >
+  上述默认值（自建库 / fork 走这条）。
+
+因为地址已固化，`knowledge init` **无需手填 `--remote`** 即可配好远端，避免出现「远端找不到 /
+各设备各配一份」的访问不到问题。相关命令见 `auto-epublizer knowledge --help`：
 
 - `knowledge path` 解析目录；`knowledge init [--remote URL] [--push]` 建骨架 + git 初始化；
 - `knowledge export --workspace <ws>` 把同语对已确认术语播种到 `preprocessing/terms.csv`；
 - `knowledge import --workspace <ws>` 把工作区 `analysis/glossary.csv` 合并进统一库并自动提交；
 - `knowledge status` / `knowledge push` 查看统计与推送。
+
+只读订阅（不维护只复用）：
+
+```bash
+git clone https://github.com/Misaka0x26FE/auto-epublizer-knowledge.git
+```
 
 源语言为 `auto`（`publication.json.meta.language` 未回写）时，`import`/`export` 需用
 `--src-lang` 显式声明源语言，以保证统一库按语言对隔离。

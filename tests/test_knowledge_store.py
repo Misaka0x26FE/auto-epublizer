@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 from typer.testing import CliRunner
 
-from auto_common.config import Config
+from auto_common.config import DEFAULT_KNOWLEDGE_REMOTE, Config
 from auto_epublizer import knowledge
 from auto_epublizer import orchestrator as orch
 from auto_epublizer.cli import app
@@ -64,12 +64,28 @@ def test_resolve_store_dir_priority(tmp_path: Path, monkeypatch: pytest.MonkeyPa
 
 def test_resolve_remote_priority(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("AUTO_EPUBLIZER_REMOTE", raising=False)
-    assert knowledge.resolve_remote(None) == ""
+    # 末位兜底 = 固化的公共知识库地址（不再为空，避免「访问不到」）
+    assert knowledge.resolve_remote(None) == DEFAULT_KNOWLEDGE_REMOTE
+    assert knowledge.resolve_remote(Config()) == DEFAULT_KNOWLEDGE_REMOTE
     cfg = Config.model_validate({"paths": {"knowledge_remote": "git@cfg:r.git"}})
     assert knowledge.resolve_remote(cfg) == "git@cfg:r.git"
     monkeypatch.setenv("AUTO_EPUBLIZER_REMOTE", "git@env:r.git")
     assert knowledge.resolve_remote(cfg) == "git@env:r.git"
     assert knowledge.resolve_remote(cfg, override="git@cli:r.git") == "git@cli:r.git"
+
+
+def test_default_knowledge_remote_is_public_github_repo() -> None:
+    """固化地址必须是公共知识库仓库（避免再出现「远端配错/找不到」）。"""
+    assert DEFAULT_KNOWLEDGE_REMOTE.startswith("https://github.com/")
+    assert "auto-epublizer-knowledge" in DEFAULT_KNOWLEDGE_REMOTE
+
+
+def test_config_default_knowledge_remote() -> None:
+    """paths.knowledge_remote 默认即公共地址（无需手填 --remote）。"""
+    assert Config().paths.knowledge_remote == DEFAULT_KNOWLEDGE_REMOTE
+    # 仍可显式覆盖为空串以外的自建库
+    custom = Config.model_validate({"paths": {"knowledge_remote": "https://example.com/k.git"}})
+    assert knowledge.resolve_remote(custom) == "https://example.com/k.git"
 
 
 # ── git 维护 ─────────────────────────────────────────────────────────────────
@@ -85,6 +101,24 @@ def test_knowledge_init_creates_skeleton_and_git(tmp_path: Path) -> None:
         assert (store_dir / name).is_file()
     assert (store_dir / "knowledge" / "INDEX.md").is_file()
     assert knowledge.is_git_repo(store_dir)
+
+
+@pytest.mark.skipif(not knowledge.git_available(), reason="git 不可用")
+def test_knowledge_init_writes_cc_by_sa_license(tmp_path: Path) -> None:
+    """新建统一库必须带 CC BY-SA 4.0 LICENSE 与许可证说明（公共发布的前提）。"""
+    store_dir = tmp_path / "store"
+    knowledge.knowledge_init(store_dir)
+    lic = store_dir / "LICENSE"
+    assert lic.is_file()
+    text = lic.read_text(encoding="utf-8")
+    # canonical 全文特征：标题 + 许可证选择 + 两个条件（署名/相同方式共享）
+    assert "Attribution-ShareAlike 4.0 International" in text
+    assert "Creative Commons Attribution-ShareAlike 4.0" in text
+    assert len(text) > 15_000, "LICENSE 疑似不完整，应为 canonical 全文"
+    # README 声明许可证并区分「内容 CC BY-SA」与「软件 AGPL」
+    readme = (store_dir / "README.md").read_text(encoding="utf-8")
+    assert "CC BY-SA 4.0" in readme
+    assert "AGPL-3.0" in readme
     assert knowledge.git_state(store_dir)["dirty"] is False
     # 幂等：重复 init 不报错，且骨架不被覆盖
     (store_dir / "README.md").write_text("custom", encoding="utf-8")
@@ -321,6 +355,9 @@ def test_cli_knowledge_path_and_init(tmp_path: Path) -> None:
     result = runner.invoke(app, ["knowledge", "init", "--dir", str(store_dir)])
     assert result.exit_code == 0, result.output
     assert "统一库已就绪" in result.output
+    # 未传 --remote 也应自动配好固化的公共知识库地址
+    assert DEFAULT_KNOWLEDGE_REMOTE in result.output
+    assert (store_dir / "LICENSE").is_file()
 
     result = runner.invoke(app, ["knowledge", "status", "--dir", str(store_dir), "--json"])
     assert result.exit_code == 0, result.output

@@ -1,4 +1,4 @@
-<!-- i18n: source=AGENTS.zh.md sha256=6fbb07369cfacdb42035a9f9cb3fe877ea708c53a826c51390f5afe1bf4281e2 -->
+<!-- i18n: source=AGENTS.zh.md sha256=fbb0c9fe705d966384b28d11aef039a8299c112bb9c4406c3ed79bd95d2ac39b -->
 > **English** | [中文](AGENTS.zh.md)
 
 # auto-epublizer repository guide (for coding agents developing/maintaining this project)
@@ -91,7 +91,8 @@ auto-epublizer meta [--translator OpenCode] [--publisher ...] [--date ...] [--ri
 #    (overview/global/per-unit/key points; context may also come from preprocessing/)
 
 # 4.5 Unified terminology/knowledge store (cross-workspace persistent, maintained by the
-#     agent itself; default ~/Documents/auto-epublizer, a private git repository, pushable
+#     agent itself; default ~/Documents/auto-epublizer, a git repository whose remote is
+#     built in as the public store auto-epublizer-knowledge under CC BY-SA 4.0, pushable
 #     across devices via knowledge push): run knowledge path/init first, then seed the
 #     same-language-pair confirmed terms (add --src-lang <code> when the source is auto)
 auto-epublizer knowledge export --workspace .   # → preprocessing/terms.csv (agent reviews, then import --terms)
@@ -247,10 +248,23 @@ per `publication.json`); `publication.json` and `glossary.db` are the authoritat
 
 **Unified terminology/knowledge store (outside the workspace)**: default
 `~/Documents/auto-epublizer/` (configurable via `paths.knowledge_dir`), persistent across
-workspaces, maintained by the agent itself, and itself a **private git repository**
-(`knowledge push` syncs across devices); it flows both ways with the workspace's
-`analysis/glossary.csv` via `knowledge export` (seed) / `knowledge import` (write-back)
-(see "Standard workflow" 4.5 / 6.5).
+workspaces, maintained by the agent itself, and itself a **git repository**. The remote
+address is **built into the software** (`auto_common.config.DEFAULT_KNOWLEDGE_REMOTE`):
+
+- Default remote = the public repository
+  `https://github.com/Misaka0x26FE/auto-epublizer-knowledge`; `knowledge init` configures it
+  **without requiring `--remote`** (removes the "remote not found / each device configures its
+  own" failure mode);
+- That repository's **content is licensed under CC BY-SA 4.0** (the terminology table is
+  term mappings, `knowledge/` holds agent-written criteria and style notes; no book text);
+  anyone may `git clone` it read-only and reuse it;
+- Override order: `--remote` > `AUTO_EPUBLIZER_REMOTE` > `paths.knowledge_remote` > default;
+- `knowledge push` syncs across devices; it flows both ways with the workspace's
+  `analysis/glossary.csv` via `knowledge export` (seed) / `knowledge import` (write-back)
+  (see "Standard workflow" 4.5 / 6.5).
+
+> License boundary: **knowledge store content = CC BY-SA 4.0**; **this project's code =
+> AGPL-3.0**. The two do not overlap.
 
 **Preprocessing division of labour**: the `preprocess` command produces only zero-token
 facts (sniff/metadata/TOC/health/size); **approach decisions and layered understanding are
