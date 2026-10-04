@@ -343,6 +343,25 @@ def test_markdown_to_xhtml_cleans_pandoc_markers() -> None:
     assert "&gt;" not in out2
 
 
+def test_markdown_to_xhtml_cleans_digit_and_anchor_container_fences() -> None:
+    """容器栅栏类名含数字（::: bq1 / ::: part1）与紧邻锚点（:::[]{#id}）也应清理。
+
+    回归：Pentagon Papers 成品把 `::: bq1` / `::: part1` / `:::[]{#GBS.0829.04}`
+    当正文输出（audit W_RESIDUE 告警）。根因是类名正则 `[a-zA-Z][a-zA-Z ]*`
+    不含数字，且不接受 `[]` 属性前缀。
+    """
+    md = "::: bq1\n\n引用段落。\n\n:::\n\n::: part1\n\n分节标题。\n\n:::\n"
+    out = markdown_to_xhtml(md)
+    assert ":::" not in out
+    assert "引用段落。" in out
+    assert "分节标题。" in out
+
+    # 紧邻锚点的栅栏：栅栏删除、锚点按内联形式保留（供目录/交叉引用跳转）
+    out2 = markdown_to_xhtml(":::[]{#GBS.0829.04}\n\n正文段落。\n\n:::\n")
+    assert ":::" not in out2
+    assert "正文段落。" in out2
+
+
 def test_markdown_to_xhtml_renders_simple_table() -> None:
     """pandoc 简单/网格表（成排 --- 列界）→ XHTML table（表格渲染回归）。"""
     md = (
