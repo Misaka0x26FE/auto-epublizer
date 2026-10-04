@@ -1,6 +1,7 @@
 # 2026-10-04 三项待办梳理与实施思路（导航层级 / skills 化 / 工作原子化）
 
-状态：规划中（待用户拍板开工范围）
+状态：规划中（2026-10-04 已完成可行性审查：代码逐条核实，行号断言全部准确；
+S-A 风险点已论证解除；S-B 两处语义已澄清；依赖关系已修正。见各节「审查核实」）
 
 ## 背景
 
@@ -21,17 +22,20 @@
 | 2 | 项目 skills 化（标准 skill 包） | 仅在 `2026-09-30-workflow-microtasks.md` 末节被提及 | **未立项**（无独立计划、无代码） | 文档/包装 |
 | 3 | 工作原子化（弱模型可执行） | `docs/plans/2026-09-30-workflow-microtasks.md`（S1–S5） | **规划中**，S1–S5 均未实施（代码零命中） | 流程使能 |
 
-**依赖关系（硬依赖，非并列）**：
+**依赖关系（审查修正：仅一条硬依赖，其余是价值排序）**：
 
 ```
-#16 导航扁平 ──→ 原子化 S1 ──→ skills 化
-（先通现场）    （再做使能）    （最后包装）
+#16 导航扁平     原子化 S1 ──硬依赖──→ skills 化
+（独立可开工）    （独立可开工）        （素材前置，最后做）
 ```
 
-- #16 是**唯一影响一本书实际交付质量**的一项；
-- 原子化 S1（`status --json` 的 `next_tasks` 机器指针）是 skills 化的**前置素材**，
-  `2026-09-30-workflow-microtasks.md` 末节已明确二者关系；
-- 因此推荐顺序 #16 → 原子化 S1 → skills 化。
+- **唯一的硬依赖**：skills 化 ← 原子化 S1（`status --json` 的 `next_tasks` 机器指针
+  与任务卡是 skills 化的**前置素材**，`2026-09-30-workflow-microtasks.md` 末节已明确）；
+- **#16 与原子化 S1 技术上相互独立**（前者是 build/qa/orchestrator 的导航链路，后者是
+  status 派生逻辑，代码路径零交集）——排序 `#16 → S1` 只是**价值优先级**（#16 是三项中
+  唯一影响一本书实际交付质量的一项，先做），不是阻塞关系。若用户拍板先做 S1 也不依赖
+  #16 的任何产物；
+- 因此推荐顺序 #16 → 原子化 S1 → skills 化（价值排序），其中前两者可并行或换序。
 
 ---
 
@@ -66,9 +70,15 @@
 | 3. 源书签映射（可选增强） | ❌ **完全未做** | 全库 `grep` 无「书签→标题锚点」映射逻辑；`orchestrator.py:999` 的 `W_TOC_MISSING` 仍只做「facts 源 TOC vs 单元标题」文本对账，无法反映真实覆盖缺口 |
 | 4. 配置面 | ✅ 够用 | `config.output.nav_depth` 默认 3，无需新增开关 |
 
-**结论**：#16 报的那本书之所以仍扁平，是因为**能力已在、映射未建**——单元在
-`publication.json` 里仍全为 `level=1`，且 S4 的 `_apply_sub_toc` 需要**重跑 `preprocess`**
-才会把 level≥2 书签落成标题段（对既有工作区是幂等重建，状态不受影响）。
+**结论（审查后更精确的根因链）**：#16 报的那本书之所以仍扁平，是**两层问题叠加**：
+
+1. **读者可见的扁平**：该书 `structured/` 是旧代码产物（无 h2/h3 标题段，单元全
+   `level=1`），S4 的 `_apply_sub_toc` 需要**重跑 `preprocess`** 才会把 level≥2 书签落成
+   标题段；此后 S2 锚点链路会自动让 nav 嵌套（能力已在）。
+2. **告警不反映真实缺口**：即使重跑后导航修好，`_toc_missing_from_facts`
+   （orchestrator.py:687-710）仍只对账**单元级标题**（`e.get("title")`），不看
+   `anchors`——已进导航的子标题书签仍会全部计入 `W_TOC_MISSING`（误报），
+   这才是 S-B 要修的「映射未建」。
 
 ### 1.4 修改思路（建议按 S1/S2 拆两个小步）
 
@@ -77,12 +87,22 @@
 - `build/__init__.py:_render_nav` 的 `<meta name="nav-depth">` 改为写入**渲染后实际最大
   深度**（复用已存在的 `nav_depth_sequence(nav_toc_entries(...))` 或 NCX 已用的同一
   计算路径），与 `dtb:depth` 同源，消除「声明 vs 实际」失真。
-- 注意：注释（366-368 行）说明 qa 的 `E_TOC_COVERAGE` 审计**以该 meta 为准**来规避
-  `build --nav-depth` 与 `qa` 默认配置漂移——改为实际深度后，需确认 qa 侧仍以「投影后
-  期望」对账（`audit_provenance` 本就传入 `nav_depth` 做投影），避免把「声明=实际」改成
-  反而破坏 `E_TOC_COVERAGE` 语义。**这是本步唯一技术风险点，需读 qa 侧对账代码确认。**
+- ~~注意：qa 侧对账需确认……这是本步唯一技术风险点，需读 qa 侧对账代码确认。~~
+  **审查核实（2026-10-04，风险解除）**：qa 侧（`qa/provenance.py:471-490`）把该 meta
+  读出后仅作**投影上限**使用——`effective_depth = declared_depth if ... else nav_depth`
+  （:474），再 `nav_toc_entries(spine_entries, effective_depth)`（:484）重建期望集，得到
+  `nav_exempt`（:486-490）与 `toc_depths_expected`（:491）。设 build 投影参数为 K、渲染后
+  实际最大深度为 A，则 A ≤ K 恒成立，且渲染树中不存在深度 > A 的节点（A 即最大值）；
+  因此用 A 作上限重建期望集与用 K 重建**恒等**（深度区间 (A, K] 内无节点可剔除）。
+  → 把 meta 从 K 改为 A 对 `E_TOC_COVERAGE`/`nav_exempt`/`E_TOC_FLAT`/`W_TOC_DEPTH`
+  **全部无行为影响**（对良构构建），meta 只变得对外部工具/读者 truthful。
+- 实现要求（防漂移）：`_render_nav` **不得新写第二份深度计算**——直接复用
+  `_render_ncx` 已有的 `max(nav_depth_sequence(entries), default=1)`（`build/__init__.py:417`）
+  同一表达式，nav 与 NCX 两侧同源；空目录时与 NCX 一致取 `default=1`（qa 的
+  `_nav_declared_depth` 校验 1–6，天然通过）。
 - 回归：单元链全 level=1 且无锚点 → meta 写 1；含 h2/h3 → 写实际深度；`--nav-depth`
-  投影截断时 meta 与实际一致。
+  投影截断时 meta 与实际一致；**新增一条断言**：任意工作区 build 后
+  `_nav_declared_depth(epub) == NCX 的 dtb:depth`。
 
 **S-B 源书签映射（工作量主要在这步）**
 
@@ -90,24 +110,52 @@
   **锚点级映射**：按标题文本（优先全等/规范化后等）→ 就近页码兜底，把 facts 里的源书签
   映射到具体 `unit#anchor`；映射不上的才计入 `W_TOC_MISSING`，使该告警反映**真实覆盖
   缺口**而非「书签数 vs 导航数」的量差。
+- **设计约束（审查补充，两条）**：
+  1. **对账必须在源文语言空间完成**：`structure_entries` 的锚点标签是 structured/
+     源文标题，facts 源 TOC 也是源语言——二者可匹配；成品 nav 里的锚点标签是**译文**，
+     不可作为对账对象（翻译改写标题文本，但 g0 heading 守恒保证结构不变）。已核实
+     `structure_entries` 条目携带 `anchors` 字段（`qa/provenance.py:482` 有消费），数据可得。
+  2. **「就近页码兜底」的准确语义**：锚点本身**无页码**（structured 标题段不带可对账的
+     页码元数据），页码只能用于**定位候选单元**——书签页 → 落在该页码范围（或最近
+     source_page）的单元 → 单元内做标题匹配。实施时需先确认单元级页码范围的可得性
+     （publication.json unit meta / structured 段的 source_page 聚合）；若无，兜底退化为
+     「全局标题唯一匹配，多个同名才算 missing」。另注意：**EPUB 源的 facts TOC 无页码**
+     （`preprocess/sniff.py:107-143` 只解析出 title+href），页码兜底仅 PDF 路径适用，
+     EPUB 源只走标题匹配。
+- **告警数据结构升级**：`toc_missing` 从裸标题列表升级为结构化映射结果（每条：
+  书签 title / page / 匹配到的 `unit#anchor` 或未匹配原因），`generate_report` 的消费方
+  同步；`report.json` 字段语义变化需保持向后可读或注明版本。
 - 纯函数、零 token（符合单 LLM 原则），可离线单测。
 - 回归：`#16` 场景复现——「单元全 level=1 + 单元内多级标题 + facts 源书签」断言
   `W_TOC_MISSING` 只剩真正无法映射者；`E_TOC_FLAT` 语义（`qa/provenance.py:493-499`：
   期望深度 >1 而 nav 实际单层 → 报 error）保持不变且能检出该场景。
+- **文档同步义务（AGENTS.md 契约，审查补充）**：改 QC 行为必须同步——
+  `skills/auto-epublizer/references/qa.md`（+zh）的 `W_TOC_MISSING` 解读、
+  `references/review.md`（+zh）相关段落、`docs/postprocessing-spec.md` §2.3
+  （W_TOC_MISSING 线索的定义），走 `i18n.py --finalize`。
 
 **边界与不变量**
 
 - 不改 `nav_depth` 投影语义（1–6，超深不进目录、保留 spine 与锚点）；
 - 不改单元状态机；不改 `publication.json` 契约；
-- 既有工作区需重跑 `preprocess` 才完全受益（幂等，状态不受影响）；
+- 既有工作区需重跑 `preprocess` 才完全受益（facts 刷新幂等；但是否连带重建
+  structured/ 及其对已有 translation 的影响**待核实**，见 1.5 清单第 2 项）；
 - 验收：nav/NCX 按 `nav_depth` 真实嵌套；`nav-depth` meta == `dtb:depth` == 实际深度；
   `W_TOC_MISSING` 只剩真缺口；epubcheck 0 error；回归覆盖「全 level=1 + 多级子标题」。
 
-### 1.5 前置依赖（开工前需用户确认）
+### 1.5 前置依赖（开工前需用户确认；审查已具体化为核实清单）
 
-- #16 的真实案例工作区在**另一仓库** `Misaka0x272F/matla-al-sadayn-1`。要精确判断剩余
-  工作量（是「只差映射」还是「映射外还有断点」，如既有 `structured/` 是否已含锚点），
-  需访问该工作区或用户提供其路径 / `publication.json` 现状。
+#16 的真实案例工作区在**另一仓库** `Misaka0x272F/matla-al-sadayn-1`。开工前需访问该
+工作区（或请用户提供路径 / `publication.json` 现状），逐项核实：
+
+- [ ] **structured/ 现状**：是否已含 h2/h3 标题段（旧代码产物则无）——决定「重跑
+  preprocess 就能修好导航」还是「还有别的断点」；
+- [ ] **重跑影响范围**：`preprocess` 对既有工作区是「仅幂等刷新 facts」还是「连带重建
+  structured/」？若重建，已有 translation/ 是否变 stale、是否需要 `restructure` 登记
+  （结构重建的既有契约）——这决定修复路径是 `preprocess` 还是 `restructure`；
+- [ ] **单元级页码范围可得性**（S-B 页码兜底的前提）：publication.json unit meta /
+  structured 段的 source_page 聚合是否可用（见 1.4 S-B 设计约束 2）；
+- [ ] **publication.json units 的 level 现状**（是否全 level=1）。
 
 ---
 
@@ -137,7 +185,13 @@
 
 ### 2.3 验收
 
-- 可被下游 agent 仅凭 `AGENTS.md` + `skills/` + `docs/` 端到端完成一本书；
+- **端到端**：可被下游 agent 仅凭 `AGENTS.md` + `skills/` + `docs/` 完成一本书
+  （审查注：现有 skills 形态已应基本满足此条，作为 skills 化的**增量**验收太弱，
+  应以弱模型专项为准）；
+- **弱模型专项（主验收）**：一个偏弱 agent 能沿
+  `SKILL.md → status --json.next_tasks → 任务卡` 路径完成至少一个完整阶段（如
+  逐单元翻译循环 `translate-unit → import-unit → fix-g0-unit`）而不跳步、不重做、
+  不依赖会话记忆——这是「标准化 skill」区别于现有文档形态的核心特征；
 - 任务卡索引与 `manifest.json` 一致；`--links` / `--check` 全绿。
 
 ---
@@ -171,6 +225,8 @@
 - 在 `orchestrator.status` 现有状态机/对账逻辑上**派生**（不新增第二份状态源），输出
   `next_tasks: [{kind, unit?, hint, done_when}]`，按执行顺序排列，弱模型只取首条执行，
   完成后重跑 `status --json` 刷新；
+  （审查核实：派生基础已确认存在——`orchestrator.py:1067` 的 status 已含产物-状态
+  对账与 stale 检测 :1070-1136，S1 是在其上叠加输出，无新状态源，可行。）
 - 派生规则（与 workflow 路由伪代码一一对应，注释互引）：无 `publication.json` →
   `preprocess`；facts 有而理解产物缺 → 逐文件「写 preprocessing/<file>」；repair 信号触发
   → 语义整备；有 structured 无 analysis → 逐单元「分析 chXX」（每批 ≤5 防贪多）；translation
@@ -212,6 +268,11 @@
 
 ## 实施顺序建议
 
-1. **#16 导航扁平**（唯一影响成品质量；先拆 S-A / S-B 两小步，需确认案例工作区可访问）；
-2. **原子化 S1**（使能项，独立可交付，单独提交；随后实测弱模型再定 S2–S5 范围）；
-3. **skills 化**（复用前两者产物，最后包装）。
+> 审查修正：#16 与原子化 S1 **技术独立**（代码路径零交集），顺序是价值排序而非阻塞
+> 关系；两者可并行或换序。唯一硬约束：skills 化最后做（素材前置）。
+
+1. **#16 导航扁平**（唯一影响成品质量；拆 S-A / S-B 两小步——S-A 风险已解除可立即
+   动手，S-B 开工前完成 1.5 核实清单，需确认案例工作区可访问）；
+2. **原子化 S1**（使能项，独立可交付，单独提交；随后拿真书 + 偏弱 agent 实测，
+   用真实「卡在哪」决定 S2–S5 范围）；
+3. **skills 化**（复用前两者产物，最后包装；以 2.3 弱模型专项为主验收）。
