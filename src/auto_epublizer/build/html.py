@@ -35,11 +35,15 @@ _DANGEROUS_URL = re.compile(r"^\s*(?:javascript|data|vbscript):", re.IGNORECASE)
 _FN_REF = re.compile(r"\[\^([^\]\s]+)\]")
 _FN_DEF = re.compile(r"^\[\^([^\]\s]+)\]:\s*(.*)$")
 # pandoc 从 MediaWiki 转出时的排版残留标记：
-# - 容器 div：`:::`、`::: gallerytext`、`::: {.thumb …}`、`-   ::: {…}`
+# - 容器 div：`:::`、`::: gallerytext`、`::: {.thumb …}`、`::: bq1`、`:::[]{#id}`、`-   ::: {…}`
+# 类名允许数字/下划线/连字符（`bq1`、`part1`），并允许 `[]` 属性前缀（`:::[]{#id}`）；
+# 二者缺失时栅栏会作为正文漏进成品（Pentagon Papers 回归，audit 报 W_RESIDUE）。
 # - 纯反斜杠装饰行：`\`
-_CONTAINER_LINE = re.compile(r"^\s*-*\s*:+\s*(?:\{[^}]*\}|[a-zA-Z][a-zA-Z ]*)?\s*$")
-# 容器行上的显式锚点 id（::: {#page0026} / ::: {#calibre_pb_10}）
-_CONTAINER_ID_RE = re.compile(r"^\s*-*\s*:+\s*\{#([\w:.-]+)\}\s*$")
+_CONTAINER_LINE = re.compile(
+    r"^\s*-*\s*:+\s*(?:\[[^\]]*\])?(?:\{[^}]*\}|[a-zA-Z][a-zA-Z0-9_.-]*)?\s*$"
+)
+# 容器行上的显式锚点 id（::: {#page0026} / :::[]{#GBS.0829.04} / ::: {#calibre_pb_10}）
+_CONTAINER_ID_RE = re.compile(r"^\s*-*\s*:+\s*(?:\[[^\]]*\])?\{#([\w:.-]+)\}\s*$")
 _SLASH_LINE = re.compile(r"^\s*\\\s*$")
 
 
