@@ -225,14 +225,36 @@ class Glossary:
                 return e.target
         return None
 
-    def propose(self, source: str, target: str, *, type: str = "term", note: str = "") -> None:
-        """worker 追加提案：不覆盖既有 target，若与确认态不同则标记冲突。"""
+    def propose(
+        self,
+        source: str,
+        target: str,
+        *,
+        type: str = "term",
+        note: str = "",
+        aliases: str | list[str] | None = None,
+        gender: str = "",
+        reading: str = "",
+    ) -> None:
+        """worker 追加提案：不覆盖既有 target，若与确认态不同则标记冲突。
+
+        ``aliases`` 接受 ``|`` 分隔的字符串（与 CSV 列格式一致）或已切好的列表；
+        其它列（gender/reading）同 proposal 落盘，否则 ``import --terms`` 会把它们丢掉。
+        """
+        alias_text = aliases if isinstance(aliases, str) else "|".join(aliases or [])
         entries = self.lookup(source)
         existing_targets = {e.target for e in entries if e.target}
         if not entries:
             self.add(
                 GlossaryEntry(
-                    source=source, target=target, type=type, status=STATUS_SEED, note=note
+                    source=source,
+                    target=target,
+                    type=type,
+                    aliases=_parse_aliases(alias_text),
+                    gender=gender or "",
+                    reading=reading or "",
+                    status=STATUS_SEED,
+                    note=note,
                 )
             )
             return
@@ -244,7 +266,18 @@ class Glossary:
             if confirmed and target not in {e.target for e in confirmed}
             else STATUS_SEED
         )
-        self.add(GlossaryEntry(source=source, target=target, type=type, status=status, note=note))
+        self.add(
+            GlossaryEntry(
+                source=source,
+                target=target,
+                type=type,
+                aliases=_parse_aliases(alias_text),
+                gender=gender or "",
+                reading=reading or "",
+                status=status,
+                note=note,
+            )
+        )
 
     def detect_conflicts(self) -> list[GlossaryConflict]:
         conflicts: list[GlossaryConflict] = []

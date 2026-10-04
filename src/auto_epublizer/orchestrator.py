@@ -461,7 +461,17 @@ def import_translations(
         proposed = load_glossary_csv(terms_path)
         for entry in proposed:
             if entry.source and entry.target:
-                glossary.propose(entry.source, entry.target, type=entry.type, note=entry.note)
+                glossary.propose(
+                    entry.source,
+                    entry.target,
+                    type=entry.type,
+                    note=entry.note,
+                    # aliases/gender/reading 必须一并透传：G0 术语命中读的是落盘的
+                    # glossary.csv，丢了别名则 OCR 损坏变体（ü→ii 之类）永不命中。
+                    aliases=entry.aliases,
+                    gender=entry.gender,
+                    reading=entry.reading,
+                )
         save_glossary_csv(glossary_path, glossary.entries())
 
     glossary = Glossary(load_glossary_csv(glossary_path))
