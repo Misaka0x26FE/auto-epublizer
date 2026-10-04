@@ -78,6 +78,37 @@ def test_propose_conflicting_with_confirmed() -> None:
     assert g.confirmed_target("Soviet area") == "赤区"
 
 
+def test_propose_carries_aliases_gender_reading(tmp_path: Path) -> None:
+    """回归：import --terms 曾经把 aliases/gender/reading 整列丢掉。
+
+    G0 术语命中读的是落盘的 glossary.csv，别名一丢，OCR 损坏变体（ü→ii 之类）
+    就永远进不了候选集 —— g0 会「假绿」。本测试钉住 propose → 落盘 → 读回全链。
+    """
+    g = Glossary()
+    g.propose(
+        "Gruppenführer",
+        "党卫队集团领袖",
+        type="org",
+        aliases="Gruppenfiihrer|Gruppenfuhrer",  # 故意用 CSV 的 | 分隔写法
+        gender="male",
+        reading="",
+    )
+    p = tmp_path / "glossary.csv"
+    save_glossary_csv(p, g.entries())
+    loaded = load_glossary_csv(p)
+    assert loaded[0].aliases == ["Gruppenfiihrer", "Gruppenfuhrer"]
+    assert loaded[0].gender == "male"
+    # 损坏变体必须真的能参与命中
+    hits = terminology_hits("…von Gruppenfiihrer angeordnet…", "…由集团领袖下令…", Glossary(loaded))
+    assert [h.source for h in hits] == ["Gruppenführer"]
+
+
+def test_propose_accepts_alias_list() -> None:
+    g = Glossary()
+    g.propose("Oberscharführer", "党卫队上级小队长", aliases=["Oberscharfiihrer"])
+    assert g.lookup("Oberscharführer")[0].aliases == ["Oberscharfiihrer"]
+
+
 def test_confirmed_target_falls_back_to_first_nonempty() -> None:
     g = Glossary([_entry("infiltration", "渗透", type="term")])
     assert g.confirmed_target("infiltration") == "渗透"
