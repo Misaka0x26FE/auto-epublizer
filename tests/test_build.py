@@ -363,6 +363,41 @@ def test_markdown_to_xhtml_cleans_digit_and_anchor_container_fences() -> None:
     assert "正文段落。" in out2
 
 
+def test_markdown_to_xhtml_unescapes_backslash_escapes() -> None:
+    """反斜杠转义须还原为字面标点，而不是把 `\\` 漏给读者。
+
+    回归：四本书成品出现成片可见反斜杠——CIP 数据 `p\\. cm.`、编号 `\\(1\\)`、
+    出版方编辑插入 `\\[一年后……\\]`。根因是 _inline 未实现 markdown 反斜杠转义
+    （四本合计 1000+ 处；audit 的 W_RESIDUE 不检查该形态，故此前无告警）。
+    """
+    md = "\\(1\\) 法国继续承认责任。\n\np\\. cm.\n\n忽然听见\\[一年后\\]的巨响。\n\n尾注\\*标记\n"
+    out = markdown_to_xhtml(md)
+    assert "\\" not in out
+    assert "(1) 法国继续承认责任。" in out
+    assert "p. cm." in out
+    assert "[一年后]" in out
+    assert "尾注*标记" in out
+
+    # 代码段内的反斜杠是字面内容，保持原样（与 pandoc 一致）
+    out2 = markdown_to_xhtml("正则 `a\\.b` 保留。\n")
+    assert "<code>a\\.b</code>" in out2
+
+
+def test_markdown_to_xhtml_bold_spans_escaped_asterisk_in_link() -> None:
+    """标题里 `**粗体[]{#id}[\\*](#ref)**` 须整体转成 <strong>。
+
+    回归：Pentagon Papers ch03 的 `<h3>` 把 `**` 与链接标签里的 `\\*` 原样漏出
+    （audit W_RESIDUE: ch03.xhtml）。根因是 _BOLD_RE 的 `[^*]+` 跨不过
+    链接标签内的转义星号，故强调匹配失败、标记原样输出。
+    """
+    md = "### **建议采取的行动方针[]{#fn37-1}[\\*](#fne37-1)**\n"
+    out = markdown_to_xhtml(md)
+    assert "**" not in out
+    assert "<strong>" in out and "</strong>" in out
+    assert '<a id="fn37-1"></a>' in out
+    assert '<a href="#fne37-1">*</a>' in out
+
+
 def test_markdown_to_xhtml_renders_simple_table() -> None:
     """pandoc 简单/网格表（成排 --- 列界）→ XHTML table（表格渲染回归）。"""
     md = (

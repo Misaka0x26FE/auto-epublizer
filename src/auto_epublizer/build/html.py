@@ -27,9 +27,18 @@ _LINK_RE = re.compile(r"\[([^\]]+)\]\(([^)]+)\)")
 _ANCHOR_INLINE_RE = re.compile(r"\[\]\{#([\w:.-]+)\}")
 # 标题上的 id 属性：``标题 {#ch01}`` → (标题, ch01)
 _HEADING_ID_RE = re.compile(r"\s*\{#([\w:.-]+)\}\s*$")
-_BOLD_RE = re.compile(r"\*\*([^*]+)\*\*")
+_BOLD_RE = re.compile(r"\*\*((?:[^*]|\\\*)+)\*\*")
 _ITALIC_RE = re.compile(r"(?<!\*)\*([^*]+)\*(?!\*)")
 _CODE_RE = re.compile(r"`([^`]+)`")
+# pandoc 反斜杠转义：`\(` / `\.` / `\[` / `\*` / `\\` → 字面标点（转义符本身不输出）。
+# 缺失时源里的出版方编辑插入 `\[一年后……\]`、CIP 行 `p\. cm.`、编号 `\(1\)`
+# 会带着**可见反斜杠**进成品（四本书合计 1000+ 处；audit 的 W_RESIDUE
+# 不检查该形态，故此前从未告警）。
+# 可转义集按 pandoc 规则取 ASCII 标点全集；落点须在链接/锚点/强调替换**之后**
+# ——先脱转义会让 `\[x\](u)` 被 `_LINK_RE` 误判成链接。
+_ESCAPED_PUNCT_RE = re.compile(r"\\([!\"#$%&'()*+,\-./:;<=>?@\[\\\]^_`{|}~])")
+# 代码段内的反斜杠是字面内容（与 pandoc 一致），须跳过不脱转义
+_CODE_SPAN_SPLIT_RE = re.compile(r"(`[^`]+`)")
 _DANGEROUS_URL = re.compile(r"^\s*(?:javascript|data|vbscript):", re.IGNORECASE)
 # pandoc 脚注：行内引用 [^label]；定义块 [^label]: 文本（可带缩进续行）
 _FN_REF = re.compile(r"\[\^([^\]\s]+)\]")
@@ -199,7 +208,13 @@ def plain_label(text: str) -> str:
     out = _LABEL_INLINE_ATTR.sub(r"\1", out)
     out = _LABEL_EMPH.sub(r"\2", out)
     out = _LABEL_ANCHOR.sub("", out)
-    return re.sub(r"\s+", " ", out).strip()
+    return re.sub(r"\s+", " ", _unescape_punct(out)).strip()
+
+
+def _unescape_punct(text: str) -> str:
+    """反斜杠转义 → 字面标点（代码段除外，其反斜杠是内容）。"""
+    parts = _CODE_SPAN_SPLIT_RE.split(text)
+    return "".join(p if i % 2 else _ESCAPED_PUNCT_RE.sub(r"\1", p) for i, p in enumerate(parts))
 
 
 def _inline(text: str) -> str:
@@ -222,6 +237,9 @@ def _inline(text: str) -> str:
     text = _LINK_RE.sub(_link, text)
     text = _BOLD_RE.sub(r"<strong>\1</strong>", text)
     text = _ITALIC_RE.sub(r"<em>\1</em>", text)
+    # 脱转义放在结构替换之后、代码段转换之前：既不干扰链接/锚点/强调的识别，
+    # 又能靠仍存在的反引号跳过代码段（其反斜杠是字面内容）
+    text = _unescape_punct(text)
     text = _CODE_RE.sub(r"<code>\1</code>", text)
     return text
 
