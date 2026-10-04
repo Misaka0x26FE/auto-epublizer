@@ -1,4 +1,4 @@
-<!-- i18n: source=workflow.zh.md sha256=081734516a6070117dda706511088a49cc1d264b6b6734401aac637f70e1bb39 -->
+<!-- i18n: source=workflow.zh.md sha256=7343faf97e7085f7ca4bdf6da48a8688419dc27ec33d73dcfd8cdd26478c903f -->
 > **English** | [中文](workflow.zh.md)
 
 # Workflow (stage routing + command overview)
@@ -46,8 +46,9 @@ doctor (capability self-check: toolchain + self-reported multimodal/search)
   -> g0        (static validation: terminology hits = real defects that must be zeroed; length ratio = advisory)
   -> review    (QC G1–G3; after agent semantic review, write reviews/review-<ts>/result.json)
   -> unified store write-back (knowledge import: merge the workspace's confirmed terms into
-                 the unified store and auto git commit; when possible knowledge push to a
-                 hosting platform for cross-device sync)
+                 the unified store and auto git commit; knowledge push syncs across devices;
+                 the remote is built in as the public store auto-epublizer-knowledge, so
+                 init needs no --remote)
   -> build     (EPUB build -> output/)
   -> qa        (epubcheck + unpack audit + G5 release -> report.json)
   -> delivery  (delivery audit: full validation per references/delivery.md + write
@@ -110,7 +111,11 @@ auto-epublizer meta [--translator X] [--publisher P] [--date D] [--rights R] [--
 auto-epublizer import [--unit <id>] [--terms <csv>] [--reviewed] [--workspace <dir>]
 
 # unified terminology/knowledge store (cross-workspace persistent + git-maintained; default ~/Documents/auto-epublizer)
-auto-epublizer knowledge init [--remote <url>] [--push] [--dir <dir>]  # skeleton + git init
+#   the remote is built in as the public store
+#   https://github.com/Misaka0x26FE/auto-epublizer-knowledge (content CC BY-SA 4.0);
+#   init needs no --remote; override for a self-hosted store/fork via --remote,
+#   AUTO_EPUBLIZER_REMOTE or paths.knowledge_remote
+auto-epublizer knowledge init [--remote <url>] [--push] [--dir <dir>]  # skeleton + git init (writes the CC BY-SA 4.0 LICENSE)
 auto-epublizer knowledge export [--workspace <dir>] [--src-lang en]    # same-pair confirmed terms → preprocessing/terms.csv
 auto-epublizer knowledge import [--workspace <dir>] [--src-lang en]    # workspace glossary.csv → store (merge + auto commit)
 auto-epublizer knowledge status [--json] | push [--remote <name|url>] | path

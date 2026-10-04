@@ -453,7 +453,11 @@ def knowledge_path(
 @knowledge_app.command("init")
 def knowledge_init_cmd(
     directory: str | None = typer.Option(None, "--dir", help="统一库目录（覆盖环境变量/配置）"),
-    remote: str | None = typer.Option(None, "--remote", help="git 远端 URL（如 GitHub 私有仓）"),
+    remote: str | None = typer.Option(
+        None,
+        "--remote",
+        help="git 远端 URL（缺省用已固化的公共知识库 auto-epublizer-knowledge；自建库/fork 用本项覆盖）",
+    ),
     push: bool = typer.Option(False, "--push", help="初始化后立即推送（需凭据/网络）"),
     config: str | None = typer.Option(None, "--config", help="配置文件路径"),
 ) -> None:

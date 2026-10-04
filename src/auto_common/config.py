@@ -12,6 +12,11 @@ from typing import Any
 import yaml
 from pydantic import BaseModel, Field, field_validator
 
+# 统一术语库/知识库的**公共**远端（跨设备同步 + 他人只读订阅）。
+# 固化在软件里，使 knowledge init 在任何设备上都无需手填 --remote；
+# 自建库/fork 用 --remote、环境变量 AUTO_EPUBLIZER_REMOTE 或配置 paths.knowledge_remote 覆盖。
+DEFAULT_KNOWLEDGE_REMOTE = "https://github.com/Misaka0x26FE/auto-epublizer-knowledge.git"
+
 
 class LanguageConfig(BaseModel):
     source: str = "auto"
@@ -61,9 +66,10 @@ class PathsConfig(BaseModel):
     # 统一术语库/知识库持久化目录；空串=默认 ~/Documents/auto-epublizer
     # 覆盖优先级：--dir > 环境变量 AUTO_EPUBLIZER_HOME > 本项 > 默认
     knowledge_dir: str = ""
-    # 统一库 git 远端（跨设备同步）；空串=不自动配置，由 agent 用 gh/git 建私有仓
-    # 覆盖优先级：--remote > 环境变量 AUTO_EPUBLIZER_REMOTE > 本项
-    knowledge_remote: str = ""
+    # 统一库 git 远端（跨设备同步 + 公共知识库）；已固化项目公共仓库地址，
+    # knowledge init 无需 --remote 即可直接配好远端（fork/自建库用 --remote 或本项覆盖）
+    # 覆盖优先级：--remote > 环境变量 AUTO_EPUBLIZER_REMOTE > 本项 > DEFAULT_KNOWLEDGE_REMOTE
+    knowledge_remote: str = DEFAULT_KNOWLEDGE_REMOTE
 
 
 class OutputConfig(BaseModel):

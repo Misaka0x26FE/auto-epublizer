@@ -67,7 +67,8 @@ auto-epublizer meta [--translator OpenCode] [--publisher ...] [--date ...] [--ri
 #    （概述/全局/每单元/重点；上下文也可只来自 preprocessing/）
 
 # 4.5 统一术语库/知识库（跨工作区持久化，agent 自行维护；默认 ~/Documents/auto-epublizer，
-#     私有 git 仓库，可 knowledge push 跨设备）：开工前先 knowledge path/init，
+#     git 仓库，远端已固化为公共库 auto-epublizer-knowledge（内容 CC BY-SA 4.0），
+#     可 knowledge push 跨设备）：开工前先 knowledge path/init，
 #     再从统一库播种同语对已确认术语（源语言为 auto 时加 --src-lang <code>）
 auto-epublizer knowledge export --workspace .   # → preprocessing/terms.csv（agent 审阅增删后 import --terms）
 auto-epublizer knowledge status                 # 统计 + git 状态（--json 供机器判定）
@@ -203,9 +204,18 @@ skills/auto-epublizer/
 `publication.json`、`glossary.db` 是权威真相。
 
 **统一术语库/知识库（工作区之外）**：默认 `~/Documents/auto-epublizer/`（配置
-`paths.knowledge_dir` 可改），跨工作区持久化、由 agent 自行维护、本身是**私有 git 仓库**
-（`knowledge push` 可跨设备同步）；经 `knowledge export`（播种）/ `knowledge import`
-（回写）与工作区 `analysis/glossary.csv` 双向流转（见「标准工作流」4.5 / 6.5）。
+`paths.knowledge_dir` 可改），跨工作区持久化、由 agent 自行维护、本身是 **git 仓库**。
+远端地址**已固化在软件里**（`auto_common.config.DEFAULT_KNOWLEDGE_REMOTE`）：
+
+- 默认远端 = 公共仓库 `https://github.com/Misaka0x26FE/auto-epublizer-knowledge`，
+  `knowledge init` 无需手填 `--remote`（避免各设备各配一份 / 远端找不到）；
+- 该仓库**内容采用 CC BY-SA 4.0**（术语表为词条映射、`knowledge/` 为 agent 自撰判据与
+  体例笔记，不含书稿正文）；他人可只读 `git clone` 复用；
+- 覆盖顺序：`--remote` > `AUTO_EPUBLIZER_REMOTE` > `paths.knowledge_remote` > 默认值；
+- 经 `knowledge push` 跨设备同步；经 `knowledge export`（播种）/ `knowledge import`
+  （回写）与工作区 `analysis/glossary.csv` 双向流转（见「标准工作流」4.5 / 6.5）。
+
+> 许可证分界：**知识库内容 = CC BY-SA 4.0**；**本软件代码 = AGPL-3.0**，两者互不覆盖。
 
 **预处理分工**：`preprocess` 命令只产出零 token 事实（嗅探/元数据/TOC/体检/规模）；
 **方案决策与分层理解是 agent 任务**——读 facts.md 与 docs 决策表写 `plan.md`，
