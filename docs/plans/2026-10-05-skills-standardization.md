@@ -1,7 +1,7 @@
 # 2026-10-05 仓库 skills 标准化（skills.sh / Agent Skills 规范）
 
-状态：实施中（2026-10-05 完成 P0 合规修复 + P1 发布准备；P2–P4 待做；
-P3 依赖的原子化 S1 已完成）
+状态：实施中（2026-10-05 完成 P0 合规 + P1 发布准备 + P2 `SKILL.md` 减重 +
+P3 原子任务卡；仅剩 P4 多 skill 拆分（评估项，需真书实测后再定））
 
 ## 背景与目标
 
@@ -75,12 +75,14 @@ uv run ruff check . && uv run ruff format --check .      # 全绿
       **仓库自定义契约**（version 门禁 + references 清单），标准加载器不读取，`minimum_cli_version`
       门禁只有按 SKILL.md 指引读取它的 agent 才会执行。（仍待做）
 
-### P2 渐进式披露：`SKILL.md` 减重
+### P2 渐进式披露：`SKILL.md` 减重（2026-10-05 已完成）
 
-- [ ] 把 `SKILL.md` 里的「Standard workflow」大段与 `references/workflow.md` 去重：入口只保留
-      `description` / 红线 / 路由表 / 指针，细节全部下沉 `references/`；
-- [ ] `description` 收敛为 1–3 句「做什么 + 何时用」，命令清单归还 workflow.md
-      （description 越长越稀释选题信号）。
+- [x] 把 `SKILL.md` 里的「Standard workflow」大段（~20 行 bash 命令总览，与
+      `references/workflow.md` 重复）删除，改为「阶段一行 + 指向 workflow.md / taskcards/」
+      的指针；入口保留 `description` / 红线 / 路由表 / 边界 / 命令纪律；
+- [x] 路由表新增「弱模型路径」行 → `references/taskcards/`；
+- [x] `description` 复核：已是 3 句、351 字符（<1024），关键词齐全，**保留不改**
+      （收敛会让发现信号变弱，得不偿失）。
 
 ### P3 原子任务卡 + 机器指针
 
@@ -88,11 +90,17 @@ uv run ruff check . && uv run ruff format --check .      # 全绿
 > `next_tasks` 机器指针 + `done_when`）——**已于 2026-10-05 完成**，任务卡现在有了可挂靠的索引。
 > 没有 S1，任务卡只是又一批要模型自己判断该读哪篇的散文。
 
-- [ ] 新增 `skills/auto-epublizer/references/taskcards/`，每张卡「一屏以内、自包含」：
-      `重述现场（读哪些文件）→ 动作（写到哪）→ 完成判据（跑哪条命令）→ 失败处置`；
-- [ ] 弱模型主路径 = `SKILL.md` → `status --json.next_tasks` → 对应任务卡；
-      阶段级 references 降级为编排说明（保留给强模型与人类维护者，不删除）；
-- [ ] `manifest.json` 的 `references` 清单与新增目录严格一致。
+- [x] 新增 `skills/auto-epublizer/references/taskcards/`，每张卡「一屏以内、自包含」：
+      `重述现场（读哪些文件）→ 动作（写到哪）→ 完成判据（跑哪条命令）→ 失败处置`。
+      首批 **9 张 × 双语**，按 S1 的 `next_tasks.kind` 组织（比原计划「按产物分 12 张」更贴合
+      机器指针，一眼一一对应）：
+      `README`（索引）+ `preprocess` / `write-preprocessing` / `repair` / `analyze` /
+      `translate-unit` / `import-unit` / `review-unit` / `build-qa-delivery`；
+- [x] 弱模型主路径 = `SKILL.md` → `status --json.next_tasks` → 对应任务卡；
+      阶段级 references 保留（强模型与人类维护者用，不删除）；
+- [x] `manifest.json` 的 `references` 清单加入 `taskcards`；
+- [x] 守卫测试 `tests/test_taskcards.py`：卡片文件齐备（双语）、README 索引覆盖全部
+      10 个 kind、manifest 列出 taskcards（防 `next_tasks.kind` 与卡片漂移）。
 
 ### P4 多 skill 拆分（评估项，先不做）
 
@@ -119,11 +127,11 @@ skills/
 |---|---|---|
 | skills.sh 合规（frontmatter 置顶 + i18n 适配） | **本文件 P0** | ✅ 2026-10-05 |
 | 发布准备（public / 徽章 / install --check） | 本文件 P1 | ✅ 2026-10-05 |
-| SKILL.md 减重（渐进式披露） | 本文件 P2 | ⬜ |
-| 原子任务卡 + `done_when` | 本文件 P3 + `2026-09-30-workflow-microtasks.md` | ⬜（依赖 S1） |
+| SKILL.md 减重（渐进式披露） | 本文件 P2 | ✅ 2026-10-05 |
+| 原子任务卡 + `done_when` | 本文件 P3 + `2026-09-30-workflow-microtasks.md` | ✅ 2026-10-05（首批 9 张双语） |
 | 多 skill 拆分 | 本文件 P4 | ⬜（评估） |
 | 工作原子化 S1（`next_tasks` 指针） | `2026-09-30-workflow-microtasks.md` | ✅ 2026-10-05 |
-| 工作原子化 S2–S5 | 同上 | ⬜（S1 实测后决定范围） |
+| 工作原子化 S2–S5 | 同上 | S2 首批完成（任务卡）；S3–S5 待做（S1 实测后定范围） |
 | #16 导航扁平 S-A（meta 如实声明） | `2026-10-04-backlog-three-items.md` §1.4 | ⬜（低风险，可先做） |
 | #16 导航扁平 S-B（源书签→锚点映射） | 同上 §1.4 | ⬜（需案例工作区） |
 | 项目 skills 化（内容层） | 本文件 P2–P4 | ⬜ |
