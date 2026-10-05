@@ -30,6 +30,23 @@ def test_status_all_lists_workspaces(tmp_path: Path) -> None:
     assert all(r["units_total"] == 1 for r in rows)
 
 
+def test_status_all_nested_layout_and_schema_filter(tmp_path: Path) -> None:
+    """R0：支持真实嵌套布局 <base>/<slug>/book/，并跳过其它工具 schema 的工作区。"""
+    base = tmp_path / "work"
+    src = tmp_path / "book.md"
+    src.write_text("# Chapter\n\nBody text.\n", encoding="utf-8")
+    orch.init(str(src), workspace_dir=str(base / "real-book"))  # → base/real-book/book/
+
+    foreign = base / "other-tool" / "book"
+    foreign.mkdir(parents=True)
+    (foreign / "publication.json").write_text(
+        json.dumps({"schema_version": "epub-builder/v1alpha1"}), encoding="utf-8"
+    )
+
+    rows = orch.status_all(base)
+    assert [r["slug"] for r in rows] == ["real-book"]  # 嵌套发现 + schema 过滤
+
+
 def test_render_ledger_has_machine_columns(tmp_path: Path) -> None:
     md = orch.render_ledger(orch.status_all(_two_workspaces(tmp_path)))
     assert "| slug | 书名 | 开工日期 | 进度 | 单元 | 词 | 领域 | 摘要 |" in md
