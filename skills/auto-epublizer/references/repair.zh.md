@@ -59,6 +59,23 @@
 - `evidence`：可选，工作区相对路径且**必须存在**（页图/页 JSON/MinerU 产物）；
 - `status`：`done`（已修）或 `unresolved`（无法确定，勿硬修；qa 会提示）。
 
+## 页边界证据：`evidence breaks` → `preprocessing/breaks.jsonl`
+
+四层切分把页/行边界当段落边界时，structured 正文会碎片化。`auto-epublizer evidence breaks
+[--output <path>]` 扫 `structured/raw/page-*.json`，为每对相邻页写一行边界证据——让你只裁定
+**有证据的候选**，而非人读全书：
+
+```json
+{"unit": "ch03", "page": 41, "kind": "page_boundary", "prev_line": "…", "next_line": "…",
+ "prev_block": 12, "next_block": 13, "candidate": true}
+```
+
+- 只**定位证据**——merge/keep/unresolved 的裁定由你完成（见下方反模式）；裁定通过后用确定性
+  手段应用（同序号成对并块 + align 重建），绝不用阈值脚本；
+- `unit` / `prev_block` / `next_block` 把两侧行回溯到单元与其 structured md 的 1 基块号
+  （找不到为 `null`）；
+- `candidate` 是启发式（「前一行无句末标点」）；对 **RTL 源不可靠**，仅作提示。
+
 ## 结构重建：`preprocessing/structure.csv` + `restructure`
 
 只按前 S 级切单元、更深标题留单元内，或干脆手动重切/合并：

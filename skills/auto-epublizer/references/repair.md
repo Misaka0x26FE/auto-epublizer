@@ -1,4 +1,4 @@
-<!-- i18n: source=repair.zh.md sha256=fa40649653ee5aa682077a956e61223b1d051ac4bcb6089da78662d4e818b5bc -->
+<!-- i18n: source=repair.zh.md sha256=e8a43f0f69f7bd1f8b3f23eef3f853d658eba32f748fccfa22ed0f3273424735 -->
 > **English** | [中文](repair.zh.md)
 
 # Repair (semantic repair: parse defects / OCR correction / structural re-split)
@@ -75,6 +75,26 @@ paragraphs/structure are written back to structured and the unit is re-translate
   JSON/MinerU artifact);
 - `status`: `done` (repaired) or `unresolved` (cannot be determined, do not force a fix;
   qa will hint).
+
+## Page-boundary evidence: `evidence breaks` → `preprocessing/breaks.jsonl`
+
+When four-layer splitting treats page/line boundaries as paragraph boundaries, structured text
+fragments. `auto-epublizer evidence breaks [--output <path>]` scans `structured/raw/page-*.json`
+and writes one line per adjacent-page boundary, so you judge only the **evidenced candidates**
+instead of reading the whole book:
+
+```json
+{"unit": "ch03", "page": 41, "kind": "page_boundary", "prev_line": "…", "next_line": "…",
+ "prev_block": 12, "next_block": 13, "candidate": true}
+```
+
+- It only **locates evidence** — the merge/keep/unresolved decision is yours (see the
+  anti-patterns below); apply accepted merges deterministically (pairwise same-seq block merge
+  + align rebuild), never with a threshold script;
+- `unit` / `prev_block` / `next_block` trace the two lines back to a unit and 1-based block
+  index in its structured md (`null` when not found);
+- `candidate` is a heuristic ("previous line has no terminal punctuation"); it is
+  **unreliable for RTL sources** — treat it as a hint only.
 
 ## Structure rebuild: `preprocessing/structure.csv` + `restructure`
 
