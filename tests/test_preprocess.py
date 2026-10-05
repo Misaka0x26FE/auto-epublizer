@@ -331,6 +331,20 @@ def test_status_reports_preprocessing_state(tmp_path: Path) -> None:
     assert not any(s["id"] == "preprocessing" for s in data["stale"])
 
 
+def test_granularity_flags_fragmented_units() -> None:
+    """回归 #30 §4.5：切分过碎（Unknown 标题 / 极小单元）时给出粒度信号。"""
+    from auto_epublizer.preprocess.facts import _granularity
+
+    frag = [{"id": f"u{i}", "title": "Unknown", "chars": 50} for i in range(10)]
+    g = _granularity(frag)
+    assert g["warning"] is True
+    assert g["tiny_units"] == 10 and g["unknown_title_units"] == 10
+
+    normal = [{"id": f"u{i}", "title": f"Chapter {i}", "chars": 5000} for i in range(10)]
+    assert _granularity(normal)["warning"] is False
+    assert _granularity([])["warning"] is False
+
+
 def test_preprocess_repair_signals_and_todo(tmp_path: Path) -> None:
     """语义整备 S1：可疑信号进 facts（字段/表/条件待办），干净书无该待办。"""
     src = tmp_path / "book.md"

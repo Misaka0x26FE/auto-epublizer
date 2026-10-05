@@ -73,6 +73,41 @@ def _unit_facts(store: RunStore) -> list[dict[str, Any]]:
     return units
 
 
+_NUMERIC_TITLE_RE = re.compile(r"^[\d\W_]+$")
+
+
+def _granularity(units: list[dict[str, Any]]) -> dict[str, Any]:
+    """结构粒度体检（issue #30 §4.5）：切分把注条/页眉/行当成独立单元时给出信号。
+
+    判据（确定性）：单元数 ≥5 且满足任一——字符中位数 < 300 / 标题缺失或 Unknown 过半 /
+    纯数字或无标题单元过半 / 极小单元（<200 字符）过半。信号是线索，最终由 agent 判定
+    是否重建结构（references/structure.md）。
+    """
+    n = len(units)
+    if not n:
+        return {"units": 0, "warning": False}
+    chars = sorted(int(u.get("chars") or 0) for u in units)
+    median = chars[n // 2] if n % 2 else (chars[n // 2 - 1] + chars[n // 2]) // 2
+
+    def _bad_title(u: dict[str, Any]) -> bool:
+        t = (u.get("title") or "").strip()
+        return not t or t.lower() == "unknown"
+
+    unknown = sum(1 for u in units if _bad_title(u))
+    numeric = sum(1 for u in units if _NUMERIC_TITLE_RE.match((u.get("title") or "").strip()))
+    tiny = sum(1 for u in units if int(u.get("chars") or 0) < 200)
+    warning = n >= 5 and (median < 300 or unknown * 2 > n or numeric * 2 > n or tiny * 2 > n)
+    return {
+        "units": n,
+        "median_chars": median,
+        "min_chars": chars[0],
+        "unknown_title_units": unknown,
+        "numeric_title_units": numeric,
+        "tiny_units": tiny,
+        "warning": warning,
+    }
+
+
 def _media_facts(store: RunStore) -> dict[str, Any]:
     media_dir = store.structured_dir / "raw" / "media"
     files = (
@@ -150,6 +185,17 @@ def collect_facts(store: RunStore, config) -> dict[str, Any]:
         "preprocessing/risks.md：难段落/多语/文化梗/术语冲突预判",
         "preprocessing/report.md：汇总报告（翻译前输入锚点）",
     ]
+    granularity = _granularity(units)
+    if granularity["warning"]:
+        agent_todo.insert(
+            0,
+            "结构粒度异常（"
+            f"单元 {granularity['units']}，字符中位数 {granularity['median_chars']}，"
+            f"标题缺失/Unknown {granularity['unknown_title_units']}，"
+            f"纯数字标题 {granularity['numeric_title_units']}，"
+            f"极小单元 {granularity['tiny_units']}）：切分可能把注条/页眉/行当成了独立单元。"
+            "见 references/structure.md，必要时写 preprocessing/structure.csv 后 restructure 重建",
+        )
     if signal_units:
         # 语义整备（repair）信号触发：指路 agent 用语言能力修复解析/OCR 缺陷
         agent_todo.insert(
@@ -166,7 +212,7 @@ def collect_facts(store: RunStore, config) -> dict[str, Any]:
             **sniff_facts,
         },
         "capabilities": capabilities,
-        "structure": {"units": units, "totals": totals},
+        "structure": {"units": units, "totals": totals, "granularity": granularity},
         "media": _media_facts(store),
         "checks": _checks_facts(store, sniff_facts),
         "repair_signals": repair_signal_facts,
@@ -284,6 +330,16 @@ def render_facts_md(facts: dict[str, Any]) -> str:
         "",
         f"- 单元 {totals['units']}：字符 {totals['chars']} / 词 {totals['words']} / 句 {totals['sentences']}"
         f"（token 粗估 ≈{totals['estimated_tokens']}）",
+    ]
+    gran = facts["structure"].get("granularity") or {}
+    if gran.get("warning"):
+        lines.append(
+            "- ⚠ 结构粒度异常：字符中位数 "
+            f"{gran.get('median_chars')}，标题缺失/Unknown {gran.get('unknown_title_units')}，"
+            f"纯数字标题 {gran.get('numeric_title_units')}，极小单元 {gran.get('tiny_units')}"
+            "（切分可能过碎，见 references/structure.md）"
+        )
+    lines += [
         "",
         "## 结构清单",
         "",
