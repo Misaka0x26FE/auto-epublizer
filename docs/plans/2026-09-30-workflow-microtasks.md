@@ -52,6 +52,15 @@ S2–S5 待做——S1 落地后应按计划「拿真书 + 偏弱 agent 实测�
 
 ### S2 任务卡（task cards）：skills 新增 `references/taskcards/`
 
+> **实施记录（2026-10-05）**：首批已完成，粒度调整为**按 S1 的 `next_tasks.kind` 组织**
+> （机器指针指哪张读哪张，一一对应），共 9 张 × 双语：
+> `README`（索引）+ `preprocess` / `write-preprocessing` / `repair` / `analyze` /
+> `translate-unit` / `import-unit` / `review-unit` / `build-qa-delivery`；
+> SKILL.md 路由表已加「弱模型路径」行，`manifest.json` references 已同步，
+> `tests/test_taskcards.py` 守卫 kind↔卡片一致。原「按产物分 12 张」的设想被此方案吸收
+> （`write-capabilities/terms/risks/...` 合并进 `write-preprocessing` 一张卡，因为 S1 一次只
+> 点名一个文件）。
+
 - 每张卡 = 一个原子任务，四段式，**一屏以内**：
   `上下文重述（从工作区读哪些文件）→ 动作（做什么、写到哪）→ 完成判据（跑哪条命令）
   → 失败处置（告警怎么看、找哪篇 lesson）`。
@@ -59,8 +68,9 @@ S2–S5 待做——S1 落地后应按计划「拿真书 + 偏弱 agent 实测�
   `write-capabilities / write-global / write-unit-analysis / write-terms / write-risks /
   write-report / repair-unit / translate-unit / import-unit / fix-g0-unit /
   review-unit / build-qa-delivery`。
-- 阶段级 references（preprocessing/analysis/review…）**降级为编排说明**（给强模型与
-  人类维护者），弱模型主路径 = SKILL.md → `status --json.next_tasks` → 对应任务卡。
+- 阶段级 references（preprocessing/analysis/review…）**保留原样**（强模型与人类维护者的
+  完整指南；实施时选择不降级，避免大规模重写与信息损失），弱模型主路径 = SKILL.md →
+  `status --json.next_tasks` → 对应任务卡；阶段 references 作为任务卡的「深入」入口。
 - SKILL.md 路由表加「弱模型执行模式」一行，manifest.json references 清单同步。
 
 ### S3 todo.md 契约化
