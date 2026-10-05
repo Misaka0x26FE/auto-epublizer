@@ -429,6 +429,7 @@ def import_translations(
     unit_id: str | None = None,
     terms_path: str | None = None,
     mark_reviewed: bool = False,
+    force: bool = False,
 ) -> dict[str, Any]:
     """把 agent 手写的 translation/ + align/ 登记进工作区（路径 B 一等入口）。
 
@@ -441,6 +442,10 @@ def import_translations(
 
     ``mark_reviewed=True``（--reviewed）：把处于 ``aligned`` 的单元推进为
     ``reviewed``（审校通过的显式登记入口；reviewed/built 跳过、低于 aligned 不动）。
+
+    ``force=True``（--force，issue #13）：对 ``reviewed``/``built`` 单元**重跑**全套
+    阻断校验——供交付后修订译文时重新登记。通过则保持原状态（不回退，护住审校结论）；
+    失败则把该单元回退 ``aligned`` 并给出清单，待修复后重导。
     """
     from auto_translator.glossary import (
         Glossary,
@@ -477,6 +482,7 @@ def import_translations(
 
     glossary = Glossary(load_glossary_csv(glossary_path))
     imported: list[str] = []
+    revalidated: list[str] = []
     pending: list[dict[str, Any]] = []
     failed: list[dict[str, Any]] = []
     warned: list[dict[str, Any]] = []
@@ -487,7 +493,9 @@ def import_translations(
             continue
         # 已完成单元安全跳过（状态与续跑不变量）：reviewed/built 不重导，
         # 避免把审校结论状态打回 aligned（重导修订稿前须先重走审校）。
-        if unit.status in ("reviewed", "built"):
+        # --force 显式要求重校验时除外（issue #13）。
+        was_done = unit.status in ("reviewed", "built")
+        if was_done and not force:
             skipped.append(unit.id)
             continue
         rel_path = (unit.meta or {}).get("rel_path")
@@ -544,6 +552,10 @@ def import_translations(
             if f.check in ("length", "terminology", "marker", "footnote", "heading", "fidelity"):
                 warned.append({"unit": unit.id, "check": f.check, "message": f.message})
         if errors:
+            if force and was_done:
+                # --force 重校验失败：显式回退 aligned，待修复后重导（不静默）
+                store.set_unit_status(unit.id, "aligned")
+                errors.append("--force 重校验失败：状态已回退 aligned")
             failed.append({"unit": unit.id, "errors": errors})
             continue
         # 勘误先例留痕：按句 src 命中的已知讹误补 note（corr:wrong→right）并写回
@@ -551,9 +563,13 @@ def import_translations(
         from auto_translator.translation.align import write_align
 
         write_align(align_path, annotate_correction_notes(rows))
-        store.set_unit_status(unit.id, "translated")
-        store.set_unit_status(unit.id, "aligned")
-        imported.append(unit.id)
+        if was_done and force:
+            # 重校验通过：保持原状态（不回退，护住审校/构建结论）
+            revalidated.append(unit.id)
+        else:
+            store.set_unit_status(unit.id, "translated")
+            store.set_unit_status(unit.id, "aligned")
+            imported.append(unit.id)
 
     # 术语冲突检测与外置（agent 裁决后写回 CSV）
     conflicts = glossary.detect_conflicts()
@@ -573,10 +589,13 @@ def import_translations(
 
     if imported:
         store.log_event("import_translated", units=imported)
+    if revalidated:
+        store.log_event("import_revalidated", units=revalidated)
     if reviewed:
         store.log_event("import_reviewed", units=reviewed)
     return {
         "imported": imported,
+        "revalidated": revalidated,
         "pending": pending,
         "failed": failed,
         "warnings": warned,
