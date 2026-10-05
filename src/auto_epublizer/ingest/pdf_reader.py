@@ -15,6 +15,7 @@ import json
 import os
 import re
 import tempfile
+from collections.abc import Callable
 from pathlib import Path
 
 import pymupdf as fitz  # pymupdf（fitz 为兼容别名）
@@ -498,6 +499,7 @@ def read_pdf(
     ocr_backend: OcrBackend | None = None,
     page_dpi: int = 150,
     rtl: str = "auto",
+    progress: Callable[[int, int], None] | None = None,
 ) -> SourceDocument:
     """读取 PDF：按页切片抽文字层，逐页写 page-NNN.json 到 raw_dir；扫描页走 OCR。
 
@@ -594,6 +596,8 @@ def read_pdf(
                         meta=meta,
                     )
                 )
+            if progress is not None:
+                progress(page_no + 1, page_count)
     finally:
         doc.close()
         if tmp_dir:

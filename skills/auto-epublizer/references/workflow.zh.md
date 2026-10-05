@@ -95,9 +95,10 @@ convert <input>   -> 归一化 + 结构 + EPUB + QA
 auto-epublizer doctor [--json] [--ping]
 
 # 预处理（新书：init + 零 token 事实收集 → preprocessing/facts.*；已有工作区：幂等刷新）
-auto-epublizer preprocess <input> [--reference <path...>] [--original <path>] [--target zh-CN] [--workspace <dir>]
+auto-epublizer preprocess <input> [--reference <path...>] [--original <path>] [--progress] [--target zh-CN] [--workspace <dir>]
 #   --force（省略 input）：从 source/ 原地重建 structured/ 与 facts（误中断恢复；单元状态重置 split）
 #   --original <path>：把未改动的交付原件归档到 references/user/（issue #30 §4.6）
+#   --progress：长任务（PDF 逐页）进度到 stderr（issue #30 §4.4）
 # （agent 读 facts.md 撰写 capabilities/plan/global/units/terms/risks/report，见 references/preprocessing.md）
 # init <input> 等价于 preprocess 的建工作区子集（不产 facts；仍可用于仅需拆解的场景）
 

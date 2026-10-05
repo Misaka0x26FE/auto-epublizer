@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from pathlib import Path
 
 from auto_common.workspace import RunStore
 
 from .epub_reader import EpubError, read_epub
+from .kindle import KINDLE_EXTS, KindleError, as_epub
 from .mineru import MineruClient, MineruError, read_mineru
 from .models import SourceDocument
 from .pandoc_reader import PandocError, read_pandoc
@@ -18,7 +20,18 @@ class IngestError(RuntimeError):
     """用户可见的输入处理错误。"""
 
 
-_SUPPORTED = {".txt", ".md", ".markdown", ".html", ".htm", ".xhtml", ".docx", ".epub", ".pdf"}
+_SUPPORTED = {
+    ".txt",
+    ".md",
+    ".markdown",
+    ".html",
+    ".htm",
+    ".xhtml",
+    ".docx",
+    ".epub",
+    ".pdf",
+    *KINDLE_EXTS,
+}
 
 _PANDOC_FORMATS = {
     ".html": "html",
@@ -39,6 +52,7 @@ def load_document(
     mineru_language: str = "ch",
     mineru_batch_pages: int = 200,
     rtl: str = "auto",
+    progress: Callable[[int, int], None] | None = None,
 ) -> SourceDocument:
     """按扩展名读取源文件并归一化为 SourceDocument。
 
@@ -72,11 +86,20 @@ def load_document(
             except MineruError as e:
                 raise IngestError(str(e)) from e
         try:
-            return read_pdf(path, raw_dir=raw_dir, ocr_backend=ocr_backend, rtl=rtl)
+            return read_pdf(
+                path, raw_dir=raw_dir, ocr_backend=ocr_backend, rtl=rtl, progress=progress
+            )
         except PdfError as e:
             raise IngestError(str(e)) from e
-    # EPUB：按 OPF spine 切分并内联非线性项（表格等）；结构异常回退通用 pandoc 路径
+    # Kindle 容器：经 calibre ebook-convert 转 EPUB 再走 EPUB 链（issue #30 §4.1）
     media = raw_dir / "media" if raw_dir else None
+    if ext in KINDLE_EXTS:
+        try:
+            with as_epub(path) as epub_path:
+                return read_epub(epub_path, media_dir=media)
+        except (KindleError, EpubError) as e:
+            raise IngestError(str(e)) from e
+    # EPUB：按 OPF spine 切分并内联非线性项（表格等）；结构异常回退通用 pandoc 路径
     if ext == ".epub":
         try:
             return read_epub(path, media_dir=media)

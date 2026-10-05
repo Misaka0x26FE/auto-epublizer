@@ -1,4 +1,4 @@
-<!-- i18n: source=ingest.zh.md sha256=9d9d9d1291fdcda47c4342a22fc9aa45f72472d5f6afb733e1ca795d2a817d91 -->
+<!-- i18n: source=ingest.zh.md sha256=99bdc2accfba1e9c5ed8723eec41c1db3fac0ccdaece8bd9316e51705a050139 -->
 > **English** | [中文](ingest.zh.md)
 
 # Ingest (file parsing)
@@ -34,6 +34,7 @@ formulas across the board:
 | EPUB | `pandoc` ✓ | **Split by OPF spine**: one linear item per unit, non-linear items (tables etc.) converted to md and inlined at the reference point; on failure fall back to generic pandoc (see "EPUB split by spine" below) |
 | DOCX / HTML | `pandoc` ✓ | pandoc → Markdown + extract media |
 | EPUB / DOCX / HTML | `pandoc` ✗ | Ask the user to convert to PDF/TXT/MD first |
+| Kindle (`.azw3` / `.azw` / `.mobi`) | calibre `ebook-convert` ✓ | Convert to a temporary EPUB, then the normal EPUB chain (issue #30 §4.1); missing converter → clear error asking the user to convert first |
 | PDF text layer | `pymupdf` ✓ | Slice by page to extract the text layer (offline, zero cost; in auto mode this path is taken even if a MinerU key exists) |
 
 **OCR routing priority is fixed**: **MinerU external API (ask the user for a key) →
