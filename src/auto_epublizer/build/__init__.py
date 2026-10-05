@@ -356,16 +356,22 @@ def _render_nav(
     层级按源文标题层级嵌套；封面单元不进目录，``nav_depth`` 之外不渲染
     （epub-template-spec §3 目录深度投影）。
     """
-    items = _render_nav_items(_toc_tree(nav_toc_entries(content_entries, nav_depth)))
+    entries = nav_toc_entries(content_entries, nav_depth)
+    items = _render_nav_items(_toc_tree(entries))
+    # 两个不同语义的声明，务必分开（#16 S-A / 2026-10-04-backlog-three-items §1.4）：
+    # - nav-depth：**渲染后实际最大深度** A，与 NCX 的 dtb:depth 同源（对外如实）；
+    # - nav-projection：**投影上限** K（构建期 --nav-depth/配置），qa 用它重建期望集。
+    # 不能用 A 当 qa 的投影依据：扁平的错误构建会声明 A=1，反而自证「期望扁平」、
+    # 漏报 E_TOC_FLAT（见 tests/test_provenance.py::test_provenance_anchor_toc_flat_detection）。
+    depth = max(nav_depth_sequence(entries), default=1)
     return (
         '<?xml version="1.0" encoding="utf-8"?>\n'
         f'<html xmlns="{_NS_XHTML}" xmlns:epub="{_NS_EPUB}" '
         f'xml:lang="{escape(lang, quote=True)}">\n'
         "<head>\n"
         '<meta charset="utf-8"/>\n'
-        # 目录投影深度声明：qa 的溯源/覆盖审计以此为准（否则 build --nav-depth 与
-        # 后续 qa 默认配置漂移会误报 E_TOC_COVERAGE）
-        f'<meta name="nav-depth" content="{nav_depth}"/>\n'
+        f'<meta name="nav-depth" content="{depth}"/>\n'
+        f'<meta name="nav-projection" content="{nav_depth}"/>\n'
         f"<title>{escape(pub.meta.title)}</title>\n"
         "</head>\n"
         "<body>\n"

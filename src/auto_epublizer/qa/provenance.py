@@ -162,16 +162,21 @@ def _probe_missing(md_text: str, doc_text_norm: str) -> tuple[list[str], int]:
 
 
 def _nav_declared_depth(zf: zipfile.ZipFile) -> int | None:
-    """读 nav.xhtml head 的 ``<meta name="nav-depth" content="K">`` 投影深度声明。
+    """读 nav.xhtml 的**目录投影深度** K（重建期望/豁免集用）。
 
-    构建期由 `_render_nav` 写入；以此为准可避免「build --nav-depth N 后 qa 用
-    默认配置」造成的投影/豁免错位（旧书或外部工具产物无声明 → None 走兜底）。
+    新产物：``<meta name="nav-projection" content="K">``（构建期 --nav-depth/配置）；
+    旧产物：回退 ``<meta name="nav-depth" content="K">``（该字段历史上即投影深度）。
+    注意：``nav-depth`` 现改为渲染后**实际**深度 A（#16 S-A），不能再当投影依据——否则
+    扁平的错误构建会声明 A=1 并自证「期望扁平」，漏报 E_TOC_FLAT。
+    无声明（旧书/外部工具）→ None 走兜底。
     """
     navs = [n for n in zf.namelist() if n.endswith("nav.xhtml")]
     if not navs:
         return None
     html = zf.read(navs[0]).decode("utf-8")
-    m = re.search(r'<meta\s+name="nav-depth"\s+content="(\d+)"', html)
+    m = re.search(r'<meta\s+name="nav-projection"\s+content="(\d+)"', html) or re.search(
+        r'<meta\s+name="nav-depth"\s+content="(\d+)"', html
+    )
     if not m:
         return None
     depth = int(m.group(1))

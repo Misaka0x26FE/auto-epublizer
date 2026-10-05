@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 import zipfile
 from pathlib import Path
 
@@ -537,6 +538,8 @@ def test_nested_nav_and_ncx_hierarchy(tmp_path: Path) -> None:
     assert "ch02.xhtml" in inner and "ch03.xhtml" in inner and "ch04.xhtml" not in inner
     assert nav.count("<ol>") == 2
     assert "dtb:depth" in ncx and 'content="2"' in ncx
+    # #16 S-A：nav 声明的 nav-depth 为渲染后实际深度（此处 2），而非投影上限 3
+    assert '<meta name="nav-depth" content="2"/>' in nav
 
 
 def test_flat_toc_for_flat_source(tmp_path: Path) -> None:
@@ -562,6 +565,35 @@ def test_flat_toc_for_flat_source(tmp_path: Path) -> None:
         ncx = zf.read("OEBPS/toc.ncx").decode("utf-8")
     assert nav.count("<ol>") == 1
     assert 'dtb:depth" content="1"' in ncx
+    assert '<meta name="nav-depth" content="1"/>' in nav
+
+
+def test_nav_depth_meta_equals_ncx_dtb_depth(tmp_path: Path) -> None:
+    """回归（#16 S-A）：nav 的 meta nav-depth 必须等于 NCX 的 dtb:depth（同源实际深度）。"""
+    pub = _pub()
+    entries = [
+        {"id": "ch01", "region": "body", "title": "一", "level": 1},
+        {"id": "ch02", "region": "body", "title": "二", "level": 2},
+    ]
+    content = [
+        (f"{e['id']}.xhtml", render_document(e["title"], "正文。", lang="zh-CN")) for e in entries
+    ]
+    out = build_epub(
+        pub,
+        entries,
+        content,
+        lang="zh-CN",
+        modified="2026-01-01T00:00:00Z",
+        out_path=tmp_path / "m.epub",
+    )
+    with zipfile.ZipFile(out) as zf:
+        nav = zf.read("OEBPS/nav.xhtml").decode("utf-8")
+        ncx = zf.read("OEBPS/toc.ncx").decode("utf-8")
+    nav_meta = int(re.search(r'name="nav-depth" content="(\d+)"', nav).group(1))
+    dtb_depth = int(re.search(r'name="dtb:depth" content="(\d+)"', ncx).group(1))
+    projection = int(re.search(r'name="nav-projection" content="(\d+)"', nav).group(1))
+    assert nav_meta == dtb_depth == 2  # 实际深度：nav 与 NCX 同源
+    assert projection == 3  # 投影上限：qa 重建期望集用
 
 
 def test_nav_depth_projection_and_cover_exclusion(tmp_path: Path) -> None:
@@ -596,7 +628,8 @@ def test_nav_depth_projection_and_cover_exclusion(tmp_path: Path) -> None:
     assert "ch04.xhtml" not in nav and "ch05.xhtml" not in nav and "cover.xhtml" not in nav
     assert "ch04.xhtml" not in ncx and "ch05.xhtml" not in ncx
     assert 'dtb:depth" content="3"' in ncx
-    # 投影深度声明进 nav（qa 审计以此为准，避免配置漂移误报）
+    # 投影深度声明进 nav（qa 审计以此为准，避免配置漂移误报）；实际深度与之一致（此处皆 3）
+    assert '<meta name="nav-projection" content="3"/>' in nav
     assert '<meta name="nav-depth" content="3"/>' in nav
     # 深层单元仍在 spine 阅读顺序（投影只影响目录，不丢内容）
     assert '<itemref idref="ch04.xhtml"' in opf and '<itemref idref="ch05.xhtml"' in opf

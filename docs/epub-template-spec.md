@@ -1,4 +1,4 @@
-<!-- i18n: source=epub-template-spec.zh.md sha256=0105fce5b440a003cb0ef93f77b460d4c3a636c86130a977953f3048100d4ec1 -->
+<!-- i18n: source=epub-template-spec.zh.md sha256=d93cd6532a47700884668872950b3eae497adb5ecef5e62dd5cca3464c449070 -->
 > **English** | [中文](epub-template-spec.zh.md)
 
 # EPUB File Spec: Unstyled Standard Template + Limited Themes
@@ -149,9 +149,12 @@ output:
 6. ✅ `qa/audit.py`: `E_THEME_FONT`/`E_THEME_COLOR`/`E_COVER_META`/`E_HEADING_SKIP`/
    `E_RESIDUE`/`W_RESIDUE`/`W_META_INCOMPLETE`/`E_ANCHOR`/`E_FN_BACKLINK`/`E_BI_PAIRS`/
    `W_EPUB_SIZE`/`W_IMG_UNCOMPRESSED`; provenance audit `W_NO_COVER`/`W_NAMING`.
-7. ✅ TOC depth projection: `nav_toc_entries` (cover excluded + `nav_depth` truncation) → nav/NCX;
-   `dtb:depth` is the post-projection depth; nav.xhtml declares `<meta name="nav-depth" content="K"/>`
-   (qa audit uses this as authoritative); `nav_exempt` exempts `E_TOC_COVERAGE`.
+7. ✅ TOC depth projection: `nav_toc_entries` (cover excluded + `nav_depth` truncation) → nav/NCX.
+   nav.xhtml declares two separate metas: `<meta name="nav-depth" content="A"/>` = the **actual
+   rendered depth** A (same source as NCX `dtb:depth`; truthful for external tools) and
+   `<meta name="nav-projection" content="K"/>` = the **projection cap** K; the qa audit uses K as
+   authoritative to rebuild the expected set (using A would let a flat/broken build self-certify
+   as "expected flat" and hide `E_TOC_FLAT`). `nav_exempt` exempts `E_TOC_COVERAGE`.
 
 ## 8. Follow-Up Implementation List (by Priority)
 
