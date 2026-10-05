@@ -35,6 +35,17 @@ def test_init_and_status(tmp_path: Path) -> None:
     assert '"status": "split"' in result.output
 
 
+def test_status_json_not_corrupted_by_rich_wrapping(tmp_path: Path) -> None:
+    """回归（2026-10-05 真书实测）：长标题不得被 rich 折行，--json 必须可解析。"""
+    src = tmp_path / "book.md"
+    src.write_text("# " + "A" * 300 + "\n\n正文。\n", encoding="utf-8")
+    ws = tmp_path / "ws"
+    _invoke("init", str(src), "--workspace", str(ws))
+    result = _invoke("status", "--workspace", str(ws), "--json")
+    data = json.loads(result.output)  # 折行会抛 JSONDecodeError
+    assert data["next_tasks"]
+
+
 def test_convert_end_to_end(tmp_path: Path) -> None:
     src = tmp_path / "book.md"
     src.write_text("# 第一章\n\n正文。\n", encoding="utf-8")

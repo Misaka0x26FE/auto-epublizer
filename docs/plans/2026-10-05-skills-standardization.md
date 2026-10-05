@@ -1,7 +1,7 @@
 # 2026-10-05 仓库 skills 标准化（skills.sh / Agent Skills 规范）
 
-状态：实施中（2026-10-05 完成 P0 合规 + P1 发布准备 + P2 `SKILL.md` 减重 +
-P3 原子任务卡；仅剩 P4 多 skill 拆分（评估项，需真书实测后再定））
+状态：已完成（2026-10-05：P0–P3 完成；P4 经真书实测后判定**暂不拆分**——证据不支持，
+见文末「P4 评估：真书实测记录」）。实测另暴露并修复 2 个真实缺陷（JSON 输出、`next_tasks` 排序）。
 
 ## 背景与目标
 
@@ -121,6 +121,11 @@ skills/
 「SKILL.md + 15 篇 references」在弱模型会话里明显超载、或路由误判频发，再拆。
 不要为拆而拆（拆分会带来 manifest/references 双份维护成本）。
 
+**判定（2026-10-05，见文末实测记录）：P4 = 暂不拆分（No-Go）**。真书实测中，单 skill
+的 `SKILL.md` + taskcards 足以驱动整条路径，未出现超载或路由误判；实测暴露的瓶颈是
+**数据侧结构质量**与**指针排序**，与 skill 粒度无关。重访条件：出现真实的路由误判或
+单会话上下文超载（尤其用真正的偏弱模型时）。
+
 ## 「全部事项」总表（跨文档索引，避免多处失同步）
 
 | 事项 | 权威文档 | 状态 |
@@ -129,12 +134,12 @@ skills/
 | 发布准备（public / 徽章 / install --check） | 本文件 P1 | ✅ 2026-10-05 |
 | SKILL.md 减重（渐进式披露） | 本文件 P2 | ✅ 2026-10-05 |
 | 原子任务卡 + `done_when` | 本文件 P3 + `2026-09-30-workflow-microtasks.md` | ✅ 2026-10-05（首批 9 张双语） |
-| 多 skill 拆分 | 本文件 P4 | ⬜（评估） |
+| 多 skill 拆分 | 本文件 P4 | ✅ 评估完成：暂不拆分（2026-10-05 实测，证据不支持） |
 | 工作原子化 S1（`next_tasks` 指针） | `2026-09-30-workflow-microtasks.md` | ✅ 2026-10-05 |
 | 工作原子化 S2–S5 | 同上 | S2 首批完成（任务卡）；S3–S5 待做（S1 实测后定范围） |
-| #16 导航扁平 S-A（meta 如实声明） | `2026-10-04-backlog-three-items.md` §1.4 | ⬜（低风险，可先做） |
+| #16 导航扁平 S-A（meta 如实声明） | `2026-10-04-backlog-three-items.md` §1.4 | ✅ 2026-10-05（dcb2496） |
 | #16 导航扁平 S-B（源书签→锚点映射） | 同上 §1.4 | ⬜（需案例工作区） |
-| 项目 skills 化（内容层） | 本文件 P2–P4 | ⬜ |
+| 项目 skills 化（内容层） | 本文件 P2–P4 | ✅ P2–P3 完成；P4 评估完成（暂不拆） |
 
 ## 边界与不变量
 
@@ -164,3 +169,36 @@ P0 合规（✅ 已做，解除“装不上”故障）
   （如逐单元 `translate-unit → import-unit → fix-g0-unit`）而不跳步、不重做、不依赖会话记忆；
 - 回归：`uv run pytest -q` + `ruff check` + `ruff format --check` +
   `i18n.py --check/--links` 全绿。
+
+## P4 评估：真书实测记录（2026-10-05）
+
+**方法**：`auto-epublizer preprocess` 处理真实书 `PDFs/文字层pdf-Paul Graham：On Lisp@1993.pdf`
+（文字层，426 页，58 单元 / 11.6 万词），工作区置于沙箱；随后严格按
+`status --json.next_tasks` → 任务卡驱动，不依赖会话记忆。
+
+**指针路径实测**（与设计一致）：
+
+```text
+preprocess → write_preprocessing(capabilities→global→todo) → repair
+          → analyze(≤5) → translate(单单元) → import → review → …
+```
+
+**实测发现**：
+
+1. **缺陷（已修）`status --json` 输出非法 JSON**：rich `console.print` 按终端宽度对长标题
+   （PDF 段落被误当标题）自动折行，插入真实换行，`json.loads` 失败 → **机器指针不可用**。
+   修复：`cli._emit_json` 用 `soft_wrap=True` 绕过折行（status/doctor/knowledge 三处）；
+   回归 `tests/test_cli.py::test_status_json_not_corrupted_by_rich_wrapping`。
+2. **缺陷（已修）`next_tasks` 排序**：import 后直接跳到「翻译下一单元」，把整个 `review`
+   阶段推到全书翻译完之后，违背「单元级原子循环」。修复：已 aligned 的单元**先审校**再翻
+   下一个；回归 `test_status_next_tasks.py::test_next_tasks_review_before_next_translate`。
+3. **数据侧缺陷（未修，另案）**：该 PDF 的 `structured/` 结构有噪声——出现标题仅为
+   "1"/"2"… 的 4 字符伪章节、章节标题被截断或误取为段落、前置版权页被判为 body 章节。
+   属 PDF 结构识别质量问题，**不在本主题范围**，建议另立 issue / 计划。
+4. **观察**：`repair` 对文字层 PDF（9579 处硬折行）也会触发并**硬门**先于理解/翻译；
+   对非 OCR 源是否应降级为 advisory 值得后续评估。
+5. **P4 判定**：单 skill + taskcards 足以驱动真实工作区，**未出现超载或路由误判**；
+   实测瓶颈在数据质量与指针排序，**证据不支持现在拆分为多 skill** → P4 No-Go，按 P4 重访条件待命。
+
+> **局限**：本次驱动由主 agent 执行，非真正的「偏弱模型」；协议自包含性已验证，但
+> 模型能力维度的结论仍需一次真·弱模型实测。

@@ -77,6 +77,18 @@ def test_next_tasks_stale_import(tmp_path: Path) -> None:
     assert head["done_when"] == {"cmd": "import", "unit": unit.id}
 
 
+def test_next_tasks_review_before_next_translate(tmp_path: Path) -> None:
+    """单元级原子循环：已 aligned 的单元先审校，再翻下一个（实测修正）。"""
+    store = _complete_preprocessing(tmp_path)
+    store.analysis_dir.mkdir(parents=True, exist_ok=True)
+    (store.analysis_dir / "overview.md").write_text("x", encoding="utf-8")
+    first = store.load_publication().units[0]
+    store.set_unit_status(first.id, "aligned")
+    head = orch.status(store)["next_tasks"][0]
+    assert head["kind"] == "review"
+    assert head["unit"] == first.id
+
+
 def test_next_tasks_review_then_build_qa_delivery(tmp_path: Path) -> None:
     store = _complete_preprocessing(tmp_path)
     pub = store.load_publication()
