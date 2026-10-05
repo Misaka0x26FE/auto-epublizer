@@ -1,4 +1,4 @@
-<!-- i18n: source=workflow.zh.md sha256=45b0b48a04961ca4a8db431503c98f794af911dcf20127d9c66ed76081e801ba -->
+<!-- i18n: source=workflow.zh.md sha256=0e6218f33709ca7d6325565733a155f73dadf45ac514d7a913d2d543ba8778dd -->
 > **English** | [中文](workflow.zh.md)
 
 # Workflow (stage routing + command overview)
@@ -110,9 +110,10 @@ repository (`Misaka0x26FE/auto-epublizer`)?** If the user agrees:
 auto-epublizer doctor [--json] [--ping]
 
 # preprocessing (new book: init + zero-token fact collection → preprocessing/facts.*; existing workspace: idempotent refresh)
-auto-epublizer preprocess <input> [--reference <path...>] [--original <path>] [--target zh-CN] [--workspace <dir>]
+auto-epublizer preprocess <input> [--reference <path...>] [--original <path>] [--progress] [--target zh-CN] [--workspace <dir>]
 #   --force (input omitted): rebuild structured/ + facts in place from source/ (recovery after an interrupted preprocess; unit status resets to split)
 #   --original <path>: archive the unmodified delivered original into references/user/ (issue #30 §4.6)
+#   --progress: per-page progress to stderr for long tasks (PDF slicing, issue #30 §4.4)
 # (agent reads facts.md and writes capabilities/plan/global/units/terms/risks/report, see references/preprocessing.md)
 # init <input> is equivalent to the workspace-creation subset of preprocess (produces no facts; still usable for split-only scenarios)
 

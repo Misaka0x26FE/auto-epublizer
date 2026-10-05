@@ -290,6 +290,23 @@ def test_pdf_body_sentence_with_chapter_keyword_not_heading() -> None:
     assert _is_chapter_heading(seg("Chapter 11", 12.0), median) is True
 
 
+def test_read_pdf_progress_callback(tmp_path: Path) -> None:
+    """#30 §4.4：read_pdf 逐页回调进度（确定性、离线）。"""
+    from auto_epublizer.ingest.pdf_reader import read_pdf
+
+    pdf_path = _make_pdf(
+        tmp_path / "book.pdf",
+        [
+            [("Page one body.", 12)],
+            [("Page two body.", 12)],
+            [("Page three body.", 12)],
+        ],
+    )
+    calls: list[tuple[int, int]] = []
+    read_pdf(pdf_path, progress=lambda p, t: calls.append((p, t)))
+    assert calls == [(1, 3), (2, 3), (3, 3)]
+
+
 def test_load_document_pdf_no_heading_single_unit(tmp_path: Path) -> None:
     """无标题信号（同字号正文）时保持单单元回退（C9 不破坏旧行为）。"""
     pdf_path = _make_pdf(

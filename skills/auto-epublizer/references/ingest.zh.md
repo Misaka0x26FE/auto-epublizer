@@ -29,6 +29,7 @@
 | EPUB | `pandoc` ✓ | **按 OPF spine 切分**：线性项一项一单元，非线性项（表格等）转 md 在引用处内联；失败回退通用 pandoc（见下「EPUB 按 spine 切分」） |
 | DOCX / HTML | `pandoc` ✓ | pandoc → Markdown + 抽媒体 |
 | EPUB / DOCX / HTML | `pandoc` ✗ | 请用户先转 PDF/TXT/MD |
+| Kindle（`.azw3` / `.azw` / `.mobi`） | calibre `ebook-convert` ✓ | 转临时 EPUB 后走常规 EPUB 链（issue #30 §4.1）；缺转换器 → 明确提示先转换 |
 | PDF 文字层 | `pymupdf` ✓ | 按页切片抽文字层（离线、零成本；auto 模式下即使有 MinerU key 也走此路径） |
 
 **OCR 路由优先级固定**：**MinerU 外部 API（询问用户拿 key）→ 传统 OCR/rapidocr

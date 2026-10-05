@@ -19,7 +19,22 @@ from typing import Any
 _DC = "http://purl.org/dc/elements/1.1/"
 _OPF = "http://www.idpf.org/2007/opf"
 
-_SUPPORTED = {".txt", ".md", ".markdown", ".html", ".htm", ".xhtml", ".docx", ".epub", ".pdf"}
+_SUPPORTED = {
+    ".txt",
+    ".md",
+    ".markdown",
+    ".html",
+    ".htm",
+    ".xhtml",
+    ".docx",
+    ".epub",
+    ".pdf",
+    ".azw3",
+    ".azw",
+    ".mobi",  # Kindle 容器：经 calibre ebook-convert 转 EPUB（issue #30 §4.1）
+}
+
+_KINDLE_KINDS = ("azw3", "azw", "mobi")
 
 
 class SniffError(ValueError):
@@ -252,6 +267,17 @@ def sniff(path: str | Path) -> dict[str, Any]:
     if not p.is_file():
         raise SniffError(f"源文件不存在：{p}")
     kind = _detect_kind(p)
+    if kind in _KINDLE_KINDS:
+        from ..ingest.kindle import KindleError, as_epub
+
+        try:
+            with as_epub(p) as epub_path:
+                facts = sniff_epub(epub_path)
+        except KindleError as e:
+            raise SniffError(str(e)) from e
+        facts["kind"] = kind
+        facts["converted_from_epub"] = True
+        return facts
     if kind == "epub":
         return sniff_epub(p)
     if kind == "pdf":

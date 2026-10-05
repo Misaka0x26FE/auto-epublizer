@@ -24,6 +24,12 @@ app.add_typer(evidence_app, name="evidence")
 _CONFIG_PATH = "config.yaml"
 
 
+def _pdf_progress(page: int, total: int) -> None:
+    """PDF 逐页进度提示（stderr；每 10 页或末页一行，issue #30 §4.4）。"""
+    if total and (page == total or page % 10 == 0):
+        typer.echo(f"  解析 PDF {page}/{total} 页", err=True)
+
+
 def _emit_json(text: str) -> None:
     """输出机器可读 JSON：绕过 rich 按终端宽度自动换行。
 
@@ -62,6 +68,7 @@ def init(
     original: str | None = typer.Option(
         None, "--original", help="交付原件归档到 references/user/（issue #30 §4.6）"
     ),
+    progress: bool = typer.Option(False, "--progress", help="长任务（PDF 逐页）进度到 stderr"),
     target: str | None = typer.Option(None, "--target", help="目标语言（ISO 639-1）"),
     workspace: str | None = typer.Option(None, "--workspace", help="工作区根目录"),
     config: str | None = typer.Option(None, "--config", help="配置文件路径"),
@@ -76,6 +83,7 @@ def init(
             references=reference,
             workspace_dir=workspace or cfg.paths.workspaces_dir,
             original=original,
+            progress=_pdf_progress if progress else None,
         )
     except (ValueError, OSError) as e:
         raise typer.Exit(f"初始化失败：{e}") from None
@@ -282,6 +290,7 @@ def preprocess(
     original: str | None = typer.Option(
         None, "--original", help="交付原件归档到 references/user/（issue #30 §4.6）"
     ),
+    progress: bool = typer.Option(False, "--progress", help="长任务（PDF 逐页）进度到 stderr"),
     target: str | None = typer.Option(None, "--target", help="目标语言（ISO 639-1）"),
     force: bool = typer.Option(
         False, "--force", help="原地重建 structured/ 与 facts（误中断恢复，issue #30 §4.2）"
@@ -300,7 +309,7 @@ def preprocess(
     try:
         if force:
             store = _store_from(workspace, cfg)
-            result = orch.rebuild(store, config=cfg)
+            result = orch.rebuild(store, config=cfg, progress=_pdf_progress if progress else None)
             console.print(
                 "[yellow]已原地重建 structured/ 与 facts（单元状态重置为 split）[/yellow]"
             )
@@ -313,6 +322,7 @@ def preprocess(
                     references=reference,
                     workspace_dir=workspace or cfg.paths.workspaces_dir,
                     original=original,
+                    progress=_pdf_progress if progress else None,
                 )
             else:
                 store = _store_from(workspace, cfg)

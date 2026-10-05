@@ -34,6 +34,7 @@ def init(
     references: list[str] | None = None,
     workspace_dir: str | None = None,
     original: str | None = None,
+    progress: Any | None = None,
 ) -> RunStore:
     store = init_workspace(
         input_path,
@@ -43,7 +44,7 @@ def init(
         workspace_dir=workspace_dir,
         original=original,
     )
-    prepare_structure(store, config=config)
+    prepare_structure(store, config=config, progress=progress)
     return store
 
 
@@ -133,8 +134,13 @@ def _mineru_client_if_preferred(store: RunStore, config: Config | None = None):
     return None
 
 
-def prepare_structure(store: RunStore, *, config: Config | None = None) -> list[dict[str, Any]]:
-    """解析源文件并写入四层结构（幂等）：structured/ + units 清单 + split 状态。"""
+def prepare_structure(
+    store: RunStore, *, config: Config | None = None, progress: Any | None = None
+) -> list[dict[str, Any]]:
+    """解析源文件并写入四层结构（幂等）：structured/ + units 清单 + split 状态。
+
+    ``progress``：可选回调 ``(page_no, total) → None``，长任务（PDF 逐页）进度提示。
+    """
     cfg = config or Config()
     doc = load_document(
         store.dir / store.load_publication().meta.source,
@@ -145,6 +151,7 @@ def prepare_structure(store: RunStore, *, config: Config | None = None) -> list[
         mineru_language=cfg.pdf.mineru_language,
         mineru_batch_pages=cfg.pdf.mineru_batch_pages,
         rtl=cfg.pdf.rtl,
+        progress=progress,
     )
     pub = store.load_publication()
     entries = rebuild_structure(doc, pub)
@@ -394,7 +401,9 @@ def evidence_breaks(store: RunStore, *, output: str | None = None) -> dict[str, 
     }
 
 
-def rebuild(store: RunStore, *, config: Config | None = None) -> dict[str, Any]:
+def rebuild(
+    store: RunStore, *, config: Config | None = None, progress: Any | None = None
+) -> dict[str, Any]:
     """原地重建 ``structured/``（含 raw/）与 facts（issue #30 §4.2，``preprocess --force``）。
 
     从 ``source/`` 重新 ingest → 覆盖 structured/ → 重算 facts。单元状态被重置为
@@ -405,7 +414,7 @@ def rebuild(store: RunStore, *, config: Config | None = None) -> dict[str, Any]:
 
     if store.structured_dir.exists():
         shutil.rmtree(store.structured_dir)
-    prepare_structure(store, config=config)
+    prepare_structure(store, config=config, progress=progress)
     return preprocess(store, config=config)
 
 
