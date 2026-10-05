@@ -564,6 +564,18 @@ def test_build_epub_ncx_no_dangling_refs(tmp_path: Path) -> None:
             assert "ch02.xhtml" not in text, f"{doc} 悬空引用 ch02.xhtml"
 
 
+def test_dedupe_svg_ids_removes_duplicates() -> None:
+    """回归 #21：SVG 重复 id 去重（保留首次），消除 epubcheck RSC-005。"""
+    from auto_epublizer.build import dedupe_svg_ids
+
+    svg = '<svg><path id="gl1" d="M0"/><path id="gl2" d="M1"/><path id=\'gl1\' d="M0"/></svg>'
+    out = dedupe_svg_ids(svg)
+    assert out.count('id="gl1"') == 1
+    assert out.count('id="gl2"') == 1
+    assert out.count("<path") == 3  # 元素保留，仅去掉重复 id 属性
+    assert dedupe_svg_ids(out) == out  # 幂等
+
+
 def test_nested_nav_and_ncx_hierarchy(tmp_path: Path) -> None:
     """目录层级：源文 level 序列 → nav 嵌套 <ol> + NCX 嵌套 navPoint + dtb:depth（P0）。"""
     pub = _pub()

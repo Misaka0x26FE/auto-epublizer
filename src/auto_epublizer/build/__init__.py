@@ -488,6 +488,28 @@ def _render_landmarks(
     )
 
 
+_SVG_ID_RE = re.compile(r"""\bid\s*=\s*(["'])(.*?)\1""")
+
+
+def dedupe_svg_ids(text: str) -> str:
+    """移除 SVG 内**重复**的 ``id`` 属性（保留首次出现），消除 epubcheck RSC-005。
+
+    回归 #21：源 EPUB 页图 SVG（`<path id="glNNNN">` 字形定义）常在同一文件内重复
+    数千次，导致 qa 报数万项 RSC-005（Duplicate id）并系统性阻塞 G5；重复项通常
+    逐字节相同，去掉后续 id 属主不影响渲染。纯函数、幂等。
+    """
+    seen: set[str] = set()
+
+    def repl(m: re.Match[str]) -> str:
+        val = m.group(2)
+        if val in seen:
+            return ""
+        seen.add(val)
+        return m.group(0)
+
+    return _SVG_ID_RE.sub(repl, text)
+
+
 def collect_media(
     md_text: str, media_root: str | Path
 ) -> tuple[str, list[tuple[str, bytes]], list[str]]:
@@ -523,7 +545,11 @@ def collect_media(
             p = media_root / cand
             try:
                 if p.is_file():
-                    return p.relative_to(media_root).as_posix(), p.read_bytes()
+                    data = p.read_bytes()
+                    if p.suffix.lower() == ".svg":
+                        decoded = data.decode("utf-8", errors="surrogateescape")
+                        data = dedupe_svg_ids(decoded).encode("utf-8", errors="surrogateescape")
+                    return p.relative_to(media_root).as_posix(), data
             except OSError:
                 continue
         return None
