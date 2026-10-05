@@ -218,6 +218,35 @@ def test_g0_footnote_tgt_may_exceed_src_cjk_asymmetry() -> None:
     assert any(f.check == "footnote" for f in g0_unit_flags(lost, g))
 
 
+def test_g0_footnote_after_cjk_closing_quote_is_counted() -> None:
+    """注码紧跟 CJK 闭合引号时也须计入（回归 issue #29）。
+
+    中文排版把句末点放在引号内，闭合引号跟在句末点之后，于是注号紧跟 ``』``/``」``
+    而不是 ``。``。只认 ``[.!?…。！？]`` 的计数器会少数十几个注码，在源侧可数偏多的
+    单元上误报脚注不守恒（现场：builders-of-the-third-reich ch08 seq 44，源侧 3 /
+    译文侧 1，而三个注码 33/34/35 一个都没丢）。
+    """
+    g = Glossary()
+    src = (
+        "‘Officers were not automatons. They hoped to deploy their prison labour force,’ "
+        "Allen wrote.33 He noted that.34 Allen concluded.35"
+    )
+    tgt = "『军官绝非自动机器。他们希望投入囚犯劳动力。』33 他指出。34 艾伦总结道。35 "
+    assert count_footnote_refs(src) == 3
+    assert count_footnote_refs(tgt) == 3  # 修复前为 1
+    assert not [
+        f for f in g0_unit_flags([{"seq": 1, "src": src, "tgt": tgt}], g) if f.check == "footnote"
+    ]
+    # 真正丢失仍须报：译文侧只剩 2 个
+    lost = tgt.replace("。35 ", "。")
+    assert any(
+        f.check == "footnote" for f in g0_unit_flags([{"seq": 1, "src": src, "tgt": lost}], g)
+    )
+    # 英文源侧不受影响：`'` 不是句末标点，`...product,' 5` 不计
+    assert count_footnote_refs("…efficient industrial production,’ Allen wrote.33") == 1
+    assert count_footnote_refs("…production,’ 33") == 0
+
+
 def test_detect_and_annotate_corrections() -> None:
     """勘误留痕：detect_corrections 命中先例；annotate 给 align 行补 corr: 前缀不改文本。"""
     assert detect_corrections("IDG reported in 19487") == [("IDG", "IDF"), ("19487", "1948")]
