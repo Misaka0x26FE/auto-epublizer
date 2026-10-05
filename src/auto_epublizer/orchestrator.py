@@ -684,10 +684,41 @@ def _collect_g0_flags(store: RunStore, config: Config | None = None) -> list[dic
     return flags
 
 
-def _toc_missing_from_facts(store: RunStore, entries: list[dict[str, Any]]) -> list[str]:
-    """facts 源 TOC vs 单元标题对账（postprocessing-spec §2.3 W_TOC_MISSING 线索）。
+def _norm_title(text: Any) -> str:
+    """源文标题规范化（对账用）：NFKC + 去连字符 + 统一字母变体 + **只留字母/数字**。
 
-    无 facts.json 时返回空（不告警）。匹配规则：标题相等或互为子串。
+    只保留 Unicode 类别 L*/N*：一并去掉标点/括号（源书签与正文标题常见 `»…«` vs `«…»`
+    的差异）、空格、零宽、阿拉伯附加符号。在**源文语言空间**对账（facts 源 TOC 与
+    structured 标题同为源语言）；译文标题不参与。
+    """
+    import unicodedata
+
+    s = unicodedata.normalize("NFKC", str(text or ""))
+    s = s.replace("\u0640", "")  # tatweel（类别 Lm，否则会被 L/N 滤网放行）
+    s = s.replace("أ", "ا").replace("إ", "ا").replace("آ", "ا")
+    s = s.replace("ي", "ی").replace("ك", "ک").replace("ة", "ه")
+    s = s.casefold()
+    return "".join(ch for ch in s if unicodedata.category(ch)[0] in ("L", "N"))
+
+
+def _title_match(a: str, b: str) -> bool:
+    """规范化标题匹配：全等，或较短者为较长者的子串（过短不参与子串匹配，防误命中）。"""
+    if not a or not b:
+        return False
+    if a == b:
+        return True
+    short, long = (a, b) if len(a) <= len(b) else (b, a)
+    return len(short) >= 4 and short in long
+
+
+def _toc_missing_from_facts(store: RunStore, entries: list[dict[str, Any]]) -> list[str]:
+    """facts 源 TOC vs 单元标题 + 单元内锚点对账（postprocessing-spec §2.3 W_TOC_MISSING）。
+
+    升级（#16 S-B）：在**源文语言空间**把源书签映射到 ``unit`` 或 ``unit#anchor``（按标题
+    规范化后全等/子串），只有真正映射不上的才计入缺失——使告警反映**真实覆盖缺口**，而非
+    「书签数 vs 单元数」的量差。标题空间的锚点标签来自 structured/ 的 level≥2 子标题。
+    页码兜底未实现：EPUB 源无页码、PDF 单元级页码范围未提供，退化为标题匹配（见
+    docs/plans/2026-10-04-backlog-three-items.md §1.4 S-B 设计约束 2）。
     """
     facts_path = store.preprocessing_dir / "facts.json"
     if not facts_path.is_file():
@@ -697,15 +728,26 @@ def _toc_missing_from_facts(store: RunStore, entries: list[dict[str, Any]]) -> l
     except (OSError, ValueError):
         return []
     toc = (facts.get("source") or {}).get("toc") or []
-    titles = [str(e.get("title") or "").strip() for e in entries]
-    titles = [t for t in titles if t]
+    labels: list[str] = []
+    for e in entries:
+        labels.append(_norm_title(e.get("title")))
+        rel = e.get("rel_path") or ""
+        md_path = store.structured_dir / rel if rel else None
+        if md_path is not None and md_path.is_file():
+            try:
+                md = md_path.read_text(encoding="utf-8")
+            except OSError:
+                md = ""
+            labels.extend(_norm_title(a.get("title")) for a in subheading_anchors(md, e["id"]))
+    labels = [x for x in labels if x]
     missing: list[str] = []
     for item in toc:
         raw = item.get("title") if isinstance(item, dict) else str(item)
         title = str(raw or "").strip()
         if not title:
             continue
-        if not any(title == t or title in t or t in title for t in titles):
+        norm = _norm_title(title)
+        if not any(_title_match(norm, lab) for lab in labels):
             missing.append(title)
     return missing
 

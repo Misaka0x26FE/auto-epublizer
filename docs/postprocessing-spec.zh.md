@@ -141,7 +141,7 @@
 4. ✅ **逐段覆盖率**：`provenance_coverage` 进 report.json（无翻译产物为 null）
 5. ✅ **源文勘误留痕**：`detect_corrections` + `annotate_correction_notes`；
    import 路径写 align `note` 前缀 `corr:wrong→right`（translate 命令已随内部 LLM 移除）
-6. ✅ **TOC 对账**：facts 源 TOC vs 单元标题 → `W_TOC_MISSING`（warning 线索）
+6. ✅ **TOC 对账**：facts 源 TOC vs 单元标题 **+ 单元内锚点**（源文语言空间、规范化标题匹配，`#16 S-B`）→ `W_TOC_MISSING` 只列出真正无法映射的书签（真实覆盖缺口，而非「书签数 vs 单元数」量差）
 7. ✅ **脚注语义化**：`noteref`/`footnote` + 全局序号 + 双向跳转（`FootnoteState`）
 8. ✅ **样式瘦身**：`_STYLE_CSS` 去字体/颜色/字号/行距/缩进/对齐（回归测试锁定）
 

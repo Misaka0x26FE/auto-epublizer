@@ -94,7 +94,7 @@ reason 判定优先级 = 上表自上而下（先 g0 硬缺陷 → 冲突 → �
 | W_NO_COVER | W | 无封面（权属不明可接受，见 publishing.md §2） |
 | W_STRUCT_MISSING | W | structured 源文文件缺失 → 重 ingest |
 | W_TOC_DEPTH | W | nav 深度序列与源不一致（按 `output.nav_depth` 投影后对账） |
-| W_TOC_MISSING / W_NAMING | W | facts 源 TOC 缺条目 / 成品命名与 slug 不符 |
+| W_TOC_MISSING / W_NAMING | W | facts 源书签经规范化标题匹配后仍无法映射到 `unit` / `unit#anchor` 的条目（真实覆盖缺口） / 成品命名与 slug 不符 |
 | W_DELIVERY_AUDIT_MISSING | W | 全单元 built 但无交付记录 → 按 references/delivery.md 执行交付审计 |
 | W_REPAIR_UNRESOLVED | W | 语义整备有未决修复（repairs.jsonl unresolved）→ 能修则修，存疑的记录在交付记录 |
 
