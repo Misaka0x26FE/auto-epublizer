@@ -445,7 +445,16 @@ def g0_unit_flags(
                 {"src": sum_marker_src, "tgt": sum_marker_tgt},
             )
         )
-    if sum_fn_src != sum_fn_tgt:
+    # 只在**译文侧少于源文侧**时判违例（= 有注号丢失）。
+    # 源侧计数受缩写启发式影响（`_is_abbrev_dot` 把点前 ≤2 字母的词当作缩写点，
+    # 故 `…供职于 OT.24` / `…党卫队 SS.23` 的注号在源侧**不可见**），而该启发式对
+    # CJK 句末的「。」明确豁免（`_is_abbrev_dot` 的 CJK 分支），于是**同一个注号在英文/
+    # 德文侧数不到、在中文译文侧数得到**。逐字忠实的译文因此必然「多于」源侧，
+    # 用 `!=` 比较会把忠实译文判成违例，并把 ``g0_structure_open`` 顶到非 0 而阻断
+    # 放行（``qa/report.py`` 的 released 硬门）。现场：builders-of-the-third-reich
+    # 正文 739 个注号，源侧只数到 629（110 个紧跟 `OT.`/`SS.`），中文侧 739 全中。
+    # 译文侧**多于**源侧不是缺陷（既没丢注号，也不改内容），故不报。
+    if sum_fn_tgt < sum_fn_src:
         flags.append(
             G0Flag(
                 "footnote",
