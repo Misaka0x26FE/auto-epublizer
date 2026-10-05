@@ -35,6 +35,6 @@
 | [2026-09-18-i18n-english-docs.md](2026-09-18-i18n-english-docs.md) | 已完成（8226135 / deb26a5 / 8a3d9e0 / 072d6f8 / da52a03 / 11553dc / 293b03b / 5f59985 + 收尾回写） | 文档 i18n：50 份英文版（英文默认 `X.md` / 中文 `X.zh.md`）+ sha256 同步契约（脚本 + 测试强制） |
 | [2026-09-25-unified-terminology-store.md](2026-09-25-unified-terminology-store.md) | 已完成（34d6d2b） | 统一术语库/知识库：跨工作区持久化（默认 `~/Documents/auto-epublizer`）+ agent 自行维护 + git 持续维护/跨设备同步（`knowledge` 命令组） |
 | [2026-09-29-nav-depth.md](2026-09-29-nav-depth.md) | 已完成（6b3acb7） | 成品导航层级：单元内锚点目录 + 标题层级保真（PDF level≥2 书签）与守恒（g0 heading，issue #12）+ qa 锚点级对账 |
-| [2026-09-30-workflow-microtasks.md](2026-09-30-workflow-microtasks.md) | 规划中 | 工作阶段细分：原子任务卡 + `status --json` 机器可判的下一任务指针（弱模型按小任务多次完成全流程） |
+| [2026-09-30-workflow-microtasks.md](2026-09-30-workflow-microtasks.md) | 实施中（S1 已完成） | 工作阶段细分：原子任务卡 + `status --json` 机器可判的下一任务指针（弱模型按小任务多次完成全流程）；S1 `next_tasks` 已于 2026-10-05 落地 |
 | [2026-10-04-backlog-three-items.md](2026-10-04-backlog-three-items.md) | 规划中 | 三项待办梳理：#16 导航层级（GitHub Issue，部分完成）+ skills 化（未立项）+ 工作原子化（规划中）——来源、真实状态核实与修改思路；已完成可行性审查（S-A 风险解除 / S-B 约束澄清 / 依赖修正） |
 | [2026-10-05-skills-standardization.md](2026-10-05-skills-standardization.md) | 实施中 | 仓库 skills 标准化（skills.sh / Agent Skills）：P0 合规（frontmatter 置顶 + i18n 适配，已完成）→ P1 发布准备 → P2 SKILL.md 减重 → P3 原子任务卡（依赖原子化 S1）→ P4 多 skill 拆分（评估）；含「全部事项」跨文档总表 |

@@ -1,4 +1,4 @@
-<!-- i18n: source=workflow.zh.md sha256=7343faf97e7085f7ca4bdf6da48a8688419dc27ec33d73dcfd8cdd26478c903f -->
+<!-- i18n: source=workflow.zh.md sha256=22411127f5191a241e9dc1e60e0672ef3fac0ed31d735e04e67b8bfc281b36c2 -->
 > **English** | [中文](workflow.zh.md)
 
 # Workflow (stage routing + command overview)
@@ -23,6 +23,14 @@ publication.json present         -> resume: status --json to see the state machi
   has translation/ no reviews/   -> agent writes review artifacts reviews/review-<ts>/
   has output/*.epub              -> already built; qa or rebuild
 ```
+
+### Machine next-task pointer (weak-model path)
+
+`status --json` also returns `next_tasks: [{kind, unit?, hint, done_when}]`, derived from
+the existing state machine (no second state source). Execute **only the first entry**, then
+re-run `status --json` to refresh — do not plan the whole flow yourself. `done_when` is the
+machine form of the completion criterion (a CLI command or a workspace file), so it can be
+checked without trusting a model's self-assessment.
 
 When you hit a **source-site / dirty-source / edge case** (e.g. Baka-Tsuki illustration
 segments not rendering, installing the epubcheck jar offline, MediaWiki volume-navigation
