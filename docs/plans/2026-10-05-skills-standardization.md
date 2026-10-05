@@ -1,6 +1,7 @@
 # 2026-10-05 仓库 skills 标准化（skills.sh / Agent Skills 规范）
 
-状态：实施中（2026-10-05 完成 P0 合规修复；P1–P4 待做）
+状态：实施中（2026-10-05 完成 P0 合规修复 + P1 发布准备；P2–P4 待做；
+P3 依赖的原子化 S1 已完成）
 
 ## 背景与目标
 
@@ -61,17 +62,18 @@ uv run ruff check . && uv run ruff format --check .      # 全绿
 
 ## 待办
 
-### P1 发布准备（小，可立即做）
+### P1 发布准备（2026-10-05 已完成）
 
-- [ ] 确认 GitHub 仓库 `Misaka0x26FE/auto-epublizer` 为 **public**（skills.sh 只对
-      GitHub 确认 public 的仓库上报安装量、展示在排行榜）；
-- [ ] `README.md`（+zh）加徽章：
+- [x] 确认 GitHub 仓库 `Misaka0x26FE/auto-epublizer` 为 **public**（`gh repo view`：
+      `visibility=PUBLIC`）；
+- [x] `README.md`（+zh）加徽章：
       `[![skills.sh](https://skills.sh/b/Misaka0x26FE/auto-epublizer)](https://skills.sh/Misaka0x26FE/auto-epublizer)`；
-- [ ] `scripts/install-skills.sh` 增加 `--check`：复制前校验 `SKILL.md` frontmatter
+- [x] `scripts/install-skills.sh` 增加 `--check`：复制前校验 `SKILL.md` frontmatter
       （首行 `---`、name 与目录一致、description 非空、长度 ≤1024），不合规则拒绝安装；
+      配套回归 `tests/test_install_skills.py`；
 - [ ] 在 `skills/auto-epublizer/manifest.json` 旁（或 SKILL.md 内）注明：该 manifest 是
       **仓库自定义契约**（version 门禁 + references 清单），标准加载器不读取，`minimum_cli_version`
-      门禁只有按 SKILL.md 指引读取它的 agent 才会执行。
+      门禁只有按 SKILL.md 指引读取它的 agent 才会执行。（仍待做）
 
 ### P2 渐进式披露：`SKILL.md` 减重
 
@@ -83,7 +85,8 @@ uv run ruff check . && uv run ruff format --check .      # 全绿
 ### P3 原子任务卡 + 机器指针
 
 > **依赖**：`2026-09-30-workflow-microtasks.md` 的 **S1**（`status --json` 的
-> `next_tasks` 机器指针 + `done_when`）。没有 S1，任务卡只是又一批要模型自己判断该读哪篇的散文。
+> `next_tasks` 机器指针 + `done_when`）——**已于 2026-10-05 完成**，任务卡现在有了可挂靠的索引。
+> 没有 S1，任务卡只是又一批要模型自己判断该读哪篇的散文。
 
 - [ ] 新增 `skills/auto-epublizer/references/taskcards/`，每张卡「一屏以内、自包含」：
       `重述现场（读哪些文件）→ 动作（写到哪）→ 完成判据（跑哪条命令）→ 失败处置`；
@@ -115,11 +118,11 @@ skills/
 | 事项 | 权威文档 | 状态 |
 |---|---|---|
 | skills.sh 合规（frontmatter 置顶 + i18n 适配） | **本文件 P0** | ✅ 2026-10-05 |
-| 发布准备（public / 徽章 / install --check） | 本文件 P1 | ⬜ |
+| 发布准备（public / 徽章 / install --check） | 本文件 P1 | ✅ 2026-10-05 |
 | SKILL.md 减重（渐进式披露） | 本文件 P2 | ⬜ |
 | 原子任务卡 + `done_when` | 本文件 P3 + `2026-09-30-workflow-microtasks.md` | ⬜（依赖 S1） |
 | 多 skill 拆分 | 本文件 P4 | ⬜（评估） |
-| 工作原子化 S1（`next_tasks` 指针） | `2026-09-30-workflow-microtasks.md` | ⬜（核心使能） |
+| 工作原子化 S1（`next_tasks` 指针） | `2026-09-30-workflow-microtasks.md` | ✅ 2026-10-05 |
 | 工作原子化 S2–S5 | 同上 | ⬜（S1 实测后决定范围） |
 | #16 导航扁平 S-A（meta 如实声明） | `2026-10-04-backlog-three-items.md` §1.4 | ⬜（低风险，可先做） |
 | #16 导航扁平 S-B（源书签→锚点映射） | 同上 §1.4 | ⬜（需案例工作区） |
