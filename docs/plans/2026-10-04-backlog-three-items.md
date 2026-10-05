@@ -71,7 +71,7 @@ S-A 风险点已论证解除；S-B 两处语义已澄清；依赖关系已修正
 | #16 建议 | 状态 | 核实结论（文件:行） |
 |---|---|---|
 | 1. 单元内标题进 TOC | ✅ 已由 nav-depth 计划覆盖 | `build/__init__.py:359` nav 经 `nav_toc_entries` + `_toc_tree` 渲染锚点条目 |
-| 2. `nav-depth` meta 如实声明 | ⚠️ **NCX 侧已改、nav.xhtml 侧未改** | `build/__init__.py:368` 写的是**配置投影深度** `nav_depth`，非渲染后实际深度；对比 `dtb:depth`（同文件 424 行）取的是含锚点的实际最大深度 → 仍存在「声明 3、实际 1」失真。nav-depth 计划「边界与不变量」明确写了「`nav.xhtml` 的 meta 声明不动」，故此项被计划主动排除 |
+| 2. `nav-depth` meta 如实声明 | ✅ **已完成（2026-10-05）** | 见 §1.4 S-A：`nav-depth` 改为写**实际深度** A（与 `dtb:depth` 同源），另加 `nav-projection` 保留投影上限 K 给 qa。**实施修正**：不能只把 `nav-depth` 改成 A——qa 用该 meta 重建期望集，扁平/错误构建声明 A=1 会自证「期望扁平」而漏报 `E_TOC_FLAT`（由 `test_provenance_anchor_toc_flat_detection` 暴露），故须新增 `nav-projection` 分离两种语义 |
 | 3. 源书签映射（可选增强） | ❌ **完全未做** | 全库 `grep` 无「书签→标题锚点」映射逻辑；`orchestrator.py:999` 的 `W_TOC_MISSING` 仍只做「facts 源 TOC vs 单元标题」文本对账，无法反映真实覆盖缺口 |
 | 4. 配置面 | ✅ 够用 | `config.output.nav_depth` 默认 3，无需新增开关 |
 
@@ -87,7 +87,13 @@ S-A 风险点已论证解除；S-B 两处语义已澄清；依赖关系已修正
 
 ### 1.4 修改思路（建议按 S1/S2 拆两个小步）
 
-**S-A `nav-depth` meta 如实声明（小，独立）**
+**S-A `nav-depth` meta 如实声明（✅ 2026-10-05 已完成）**
+
+> **实施记录**：`_render_nav` 写两个 meta——`nav-depth` = 实际深度 A（`max(nav_depth_sequence(entries), default=1)`，与 NCX `dtb:depth` 同一表达式）、`nav-projection` = 投影上限 K；qa 的 `_nav_declared_depth` 读 `nav-projection`（旧产物回退 `nav-depth`）。回归：`test_build.py::test_nav_depth_meta_equals_ncx_dtb_depth` +
+> `test_provenance.py::test_provenance_anchor_toc_flat_detection`（守住 E_TOC_FLAT 不漏报）。
+> **修正了本文档原审查结论**：原文断言「用 A 重建期望集与 K 恒等」只在**良构构建**下成立；错误/扁平构建下源在 (A,K] 有节点，用 A 会漏报，故必须分离 `nav-projection`。
+
+
 
 - `build/__init__.py:_render_nav` 的 `<meta name="nav-depth">` 改为写入**渲染后实际最大
   深度**（复用已存在的 `nav_depth_sequence(nav_toc_entries(...))` 或 NCX 已用的同一

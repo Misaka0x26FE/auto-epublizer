@@ -130,9 +130,11 @@ output:
 6. ✅ `qa/audit.py`：`E_THEME_FONT`/`E_THEME_COLOR`/`E_COVER_META`/`E_HEADING_SKIP`/
    `E_RESIDUE`/`W_RESIDUE`/`W_META_INCOMPLETE`/`E_ANCHOR`/`E_FN_BACKLINK`/`E_BI_PAIRS`/
    `W_EPUB_SIZE`/`W_IMG_UNCOMPRESSED`；溯源审计 `W_NO_COVER`/`W_NAMING`。
-7. ✅ 目录深度投影：`nav_toc_entries`（封面排除 + `nav_depth` 截断）→ nav/NCX；
-   `dtb:depth` 为投影后深度；nav.xhtml 声明 `<meta name="nav-depth" content="K"/>`
-   （qa 审计以此为准）；`nav_exempt` 豁免 `E_TOC_COVERAGE`。
+7. ✅ 目录深度投影：`nav_toc_entries`（封面排除 + `nav_depth` 截断）→ nav/NCX。
+   nav.xhtml 声明两个语义分开的 meta：`<meta name="nav-depth" content="A"/>` = **渲染后实际
+   深度** A（与 NCX `dtb:depth` 同源，对外如实）、`<meta name="nav-projection" content="K"/>`
+   = **投影上限** K；qa 审计以 K 为准重建期望集（用 A 会让扁平/错误构建自证「期望扁平」、
+   漏报 `E_TOC_FLAT`）。`nav_exempt` 豁免 `E_TOC_COVERAGE`。
 
 ## 8. 后续实现清单（按优先级）
 
