@@ -7,7 +7,7 @@ metadata:
   suite: auto-epublizer
   workspace_model: publication.json
 ---
-<!-- i18n: source=SKILL.zh.md sha256=2d250e2ac1416f144f5e255b968112d2f9991d2165df0b263d259dbd3e4accf1 -->
+<!-- i18n: source=SKILL.zh.md sha256=755d94934a0eb6b2619d1fb9891d7d275277ff8b65f64916b163debd06c2f27a -->
 > **English** | [中文](SKILL.zh.md)
 
 # auto-epublizer
@@ -59,6 +59,7 @@ the reference needed for the current stage.
 | Scenario | Read |
 |---|---|
 | Fresh task / state routing / multi-stage request / command overview | `references/workflow.md` |
+| Weak-model path: machine next-task pointer (`status --json`) + atomic task cards | `references/taskcards/` |
 | Preprocessing: read facts → write todo/capabilities/plan/global/units/terms/risks/report | `references/preprocessing.md` |
 | File parsing: PDF / scanned PDF / EPUB / DOCX / HTML / TXT / MD / OCR | `references/ingest.md` |
 | Semantic repair: parse-defect repair / OCR fixes / structural re-split (signal-triggered; mandatory for OCR) | `references/repair.md` |
@@ -113,23 +114,15 @@ the reference needed for the current stage.
 
 ## Standard workflow
 
-```bash
-auto-epublizer doctor --json                              # capability self-check (before starting; multimodal/search self-reported)
-auto-epublizer preprocess <input>                         # preprocessing: init + zero-token facts → preprocessing/facts.*
-#   agent reads facts.md and writes todo/capabilities/plan/global/units/terms/risks/report (see references/preprocessing.md)
-#   the understanding layer analysis/*.md is likewise written by the agent (see references/analysis.md)
-auto-epublizer meta --translator OpenCode                             # metadata verification write-back + translator credit (default = agent framework name)
-auto-epublizer import [--unit <id>] [--terms preprocessing/terms.csv]  # register agent-written translation artifacts
-auto-epublizer import --reviewed                                    # after review passes: aligned → reviewed
-auto-epublizer knowledge export --workspace .             # seed same-pair confirmed terms from the unified store → preprocessing/terms.csv
-auto-epublizer knowledge import --workspace .             # write workspace terms back to the unified store (cross-book reuse + auto git commit)
-auto-epublizer knowledge import-csv <csv> --src-lang en --book <slug>  # import historical/arbitrary term CSV
-#   unified store defaults to ~/Documents/auto-epublizer (a private git repository); see references/workflow.md for init/path/status/push
-auto-epublizer g0                                         # static validation (terminology hits = real defects that must be zeroed; length ratio = advisory)
-#   agent writes review artifacts reviews/review-<ts>/ (including result.json, see references/review.md)
-auto-epublizer build [--bilingual] [--theme standard|compact|spacious]  # build EPUB → output/
-auto-epublizer qa                                         # epubcheck + unpack audit
-auto-epublizer status --json                              # view progress/state machine/artifact-state reconciliation
+Full command overview and stage list: `references/workflow.md` (not repeated here — this
+entry stays lean on purpose).
+
+```text
+doctor → preprocess → agent understanding/analysis → (repair) → translate → import
+       → g0 → review → build → qa → delivery
 ```
+
+Drive it from the machine pointer: take `status --json` → `next_tasks[0]`, do that task
+(see `references/taskcards/`), re-run `status --json`, repeat.
 
 Conversion only, no translation: `auto-epublizer convert <input> -o output/book.epub`.
