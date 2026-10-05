@@ -331,6 +331,22 @@ def test_status_reports_preprocessing_state(tmp_path: Path) -> None:
     assert not any(s["id"] == "preprocessing" for s in data["stale"])
 
 
+def test_init_archives_original(tmp_path: Path) -> None:
+    """回归 #30 §4.6：--original 把交付原件归档到 references/user/ 并记入 meta。"""
+    src = tmp_path / "book.md"
+    src.write_text("# Chapter I\n\nBody text.\n", encoding="utf-8")
+    orig = tmp_path / "book.original.pdf"
+    orig.write_bytes(b"%PDF-1.4 original bytes")
+
+    store = orch.init(str(src), workspace_dir=str(tmp_path / "ws"), original=str(orig))
+
+    pub = store.load_publication()
+    assert pub.meta.source_original
+    archived = store.dir / pub.meta.source_original
+    assert archived.is_file()
+    assert archived.read_bytes() == b"%PDF-1.4 original bytes"
+
+
 def test_rebuild_resets_structure_and_status(tmp_path: Path) -> None:
     """回归 #30 §4.2：preprocess --force 原地重建 structured/，状态重置为 split。"""
     src = tmp_path / "book.md"

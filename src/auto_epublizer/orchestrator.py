@@ -33,6 +33,7 @@ def init(
     target_language: str | None = None,
     references: list[str] | None = None,
     workspace_dir: str | None = None,
+    original: str | None = None,
 ) -> RunStore:
     store = init_workspace(
         input_path,
@@ -40,6 +41,7 @@ def init(
         target_language=target_language,
         references=references,
         workspace_dir=workspace_dir,
+        original=original,
     )
     prepare_structure(store, config=config)
     return store

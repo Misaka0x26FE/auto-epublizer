@@ -55,6 +55,9 @@ def _store_from(workspace: str | None, cfg) -> RunStore:
 def init(
     input: str = typer.Argument(..., help="源文件路径"),
     reference: list[str] | None = typer.Option(None, "--reference", help="参考材料（可多次）"),
+    original: str | None = typer.Option(
+        None, "--original", help="交付原件归档到 references/user/（issue #30 §4.6）"
+    ),
     target: str | None = typer.Option(None, "--target", help="目标语言（ISO 639-1）"),
     workspace: str | None = typer.Option(None, "--workspace", help="工作区根目录"),
     config: str | None = typer.Option(None, "--config", help="配置文件路径"),
@@ -68,6 +71,7 @@ def init(
             target_language=target,
             references=reference,
             workspace_dir=workspace or cfg.paths.workspaces_dir,
+            original=original,
         )
     except (ValueError, OSError) as e:
         raise typer.Exit(f"初始化失败：{e}") from None
@@ -250,6 +254,9 @@ def preprocess(
         None, help="源文件路径（新书：init + facts；省略则刷新已有工作区的 facts）"
     ),
     reference: list[str] | None = typer.Option(None, "--reference", help="参考材料（可多次）"),
+    original: str | None = typer.Option(
+        None, "--original", help="交付原件归档到 references/user/（issue #30 §4.6）"
+    ),
     target: str | None = typer.Option(None, "--target", help="目标语言（ISO 639-1）"),
     force: bool = typer.Option(
         False, "--force", help="原地重建 structured/ 与 facts（误中断恢复，issue #30 §4.2）"
@@ -280,6 +287,7 @@ def preprocess(
                     target_language=target,
                     references=reference,
                     workspace_dir=workspace or cfg.paths.workspaces_dir,
+                    original=original,
                 )
             else:
                 store = _store_from(workspace, cfg)

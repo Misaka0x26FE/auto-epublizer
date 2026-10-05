@@ -73,6 +73,7 @@ class PublicationMeta(BaseModel):
     identifier: Identifier = Field(default_factory=Identifier)
     source: str = ""  # 相对 source/ 的主文件路径
     source_sha256: str = ""  # 源内容身份（64 位十六进制）
+    source_original: str | None = None  # 交付原件归档（references/user/…；未加工时为空）
     rights: str | None = None
     description: str | None = None
     subjects: list[str] = Field(default_factory=list)
