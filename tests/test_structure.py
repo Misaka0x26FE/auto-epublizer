@@ -46,6 +46,22 @@ def test_classify_units_front_body_back() -> None:
     assert entries[3].unit_id == "back-index"
 
 
+def test_classify_first_aggregated_unit_looks_like_front_matter() -> None:
+    """回归 #31 ③：无书签 PDF 首个聚合单元含版权/标题页标记 → frontmatter。"""
+    u = SourceUnit(
+        id="ch01",
+        kind="chapter",
+        title="Some Book Title",
+        segments=[_seg("title page"), _seg("copyright page")],
+        meta={"aggregated": True},
+    )
+    doc = SourceDocument(title="B", units=[u, _unit("Chapter 1", [_seg("body")], "chapter")])
+    entries = classify_units(doc)
+    assert entries[0].region == "frontmatter"
+    assert entries[0].unit_id == "front-titlepage"
+    assert entries[1].unit_id == "ch01"  # 正文章序号不受影响
+
+
 def test_classify_cover() -> None:
     doc = SourceDocument(title="B", units=[_unit("封面", [_seg("书名")], "cover")])
     entries = classify_units(doc)

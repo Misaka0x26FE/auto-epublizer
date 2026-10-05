@@ -70,6 +70,27 @@ def _classify_title(title: str) -> tuple[str, str]:
     return _REGION_BODY, "chapter"
 
 
+# 前置页内容标记（issue #31 ③）：无书签 PDF 的首个聚合单元若是标题页/版权页内容
+# （短、含 copyright/isbn/书名页 等），归 frontmatter 而非 body 章节。
+_FRONT_MATTER_MARKERS = (
+    "copyright",
+    "all rights reserved",
+    "isbn",
+    "©",
+    "title page",
+    "书名页",
+    "版权",
+)
+
+
+def _looks_like_front_matter(unit: SourceUnit) -> bool:
+    text = "\n".join(s.source for s in unit.segments)
+    if not text or len(text) > 2000:
+        return False
+    lowered = text.lower()
+    return any(m in lowered for m in _FRONT_MATTER_MARKERS)
+
+
 def classify_units(doc: SourceDocument) -> list[ClassifiedUnit]:
     """把归一化单元归类为四层结构并分配稳定 ID。
 
@@ -79,8 +100,15 @@ def classify_units(doc: SourceDocument) -> list[ClassifiedUnit]:
     result: list[ClassifiedUnit] = []
     chapter_no = 0
     aux_counts: dict[tuple[str, str], int] = {}
-    for unit in doc.units:
+    for idx, unit in enumerate(doc.units):
         region, kind = _classify_title(unit.title)
+        if (
+            idx == 0
+            and region == _REGION_BODY
+            and unit.meta.get("aggregated")
+            and _looks_like_front_matter(unit)
+        ):
+            region, kind = _REGION_FRONT, "titlepage"  # 无书签 PDF 的标题/版权页
         if region == _REGION_COVER:
             # 封面也可能有多个（front/back cover 等）：与辅文一致地加序号，
             # 否则多个覆盖单元共用 id/rel_path 会互相覆盖并丢内容。

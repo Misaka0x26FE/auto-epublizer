@@ -60,12 +60,26 @@ def _median_font_size(segments: list[SourceSegment]) -> float:
     return sizes[mid] if n % 2 else (sizes[mid - 1] + sizes[mid]) / 2.0
 
 
+# 纯章节号行（issue #31）：`1`、`12`、`IV`、`.1` 等——印刷体章节号常被大字号启发式
+# 误判为独立标题，需与其后紧随的真实标题合并。**不**含 `Chapter N`（那是合法独立标题）。
+_NUMBER_ONLY = re.compile(r"[0-9０-９]{1,4}|[IVXLCDM]{1,6}|[一二三四五六七八九十百千]{1,4}")
+
+
+def _is_number_only(text: str) -> bool:
+    t = text.strip().strip(".、")
+    return bool(t) and re.fullmatch(_NUMBER_ONLY, t) is not None
+
+
 def _is_chapter_heading(seg: SourceSegment, body_median: float) -> bool:
-    """标题启发式：章节关键词，或短文本且字号显著大于正文中位数（>1.3×）。"""
+    """标题启发式：**行首**章节关键词，或短文本且字号显著大于正文中位数（>1.3×）。
+
+    回归 issue #31：关键词须在**行首**（``match`` 而非 ``search``）——否则正文句
+    「…form the subject of Chapter 11」会被误判为标题（ch16 现场）。
+    """
     text = seg.source.strip()
     if not text or len(text) > 80:
         return False
-    if _CHAPTER_KEYWORD.search(text):
+    if _CHAPTER_KEYWORD.match(text):
         return True
     size = float(seg.meta.get("source_font_size") or 0)
     return size > 0 and body_median > 0 and size >= body_median * 1.3
@@ -282,13 +296,25 @@ def aggregate_pdf_chapters(
         current_title = None
         current = []
 
-    for seg in segments:
+    i = 0
+    while i < len(segments):
+        seg = segments[i]
         if _is_chapter_heading(seg, body_median):
+            text = seg.source.strip()
+            nxt = segments[i + 1] if i + 1 < len(segments) else None
+            if _is_number_only(text) and nxt is not None and _is_chapter_heading(nxt, body_median):
+                # 章节号行 + 紧随标题 → 合并为一个单元（issue #31；标题 = 号 + 标题）
+                _flush()
+                current_title = f"{text} {nxt.source.strip()}".strip()
+                current = [nxt.model_copy(update={"kind": KIND_HEADING})]
+                i += 2
+                continue
             _flush()
-            current_title = seg.source.strip()
+            current_title = text
             current = [seg.model_copy(update={"kind": KIND_HEADING})]
         else:
             current.append(seg)
+        i += 1
     _flush()
 
     return units
