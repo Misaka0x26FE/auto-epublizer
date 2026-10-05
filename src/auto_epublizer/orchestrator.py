@@ -1158,18 +1158,8 @@ def _derive_next_tasks(
             )
         ]
     status_of = {u["id"]: u["status"] for u in units_out}
-    # E. 逐单元：未翻译 → 翻译（一次只给一个单元 id）
-    for u in pub.units:
-        if status_of[u.id] in ("pending", "split"):
-            return [
-                _task(
-                    "translate",
-                    f"翻译 {u.id}（读 structured → 写 translation/ + align/ → import）",
-                    unit=u.id,
-                    done_when={"cmd": "import", "unit": u.id},
-                )
-            ]
-    # F. 已登记未审校 → 审校
+    # E. 已登记未审校 → 先审校（保持单元级原子循环：translate → import → review → 下一个；
+    #    否则会把整个 review 阶段推到全书翻译完之后，弱模型上下文过重——2026-10-05 实测修正）
     for u in pub.units:
         if status_of[u.id] in ("translated", "aligned"):
             return [
@@ -1178,6 +1168,17 @@ def _derive_next_tasks(
                     f"审校 {u.id}（G1–G3 语义审校，写 reviews/ 后 import --reviewed）",
                     unit=u.id,
                     done_when={"cmd": "import", "unit": u.id, "reviewed": True},
+                )
+            ]
+    # F. 未翻译 → 翻译（一次只给一个单元 id）
+    for u in pub.units:
+        if status_of[u.id] in ("pending", "split"):
+            return [
+                _task(
+                    "translate",
+                    f"翻译 {u.id}（读 structured → 写 translation/ + align/ → import）",
+                    unit=u.id,
+                    done_when={"cmd": "import", "unit": u.id},
                 )
             ]
     # G. 全部 reviewed/built → build → qa → delivery

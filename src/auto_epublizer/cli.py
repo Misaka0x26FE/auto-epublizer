@@ -20,6 +20,16 @@ console = Console()
 _CONFIG_PATH = "config.yaml"
 
 
+def _emit_json(text: str) -> None:
+    """输出机器可读 JSON：绕过 rich 按终端宽度自动换行。
+
+    rich 默认会在控制台宽度处折行，长字段（章节标题、路径）会被插入真实换行，
+    使 ``json.loads`` 失败、机器指针不可用（2026-10-05 真书实测发现）。
+    ``soft_wrap=True`` 关闭换行与裁切。
+    """
+    console.print(text, soft_wrap=True, markup=False, highlight=False)
+
+
 def _find_workspace(base: Path) -> Path:
     if (base / "publication.json").is_file():
         return base
@@ -110,7 +120,7 @@ def status(
     store = _store_from(workspace, cfg)
     data = orch.status(store)
     if json_output:
-        console.print(json.dumps(data, ensure_ascii=False, indent=2))
+        _emit_json(json.dumps(data, ensure_ascii=False, indent=2))
         return
     console.print(f"工作区：{store.dir}")
     console.print(f"  书名：{data['title']}（{data['slug']}）")
@@ -292,7 +302,7 @@ def doctor(
     cfg = load_config(config or _CONFIG_PATH)
     caps = collect_capabilities(cfg, ping=ping)
     if json_output:
-        console.print_json(json.dumps(capabilities_summary(caps), ensure_ascii=False))
+        _emit_json(json.dumps(capabilities_summary(caps), ensure_ascii=False, indent=2))
         return
     ok_mark = "[green]✓[/green]"
     miss_mark = "[red]✗[/red]"
@@ -621,7 +631,7 @@ def knowledge_status_cmd(
     store_dir = knowledge.resolve_store_dir(cfg, override=directory)
     data = knowledge.knowledge_status(store_dir)
     if json_output:
-        console.print_json(json.dumps(data, ensure_ascii=False))
+        _emit_json(json.dumps(data, ensure_ascii=False, indent=2))
         return
     console.print(f"统一库：{data['store']}（存在：{'是' if data['exists'] else '否'}）")
     stats = data["stats"]
