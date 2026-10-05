@@ -188,6 +188,36 @@ def test_g0_footnote_conservation() -> None:
     assert not [f for f in g0_unit_flags(rows3, g) if f.check == "footnote"]
 
 
+def test_g0_footnote_tgt_may_exceed_src_cjk_asymmetry() -> None:
+    """译文侧注码**多于**源侧不报违例（跨语言计数不对称的必然结果）。
+
+    源侧计数受缩写启发式影响：``_is_abbrev_dot`` 把点前 ≤2 字母的词当缩写点，
+    故 ``…供职于 OT.24`` 的注号在英文/德文侧数不到；而该启发式对 CJK 句末的「。」
+    明确豁免，同一个注号在中文译文侧数得到。逐字忠实的译文必然多于源侧，
+    用 ``!=`` 比较会误判并把 ``g0_structure_open`` 顶到非 0 阻断放行
+    （现场：builders-of-the-third-reich 正文 739 个注号 / 源侧只数到 629）。
+    """
+    g = Glossary()
+    # 源侧：两个注码，其中一个紧跟 `OT.`（≤2 字母 → 源侧漏计）
+    rows = [
+        {
+            "seq": 1,
+            "src": "Many served in the OT.24 and 18,000 died.1",
+            "tgt": "许多人在托德组织服役。24 ",
+        },
+        {"seq": 2, "src": "", "tgt": "18,000 人死亡。1 "},
+    ]
+    rows[1]["src"] = "Most of them were Polish."
+    assert count_footnote_refs(rows[0]["src"]) == 1  # 源侧只数到 1 个
+    assert count_footnote_refs(rows[0]["tgt"] + rows[1]["tgt"]) == 2  # 译文侧数到 2 个
+    assert not [f for f in g0_unit_flags(rows, g) if f.check == "footnote"]
+    # 反向：译文侧真的丢了注码 → 仍须报
+    lost = [
+        {"seq": 1, "src": "18,000 died.1 and later.2", "tgt": "18,000 人死亡。1 "},
+    ]
+    assert any(f.check == "footnote" for f in g0_unit_flags(lost, g))
+
+
 def test_detect_and_annotate_corrections() -> None:
     """勘误留痕：detect_corrections 命中先例；annotate 给 align 行补 corr: 前缀不改文本。"""
     assert detect_corrections("IDG reported in 19487") == [("IDG", "IDF"), ("19487", "1948")]
