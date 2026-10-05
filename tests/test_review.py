@@ -93,6 +93,21 @@ def test_count_footnote_refs_ignores_abbreviation_refs() -> None:
     assert count_footnote_refs("см. рис.3 и табл.2") == 0
 
 
+def test_count_footnote_refs_ignores_measure_words() -> None:
+    """回归 #22：句末点后「数字 + 量词」是中文日期/时刻/口径写法，不是注码。
+
+    现场：`。3 月` `。10 时` `。50 口径` 被计为注码，与源（英文无注码）对账后
+    误报「脚注标记数量不守恒」硬缺陷。
+    """
+    assert count_footnote_refs("会议定于三月召开。3 月十五日之前") == 0
+    assert count_footnote_refs("列车时刻。10 时发车。") == 0
+    assert count_footnote_refs("时间戳 14 时 39 分。14 时 39") == 0
+    assert count_footnote_refs("这是。50 口径的机枪") == 0
+    assert count_footnote_refs("历时五年。5 年之后") == 0
+    # 无单位跟随的真注码仍必须计入
+    assert count_footnote_refs("正文结束。7") == 1
+
+
 def test_count_footnote_refs_ignores_enumerators() -> None:
     """回归 #8：句末标点后的枚举号（列表序号）不是注码。
 

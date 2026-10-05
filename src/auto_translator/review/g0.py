@@ -158,15 +158,33 @@ def markers_conserved(src: str, tgt: str, pattern: re.Pattern[str] = _MARKER_RE)
     return count_markers(src, pattern) == count_markers(tgt, pattern)
 
 
+# 量词/单位白名单（回归 #22）：句末点后「数字 +（可含空格）+ 量词」是中文日期/时刻/
+# 口径/计量写法（`。3 月` `。10 时` `。50 口径` `。5 年`），不是注码。源英文无此形态，
+# 故只影响译文侧误报。
+_MEASURE_AFTER_RE = re.compile(
+    r"\s*(?:世纪|年代|公里|千米|厘米|毫米|口径|月|日|时|分|秒|年|个|条|名|吨|米|发|位|页|章|节|周|天|号)"
+)
+
+
+def _is_measure_ref(text: str, end_index: int) -> bool:
+    """数字后紧跟量词/单位（中文日期、时刻、口径等）→ 非注码（回归 #22）。"""
+    return bool(_MEASURE_AFTER_RE.match(text, end_index))
+
+
 def count_footnote_refs(text: str) -> int:
     """统计句末注码（脚注引用）数量（PDF 文字层数字式注码）。
 
-    排除两类误报（现场报告 #8）：① 缩写点后的数字——``(стр.66)`` ``на стр.168``
+    排除三类误报：① 缩写点后的数字（现场报告 #8）——``(стр.66)`` ``на стр.168``
     ``с.859`` ``гл.2`` ``20.Х.77`` 属页码/条款引用；② 枚举号位——``结婚礼。1. 订婚``
-    的 ``1`` 后紧跟 `.`/`)`/`）`/`、`，是列表序号。
+    的 ``1`` 后紧跟 `.`/`)`/`）`/`、`，是列表序号；③ 量词/单位前的数字（回归 #22）——
+    ``。3 月`` ``。10 时`` ``。50 口径`` 是日期/时刻/口径写法。
     """
     text = text or ""
-    return sum(1 for m in _FOOTNOTE_REF_RE.finditer(text) if not _is_abbrev_dot(text, m.start()))
+    return sum(
+        1
+        for m in _FOOTNOTE_REF_RE.finditer(text)
+        if not _is_abbrev_dot(text, m.start()) and not _is_measure_ref(text, m.end())
+    )
 
 
 def count_footnote_marks(text: str) -> int:

@@ -50,10 +50,25 @@ def test_read_repairs_valid(tmp_path: Path) -> None:
     assert rows is not None and len(rows) == 2 and rows[1]["status"] == "unresolved"
 
 
+def test_read_repairs_missing_unit_marked_not_raised(tmp_path: Path) -> None:
+    """回归 #23：结构重建删除单元后，历史行不阻断，改标记 unit_missing 交 qa 提示。"""
+    store = _workspace(tmp_path)
+    _write_repairs(
+        store,
+        [
+            {"unit": "ch99", "kind": "line_join", "summary": "旧单元", "status": "done"},
+            {"unit": "ch01", "kind": "other", "summary": "现存", "status": "done"},
+        ],
+    )
+    rows = orch.read_repairs(store)
+    assert rows is not None
+    assert rows[0]["unit_missing"] is True
+    assert "unit_missing" not in rows[1]
+
+
 @pytest.mark.parametrize(
     "row,fragment",
     [
-        ({"unit": "nope", "kind": "line_join", "summary": "x", "status": "done"}, "unit 不存在"),
         ({"unit": "ch01", "kind": "bogus", "summary": "x", "status": "done"}, "kind 非法"),
         ({"unit": "ch01", "kind": "other", "summary": "x", "status": "nope"}, "status 非法"),
         ({"unit": "ch01", "kind": "other", "summary": "  ", "status": "done"}, "summary 必填"),
