@@ -1,4 +1,4 @@
-<!-- i18n: source=epub-template-spec.zh.md sha256=d93cd6532a47700884668872950b3eae497adb5ecef5e62dd5cca3464c449070 -->
+<!-- i18n: source=epub-template-spec.zh.md sha256=019b99053b709d8426ccb3946c5d5ede8bf6875189bf3aa4bfea804225dbca5f -->
 > **English** | [中文](epub-template-spec.zh.md)
 
 # EPUB File Spec: Unstyled Standard Template + Limited Themes

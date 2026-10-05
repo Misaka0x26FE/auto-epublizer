@@ -1,4 +1,4 @@
-<!-- i18n: source=build.zh.md sha256=5362c4be730d13adc2dc4e3881531409c2e07d136d322cedce3a5ebdca7bab1a -->
+<!-- i18n: source=build.zh.md sha256=c2b4c41846ad303e6343bbf40035cdc07ded7c1513edc4b814c7ee96942e9a64 -->
 > **English** | [中文](build.zh.md)
 
 # Build (EPUB packaging)
