@@ -1305,25 +1305,39 @@ def _derive_next_tasks(
 
 
 def status_all(base_dir: str | Path) -> list[dict[str, Any]]:
-    """多工作区总览（issue #32）：扫描 base_dir 下所有含 publication.json 的工作区。
+    """多工作区总览（issue #32）：扫描 base_dir 下的 auto-epublizer 工作区。
 
     每项给出机器可重算字段：slug/title/units_total/unit_status/words、
     ``has_report``、``released``/``released_reason``、``facts_created_at``，以及
     三档进度 ``progress``（released / built_not_released / preprocessing）——
     呼应 #32 的「进度三档口径」，免得文档层与 CLI 层各造一套词。
+
+    **布局容错**（R0，2026-10-05 现场核对）：真实工作区常嵌套一层
+    （``<base>/<slug>/book/publication.json``），故递归查找（限深 3、跳过隐藏目录）；
+    并按 ``schema_version`` 过滤，跳过同目录下别的工具的工作区（如 ``epub-builder``）。
     """
     from datetime import datetime
 
-    base = Path(base_dir)
+    from auto_common.workspace.models import SCHEMA_VERSION
+
+    base = Path(base_dir).resolve()
     rows: list[dict[str, Any]] = []
     if not base.is_dir():
         return rows
-    for pub_file in sorted(base.glob("*/publication.json")):
+    for pub_file in sorted(base.rglob("publication.json")):
+        try:
+            rel = pub_file.relative_to(base)
+        except ValueError:
+            continue
+        if len(rel.parts) - 1 > 3 or any(p.startswith(".") for p in rel.parts[:-1]):
+            continue
         ws = pub_file.parent
         try:
             pub = read_json(pub_file)
         except (OSError, ValueError):
             continue
+        if pub.get("schema_version") != SCHEMA_VERSION:
+            continue  # 跳过其它工具的工作区（epub-builder/v1alpha1 等）
         units = pub.get("units") or []
         counts: dict[str, int] = {}
         for u in units:
@@ -1349,9 +1363,14 @@ def status_all(base_dir: str | Path) -> list[dict[str, Any]]:
             progress = "built_not_released"
         else:
             progress = "preprocessing"
+        published_slug = pub.get("slug")
+        # 嵌套布局：<base>/<slug>/book/publication.json 的 slug 常被写成 "book"，
+        # 故优先取 base 下的一级目录名做标签，避免同名歧义（R0）。
+        fallback_slug = rel.parts[0] if rel.parts else ws.name
+        slug = published_slug if published_slug and published_slug != "book" else fallback_slug
         rows.append(
             {
-                "slug": pub.get("slug") or ws.name,
+                "slug": slug,
                 "title": (pub.get("meta") or {}).get("title", ""),
                 "units_total": len(units),
                 "unit_status": counts,
