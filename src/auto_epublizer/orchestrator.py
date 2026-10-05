@@ -1064,6 +1064,141 @@ def read_catalog(store: RunStore) -> list[dict[str, Any]] | None:
     return rows
 
 
+def _task(
+    kind: str,
+    hint: str,
+    *,
+    unit: str | None = None,
+    done_when: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """构造一条 next_tasks 任务卡指针（S1：kind/hint/unit?/done_when）。"""
+    task: dict[str, Any] = {"kind": kind, "hint": hint}
+    if unit is not None:
+        task["unit"] = unit
+    task["done_when"] = done_when if done_when is not None else {"cmd": kind}
+    return task
+
+
+def _derive_next_tasks(
+    store: RunStore,
+    pub: Any,
+    units_out: list[dict[str, Any]],
+    stale: list[dict[str, str]],
+    *,
+    has_preprocessing: bool,
+    preprocessing_complete: bool,
+) -> list[dict[str, Any]]:
+    """从现有状态机/产物对账派生「下一任务」机器指针（S1，零 token 纯函数）。
+
+    与 ``references/workflow.md`` 的路由伪代码一一对应：按执行顺序排列，弱模型只取
+    首条执行，完成后重跑 ``status`` 刷新。``done_when`` 是判据的机器表述（跑哪条命令 /
+    查哪个文件），供将来任务循环脚本消费。不新增第二份状态源。
+    """
+    pre = store.preprocessing_dir
+    # A. 预处理：无 facts → 先 preprocess；有 facts 缺理解产物 → 逐文件补
+    if not has_preprocessing:
+        return [
+            _task(
+                "preprocess",
+                "运行 preprocess 生成 facts（init + 零 token 事实收集）",
+                done_when={"cmd": "preprocess"},
+            )
+        ]
+    if not preprocessing_complete:
+        for name in ("capabilities.md", "global.md", "todo.md"):
+            if not (pre / name).is_file():
+                return [
+                    _task(
+                        "write_preprocessing",
+                        f"撰写 preprocessing/{name}",
+                        done_when={"file": f"preprocessing/{name}"},
+                    )
+                ]
+    # B. 语义整备：facts 有可疑信号且尚无留痕 → 先整备
+    if not (pre / "repairs.jsonl").is_file():
+        try:
+            facts = read_json(pre / "facts.json")
+            signals = int((facts.get("repair_signals") or {}).get("units") or 0)
+        except (OSError, ValueError, TypeError):
+            signals = 0
+        if signals:
+            return [
+                _task(
+                    "repair",
+                    f"语义整备：{signals} 个单元有可疑信号，按 references/repair.md 修复并写留痕",
+                    done_when={"file": "preprocessing/repairs.jsonl"},
+                )
+            ]
+    # C. 理解层 analysis（可选层）：overview/global 皆无 → 逐单元分析（每批 ≤5，防贪多）
+    if (
+        not (store.analysis_dir / "overview.md").is_file()
+        and not (store.analysis_dir / "global.md").is_file()
+    ):
+        batch = [u for u in units_out if u["status"] in ("pending", "split")][:5]
+        if batch:
+            return [
+                _task(
+                    "analyze",
+                    f"分析 {u['id']}（写 analysis/units/{u['id']}.md）",
+                    unit=u["id"],
+                    done_when={"file": f"analysis/units/{u['id']}.md"},
+                )
+                for u in batch
+            ]
+    # D. 译文/对齐已落盘但状态未推进（stale）→ 先 import 登记
+    for s in stale:
+        if s["id"] == "preprocessing":
+            continue
+        return [
+            _task(
+                "import",
+                f"登记 {s['id']} 的译文与对齐表（import --unit {s['id']}）",
+                unit=s["id"],
+                done_when={"cmd": "import", "unit": s["id"]},
+            )
+        ]
+    status_of = {u["id"]: u["status"] for u in units_out}
+    # E. 逐单元：未翻译 → 翻译（一次只给一个单元 id）
+    for u in pub.units:
+        if status_of[u.id] in ("pending", "split"):
+            return [
+                _task(
+                    "translate",
+                    f"翻译 {u.id}（读 structured → 写 translation/ + align/ → import）",
+                    unit=u.id,
+                    done_when={"cmd": "import", "unit": u.id},
+                )
+            ]
+    # F. 已登记未审校 → 审校
+    for u in pub.units:
+        if status_of[u.id] in ("translated", "aligned"):
+            return [
+                _task(
+                    "review",
+                    f"审校 {u.id}（G1–G3 语义审校，写 reviews/ 后 import --reviewed）",
+                    unit=u.id,
+                    done_when={"cmd": "import", "unit": u.id, "reviewed": True},
+                )
+            ]
+    # G. 全部 reviewed/built → build → qa → delivery
+    if pub.units and all(s in ("reviewed", "built") for s in status_of.values()):
+        if not list(store.output_dir.glob("*.epub")):
+            return [_task("build", "封装 EPUB（build）", done_when={"cmd": "build"})]
+        if not store.report_path.is_file():
+            return [
+                _task("qa", "运行 qa（epubcheck + 解包审计 + 放行报告）", done_when={"cmd": "qa"})
+            ]
+        if not list(store.reviews_dir.glob("delivery-*.md")):
+            return [
+                _task(
+                    "delivery",
+                    "交付审计（按 references/delivery.md 全量校验并写记录）",
+                    done_when={"file": "reviews/delivery-<ts>.md"},
+                )
+            ]
+    return []
+
+
 def status(store: RunStore, *, as_json: bool = False) -> dict[str, Any]:
     pub = store.load_publication()
     units_out: list[dict[str, Any]] = []
@@ -1134,5 +1269,13 @@ def status(store: RunStore, *, as_json: bool = False) -> dict[str, Any]:
         "preprocessing_complete": preprocessing_complete,
         "catalog": catalog,
         "stale": stale,
+        "next_tasks": _derive_next_tasks(
+            store,
+            pub,
+            units_out,
+            stale,
+            has_preprocessing=has_preprocessing,
+            preprocessing_complete=preprocessing_complete,
+        ),
     }
     return data

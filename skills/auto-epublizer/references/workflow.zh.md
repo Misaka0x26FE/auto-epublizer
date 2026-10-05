@@ -21,6 +21,13 @@ MinerU/网络），并自报 multimodal / search（能否看图、有无搜索�
   有 output/*.epub               -> 已封装，qa 或重新 build
 ```
 
+### 机器「下一任务」指针（弱模型路径）
+
+`status --json` 还会返回 `next_tasks: [{kind, unit?, hint, done_when}]`，由现有状态机
+**派生**（不新增第二份状态源）。**只取首条执行**，完成后重跑 `status --json` 刷新——
+不要自行规划整条流程。`done_when` 是完成判据的机器表述（某条 CLI 命令或某个工作区
+文件），因此无需依赖模型自评即可核对。
+
 遇到**源站/脏源/边界情况**（如 Baka-Tsuki 插图段不渲染、epubcheck 离线装 jar、
 MediaWiki 卷导航垃圾混入 structured），先查 `lessons/` 目录——里面是真实工作沉淀的
 「判据 + 处置 + 验证」，命中即按它处理；未命中再自行排查。

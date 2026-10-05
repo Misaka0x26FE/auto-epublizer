@@ -122,6 +122,11 @@ def status(
         console.print("  [yellow]⚠ 有产物未登记（translation/align 存在但状态未推进）：[/yellow]")
         for s in data["stale"]:
             console.print(f"    {s['id']}（当前 {s['status']}）→ 运行 auto-epublizer import 登记")
+    next_tasks = data.get("next_tasks") or []
+    if next_tasks:
+        head = next_tasks[0]
+        scope = f" {head['unit']}" if head.get("unit") else ""
+        console.print(f"  下一步：[cyan]{head['kind']}[/cyan]{scope} — {head['hint']}")
 
 
 @app.command()
