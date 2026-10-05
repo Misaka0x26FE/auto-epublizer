@@ -248,6 +248,48 @@ def test_load_document_pdf_chapter_aggregation_keyword(tmp_path: Path) -> None:
     assert units[0].segments[0].kind == "heading"
 
 
+def test_pdf_number_heading_merges_with_next_heading() -> None:
+    """回归 #31：大字号章节号行（"1"）与紧随标题合并为一个单元。"""
+    from auto_epublizer.ingest.models import KIND_TEXT, SourceSegment
+    from auto_epublizer.ingest.pdf_reader import aggregate_pdf_chapters
+
+    def seg(text: str, size: float) -> SourceSegment:
+        return SourceSegment(
+            index=0, source=text, kind=KIND_TEXT, meta={"source_page": 1, "source_font_size": size}
+        )
+
+    segments = [
+        seg("1", 30.0),
+        seg("The Extensible Language", 30.0),
+        seg("body one.", 12.0),
+        seg("body two.", 12.0),
+        seg("body three.", 12.0),
+        seg("2", 30.0),
+        seg("Functions", 30.0),
+        seg("body four.", 12.0),
+        seg("body five.", 12.0),
+        seg("body six.", 12.0),
+    ]
+    units = aggregate_pdf_chapters(segments, book_title="book", page_count=1)
+    assert [u.title for u in units] == ["1 The Extensible Language", "2 Functions"]
+
+
+def test_pdf_body_sentence_with_chapter_keyword_not_heading() -> None:
+    """回归 #31：正文句中出现 "Chapter 11" 不应被当标题（关键词须在行首）。"""
+    from auto_epublizer.ingest.models import KIND_TEXT, SourceSegment
+    from auto_epublizer.ingest.pdf_reader import _is_chapter_heading, _median_font_size
+
+    def seg(text: str, size: float) -> SourceSegment:
+        return SourceSegment(
+            index=0, source=text, kind=KIND_TEXT, meta={"source_page": 1, "source_font_size": size}
+        )
+
+    median = _median_font_size([seg("body a", 12.0), seg("body b", 12.0)])
+    sentence = "This new operator and others like it form the subject of Chapter 11"
+    assert _is_chapter_heading(seg(sentence, 12.0), median) is False
+    assert _is_chapter_heading(seg("Chapter 11", 12.0), median) is True
+
+
 def test_load_document_pdf_no_heading_single_unit(tmp_path: Path) -> None:
     """无标题信号（同字号正文）时保持单单元回退（C9 不破坏旧行为）。"""
     pdf_path = _make_pdf(
