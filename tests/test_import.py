@@ -238,6 +238,46 @@ def test_import_blocks_on_md_align_drift(tmp_path: Path) -> None:
     assert any("文档一致性" in e for e in result["failed"][0]["errors"])
 
 
+def test_import_force_revalidates_built_unit(tmp_path: Path) -> None:
+    """回归 #13：交付后修订译文，--force 对 built 单元重跑阻断校验并保持 built。"""
+    store = _workspace(tmp_path)
+    _write_agent_products(store)
+    orch.import_translations(store)
+    orch.build(store)
+    assert store.load_publication().units[0].status == "built"
+
+    # 无 --force：跳过（保护审校/构建结论）
+    r0 = orch.import_translations(store)
+    assert r0["skipped"] == ["ch01"] and r0["revalidated"] == []
+
+    # --force：重校验通过，保持 built
+    r1 = orch.import_translations(store, unit_id="ch01", force=True)
+    assert r1["revalidated"] == ["ch01"]
+    assert store.load_publication().units[0].status == "built"
+
+
+def test_import_force_rolls_back_on_broken_built_unit(tmp_path: Path) -> None:
+    """回归 #13：--force 重校验失败 → 状态回退 aligned（显式、不静默）。"""
+    store = _workspace(tmp_path)
+    _write_agent_products(store)
+    orch.import_translations(store)
+    orch.build(store)
+    assert store.load_publication().units[0].status == "built"
+
+    rows = [
+        {"seq": 1, "src": "First sentence here.", "tgt": "第一句话。"},
+        {"seq": 3, "src": "Second sentence here.", "tgt": "第二句话。"},  # 断号
+    ]
+    with open(store.unit_align_path("ch01"), "w", encoding="utf-8") as f:
+        for row in rows:
+            f.write(json.dumps(row, ensure_ascii=False) + "\n")
+
+    r = orch.import_translations(store, unit_id="ch01", force=True)
+    assert r["failed"] and r["failed"][0]["unit"] == "ch01"
+    assert any("回退" in e for e in r["failed"][0]["errors"])
+    assert store.load_publication().units[0].status == "aligned"
+
+
 def test_import_passes_md_align_consistent_with_footnote(tmp_path: Path) -> None:
     """交付审计 S1.1 回归：md 含标题/脚注、align 对应 → 正常登记（不误报漂移）。"""
     src = tmp_path / "book.md"

@@ -329,6 +329,11 @@ def import_cmd(
     reviewed: bool = typer.Option(
         False, "--reviewed", help="把已对齐（aligned）单元推进为 reviewed（审校通过后的登记）"
     ),
+    force: bool = typer.Option(
+        False,
+        "--force",
+        help="对 reviewed/built 单元重跑阻断校验（交付后修订译文的重登记入口，issue #13）",
+    ),
     workspace: str | None = typer.Option(None, "--workspace", help="工作区目录"),
     config: str | None = typer.Option(None, "--config", help="配置文件路径"),
 ) -> None:
@@ -337,13 +342,17 @@ def import_cmd(
     store = _store_from(workspace, cfg)
     try:
         result = orch.import_translations(
-            store, unit_id=unit, terms_path=terms, mark_reviewed=reviewed
+            store, unit_id=unit, terms_path=terms, mark_reviewed=reviewed, force=force
         )
     except (ValueError, OSError, orch.OrchestrationError) as e:
         raise typer.Exit(f"导入失败：{e}") from None
     if result["reviewed"]:
         console.print(
             f"[green]审校通过已登记：[/green]{len(result['reviewed'])} 个单元推进为 reviewed"
+        )
+    if result.get("revalidated"):
+        console.print(
+            f"[green]重校验通过（保持原状态）：[/green]{len(result['revalidated'])} 个单元"
         )
     for item in result["failed"]:
         console.print(f"[red]✗ {item['unit']}[/red]")
