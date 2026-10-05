@@ -1287,6 +1287,99 @@ def _derive_next_tasks(
     return []
 
 
+def status_all(base_dir: str | Path) -> list[dict[str, Any]]:
+    """多工作区总览（issue #32）：扫描 base_dir 下所有含 publication.json 的工作区。
+
+    每项给出机器可重算字段：slug/title/units_total/unit_status/words、
+    ``has_report``、``released``/``released_reason``、``facts_created_at``，以及
+    三档进度 ``progress``（released / built_not_released / preprocessing）——
+    呼应 #32 的「进度三档口径」，免得文档层与 CLI 层各造一套词。
+    """
+    from datetime import datetime
+
+    base = Path(base_dir)
+    rows: list[dict[str, Any]] = []
+    if not base.is_dir():
+        return rows
+    for pub_file in sorted(base.glob("*/publication.json")):
+        ws = pub_file.parent
+        try:
+            pub = read_json(pub_file)
+        except (OSError, ValueError):
+            continue
+        units = pub.get("units") or []
+        counts: dict[str, int] = {}
+        for u in units:
+            st = str(u.get("status") or "?")
+            counts[st] = counts.get(st, 0) + 1
+        facts_path = ws / "preprocessing" / "facts.json"
+        facts: dict[str, Any] = {}
+        if facts_path.is_file():
+            try:
+                facts = read_json(facts_path)
+            except (OSError, ValueError):
+                facts = {}
+        report_path = ws / "report.json"
+        report: dict[str, Any] = {}
+        if report_path.is_file():
+            try:
+                report = read_json(report_path)
+            except (OSError, ValueError):
+                report = {}
+        if report_path.is_file() and report.get("released"):
+            progress = "released"
+        elif report_path.is_file():
+            progress = "built_not_released"
+        else:
+            progress = "preprocessing"
+        rows.append(
+            {
+                "slug": pub.get("slug") or ws.name,
+                "title": (pub.get("meta") or {}).get("title", ""),
+                "units_total": len(units),
+                "unit_status": counts,
+                "words": ((facts.get("structure") or {}).get("totals") or {}).get("words"),
+                "has_report": report_path.is_file(),
+                "released": report.get("released"),
+                "released_reason": report.get("released_reason"),
+                "progress": progress,
+                "facts_created_at": (
+                    datetime.fromtimestamp(facts_path.stat().st_mtime).isoformat()
+                    if facts_path.is_file()
+                    else None
+                ),
+            }
+        )
+    return rows
+
+
+def render_ledger(rows: list[dict[str, Any]]) -> str:
+    """把 ``status_all`` 结果渲染为跨书台账 markdown（issue #32 §3 六字段）。
+
+    前四字段（开工日期/进度/单元/词数）机器可重算；领域/摘要两列留空待 agent 补。
+    """
+    lines = [
+        "# 工作台账",
+        "",
+        "> 前四个数据列由 `auto-epublizer status --all` 机器可重算；「领域」「摘要」由 agent 撰写。",
+        "",
+        "| slug | 书名 | 开工日期 | 进度 | 单元 | 词 | 领域 | 摘要 |",
+        "|---|---|---|---|---|---|---|---|",
+    ]
+    for r in rows:
+        created = (r.get("facts_created_at") or "")[:10]
+        lines.append(
+            f"| {r['slug']} | {r['title']} | {created} | {r['progress']} | "
+            f"{r['units_total']} | {r.get('words') or ''} |  |  |"
+        )
+    lines += [
+        "",
+        "数据来源：开工日期=`preprocessing/facts.json` mtime；进度=`report.json` 的 released/"
+        "released_reason（无 report.json 记 preprocessing）；单元/词=`publication.json` 与 facts。",
+    ]
+    return "\n".join(lines) + "\n"
+
+
 def status(store: RunStore, *, as_json: bool = False) -> dict[str, Any]:
     pub = store.load_publication()
     units_out: list[dict[str, Any]] = []

@@ -112,11 +112,25 @@ def convert(
 @app.command()
 def status(
     workspace: str | None = typer.Option(None, "--workspace", help="工作区目录"),
+    all_workspaces: bool = typer.Option(
+        False, "--all", help="总览 base 目录下所有工作区（多工作区台账，issue #32）"
+    ),
     json_output: bool = typer.Option(False, "--json", help="输出 JSON"),
     config: str | None = typer.Option(None, "--config", help="配置文件路径"),
 ) -> None:
-    """查看工作区进度 / 状态机。"""
+    """查看工作区进度 / 状态机（--all 为多工作区总览）。"""
     cfg = load_config(config or _CONFIG_PATH)
+    if all_workspaces:
+        rows = orch.status_all(workspace or cfg.paths.workspaces_dir)
+        if json_output:
+            _emit_json(json.dumps(rows, ensure_ascii=False, indent=2))
+            return
+        console.print(f"工作区总览：{len(rows)} 个（base={workspace or cfg.paths.workspaces_dir}）")
+        for r in rows:
+            console.print(
+                f"  {r['progress']:18s} {r['slug']:32s} 单元 {r['units_total']:4d}  {r['title']}"
+            )
+        return
     store = _store_from(workspace, cfg)
     data = orch.status(store)
     if json_output:
@@ -137,6 +151,25 @@ def status(
         head = next_tasks[0]
         scope = f" {head['unit']}" if head.get("unit") else ""
         console.print(f"  下一步：[cyan]{head['kind']}[/cyan]{scope} — {head['hint']}")
+
+
+@app.command()
+def ledger(
+    workspace: str | None = typer.Option(
+        None, "--workspace", help="工作区根目录（缺省取 config.paths.workspaces_dir）"
+    ),
+    output: str | None = typer.Option(None, "-o", "--output", help="写入文件（缺省 stdout）"),
+    config: str | None = typer.Option(None, "--config", help="配置文件路径"),
+) -> None:
+    """输出跨书台账 markdown（issue #32）：机器可重算字段 + 待 agent 填的领域/摘要。"""
+    cfg = load_config(config or _CONFIG_PATH)
+    rows = orch.status_all(workspace or cfg.paths.workspaces_dir)
+    text = orch.render_ledger(rows)
+    if output:
+        Path(output).write_text(text, encoding="utf-8")
+        console.print(f"[green]台账已写入：[/green]{output}（{len(rows)} 个工作区）")
+    else:
+        console.print(text)
 
 
 @app.command()
