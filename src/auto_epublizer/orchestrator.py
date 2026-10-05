@@ -811,8 +811,12 @@ def read_repairs(store: RunStore) -> list[dict[str, Any]] | None:
         kind = str(row.get("kind") or "")
         status = str(row.get("status") or "")
         summary = str(row.get("summary") or "").strip()
-        if not unit or unit not in unit_ids:
-            raise OrchestrationError(f"repairs.jsonl 第 {lineno} 行 unit 不存在：{unit!r}")
+        if not unit:
+            raise OrchestrationError(f"repairs.jsonl 第 {lineno} 行 unit 必填")
+        # 结构重建可能删除单元（issue #23）：引用了已消失单元的历史行**不阻断 qa**，
+        # 标记 unit_missing 交由 qa 出 warning（done 是已完成的历史动作，unresolved 也
+        # 只降级提示，避免整条流水线中断）。
+        unit_missing = unit not in unit_ids
         if kind not in kinds:
             raise OrchestrationError(f"repairs.jsonl 第 {lineno} 行 kind 非法：{kind!r}")
         if status not in statuses:
@@ -834,6 +838,7 @@ def read_repairs(store: RunStore) -> list[dict[str, Any]] | None:
         count = row.get("count")
         if count is not None and not isinstance(count, int):
             raise OrchestrationError(f"repairs.jsonl 第 {lineno} 行 count 必须是整数")
+        row = {**row, "unit_missing": True} if unit_missing else row
         rows.append(row)
     return rows
 
@@ -1021,6 +1026,7 @@ def qa(
     # 语义整备留痕（S2）：unresolved 仅 W 级提示（文本疑点，非内容缺失）
     repairs = read_repairs(store)
     repairs_unresolved = sum(1 for r in repairs or [] if r.get("status") == "unresolved")
+    repairs_stale_unit = sum(1 for r in repairs or [] if r.get("unit_missing"))
     report = generate_report(
         pub.slug,
         audit,
@@ -1043,6 +1049,15 @@ def qa(
                 "code": "W_REPAIR_UNRESOLVED",
                 "message": f"语义整备有 {repairs_unresolved} 项未决修复（见 "
                 "preprocessing/repairs.jsonl）；能修则修，确属存疑的记入交付记录",
+            }
+        )
+    if repairs_stale_unit:
+        report.provenance_findings.append(
+            {
+                "level": "warning",
+                "code": "W_REPAIR_STALE_UNIT",
+                "message": f"语义整备有 {repairs_stale_unit} 行引用的单元已被结构重建删除"
+                "（见 preprocessing/repairs.jsonl）；历史行可忽略，unresolved 行请重挂现存单元",
             }
         )
     if toc_missing:
