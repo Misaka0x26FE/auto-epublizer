@@ -47,6 +47,7 @@ multimodal / search**（能否看图、有无搜索工具，CLI 无法探测）�
 | 场景 | 读 |
 |---|---|
 | 全新任务 / 状态路由 / 多阶段请求 / 命令总览 | `references/workflow.md` |
+| 弱模型路径：机器「下一任务」指针（`status --json`）+ 原子任务卡 | `references/taskcards/` |
 | 预处理：读 facts → 撰写 todo/capabilities/plan/global/units/terms/risks/report | `references/preprocessing.md` |
 | 文件解析：PDF / 扫描 PDF / EPUB / DOCX / HTML / TXT / MD / OCR | `references/ingest.md` |
 | 语义整备：解析缺陷修复 / OCR 修正 / 结构重切（信号触发；OCR 必做） | `references/repair.md` |
@@ -90,23 +91,14 @@ multimodal / search**（能否看图、有无搜索工具，CLI 无法探测）�
 
 ## 标准流程
 
-```bash
-auto-epublizer doctor --json                              # 能力自检（开工前；multimodal/search 自报）
-auto-epublizer preprocess <input>                         # 预处理：init + 零 token 事实 → preprocessing/facts.*
-#   agent 读 facts.md，撰写 todo/capabilities/plan/global/units/terms/risks/report（见 references/preprocessing.md）
-#   理解层 analysis/*.md 同样由 agent 撰写（见 references/analysis.md）
-auto-epublizer meta --translator OpenCode                             # 元数据核对写回 + 译者署名（默认=agent 框架名）
-auto-epublizer import [--unit <id>] [--terms preprocessing/terms.csv]  # 登记 agent 手写翻译产物
-auto-epublizer import --reviewed                                    # 审校通过后：aligned → reviewed
-auto-epublizer knowledge export --workspace .             # 从统一库播种同语对已确认术语 → preprocessing/terms.csv
-auto-epublizer knowledge import --workspace .             # 工作区术语回写统一库（跨书复用 + 自动 git 提交）
-auto-epublizer knowledge import-csv <csv> --src-lang en --book <slug>  # 导入历史/任意术语 CSV
-#   统一库默认 ~/Documents/auto-epublizer（私有 git 仓库）；init/path/status/push 见 references/workflow.md
-auto-epublizer g0                                         # 静态校验（术语命中=真实缺陷须清零；长度比=advisory）
-#   agent 写审校产物 reviews/review-<ts>/（含 result.json，见 references/review.md）
-auto-epublizer build [--bilingual] [--theme standard|compact|spacious]  # 封装 EPUB → output/
-auto-epublizer qa                                         # epubcheck + 解包审计
-auto-epublizer status --json                              # 查看进度/状态机/产物-状态对账
+完整命令总览与阶段列表见 `references/workflow.md`（此处不重复——入口刻意保持精简）。
+
+```text
+doctor → preprocess → agent 理解/分析 → (整备) → 翻译 → import
+       → g0 → 审校 → build → qa → delivery
 ```
+
+按机器指针驱动：取 `status --json` → `next_tasks[0]`，做该任务（见
+`references/taskcards/`），重跑 `status --json`，循环。
 
 仅转换不翻译：`auto-epublizer convert <input> -o output/book.epub`。
