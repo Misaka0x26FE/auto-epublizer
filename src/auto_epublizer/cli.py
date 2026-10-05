@@ -251,6 +251,9 @@ def preprocess(
     ),
     reference: list[str] | None = typer.Option(None, "--reference", help="参考材料（可多次）"),
     target: str | None = typer.Option(None, "--target", help="目标语言（ISO 639-1）"),
+    force: bool = typer.Option(
+        False, "--force", help="原地重建 structured/ 与 facts（误中断恢复，issue #30 §4.2）"
+    ),
     workspace: str | None = typer.Option(None, "--workspace", help="工作区根目录"),
     config: str | None = typer.Option(None, "--config", help="配置文件路径"),
 ) -> None:
@@ -258,20 +261,29 @@ def preprocess(
 
     产出 facts.md 内含 agent 待办清单：方案决策（plan.md）、全局理解（global.md）、
     章节理解（units/）、术语预提取（terms.csv）、风险标注（risks.md）、汇总（report.md）。
+    ``--force``（省略 input）：从 source/ 原地重建 structured/ 与 facts，单元状态重置为
+    split（已有译文变 stale）。
     """
     cfg = load_config(config or _CONFIG_PATH)
     try:
-        if input:
-            store = orch.init(
-                input,
-                config=cfg,
-                target_language=target,
-                references=reference,
-                workspace_dir=workspace or cfg.paths.workspaces_dir,
+        if force:
+            store = _store_from(workspace, cfg)
+            result = orch.rebuild(store, config=cfg)
+            console.print(
+                "[yellow]已原地重建 structured/ 与 facts（单元状态重置为 split）[/yellow]"
             )
         else:
-            store = _store_from(workspace, cfg)
-        result = orch.preprocess(store, config=cfg)
+            if input:
+                store = orch.init(
+                    input,
+                    config=cfg,
+                    target_language=target,
+                    references=reference,
+                    workspace_dir=workspace or cfg.paths.workspaces_dir,
+                )
+            else:
+                store = _store_from(workspace, cfg)
+            result = orch.preprocess(store, config=cfg)
     except (ValueError, OSError, orch.OrchestrationError) as e:
         raise typer.Exit(f"预处理失败：{e}") from None
     facts = result["facts"]

@@ -368,6 +368,21 @@ def preprocess(store: RunStore, *, config: Config | None = None) -> dict[str, An
     return {"facts": facts, "facts_json": str(json_path), "facts_md": str(md_path)}
 
 
+def rebuild(store: RunStore, *, config: Config | None = None) -> dict[str, Any]:
+    """原地重建 ``structured/``（含 raw/）与 facts（issue #30 §4.2，``preprocess --force``）。
+
+    从 ``source/`` 重新 ingest → 覆盖 structured/ → 重算 facts。单元状态被重置为
+    ``split``（既有译文变 stale，需重新走 import）；调用方须显式 ``--force`` 表达该意图。
+    用于「preprocess 误中断后恢复」，无需人工搬目录。
+    """
+    import shutil
+
+    if store.structured_dir.exists():
+        shutil.rmtree(store.structured_dir)
+    prepare_structure(store, config=config)
+    return preprocess(store, config=config)
+
+
 def build(
     store: RunStore,
     *,

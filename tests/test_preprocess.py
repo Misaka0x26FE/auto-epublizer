@@ -331,6 +331,21 @@ def test_status_reports_preprocessing_state(tmp_path: Path) -> None:
     assert not any(s["id"] == "preprocessing" for s in data["stale"])
 
 
+def test_rebuild_resets_structure_and_status(tmp_path: Path) -> None:
+    """回归 #30 §4.2：preprocess --force 原地重建 structured/，状态重置为 split。"""
+    src = tmp_path / "book.md"
+    src.write_text("# Chapter I\n\nBody text.\n", encoding="utf-8")
+    store = orch.init(str(src), workspace_dir=str(tmp_path / "ws"))
+    store.set_unit_status("ch01", "aligned")
+    (store.structured_dir / "body" / "ch01.md").write_text("garbage", encoding="utf-8")
+
+    orch.rebuild(store)
+
+    regenerated = store.structured_dir / "body" / "ch01.md"
+    assert regenerated.read_text(encoding="utf-8").startswith("# Chapter I")
+    assert store.load_publication().units[0].status == "split"
+
+
 def test_granularity_flags_fragmented_units() -> None:
     """回归 #30 §4.5：切分过碎（Unknown 标题 / 极小单元）时给出粒度信号。"""
     from auto_epublizer.preprocess.facts import _granularity
