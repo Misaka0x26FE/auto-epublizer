@@ -1,7 +1,9 @@
-<!-- i18n: source=README.zh.md sha256=782e9f911e4eda6bab129f8913d49a3ecb947098ffb99686ad01b7d56099f49c -->
+<!-- i18n: source=README.zh.md sha256=55a556cefd5fdc2516857da7c38f104eee3ce21d7a9d81e186453f33038aec2d -->
 > **English** | [中文](README.zh.md)
 
 # auto-epublizer
+
+[![skills.sh](https://skills.sh/b/Misaka0x26FE/auto-epublizer)](https://skills.sh/Misaka0x26FE/auto-epublizer)
 
 A Python CLI that **translates** documents from foreign languages into any configurable
 target language and produces a **standard EPUB 3**.

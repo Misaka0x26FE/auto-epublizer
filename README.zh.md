@@ -2,6 +2,8 @@
 
 # auto-epublizer
 
+[![skills.sh](https://skills.sh/b/Misaka0x26FE/auto-epublizer)](https://skills.sh/Misaka0x26FE/auto-epublizer)
+
 一个 Python CLI，把来源复杂的文献**翻译**成任意目标语言，并生成**标准 EPUB 3**。
 
 - **翻译**：外语文献 → 任意可配置目标语言（译文由使用本 CLI 的 AI agent 主进程完成，CLI 自身不做任何 LLM 调用）。
