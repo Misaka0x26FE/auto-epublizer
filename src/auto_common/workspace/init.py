@@ -23,6 +23,7 @@ def init_workspace(
     workspace_dir: str | Path | None = None,
     target_language: str | None = None,
     references: Sequence[str | Path] | None = None,
+    original: str | Path | None = None,
 ) -> RunStore:
     """初始化一个工作区并返回其 RunStore。
 
@@ -59,6 +60,17 @@ def init_workspace(
                 shutil.rmtree(dst)
             shutil.copytree(ref_path, dst)
 
+    # 交付原件归档（issue #30 §4.6）：入库前对源做过加工（注入书签/格式转换）时，
+    # 未改动的交付原件另存 references/user/，与 source/ 的 ingest 副本并存。
+    original_rel: str | None = None
+    if original:
+        orig = Path(original)
+        if orig.is_file():
+            orig_target = store.references_dir / "user" / f"{slug}.original{orig.suffix}"
+            orig_target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(orig, orig_target)
+            original_rel = str(orig_target.relative_to(store.dir))
+
     pub = Publication(
         schema_version=SCHEMA_VERSION,
         slug=slug,
@@ -66,6 +78,7 @@ def init_workspace(
             title=Path(source.stem).name,
             source=str(source_target.relative_to(store.dir)),
             source_sha256=digest,
+            source_original=original_rel,
             target_language=lang,
         ),
         config=ConfigSnapshot(
