@@ -370,6 +370,30 @@ def preprocess(store: RunStore, *, config: Config | None = None) -> dict[str, An
     return {"facts": facts, "facts_json": str(json_path), "facts_md": str(md_path)}
 
 
+def evidence_breaks(store: RunStore, *, output: str | None = None) -> dict[str, Any]:
+    """产出页边界证据 ``preprocessing/breaks.jsonl``（issue #14 / #10-B3）。
+
+    只**定位证据**（相邻页两侧存活行 + 回溯到 structured 的块号），不做语义合并——
+    merge/keep/unresolved 的裁定仍由 agent 完成（references/repair.md）。
+    """
+    import json
+
+    from .preprocess.evidence import collect_breaks
+
+    rows = collect_breaks(store)
+    out_path = Path(output) if output else store.preprocessing_dir / "breaks.jsonl"
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    out_path.write_text(
+        "".join(json.dumps(r, ensure_ascii=False) + "\n" for r in rows), encoding="utf-8"
+    )
+    store.log_event("evidence_breaks_written", count=len(rows))
+    return {
+        "breaks": len(rows),
+        "candidates": sum(1 for r in rows if r.get("candidate")),
+        "path": str(out_path),
+    }
+
+
 def rebuild(store: RunStore, *, config: Config | None = None) -> dict[str, Any]:
     """原地重建 ``structured/``（含 raw/）与 facts（issue #30 §4.2，``preprocess --force``）。
 

@@ -17,6 +17,10 @@ from . import orchestrator as orch
 app = typer.Typer(help="auto-epublizer：翻译 + 转 EPUB 的 Python CLI")
 console = Console()
 
+# 证据导出子命令组（确定性、零 token）
+evidence_app = typer.Typer(help="证据导出（确定性、零 token）")
+app.add_typer(evidence_app, name="evidence")
+
 _CONFIG_PATH = "config.yaml"
 
 
@@ -174,6 +178,27 @@ def ledger(
         console.print(f"[green]台账已写入：[/green]{output}（{len(rows)} 个工作区）")
     else:
         console.print(text)
+
+
+@evidence_app.command("breaks")
+def evidence_breaks_cmd(
+    output: str | None = typer.Option(
+        None, "-o", "--output", help="输出路径（缺省 preprocessing/breaks.jsonl）"
+    ),
+    workspace: str | None = typer.Option(None, "--workspace", help="工作区目录"),
+    config: str | None = typer.Option(None, "--config", help="配置文件路径"),
+) -> None:
+    """导出相邻页边界证据，供 agent 裁定跨页断段（issue #14）。"""
+    cfg = load_config(config or _CONFIG_PATH)
+    store = _store_from(workspace, cfg)
+    try:
+        result = orch.evidence_breaks(store, output=output)
+    except (ValueError, OSError, orch.OrchestrationError) as e:
+        raise typer.Exit(f"证据导出失败：{e}") from None
+    console.print(
+        f"[green]页边界证据已生成：[/green]{result['path']}"
+        f"（{result['breaks']} 条，候选 {result['candidates']}）"
+    )
 
 
 @app.command()
