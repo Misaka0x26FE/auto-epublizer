@@ -95,13 +95,17 @@ convert <input>   -> 归一化 + 结构 + EPUB + QA
 auto-epublizer doctor [--json] [--ping]
 
 # 预处理（新书：init + 零 token 事实收集 → preprocessing/facts.*；已有工作区：幂等刷新）
-auto-epublizer preprocess <input> [--reference <path...>] [--target zh-CN] [--workspace <dir>]
+auto-epublizer preprocess <input> [--reference <path...>] [--original <path>] [--target zh-CN] [--workspace <dir>]
+#   --force（省略 input）：从 source/ 原地重建 structured/ 与 facts（误中断恢复；单元状态重置 split）
+#   --original <path>：把未改动的交付原件归档到 references/user/（issue #30 §4.6）
 # （agent 读 facts.md 撰写 capabilities/plan/global/units/terms/risks/report，见 references/preprocessing.md）
 # init <input> 等价于 preprocess 的建工作区子集（不产 facts；仍可用于仅需拆解的场景）
 
 # agent 手写翻译后的登记入口（G0 结构校验 + 状态推进 + 术语冲突外置）
 auto-epublizer meta [--translator X] [--publisher P] [--date D] [--rights R] [--workspace <dir>]
-auto-epublizer import [--unit <id>] [--terms <csv>] [--reviewed] [--workspace <dir>]
+auto-epublizer import [--unit <id>] [--terms <csv>] [--reviewed] [--force] [--workspace <dir>]
+#   --force：对 reviewed/built 单元重跑全套阻断校验（交付后修订译文的重登记，issue #13）；
+#            通过保持原状态，失败回退 aligned
 
 # 统一术语库/知识库（跨工作区持久化 + git 持续维护；默认 ~/Documents/auto-epublizer）
 #   远端已固化为公共库 https://github.com/Misaka0x26FE/auto-epublizer-knowledge
@@ -130,6 +134,11 @@ auto-epublizer convert <input> [--theme standard|compact|spacious] [-o <out.epub
 
 # 进度 / 状态机 / 产物-状态对账
 auto-epublizer status [--workspace <dir>] [--json]
+#   --all：总览 base 目录下所有工作区（多书汇总；issue #32）
+auto-epublizer status --all [--json] [--workspace <work-root>]
+
+# 跨书台账（markdown）：机器可重算列 + 待填领域/摘要
+auto-epublizer ledger [-o <ledger.md>] [--workspace <work-root>]
 ```
 
 ## 状态机与 `status --json`
@@ -142,13 +151,35 @@ auto-epublizer status --workspace <dir> --json
 #  "units":[{"id":"ch01","kind":"chapter","title":"...","status":"built",
 #            "has_translation":true,"has_align":true}, ...],
 #  "has_preprocessing":true,"preprocessing_complete":false,
-#  "stale":[{"id":"preprocessing","status":"facts_written","reason":"preprocessing_plan_missing"}]}
+#  "stale":[{"id":"preprocessing","status":"facts_written","reason":"preprocessing_plan_missing"}],
+#  "next_tasks":[{"kind":"translate","unit":"ch01","hint":"...","done_when":{"cmd":"import","unit":"ch01"}}]}
 ```
 
 - `stale`：agent 手写了 translation/align 但尚未 `import` 登记，或预处理 facts 已产但
   理解产物（capabilities/global）未完成——状态机与产物脱节的信号。
 - agent 手写产物必须跑 `import` 状态才会推进；`import` 会校验
   seq 连续性/空译文（阻断）与长度比/术语命中（告警）。
+
+## 多工作区工作根（长期多书项目）
+
+持续多书处理时，用一个**工作根**、每书一个工作区；`status --all` 与 `ledger` 是其跨书索引。
+
+```text
+<work-root>/
+├── AGENTS.md          # 本目录怎么工作（根目录只保留这一个 .md）
+├── config.yaml        # workspaces_dir / qc.epubcheck.jar / pdf.*
+├── inbox/ sources/    # inbox：尚未开工的源；sources：按 <slug>.<ext> 命名的送审副本
+├── workspaces/<slug>/ # 每书一个工作区（标准 11 项顶层）
+├── docs/              # 过程文档（计划 / 规范 / 审计）
+└── references/        # 跨书共享基准（只读）
+```
+
+- 源身份一律以 `publication.json.meta.source_sha256` 为准，不认文件名；
+- 入库前对源做过加工（注入书签、格式转换）时，用 `preprocess --original` 把**未改动的
+  交付原件**存进 `references/user/`，与 `source/` 的 ingest 副本并存；
+- `status --all --json` 重算每本的 `progress`（`released` / `built_not_released` /
+  `preprocessing`）、单元数与词数；`ledger` 渲染成表，领域/摘要两列由 agent 填。
+  **数字绝不手维护**——可随时重算核对。
 
 ## 故障排查
 
