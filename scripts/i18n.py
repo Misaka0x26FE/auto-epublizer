@@ -42,6 +42,7 @@ EXCLUDE_DIRS = {
 _STAMP_RE = re.compile(r"^<!--\s*i18n:\s*source=(\S+)\s+sha256=([0-9a-f]{64})\s*-->$")
 _LINK_RE = re.compile(r"\[[^\]]*\]\(([^)]+)\)")
 _LINK_FULL_RE = re.compile(r"(\[[^\]]*\]\()([^)]+)(\))")
+_FRONTMATTER_RE = re.compile(r"\A---\r?\n.*?\r?\n---\r?\n", re.DOTALL)
 _ZH_SUFFIX = ".zh.md"
 
 
@@ -78,9 +79,27 @@ def _pair_of(path: Path) -> tuple[Path, Path]:
     return en, zh
 
 
+def split_frontmatter(text: str) -> tuple[str, str]:
+    """拆出文件开头的 YAML frontmatter（含结尾换行）与其余内容。
+
+    无 frontmatter 时返回 ``("", text)``。标准 skill 要求 ``SKILL.md`` 以
+    frontmatter 开头（skills.sh / Agent Skills 规范），故 i18n 戳与语言横幅
+    只能位于其后；此函数让工具在两种排版下都成立。
+    """
+    m = _FRONTMATTER_RE.match(text)
+    if not m:
+        return "", text
+    return m.group(0), text[m.end() :]
+
+
 def parse_stamp(text: str) -> tuple[str, str] | None:
-    """解析首个 i18n 戳行 → ``(source_name, sha256)``；无则 None。"""
-    for line in text.splitlines()[:8]:
+    """解析首个 i18n 戳行 → ``(source_name, sha256)``；无则 None。
+
+    跳过置顶的 YAML frontmatter 后在其后若干行内查找（兼容普通文档与
+    以 frontmatter 开头的 ``SKILL.md``）。
+    """
+    _fm, rest = split_frontmatter(text)
+    for line in rest.splitlines()[:8]:
         m = _STAMP_RE.match(line.strip())
         if m:
             return m.group(1), m.group(2)
@@ -88,8 +107,15 @@ def parse_stamp(text: str) -> tuple[str, str] | None:
 
 
 def _strip_i18n_header(text: str) -> str:
-    """去掉顶部连续的 i18n 戳行与语言横幅行（及其后空行）。"""
-    lines = text.splitlines()
+    """去掉 frontmatter 之后连续的 i18n 戳行与语言横幅行（及其后空行）。
+
+    返回正文（不含 frontmatter）；frontmatter 由 :func:`split_frontmatter`
+    单独保留，调用方按需重新前置。
+    """
+    fm, rest = split_frontmatter(text)
+    if fm:
+        rest = rest.lstrip("\n")
+    lines = rest.splitlines()
     i = 0
     while i < len(lines):
         s = lines[i].strip()
@@ -118,7 +144,8 @@ def _banner(path: Path) -> str:
 def _has_banner(text: str, path: Path) -> bool:
     en, zh = _pair_of(path)
     sibling = en.name if path.name.endswith(_ZH_SUFFIX) else zh.name
-    for line in text.splitlines()[:8]:
+    _fm, rest = split_frontmatter(text)
+    for line in rest.splitlines()[:8]:
         if sibling in line and ("[中文](" in line or "[English](" in line):
             return True
     return False
@@ -224,18 +251,25 @@ def audit_unpaired(root: Path = REPO_ROOT) -> list[str]:
 
 
 def finalize(file: Path) -> None:
-    """写入/更新一对孪生的 i18n 戳（派生侧）与语言横幅（两侧）。"""
+    """写入/更新一对孪生的 i18n 戳（派生侧）与语言横幅（两侧）。
+
+    若文件以 YAML frontmatter 开头（``SKILL.md`` 等标准 skill），frontmatter
+    保持在最前，戳与横幅紧随其后（skills.sh 要求 ``SKILL.md`` 以 frontmatter
+    开头）；普通文档排版不变。
+    """
     en, zh = _pair_of(file)
     if not en.is_file() or not zh.is_file():
         raise SystemExit(f"孪生缺失：{en} / {zh}")
     # 先规范化中文源（补横幅），再以其最终内容计算哈希
+    zh_fm, _ = split_frontmatter(zh.read_text(encoding="utf-8"))
     zh.write_text(
-        f"{_banner(zh)}\n\n{_strip_i18n_header(zh.read_text(encoding='utf-8'))}\n",
+        f"{zh_fm}{_banner(zh)}\n\n{_strip_i18n_header(zh.read_text(encoding='utf-8'))}\n",
         encoding="utf-8",
     )
     digest = sha256_file(zh)
+    en_fm, _ = split_frontmatter(en.read_text(encoding="utf-8"))
     en.write_text(
-        f"<!-- i18n: source={zh.name} sha256={digest} -->\n"
+        f"{en_fm}<!-- i18n: source={zh.name} sha256={digest} -->\n"
         f"{_banner(en)}\n\n"
         f"{_strip_i18n_header(en.read_text(encoding='utf-8'))}\n",
         encoding="utf-8",

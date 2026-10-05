@@ -1,14 +1,14 @@
-<!-- i18n: source=SKILL.zh.md sha256=14766b0e8387b227a665f76da30302ca3b7066b3e640c0040f6a3d3c0e9535de -->
-> **English** | [中文](SKILL.zh.md)
-
 ---
 name: auto-epublizer
 description: Orchestrates the auto-epublizer translation and EPUB workflow. Use for publication.json workspaces, init/preprocess/import/g0/build/qa/status/convert stage routing, glossary.csv three-state terminology, translation/align/ sentence tables, structured/ four-layer content, or EPUB output. The only LLM is the agent using the CLI (no internal LLM calls).
+license: AGPL-3.0
 compatibility: opencode
 metadata:
   suite: auto-epublizer
   workspace_model: publication.json
 ---
+<!-- i18n: source=SKILL.zh.md sha256=2d250e2ac1416f144f5e255b968112d2f9991d2165df0b263d259dbd3e4accf1 -->
+> **English** | [中文](SKILL.zh.md)
 
 # auto-epublizer
 
