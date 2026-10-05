@@ -1,4 +1,4 @@
-<!-- i18n: source=workflow.zh.md sha256=22411127f5191a241e9dc1e60e0672ef3fac0ed31d735e04e67b8bfc281b36c2 -->
+<!-- i18n: source=workflow.zh.md sha256=45b0b48a04961ca4a8db431503c98f794af911dcf20127d9c66ed76081e801ba -->
 > **English** | [中文](workflow.zh.md)
 
 # Workflow (stage routing + command overview)
@@ -110,13 +110,17 @@ repository (`Misaka0x26FE/auto-epublizer`)?** If the user agrees:
 auto-epublizer doctor [--json] [--ping]
 
 # preprocessing (new book: init + zero-token fact collection → preprocessing/facts.*; existing workspace: idempotent refresh)
-auto-epublizer preprocess <input> [--reference <path...>] [--target zh-CN] [--workspace <dir>]
+auto-epublizer preprocess <input> [--reference <path...>] [--original <path>] [--target zh-CN] [--workspace <dir>]
+#   --force (input omitted): rebuild structured/ + facts in place from source/ (recovery after an interrupted preprocess; unit status resets to split)
+#   --original <path>: archive the unmodified delivered original into references/user/ (issue #30 §4.6)
 # (agent reads facts.md and writes capabilities/plan/global/units/terms/risks/report, see references/preprocessing.md)
 # init <input> is equivalent to the workspace-creation subset of preprocess (produces no facts; still usable for split-only scenarios)
 
 # registration entry after agent hand-writes translation (G0 structural validation + state advance + terminology-conflict externalization)
 auto-epublizer meta [--translator X] [--publisher P] [--date D] [--rights R] [--workspace <dir>]
-auto-epublizer import [--unit <id>] [--terms <csv>] [--reviewed] [--workspace <dir>]
+auto-epublizer import [--unit <id>] [--terms <csv>] [--reviewed] [--force] [--workspace <dir>]
+#   --force: re-run the full blocking validation on reviewed/built units (post-delivery revision re-registration, issue #13);
+#            pass keeps the original status, failure rolls the unit back to aligned
 
 # unified terminology/knowledge store (cross-workspace persistent + git-maintained; default ~/Documents/auto-epublizer)
 #   the remote is built in as the public store
@@ -146,6 +150,11 @@ auto-epublizer convert <input> [--theme standard|compact|spacious] [-o <out.epub
 
 # progress / state machine / artifact-state reconciliation
 auto-epublizer status [--workspace <dir>] [--json]
+#   --all: overview of every workspace under the base dir (multi-book summary; issue #32)
+auto-epublizer status --all [--json] [--workspace <work-root>]
+
+# cross-book ledger (markdown): machine-recomputable columns + blank domain/summary to fill
+auto-epublizer ledger [-o <ledger.md>] [--workspace <work-root>]
 ```
 
 ## State machine and `status --json`
@@ -158,7 +167,8 @@ auto-epublizer status --workspace <dir> --json
 #  "units":[{"id":"ch01","kind":"chapter","title":"...","status":"built",
 #            "has_translation":true,"has_align":true}, ...],
 #  "has_preprocessing":true,"preprocessing_complete":false,
-#  "stale":[{"id":"preprocessing","status":"facts_written","reason":"preprocessing_plan_missing"}]}
+#  "stale":[{"id":"preprocessing","status":"facts_written","reason":"preprocessing_plan_missing"}],
+#  "next_tasks":[{"kind":"translate","unit":"ch01","hint":"...","done_when":{"cmd":"import","unit":"ch01"}}]}
 ```
 
 - `stale`: the agent has handwritten translation/align but has not yet `import`-registered it,
@@ -168,6 +178,29 @@ auto-epublizer status --workspace <dir> --json
 - Agent handwritten artifacts only advance state after `import` is run; `import` validates
   seq continuity / empty translations (blocking) and length ratio / terminology hits
   (warnings).
+
+## Multi-workspace work root (long-running projects)
+
+For continuous multi-book work, use a **work root** containing one workspace per book.
+`status --all` and `ledger` are its cross-book index.
+
+```text
+<work-root>/
+├── AGENTS.md          # how this directory works (keep the root to a single .md)
+├── config.yaml        # workspaces_dir / qc.epubcheck.jar / pdf.*
+├── inbox/ sources/    # inbox: not-yet-started sources; sources: staging copies named <slug>.<ext>
+├── workspaces/<slug>/ # one workspace per book (the standard 11 top-level entries)
+├── docs/              # process docs (plans / specs / audits)
+└── references/        # cross-book shared baselines (read-only)
+```
+
+- Source identity is always `publication.json.meta.source_sha256`, never the file name;
+- When the source was pre-processed (bookmarks injected, format converted), keep the
+  **unmodified original** in `references/user/` (`preprocess --original`) alongside the
+  `source/` ingest copy;
+- `status --all --json` recomputes per-book `progress` (`released` / `built_not_released` /
+  `preprocessing`), unit counts and words; `ledger` renders them as a table whose
+  domain/summary columns the agent fills. **Never hand-maintain the numbers** — recompute.
 
 ## Troubleshooting
 
