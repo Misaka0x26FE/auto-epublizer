@@ -41,6 +41,11 @@ S-A 风险点已论证解除；S-B 两处语义已澄清；依赖关系已修正
 
 ## 待办 1：成品 EPUB 导航层级过扁平（Issue #16）
 
+> **目标（用户 2026-10-04 明确）**：导航**立体化**——成品 EPUB 的目录应与正常出版物
+> 一样有**多个层级**（如「章→年→条」），而非扁平单层。立体化的本体 = structured/
+> 里有层级标题（h2/h3）+ build 渲染嵌套 nav/NCX（后者 6b3acb7 已实现）；S-A 修声明
+> 失真、S-B 修告警误报，均为配套而非本体。
+
 ### 1.1 来源与现象
 
 - **来源**：现场报告 #10（波斯语/RTL 编年史）遗留告警 `W_TOC_MISSING`，2026-09-29 单独立项。
@@ -148,11 +153,14 @@ S-A 风险点已论证解除；S-B 两处语义已澄清；依赖关系已修正
 #16 的真实案例工作区在**另一仓库** `Misaka0x272F/matla-al-sadayn-1`。开工前需访问该
 工作区（或请用户提供路径 / `publication.json` 现状），逐项核实：
 
-- [ ] **structured/ 现状**：是否已含 h2/h3 标题段（旧代码产物则无）——决定「重跑
-  preprocess 就能修好导航」还是「还有别的断点」；
-- [ ] **重跑影响范围**：`preprocess` 对既有工作区是「仅幂等刷新 facts」还是「连带重建
-  structured/」？若重建，已有 translation/ 是否变 stale、是否需要 `restructure` 登记
-  （结构重建的既有契约）——这决定修复路径是 `preprocess` 还是 `restructure`；
+- [ ] **该书是 convert-only 还是翻译流程**：决定立体化的数据侧路径——
+  convert-only → 直接重新 `convert`（S4 书签落段 + 嵌套 nav 一步到位）；已翻译 →
+  见下一条；
+- [ ] **structured/ 重建入口与 translation 影响**：`preprocess` 只刷新 facts
+  （orchestrator.py:350-367），**不重建 structured/**——重建要走重新 `init`/ingest。
+  若单元边界不变（只是章内新增标题段、单元 id 与 rel_path 不变），用 `restructure`
+  登记后状态保留（unchanged ids keep state 契约）；已翻译单元需 agent 把新增标题段
+  补进译文（g0 heading 守恒会拦出不一致）；
 - [ ] **单元级页码范围可得性**（S-B 页码兜底的前提）：publication.json unit meta /
   structured 段的 source_page 聚合是否可用（见 1.4 S-B 设计约束 2）；
 - [ ] **publication.json units 的 level 现状**（是否全 level=1）。
@@ -263,6 +271,10 @@ S-A 风险点已论证解除；S-B 两处语义已澄清；依赖关系已修正
 - 本文件与仓库现有计划**并存**：本文件是「三项待办的总梳理」，具体实施仍按
   `docs/plans/README.md` 约定另立当主题计划；#16 已存在于 GitHub Issues，计划文档
   完成后应回写 #16 状态并关闭 issue。
+- **待办 2「skills 化」已另立实施计划**：[2026-10-05-skills-standardization.md](2026-10-05-skills-standardization.md)
+  （skills.sh / Agent Skills 合规 + 发布 + 渐进式披露 + 多 skill 拆分 + 跨文档总表）；
+  其中 P0 合规已完成（`SKILL.md` frontmatter 置顶）。待办 2 的「修改思路/验收」以其为准，
+  本文件不再展开。
 - 统一术语库/知识库已于 2026-10-04 转为公共仓库（`auto-epublizer-knowledge`，内容
   CC BY-SA 4.0，地址已固化 `DEFAULT_KNOWLEDGE_REMOTE`）——与本三项独立，不在此展开。
 

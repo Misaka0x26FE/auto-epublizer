@@ -112,7 +112,34 @@ def test_relink_skips_language_banner(tmp_path: Path) -> None:
     assert "> **中文** | [English](a.md)" in (tmp_path / "a.zh.md").read_text(encoding="utf-8")
 
 
+def test_finalize_keeps_frontmatter_first(tmp_path: Path) -> None:
+    """SKILL.md 等标准 skill：frontmatter 必须在最前，戳/横幅置于其后。"""
+    fm = "---\nname: demo\ndescription: demo skill\n---\n"
+    en, zh = _pair(tmp_path, "s", en_body=fm + "# Demo", zh_body=fm + "# 演示")
+    text_en = en.read_text(encoding="utf-8")
+    text_zh = zh.read_text(encoding="utf-8")
+    assert text_en.startswith("---\nname: demo\n")
+    assert text_zh.startswith("---\nname: demo\n")
+    # 戳与横幅位于 frontmatter 之后（而非文件开头）
+    assert text_en.index("<!-- i18n: source=s.zh.md sha256=") > text_en.index("---\n", 4)
+    assert "> **English** | [中文](s.zh.md)" in text_en
+    assert "> **中文** | [English](s.md)" in text_zh
+    assert i18n.parse_stamp(text_en) is not None
+    assert i18n.check_stamps(tmp_path) == []
+
+
 # ── 仓库实时校验（随文档翻译进度保持通过）──────────────────────────────────
+
+
+def test_repo_skill_frontmatter_first() -> None:
+    """skills.sh / Agent Skills 合规：每个 skill 的 SKILL.md 以 frontmatter 开头。"""
+    skills = sorted((ROOT / "skills").glob("*/SKILL.md"))
+    assert skills, "未找到 skills/*/SKILL.md"
+    for skill_md in skills:
+        text = skill_md.read_text(encoding="utf-8")
+        assert text.startswith("---\n"), f"{skill_md} 首行必须是 YAML frontmatter"
+        fm, _ = i18n.split_frontmatter(text)
+        assert "name:" in fm and "description:" in fm, f"{skill_md} 缺 name/description"
 
 
 def test_repo_stamps_and_banners() -> None:
