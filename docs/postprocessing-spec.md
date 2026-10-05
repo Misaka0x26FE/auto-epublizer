@@ -1,4 +1,4 @@
-<!-- i18n: source=postprocessing-spec.zh.md sha256=207a54eef703fe7dd442d31f85091d11d09fb4d9b1ea1aa798589f3053d86c7b -->
+<!-- i18n: source=postprocessing-spec.zh.md sha256=274bc9c189ad1ddb5bda711fabe50af63af862609009f4828055341edebef808 -->
 > **English** | [中文](postprocessing-spec.zh.md)
 
 # Post-Processing Spec: Acceptance and Implementation of Content Integrity / Media / EPUB Structure
@@ -150,7 +150,7 @@ into report.json):
 4. ✅ **Per-paragraph coverage**: `provenance_coverage` into report.json (null when there is no translation artifact)
 5. ✅ **Source erratum trace**: `detect_corrections` + `annotate_correction_notes`;
    the import path writes align `note` prefix `corr:wrong→right` (the translate command was removed along with the internal LLM)
-6. ✅ **TOC reconciliation**: facts source TOC vs unit headings → `W_TOC_MISSING` (warning clue)
+6. ✅ **TOC reconciliation**: facts source TOC vs unit titles **+ in-unit anchors** (normalized title mapping in the source language, `#16 S-B`) → `W_TOC_MISSING` lists only truly unmapped bookmarks (real coverage gap, not a bookmark-count-vs-unit-count difference)
 7. ✅ **Footnote semanticization**: `noteref`/`footnote` + global numbering + bidirectional jumping (`FootnoteState`)
 8. ✅ **Style slimming**: `_STYLE_CSS` removes font/color/font size/line spacing/indent/alignment (regression-test locked)
 

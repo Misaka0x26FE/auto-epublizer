@@ -72,7 +72,7 @@ S-A 风险点已论证解除；S-B 两处语义已澄清；依赖关系已修正
 |---|---|---|
 | 1. 单元内标题进 TOC | ✅ 已由 nav-depth 计划覆盖 | `build/__init__.py:359` nav 经 `nav_toc_entries` + `_toc_tree` 渲染锚点条目 |
 | 2. `nav-depth` meta 如实声明 | ✅ **已完成（2026-10-05）** | 见 §1.4 S-A：`nav-depth` 改为写**实际深度** A（与 `dtb:depth` 同源），另加 `nav-projection` 保留投影上限 K 给 qa。**实施修正**：不能只把 `nav-depth` 改成 A——qa 用该 meta 重建期望集，扁平/错误构建声明 A=1 会自证「期望扁平」而漏报 `E_TOC_FLAT`（由 `test_provenance_anchor_toc_flat_detection` 暴露），故须新增 `nav-projection` 分离两种语义 |
-| 3. 源书签映射（可选增强） | ❌ **完全未做** | 全库 `grep` 无「书签→标题锚点」映射逻辑；`orchestrator.py:999` 的 `W_TOC_MISSING` 仍只做「facts 源 TOC vs 单元标题」文本对账，无法反映真实覆盖缺口 |
+| 3. 源书签映射（可选增强） | ✅ **已完成（2026-10-05）** | 见 §1.4 S-B：`_toc_missing_from_facts` 在源文语言空间把 facts 源书签映射到 `unit` / `unit#anchor`（规范化标题 + 单元内 level≥2 锚点），只有真正映射不上的才计入 `W_TOC_MISSING`。案例书 `matla-al-sadayn-1` 实测：缺失 **227 → 95** |
 | 4. 配置面 | ✅ 够用 | `config.output.nav_depth` 默认 3，无需新增开关 |
 
 **结论（审查后更精确的根因链）**：#16 报的那本书之所以仍扁平，是**两层问题叠加**：
@@ -115,7 +115,20 @@ S-A 风险点已论证解除；S-B 两处语义已澄清；依赖关系已修正
   投影截断时 meta 与实际一致；**新增一条断言**：任意工作区 build 后
   `_nav_declared_depth(epub) == NCX 的 dtb:depth`。
 
-**S-B 源书签映射（工作量主要在这步）**
+**S-B 源书签映射（✅ 2026-10-05 已完成）**
+
+> **实施记录**：`orchestrator._toc_missing_from_facts` 升级为锚点级映射——收集每个单元的
+> 标题 + `structured/` 内 level≥2 子标题锚点标签，对 facts 源书签做**源文语言空间**的规范化
+> 标题匹配（NFKC + 去连字符 + 统一阿拉伯字母变体（أ/إ/آ→ا、ي→ی、ك→ک、ة→ه）+ casefold +
+> 只留 L*/N* 类别字符，去掉标点/括号/空格/附加符号），全等或较短者为子串（≥4 字符）即判定
+> 已覆盖。**页码兜底未实现**（EPUB 源无页码、PDF 单元级页码范围未提供），按设计约束 2 退化
+> 为标题匹配。案例书实测 `W_TOC_MISSING` 227 → 95（剩余为源书签与正文标题措辞确实不同的
+> 条目，属真实缺口）。回归：`tests/test_toc_mapping.py`。文档同步：`references/invariants.md`
+> （+zh）、`docs/postprocessing-spec.md` §放行清单（+zh）。
+> **注**：`toc_missing` 仍保持 `list[str]`（未升级为结构化映射），以维持 `report.json`
+> schema 稳定；「反映真实缺口」这一核心目标已达成。
+
+
 
 - 在 `orchestrator.py` 现有 `W_TOC_MISSING` 对账处（facts 源 TOC vs 单元/锚点）升级为
   **锚点级映射**：按标题文本（优先全等/规范化后等）→ 就近页码兜底，把 facts 里的源书签
