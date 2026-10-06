@@ -1,4 +1,4 @@
-<!-- i18n: source=AGENTS.zh.md sha256=fbb0c9fe705d966384b28d11aef039a8299c112bb9c4406c3ed79bd95d2ac39b -->
+<!-- i18n: source=AGENTS.zh.md sha256=4e4fee29bb4b18617883f4f9c353ec205e9e868e7c48e859c32b378710664290 -->
 > **English** | [中文](AGENTS.zh.md)
 
 # auto-epublizer repository guide (for coding agents developing/maintaining this project)
@@ -81,6 +81,9 @@ auto-epublizer preprocess <input>   # new book: init + sniff/metadata/TOC/health
 #    (approach decisions) / global.md (global understanding) / units/<id>.md /
 #    terms.csv / risks.md / report.md
 auto-epublizer preprocess           # existing workspace: idempotent refresh of facts
+#    --force (input omitted): rebuild structured/+facts in place from source/ (recovery after an
+#    interrupted run); --original <path>: archive the delivered original into references/user/;
+#    --progress: per-page progress to stderr. Kindle (.azw3/.azw/.mobi) is accepted (via calibre)
 
 # 3.5 Metadata verification and translator credit (agent task): verify the sniffed facts
 #     against the source copyright page and write back via the meta command; translator
@@ -101,10 +104,12 @@ auto-epublizer knowledge status                 # statistics + git state (--json
 # 5. Translation (agent task): the agent reads structured/ and translates, writing
 #    translation/ + align/, then "import" registers it: G0 validation + state advance +
 #    terminology-conflict externalization (terms.csv may be imported via --terms)
-auto-epublizer import [--unit <id>] [--terms preprocessing/terms.csv] [--reviewed]
+auto-epublizer import [--unit <id>] [--terms preprocessing/terms.csv] [--reviewed] [--force]
                                  # register agent-written translation artifacts; --reviewed advances
                                  # aligned units to reviewed (explicit registration of review
-                                 # acceptance; reviewed/built skip re-import)
+                                 # acceptance; reviewed/built skip re-import); --force re-runs the
+                                 # blocking validation on reviewed/built units (post-delivery
+                                 # revision re-registration; pass keeps state, failure rolls back to aligned)
 auto-epublizer g0                # run static validation right after translating/importing (terminology hits are real defects to verify one by one; length ratio is only advisory)
 
 # 5.5 Semantic repair (agent task, conditionally triggered): when facts carry suspicious
@@ -112,6 +117,7 @@ auto-epublizer g0                # run static validation right after translating
 #     structured/ against raw evidence and write preprocessing/repairs.jsonl; for unit
 #     boundary re-splits/merges also write preprocessing/structure.csv and register it (S3)
 auto-epublizer restructure [--workspace <dir>]   # register rebuilt unit structure (unchanged ids keep state)
+auto-epublizer evidence breaks   # export page-boundary evidence → preprocessing/breaks.jsonl (for judging page/line-split fragments; locates evidence only, no semantic merge)
 
 # 6. Review (agent task): the agent performs G1–G3 semantic review itself and writes
 #    reviews/review-<ts>/ (issues/patches/summary/result.json; qa reads g1/g2/g3 counts
@@ -127,7 +133,9 @@ auto-epublizer build          # translation-only / bilingual EPUB → output/ (-
 
 # 8. QA (G0 static validation + G4 audit + G5 release summary → report.json)
 auto-epublizer qa             # structure audit + epubcheck
-auto-epublizer status --json  # inspect progress/state machine/artifact-state reconciliation
+auto-epublizer status --json  # inspect progress/state machine/artifact-state reconciliation (includes next_tasks machine pointer)
+auto-epublizer status --all   # multi-workspace overview (three-tier progress: released/built_not_released/preprocessing)
+auto-epublizer ledger         # cross-book ledger markdown (machine-recomputable columns + domain/summary to fill)
 
 # 9. Delivery audit (agent task, mandatory): follow
 #    skills/auto-epublizer/references/delivery.md for full independent reconciliation +

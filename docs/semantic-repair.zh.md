@@ -105,7 +105,8 @@ summary, method?, evidence?, status}`；`status ∈ done|unresolved`；`unit` �
 且必须存在（防杜撰）。CLI 校验（`orchestrator.read_repairs`，文件不存在零破坏；
 非法 → `OrchestrationError` 带行号）；`unresolved` 进 `report.json`
 （`repairs_total`/`repairs_unresolved`）并触发 `W_REPAIR_UNRESOLVED` 提示
-（W 级，不阻断放行）。
+（W 级，不阻断放行）。行引用的单元若已被结构重建删除，则**保留并标记**
+（`W_REPAIR_STALE_UNIT`），绝不报错（issue #23）。
 
 ### 3.3 结构重建登记（已接线）
 

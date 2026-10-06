@@ -1,4 +1,4 @@
-<!-- i18n: source=invariants.zh.md sha256=6d76241f27cd2ba65fc2ce23b53b3fee9fde4dc715005fa2a8fb9c6495ef627c -->
+<!-- i18n: source=invariants.zh.md sha256=67c67e3af4ac52fa3aa59bdfaa08a7c4d6a0325f013d21afaf820ffb8b2a0b0c -->
 > **English** | [中文](invariants.zh.md)
 
 # Invariants quick-reference card (invariants)
@@ -102,6 +102,7 @@ marker moves to an adjacent line does not false-report; loss always reports.
 | W_TOC_MISSING / W_NAMING | W | facts source TOC entries not mapped to any `unit` / `unit#anchor` after normalized title matching (real coverage gap) / product naming does not match slug |
 | W_DELIVERY_AUDIT_MISSING | W | all units built but no delivery record → run the delivery audit per references/delivery.md |
 | W_REPAIR_UNRESOLVED | W | semantic repair has unresolved fixes (repairs.jsonl unresolved) → fix what can be fixed, record doubtful ones in the delivery record |
+| W_REPAIR_STALE_UNIT | W | repairs.jsonl rows reference a unit removed by a structure rebuild → historical rows can be ignored; re-attach `unresolved` rows to a surviving unit (issue #23) |
 
 ## 5. Condensed workspace contract
 
