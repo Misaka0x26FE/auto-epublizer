@@ -20,7 +20,18 @@ _CJK = "\u3400-\u4dbf\u4e00-\u9fff\u3040-\u30ff\uac00-\ud7af"
 # 边界，短词条就会被长复合词条抢先命中，报出「术语命中译文缺失」这种无法靠改译文
 # 放行的假阳性（2026-10-06 于 ch08 的 ``Brest`` / ``Brest–Litovsk`` 词条对撞）。
 # 代价是 ``NATO-members`` 这类前缀复合体不再触发——方向上是安全的假阴性。
+#
+# ⚠ **中文破折号 `——`（em dash 连写两个）必须放行**（2026-10-07 于 hans-frank /
+# forced-labour）：中文破折号紧跟术语是常态，
+#     `DAP——NSDAP 的前身`   /   `巴尔——德国法学会会长`
+# 若 em dash 一律算词内连接符，左边界就认为「前一个字还在词内」，
+# 于是术语**命中不了译文**，报出「术语 NSDAP 译文缺失 NSDAP」这种**自相矛盾**的告警，
+# 而且**改译文也放行不了**（换别的标点只会制造新的不一致）。
+# 单个 em dash（`Brest—Litovsk`）仍按词内连接符处理，与 2026-10-06 的
+# 连字符族口径一致；用定长负向后顾 `(?<!——)` 把「连写两个」单独放行即可
+# （Python `re` 的后顾必须定长，`——` 正好是 2 字符）。
 _HYPHENS = "\\-\u2010\u2011\u2012\u2013\u2014\u2015\u2212"
+_CJK_DASH = "——"      # 中文破折号 = 两个 em dash 连写
 
 
 def _boundary_pattern(source: str) -> re.Pattern[str]:
@@ -37,10 +48,11 @@ def _boundary_pattern(source: str) -> re.Pattern[str]:
     if re.search(f"[{_CJK}]", source):
         return re.compile(escaped)
     edge = r"[\w" + _HYPHENS + r"]"
+    dash = re.escape(_CJK_DASH)
     return re.compile(
-        r"(?:(?<=[" + _CJK + r"])|(?<!" + edge + r"))"
+        r"(?:(?<=[" + _CJK + r"])|(?<=" + dash + r")|(?<!" + edge + r"))"
         + escaped
-        + r"(?:(?=[" + _CJK + r"])|(?!" + edge + r"))"
+        + r"(?:(?=[" + _CJK + r"])|(?=" + dash + r")|(?!" + edge + r"))"
     )
 
 
