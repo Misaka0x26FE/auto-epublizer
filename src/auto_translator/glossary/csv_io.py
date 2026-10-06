@@ -101,6 +101,37 @@ def load_glossary_csv(path: str | Path) -> list[GlossaryEntry]:
     return entries
 
 
+def load_terminology_exemptions(path: str | Path) -> dict[str, dict[str, str]]:
+    """读取**按单元**的术语门豁免表，返回 ``{单元 id: {术语 source: 理由}}``。
+
+    CSV 列：``unit,source,reason``。文件不存在即无豁免（不报错）。
+
+    为什么需要（2026-10-07 于 forced-labour 的 back-notes）：
+    G0 术语判据是「源行出现术语 source，译文行必须含 target」，但**文献著录
+    体例天然违反它**——注文里的书名/丛书名/档案题名按体例保留德文，Kurztiitel
+    （`Tuchei, Konzentrationslager, S. 243`）也保留拉丁。这类行里术语出现
+    而中文译名按体例**不该**出现，判据报出的 227 条全是**改译文也放行不了**
+    的假阳性：一刀切改译文会把正确体例改坏。
+
+    与「把词条从 glossary.csv 删掉」的区别：删词条会让该术语**全书失去检查**
+    （`Konzentrationslager → 集中营` 在正文译了几百处，正文必须继续查）。
+    本表只豁免**指定单元**，其余单元照常受检；且每条豁免必须写 ``reason``，
+    命中时以 advisory 形式**照样报出**（check=``terminology_exempt``），
+    不阻断放行也不从报告里消失——审计可见、可回溯、可撤销。
+    """
+    p = Path(path)
+    if not p.is_file():
+        return {}
+    out: dict[str, dict[str, str]] = {}
+    for row in csv.DictReader(io.StringIO(p.read_text(encoding="utf-8-sig"))):
+        unit = (row.get("unit") or "").strip()
+        source = (row.get("source") or "").strip()
+        if not unit or not source:
+            continue
+        out.setdefault(unit, {})[source] = (row.get("reason") or "").strip()
+    return out
+
+
 def save_glossary_csv(path: str | Path, entries: list[GlossaryEntry]) -> None:
     p = Path(path)
     p.parent.mkdir(parents=True, exist_ok=True)
