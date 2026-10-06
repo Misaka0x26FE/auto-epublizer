@@ -34,6 +34,10 @@ _MD_RESIDUE: tuple[tuple[str, re.Pattern[str]], ...] = (
     # 读者会看到裸反斜杠。此形态在四本越南书上累计 1000+ 处、7 本书 md 共 2198 处
     # 却长期无告警——因为本表此前不含该项（2026-10-04 补）。
     ("\\", re.compile(r"\\[!\"#$%&'()*+,\-./:;<=>?@\[\\\]^_`{|}~]")),
+    # 转义后的原始 HTML：渲染层缺 pandoc raw-HTML 直通时 `<div>`/`<svg>` 会以
+    # ``&lt;div&gt;`` 原样印给读者（2026-10-06 Thiriart 封面整段 SVG 漏成乱码）。
+    ("&lt;/", re.compile(r"&lt;/?[a-zA-Z][\w:.-]*(?:\s[^<>]*)?&gt;")),
+    ("{=html}", re.compile(r"\{\s*=\s*html\s*\}")),
 )
 
 

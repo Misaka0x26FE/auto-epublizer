@@ -29,7 +29,7 @@ from ..fingerprint import (
     stamp_document,
 )
 from ..media_paths import resolve_media_path
-from .html import slug_file, subheading_anchors
+from .html import plain_label, slug_file, subheading_anchors
 
 __all__ = [
     "build_epub",
@@ -364,10 +364,12 @@ def _render_nav_items(nodes: list[dict[str, Any]]) -> str:
         if "entry" in node:
             e = node["entry"]
             href = f"{slug_file(e['id'])}.xhtml"
-            label = escape(e["title"] or e["id"])
+            # nav 标签走 plain_label：裸 escape 会把 ``{#calibre_toc_1}`` 原样印给读者
+            # （2026-10-06 Thiriart nav 实测 22 处，与 <title> 同源同解，见 html.py::plain_label）
+            label = escape(plain_label(e["title"] or e["id"]))
         else:  # 锚点节点（_anchor_nodes 产物）
             href = node["href"]
-            label = escape(node["label"])
+            label = escape(plain_label(node["label"]))
         if node["children"]:
             lis.append(
                 f'      <li><a href="{href}">{label}</a>\n'
