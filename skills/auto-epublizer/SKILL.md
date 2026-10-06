@@ -7,7 +7,7 @@ metadata:
   suite: auto-epublizer
   workspace_model: publication.json
 ---
-<!-- i18n: source=SKILL.zh.md sha256=755d94934a0eb6b2619d1fb9891d7d275277ff8b65f64916b163debd06c2f27a -->
+<!-- i18n: source=SKILL.zh.md sha256=9194b4fdec9105448a12953ee0c57f0c3199fba22f0b78de80a1381eddd09aee -->
 > **English** | [中文](SKILL.zh.md)
 
 # auto-epublizer
@@ -60,6 +60,7 @@ the reference needed for the current stage.
 |---|---|
 | Fresh task / state routing / multi-stage request / command overview | `references/workflow.md` |
 | Weak-model path: machine next-task pointer (`status --json`) + atomic task cards | `references/taskcards/` |
+| Long-running multi-book setup: generate a work root + explain its components to the user | `references/work-root.md` |
 | Preprocessing: read facts → write todo/capabilities/plan/global/units/terms/risks/report | `references/preprocessing.md` |
 | File parsing: PDF / scanned PDF / EPUB / DOCX / HTML / TXT / MD / OCR | `references/ingest.md` |
 | Semantic repair: parse-defect repair / OCR fixes / structural re-split (signal-triggered; mandatory for OCR) | `references/repair.md` |
