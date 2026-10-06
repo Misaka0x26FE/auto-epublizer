@@ -48,6 +48,7 @@ multimodal / search**（能否看图、有无搜索工具，CLI 无法探测）�
 |---|---|
 | 全新任务 / 状态路由 / 多阶段请求 / 命令总览 | `references/workflow.md` |
 | 弱模型路径：机器「下一任务」指针（`status --json`）+ 原子任务卡 | `references/taskcards/` |
+| 长期多书：生成工作根 + 向用户解释各组件与用法 | `references/work-root.md` |
 | 预处理：读 facts → 撰写 todo/capabilities/plan/global/units/terms/risks/report | `references/preprocessing.md` |
 | 文件解析：PDF / 扫描 PDF / EPUB / DOCX / HTML / TXT / MD / OCR | `references/ingest.md` |
 | 语义整备：解析缺陷修复 / OCR 修正 / 结构重切（信号触发；OCR 必做） | `references/repair.md` |

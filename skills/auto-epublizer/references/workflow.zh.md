@@ -163,7 +163,8 @@ auto-epublizer status --workspace <dir> --json
 
 ## 多工作区工作根（长期多书项目）
 
-持续多书处理时，用一个**工作根**、每书一个工作区；`status --all` 与 `ledger` 是其跨书索引。
+持续多书处理时，用一个**工作根**、每书一个工作区。用 `auto-epublizer work-root <目录>` 确定性
+生成；各组件作用与给用户的说明见 `references/work-root.md`。`status --all` 与 `ledger` 是其跨书索引。
 
 ```text
 <work-root>/

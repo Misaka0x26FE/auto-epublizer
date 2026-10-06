@@ -188,6 +188,23 @@ def ledger(
         console.print(text)
 
 
+@app.command()
+def work_root(
+    directory: str = typer.Argument(..., help="目标目录（将在此生成标准长期工作区）"),
+    force: bool = typer.Option(False, "--force", help="覆盖已存在的同名文件"),
+) -> None:
+    """生成标准长期多书工作区骨架（inbox/sources/workspaces/docs/references + 规范/配置/说明）。"""
+    from .workroot import WorkRootError, create_work_root
+
+    try:
+        result = create_work_root(directory, force=force)
+    except WorkRootError as e:
+        raise typer.Exit(f"生成失败：{e}") from None
+    console.print(f"[green]长期工作区已生成：[/green]{result['dir']}")
+    console.print(f"  新建 {len(result['created'])} 项；跳过 {len(result['skipped'])} 项")
+    console.print(f"  各组件功能与用法见 {result['dir']}/README.md（下一步把待处理源放入 inbox/）")
+
+
 @evidence_app.command("breaks")
 def evidence_breaks_cmd(
     output: str | None = typer.Option(

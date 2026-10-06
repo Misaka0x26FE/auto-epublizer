@@ -1,4 +1,4 @@
-<!-- i18n: source=AGENTS.zh.md sha256=4e4fee29bb4b18617883f4f9c353ec205e9e868e7c48e859c32b378710664290 -->
+<!-- i18n: source=AGENTS.zh.md sha256=f4fdef27d69070c08571854aaa427e3a2a1614e3021abf04646a628d3e0b1b7e -->
 > **English** | [中文](AGENTS.zh.md)
 
 # auto-epublizer repository guide (for coding agents developing/maintaining this project)
@@ -136,6 +136,7 @@ auto-epublizer qa             # structure audit + epubcheck
 auto-epublizer status --json  # inspect progress/state machine/artifact-state reconciliation (includes next_tasks machine pointer)
 auto-epublizer status --all   # multi-workspace overview (three-tier progress: released/built_not_released/preprocessing)
 auto-epublizer ledger         # cross-book ledger markdown (machine-recomputable columns + domain/summary to fill)
+auto-epublizer work-root <dir>  # scaffold a standard long-running multi-book workspace (see references/work-root.md)
 
 # 9. Delivery audit (agent task, mandatory): follow
 #    skills/auto-epublizer/references/delivery.md for full independent reconciliation +

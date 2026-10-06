@@ -1,4 +1,4 @@
-<!-- i18n: source=workflow.zh.md sha256=0e6218f33709ca7d6325565733a155f73dadf45ac514d7a913d2d543ba8778dd -->
+<!-- i18n: source=workflow.zh.md sha256=0d9f4bf45495f851ab5f0129cf3fbdc8de3f98daf944f365f55ab842fdbe701f -->
 > **English** | [中文](workflow.zh.md)
 
 # Workflow (stage routing + command overview)
@@ -183,7 +183,9 @@ auto-epublizer status --workspace <dir> --json
 ## Multi-workspace work root (long-running projects)
 
 For continuous multi-book work, use a **work root** containing one workspace per book.
-`status --all` and `ledger` are its cross-book index.
+Generate it deterministically with `auto-epublizer work-root <dir>`; see
+`references/work-root.md` for the component-by-component explanation and the user-facing
+summary. `status --all` and `ledger` are its cross-book index.
 
 ```text
 <work-root>/

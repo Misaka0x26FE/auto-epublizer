@@ -106,6 +106,7 @@ auto-epublizer qa             # 结构审计 + epubcheck
 auto-epublizer status --json  # 查看进度/状态机/产物-状态对账（含 next_tasks 机器指针）
 auto-epublizer status --all   # 多工作区总览（三档进度：released/built_not_released/preprocessing）
 auto-epublizer ledger         # 跨书台账 markdown（机器可重算列 + 待填领域/摘要）
+auto-epublizer work-root <dir>  # 生成标准长期多书工作区（见 references/work-root.md）
 
 # 9. 交付审计（agent 任务，强制）：按 skills/auto-epublizer/references/delivery.md
 #    做全量独立对账 + 抽样验证 + 人肉核对 → 写 reviews/delivery-<ts>.md
