@@ -27,6 +27,8 @@ heading（标题层级守恒，structured 与 translation 逐层计数对账）�
 from __future__ import annotations
 
 import re
+from collections.abc import Mapping
+from dataclasses import dataclass, field
 from typing import Any
 
 from ..glossary import Glossary, terminology_hits
@@ -509,6 +511,7 @@ def g0_unit_flags(
     min_src_chars: int = MIN_SRC_CHARS,
     structured_md: str | None = None,
     translation_md: str | None = None,
+    exempt_sources: Mapping[str, str] | None = None,
 ) -> list[G0Flag]:
     """对一个单元执行全部 G0 检查，返回告警列表。
 
@@ -535,7 +538,14 @@ def g0_unit_flags(
     ``structured_md`` 与 ``translation_md`` 同时给出时执行**标题守恒**（issue #12）：
     逐层（h1~h6）计数对账——丢标题/换级（``##``→``###``）/补标题均报
     ``heading``（真实缺陷：目录节点在成品中丢失或错位）。
+
+    ``exempt_sources`` 是**本单元**的术语门豁免表 ``{术语 source: 理由}``，来自
+    ``preprocessing/terminology_exemptions.csv``（见
+    ``glossary.csv_io.load_terminology_exemptions``）：文献著录体例内按体例保留
+    德文时，命中降为 advisory ``terminology_exempt`` **照样报出**，
+    不阻断放行也不从报告里消失。
     """
+    exempt_sources = exempt_sources or {}
     flags = list(check_alignment(rows))
     sum_marker_src = sum_marker_tgt = 0
     sum_fn_src = sum_fn_tgt = 0
@@ -591,6 +601,17 @@ def g0_unit_flags(
                     )
                 )
         for hit in terminology_hits(src, tgt, glossary):
+            if hit.source in exempt_sources:
+                # 按单元豁免（文献著录体例内保留德文，改译文也放行不了）：
+                # 降为 advisory **照样报出**，不阻断放行也不从报告里消失。
+                flags.append(
+                    G0Flag(
+                        "terminology_exempt",
+                        f"术语 {hit.source} 已按体例豁免（{hit.expected}）：{exempt_sources[hit.source]}",
+                        {"seq": seq, "source": hit.source, "expected": hit.expected},
+                    )
+                )
+                continue
             flags.append(
                 G0Flag(
                     "terminology",

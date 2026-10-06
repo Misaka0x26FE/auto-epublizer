@@ -684,10 +684,12 @@ def import_translations(
         save_glossary_csv,
         write_conflicts_jsonl,
     )
+    from auto_translator.glossary.csv_io import load_terminology_exemptions
     from auto_translator.review import check_alignment, g0_unit_flags
     from auto_translator.translation.align import read_align
 
     pub = store.load_publication()
+    exemptions = load_terminology_exemptions(store.preprocessing_dir / "terminology_exemptions.csv")
     glossary_path = store.analysis_dir / "glossary.csv"
     conflicts_path = store.analysis_dir / "glossary_conflicts.jsonl"
 
@@ -840,6 +842,7 @@ def import_translations(
             structured_md=structured_md,
             translation_md=translation_md,
             **_g0_thresholds(config or Config()),
+            exempt_sources=exemptions.get(unit.id, {}),
         ):
             # 源保真：反向失配（blocking=True，src 不在源文中）= 对照表不可信，阻断登记；
             # 前向缺块（blocking=False，可能为合法剔除）与其余硬缺陷类/advisory 收进告警：
@@ -1169,10 +1172,12 @@ def g0_check(
 ) -> dict[str, Any]:
     """G0 零 token 静态校验（独立命令；翻译/导入后立即跑，不必等到 qa）。"""
     from auto_translator.glossary import Glossary, load_glossary_csv
+    from auto_translator.glossary.csv_io import load_terminology_exemptions
     from auto_translator.review import g0_unit_flags
 
     cfg = config or Config()
     pub = store.load_publication()
+    exemptions = load_terminology_exemptions(store.preprocessing_dir / "terminology_exemptions.csv")
     flags: list[dict[str, Any]] = []
     checked: list[str] = []
     for unit in pub.units:
@@ -1199,6 +1204,7 @@ def g0_check(
             structured_md=structured_md,
             translation_md=translation_md,
             **_g0_thresholds(cfg),
+            exempt_sources=exemptions.get(unit.id, {}),
         ):
             flags.append(_flag_dict(unit.id, f))
         for f in _unit_doc_flags(store, rel_path) if rel_path else []:
@@ -1209,10 +1215,12 @@ def g0_check(
 def _collect_g0_flags(store: RunStore, config: Config | None = None) -> list[dict[str, Any]]:
     """对所有已对齐单元执行 G0 零 token 静态校验，返回告警（dict 列表）。"""
     from auto_translator.glossary import Glossary, load_glossary_csv
+    from auto_translator.glossary.csv_io import load_terminology_exemptions
     from auto_translator.review import g0_unit_flags
 
     cfg = config or Config()
     glossary = Glossary(load_glossary_csv(store.analysis_dir / "glossary.csv"))
+    exemptions = load_terminology_exemptions(store.preprocessing_dir / "terminology_exemptions.csv")
     flags: list[dict[str, Any]] = []
     for unit in store.load_publication().units:
         rows = read_align(store.unit_align_path(unit.id))
@@ -1235,6 +1243,7 @@ def _collect_g0_flags(store: RunStore, config: Config | None = None) -> list[dic
             structured_md=structured_md,
             translation_md=translation_md,
             **_g0_thresholds(cfg),
+            exempt_sources=exemptions.get(unit.id, {}),
         ):
             flags.append(_flag_dict(unit.id, f))
         for f in _unit_doc_flags(store, rel_path) if rel_path else []:

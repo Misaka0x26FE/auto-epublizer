@@ -609,3 +609,34 @@ def test_g0_heading_conservation() -> None:
     )
     # 只给 structured 不给 translation → 跳过（convert / 未译场景）
     assert not [f for f in g0_unit_flags(rows, g, structured_md=structured) if f.check == "heading"]
+
+
+def test_terminology_exemption_is_advisory_not_silent() -> None:
+    """按单元豁免的术语命中降为 advisory，且**照样出现在报告里**。
+
+    文献著录体例内保留德文（Kurztiitel `Tuchei, Konzentrationslager, S. 243`）
+    时，「源行有术语 → 译文行必须有中文译名」报的是**改译文也放行不了**的
+    假阳性。但豁免不得静默：命中须降为 `terminology_exempt` 并带理由，
+    既不阻断放行、也不从报告里消失。
+    """
+    from auto_translator.glossary import STATUS_SEED, GlossaryEntry
+    from auto_translator.review import g0_unit_flags
+
+    g = Glossary([
+        GlossaryEntry(source="Konzentrationslager", target="集中营",
+                      type="org", status=STATUS_SEED)
+    ])
+    rows = [{"seq": 0, "src": "vgl. Tuchei, Konzentrationslager, S. 243.",
+             "tgt": "参见 Tuchei，Konzentrationslager，S. 243。"}]
+
+    hard = g0_unit_flags(rows, g)
+    assert [f for f in hard if f.check == "terminology"], "未豁免时应报硬缺陷"
+
+    flags = g0_unit_flags(rows, g, exempt_sources={"Konzentrationslager": "Kurztiitel 保留德文"})
+    assert not [f for f in flags if f.check == "terminology"], "豁免后不得再报硬缺陷"
+    adv = [f for f in flags if f.check == "terminology_exempt"]
+    assert len(adv) == 1 and "Kurztiitel" in adv[0].message, "豁免须以 advisory 报出并带理由"
+
+    # 只豁免指定术语：同单元其他术语仍受检
+    flags = g0_unit_flags(rows, g, exempt_sources={"别的术语": "无关"})
+    assert [f for f in flags if f.check == "terminology"]
