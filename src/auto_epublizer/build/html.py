@@ -317,6 +317,40 @@ def _inline(text: str) -> str:
 
 # 图注段落：整段仅一张图且 alt 非空 → figure + figcaption（postprocessing-spec P1）
 _IMG_ONLY_BLOCK = re.compile(r"^!\[([^\]]+)\]\(([^)]+)\)\s*$")
+
+# pandoc 原始 HTML：`` ```{=html} … ``` `` 围栏块，以及行内 `` `X`{=html} ``。
+# 缺这一层时 `<div>` / `<svg>` 会被 escape 成 ``&lt;div&gt;`` 原样印给读者
+# （2026-10-06 Thiriart 封面实测：整段 SVG 连同 `{=html}` 属性与游离反引号漏成乱码）。
+_RAW_HTML_FENCE = re.compile(r"^\s*`{3,}\s*(?:\{=\s*html\s*\})?\s*$")
+_RAW_HTML_INLINE = re.compile(r"`([^`]+)`\s*\{\s*=\s*html\s*\}")
+_HTML_TAG_LINE = re.compile(r"^\s*(?:</?[A-Za-z][\w:.-]*(?:\s[^<>]*?)?/?>\s*)+$")
+
+
+def _raw_html_block(block: str) -> str | None:
+    """块内全是 pandoc 原始 HTML 时直通输出，否则返回 None 交常规渲染。
+
+    白名单口径：去掉围栏与行内 raw 标记后，**每一行**都必须是纯 HTML 标签行。
+    只要混进一行普通 markdown 就不认（宁可漏渲染，也不可把未转义文本放行）。
+    """
+    lines = [ln for ln in block.splitlines() if ln.strip()]
+    if not lines:
+        return None
+    kept: list[str] = []
+    for line in lines:
+        if _RAW_HTML_FENCE.match(line):
+            continue
+        kept.append(_RAW_HTML_INLINE.sub(r"\1", line).strip())
+    if not kept:
+        return None
+    if not all(_HTML_TAG_LINE.match(ln) for ln in kept):
+        return None
+    # 保留原始缩进形态原样输出（SVG 属性换行等），仅去掉围栏与 raw 标记
+    out: list[str] = []
+    for line in lines:
+        if _RAW_HTML_FENCE.match(line):
+            continue
+        out.append(_RAW_HTML_INLINE.sub(r"\1", line).strip())
+    return "\n".join(out)
 # 语义标签（epub-template-spec P2）：引用块 / 诗行块 / 列表
 _BQ_LINE = re.compile(r"^\s*>\s?(.*)$")
 _VERSE_LINE = re.compile(r"^\s*\|\s?(.*)$")
@@ -467,6 +501,10 @@ def markdown_to_xhtml(
     for block in re.split(r"\n\s*\n", md):
         block = block.strip("\n")
         if not block.strip():
+            continue
+        raw_html = _raw_html_block(block)
+        if raw_html is not None:
+            out.append(raw_html)
             continue
         table = _maybe_render_table(block)
         if table is not None:

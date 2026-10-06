@@ -960,3 +960,43 @@ def test_nav_anchor_depth_projection(tmp_path: Path) -> None:
     # ch02（level 3 归一化为深度 2）仍在目录，但其锚点深度 3 被投影剔除
     assert "ch02.xhtml" in nav
     assert "ch02-h1" not in nav and "不出现" not in nav
+
+
+def test_raw_html_fenced_block_passthrough() -> None:
+    """pandoc `` ```{=html} `` 围栏块应直通输出，不被 escape 成 ``&lt;div&gt;``。
+
+    回归：2026-10-06 Thiriart 封面 —— 缺这层时整段 SVG 连同 `{=html}` 属性
+    与游离反引号漏成读者可见乱码。
+    """
+    md = (
+        '```{=html}\n<svg xmlns="http://www.w3.org/2000/svg" width="100%">\n```\n'
+        '`<image height="751" xlink:href="cover.jpeg">`{=html}`</image>`{=html}\n'
+        '```{=html}\n</svg>\n```'
+    )
+    out = markdown_to_xhtml(md, unit_id="cover")
+    assert "<svg" in out and "</svg>" in out
+    assert "&lt;svg" not in out
+    assert "&lt;image" not in out
+    assert "{=html}" not in out
+    assert "`" not in out
+
+
+def test_raw_html_block_rejects_mixed_markdown() -> None:
+    """块内混有普通 markdown 时不得放行未转义文本（白名单口径）。"""
+    md = "<div>\nhello world\n</div>"  # 同一块内混排，非纯标签块
+    out = markdown_to_xhtml(md, unit_id="cover")
+    assert "&lt;div&gt;" in out  # 退回常规渲染 = 转义，会被 W_RESIDUE 抓到
+    assert "hello world" in out
+
+
+def test_nav_label_strips_calibre_toc_attribute() -> None:
+    """nav 目录标签须走 plain_label，读者不得看到 ``{#calibre_toc_1}``。
+
+    回归：2026-10-06 Thiriart nav 实测 22 处（``<title>`` 早已修好，nav 标签漏修）。
+    """
+    from auto_epublizer.build import _render_nav_items
+
+    nodes = [{"entry": {"id": "front-introduction", "title": "引言 {#calibre_toc_1}"}, "children": []}]
+    out = _render_nav_items(nodes)
+    assert "引言</a>" in out
+    assert "calibre_toc" not in out
