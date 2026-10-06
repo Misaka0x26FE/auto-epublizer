@@ -176,18 +176,33 @@ def _split_footnote_defs(md: str) -> tuple[str, dict[str, str]]:
 def _substitute_noterefs(
     xhtml: str, unit_id: str, defs: dict[str, str], fn_state: FootnoteState | None
 ) -> str:
-    """把 XHTML 里的字面 ``[^label]`` 替换为 noteref 锚点（无定义则保留字面）。"""
+    """把 XHTML 里的字面 ``[^label]`` 替换为 noteref 锚点（无定义则保留字面）。
+
+    **同一脚注被重复引用时，锚点 id 必须去重**（2026-10-08 reichsarbeitsministerium
+    essay-07 实测）：德文史学著作里「见前引注 6」式的重复引用很常见，原实现对每次
+    出现都发同一个 ``id="ref-6"``，epubcheck 直接报 RSC-005
+    ``Duplicate ID "ref-6"``（2 处 error，阻断放行）。
+
+    口径：同一单元内某标签的第 k 次引用，id 取 ``ref-{n}``（k=1）或
+    ``ref-{n}-{k}``（k≥2）。章末 backlink 的 ``href="#ref-{n}"`` 仍落在
+    **首次**引用上——重复引用没有独立回链目标，指向首次引用才是正确语义。
+    """
     if "^" not in xhtml:
         return xhtml
+
+    seen: dict[str, int] = {}
 
     def _sub(m: re.Match[str]) -> str:
         label = m.group(1)
         if label not in defs or fn_state is None:
             return m.group(0)
         n = fn_state.number(unit_id, label)
+        k = seen.get(label, 0) + 1
+        seen[label] = k
+        rid = f"ref-{n}" if k == 1 else f"ref-{n}-{k}"
         return (
             f'<sup class="noteref"><a epub:type="noteref" role="doc-noteref" '
-            f'id="ref-{n}" href="#fn-{n}">[{n}]</a></sup>'
+            f'id="{rid}" href="#fn-{n}">[{n}]</a></sup>'
         )
 
     return _FN_REF.sub(_sub, xhtml)
