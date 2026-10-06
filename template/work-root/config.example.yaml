@@ -1,0 +1,46 @@
+# auto-epublizer 配置（工作根版）——复制为 config.yaml 使用。
+# 唯一 LLM 原则：CLI 不调用任何 LLM——理解/翻译/审校由操作 CLI 的 agent 完成，
+# 本配置只有确定性选项，无任何密钥段。
+
+# ── 语言与文体 ───────────────────────────────────────────────
+language:
+  source: auto          # auto=确定性脚本启发式检测；或写死 ISO 639-1（en/ja/ru/ko/fr/de/es…）
+  target: zh-CN         # 目标语言，任意可配
+  genre: auto           # auto=启发式判定；或显式 novel/academic/paper/poetry/newspaper
+
+# ── 管线开关 ────────────────────────────────────────────────
+pipeline:
+  bilingual: false
+
+# ── 质检 ────────────────────────────────────────────────────
+qc:
+  length_ratio:
+    too_short: 0.30     # 低于此长度比告警（疑漏译）
+    too_long: 3.0       # 高于此长度比告警（疑失控）
+  epubcheck:
+    jar: "~/.cache/epubcheck.jar"
+    strict: true
+
+# ── PDF 解析 ────────────────────────────────────────────────
+pdf:
+  backend: auto           # auto | pymupdf | mineru（auto=扫描件且 MINERU_API_KEY 存在时优先 MinerU）
+  ocr: auto               # auto | off | 强制 rapidocr
+  page_dpi: 300           # 页渲染分辨率（OCR 兜底）
+  mineru_model: pipeline  # pipeline（默认，确定性）| vlm（高精度）
+  mineru_language: ch     # MinerU OCR 语言（PaddleOCR 语言码：ch/en/ja/…）
+  rtl: auto               # PDF 文字层 RTL 处理：auto（自动判定）| on | off
+
+# ── 术语表 ──────────────────────────────────────────────────
+glossary:
+  storage: csv            # csv（默认，权威存储）；sqlite 未实现（预留）
+  scope: chapter          # 未接线（预留）
+
+# ── 路径 ─────────────────────────────────────────────────────
+paths:
+  workspaces_dir: ./workspaces  # 工作根下每书一个 <book-slug>/（工作根模板的核心设置）
+  knowledge_dir: ""             # 统一术语库/知识库目录；空=默认 ~/Documents/auto-epublizer
+  knowledge_remote: ""          # 空=用已固化默认公共库远端
+
+# ── 输出 ─────────────────────────────────────────────────────
+output:
+  theme: standard         # standard | compact | spacious
