@@ -141,6 +141,21 @@ _FOOTNOTE_SUPER_RE = re.compile(
 # 括号式注号：〔240〕/ [240]（译文侧现场把注文写成「〔240〕 注文」，方头括号包裹）
 _FOOTNOTE_BRACKET_RE = re.compile(r"[〔\[](\d{1,3})[〕\]]")
 
+# 注码的**上标数字记法**（回归：sample-document-f / forced-labour）。
+# 这两本源书 md 的注码写成 `[^1]` / `[^ch03-004]`，但①定义行**没有冒号**
+# （`[^1] 文本` 而非 pandoc 的 `[^1]: 文本`）→ `_FN_DEF` 抽不出定义；②注文收在
+# **独立的 backmatter 单元** → `_substitute_noterefs` 是单元内解析。两项叠加使
+# `fn_defs` 恒空，走「无定义则保留字面」分支，`[^1]` 原样印给读者
+# （sample-document-f 实测 2192 处，W_RESIDUE 19 个文件 + E_EPUB_PARA_LOST 420 段）。
+# 译文层改用原书自身的上标排法（注号上标数字，sample-document-f 正文本就有 `Edenkoben²`），
+# 于是**同一批注码在源侧是 `[^N]`、在译侧是 `ⁿ`**——只认 pandoc 记法会把守恒判据
+# 打成 19 个单元「脚注标记数量不守恒」（源 116 / 译 0），是纯记法差异、不是丢注号。
+# 本计数器因此**记法无关**：pandoc 记法与上标记法都算一个注码，两侧同用同一函数，
+# 差值仍只反映真丢/多注。全库普查（9 个工作区 structured+translation）无
+# `字母+²/³` 形态，故不设单位指数排除项；若将来出现，`m²`/`km³` 会被误计，
+# 届时按本模块既有先例（#3/#8/#22/#29 六处误报先例）再加白名单。
+_FN_SUPERSCRIPT_RE = re.compile(r"[⁰¹²³⁴⁵⁶⁷⁸⁹]{1,4}(?![\d⁰¹²³⁴⁵⁶⁷⁸⁹])")
+
 _HEADING_RE = re.compile(r"^(#{1,6})\s+", re.MULTILINE)
 
 # 常见排印讹误先例（源文勘误，来自旧真实案例）
@@ -249,8 +264,14 @@ def count_footnote_defs(text: str) -> int:
 
 
 def count_footnote_marks(text: str) -> int:
-    """统计 pandoc 脚注标记（[^label] 引用与定义）数量。"""
-    return len(_FN_PANDOC_RE.findall(text or ""))
+    """统计脚注标记（`[^label]` 引用与定义 + 上标数字记法）数量。
+
+    三种记法同义、等权：pandoc 的 ``[^1]``（源侧主流）、上标数字 ``¹``（译侧，
+    见 ``_FN_SUPERSCRIPT_RE`` 的记法差异说明）、以及本模块既有的数字式
+    ``。1``（由 ``count_footnote_refs`` 负责）。三者任缺其一都会被守恒判据误判。
+    """
+    text = text or ""
+    return len(_FN_PANDOC_RE.findall(text)) + len(_FN_SUPERSCRIPT_RE.findall(text))
 
 
 def count_heading_levels(text: str) -> dict[int, int]:

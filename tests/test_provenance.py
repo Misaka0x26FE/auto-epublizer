@@ -737,3 +737,29 @@ def test_html_media_does_not_hide_missing_surrounding_text(tmp_path: Path) -> No
     assert result.epub_media_missing == []
     assert result.epub_coverage == 0.0
     assert "E_EPUB_PARA_LOST" in {finding["code"] for finding in result.findings}
+
+
+def test_probe_missing_keeps_footnote_marker_visible():
+    """回归：`[^N]` 必须探成 `[N]`，不能整段删掉。
+
+    build 把 `[^N]` 渲染成 `<sup class="noteref"><a …>[N]</a></sup>`，
+    剥标签后 `[N]` 对读者可见。探针若把注码删掉，凡正文含行内注码的段
+    都会被判成「成品缺失」——实测 reichsarbeitsministerium 178/3540 段误报，
+    epub_coverage 掉到 0.95，而成品一条内容都没丢。
+    """
+    from auto_epublizer.qa.provenance import _probe_missing
+
+    md = "正文一句。[^7] 后半句。\n\n[^7]: 注体。"
+    doc = "正文一句。[7]后半句。"
+    missing, total = _probe_missing(md, doc)
+    assert total == 1
+    assert missing == []
+
+
+def test_probe_missing_still_detects_real_loss():
+    """同一探针仍须抓得住真丢内容——放宽不得变成漏检。"""
+    from auto_epublizer.qa.provenance import _probe_missing
+
+    md = "正文一句。[^7] 后半句。\n\n[^7]: 注体。"
+    missing, _ = _probe_missing(md, "正文一句。后半句。")
+    assert len(missing) == 1

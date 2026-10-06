@@ -167,7 +167,13 @@ def _probe_missing(md_text: str, doc_text_norm: str) -> tuple[list[str], int]:
             continue
         # 构建将 HTML img 作为媒体而非正文；资源另门核对，周围正文仍须完整命中。
         rendered = _strip_tags(markdown_to_xhtml(_HTML_IMG.sub("", block)))
-        rendered = re.sub(r"\[\^[^\]]+\]", "", rendered)  # build 会替换为 [N] 上标
+        # build 把 `[^N]` 渲染成 `<sup class="noteref"><a …>[N]</a></sup>`，
+        # 剥标签后**可见 `[N]`**。探针必须映成同样的 `[N]`。
+        # ⚠ 原实现 `re.sub(r"\[\^[^\]]+\]", "", …)` 把注码整个删掉，于是
+        #   成品里明明有的 `[N]` 在探针串中缺席 → **凡正文含行内注码的段一律
+        #   判为「成品缺失」**（reichsarbeitsministerium 实测 178/3540 段，
+        #   epub_coverage 0.95，却一条内容都没丢）。
+        rendered = re.sub(r"\[\^([^\]]+)\]", r"[\1]", rendered)
         probe = re.sub(r"\s+", "", rendered)
         if not probe:
             continue

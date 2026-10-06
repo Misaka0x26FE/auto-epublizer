@@ -207,6 +207,24 @@ def test_count_footnote_marks() -> None:
     assert count_footnote_marks("no mark") == 0
 
 
+def test_count_footnote_marks_superscript_notation() -> None:
+    """注码的**上标数字记法**与 pandoc 记法同权（回归：sample-document-f 2192 处）。
+
+    源侧写 ``[^1]``、译侧改用原书自身的上标排法写 ``¹``，纯记法差异
+    不得被判成「脚注标记数量不守恒」（实测 19 个单元被打红）。
+    """
+    from auto_translator.review import count_footnote_marks
+
+    assert count_footnote_marks("汉斯·弗兰克⁴ 在后来的岁月里") == 1
+    assert count_footnote_marks("¹ 日记，1944 年 12 月 9 日") == 1
+    # 多位注号算**一个**标记，不是逐位数字
+    assert count_footnote_marks("见⁸²³ 与⁹⁹⁹") == 2
+    # 与 pandoc 记法同权：源 `[^N]` 与译 `ⁿ` 计数相同 → 守恒判据两侧对齐
+    assert count_footnote_marks("[^12]") == count_footnote_marks("¹²") == 1
+    # 无上标时仍为 0（不误伤普通文本）
+    assert count_footnote_marks("面积 5 平方公里") == 0
+
+
 def test_g0_marker_conservation() -> None:
     """单元级总量守恒：标记丢失告警；拆句挪位（总量相等）不误报。"""
     g = Glossary()
