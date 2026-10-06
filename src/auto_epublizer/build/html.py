@@ -557,7 +557,16 @@ def markdown_to_xhtml(
 
 
 def _page(title: str, body: str, *, lang: str) -> str:
-    """组装一页完整 XHTML 文档（恰好一个 h1 位于 body 首行由调用方保证）。"""
+    """组装一页完整 XHTML 文档（恰好一个 h1 位于 body 首行由调用方保证）。
+
+    ``<title>`` 必须走 ``plain_label()``：单元 md 的 h1 常带 pandoc 行内属性
+    （``# Dedication {#calibre_toc_2}``），直接 ``escape(title)`` 会把
+    ``{#calibre_toc_2}`` 原样写进 ``<title>``，读者在阅读器标签页/书目里看到
+    字面属性块（实测 Thiriart 22 处、fierce-enigmas 17 处）。
+    该属性块在 h1 上仍由 ``_split_heading_id`` 正常提取为 id，**不受影响**
+    ——目录链接依赖那些 id，故此处只清理 ``<title>`` 的可见文本。
+    与 nav 标签同用 ``plain_label``，避免两处口径不一致。
+    """
     return (
         '<?xml version="1.0" encoding="utf-8"?>\n'
         '<html xmlns="http://www.w3.org/1999/xhtml" '
@@ -567,7 +576,7 @@ def _page(title: str, body: str, *, lang: str) -> str:
         "<head>\n"
         '<meta charset="utf-8"/>\n'
         '<link rel="stylesheet" type="text/css" href="style.css"/>\n'
-        f"<title>{escape(title)}</title>\n"
+        f"<title>{escape(plain_label(title))}</title>\n"
         "</head>\n"
         f"<body>\n{body}\n</body>\n"
         "</html>\n"

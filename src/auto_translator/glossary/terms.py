@@ -15,6 +15,13 @@ from .csv_io import Glossary, GlossaryEntry, normalize
 
 _CJK = "\u3400-\u4dbf\u4e00-\u9fff\u3040-\u30ff\uac00-\ud7af"
 
+# 连字符族：英语里连字符接起来的是**一个**正字法 token，因此 ``Brest`` 不应命中
+# ``Brest-Litovsk`` 内部（该复合地名另有词条，译文形态不同）。若把 ``-`` 当成合法
+# 边界，短词条就会被长复合词条抢先命中，报出「术语命中译文缺失」这种无法靠改译文
+# 放行的假阳性（2026-10-06 于 ch08 的 ``Brest`` / ``Brest–Litovsk`` 词条对撞）。
+# 代价是 ``NATO-members`` 这类前缀复合体不再触发——方向上是安全的假阴性。
+_HYPHENS = "\\-\u2010\u2011\u2012\u2013\u2014\u2015\u2212"
+
 
 def _boundary_pattern(source: str) -> re.Pattern[str]:
     """术语的正文匹配模式：CJK 术语用字面匹配，非 CJK 术语加**Unicode 词边界**。
@@ -29,8 +36,11 @@ def _boundary_pattern(source: str) -> re.Pattern[str]:
     escaped = re.escape(source)
     if re.search(f"[{_CJK}]", source):
         return re.compile(escaped)
+    edge = r"[\w" + _HYPHENS + r"]"
     return re.compile(
-        r"(?:(?<=[" + _CJK + r"])|(?<!\w))" + escaped + r"(?:(?=[" + _CJK + r"])|(?!\w))"
+        r"(?:(?<=[" + _CJK + r"])|(?<!" + edge + r"))"
+        + escaped
+        + r"(?:(?=[" + _CJK + r"])|(?!" + edge + r"))"
     )
 
 
