@@ -24,13 +24,17 @@
 ## 如何复现
 
 ```bash
-auto-epublizer init source/the-great-gatsby.epub --reference <可选>
-auto-epublizer analyze
-auto-epublizer translate --target zh-CN
-auto-epublizer review
-auto-epublizer build
-auto-epublizer qa
+auto-epublizer preprocess source/the-great-gatsby.epub --target zh-CN  # init + 零 token 事实
+# agent 依 preprocessing/facts.md 写理解产物与 analysis/，再逐单元翻译并写 align/
+auto-epublizer import                 # 登记 agent 手写的 translation/ + align/（G0 结构校验）
+auto-epublizer g0                     # 静态校验（术语命中/守恒类）
+auto-epublizer import --reviewed      # 审校通过后登记
+auto-epublizer build                  # 封装 EPUB（-bi 双语）
+auto-epublizer qa                     # epubcheck + 解包审计 + 放行报告
 ```
+
+> 翻译与审校由**操作本 CLI 的 agent** 完成（本项目遵循单 LLM 原则，CLI 自身不做 LLM 调用）；
+> **没有** `analyze` / `translate` / `review` 子命令。
 
 ## 许可与版权
 

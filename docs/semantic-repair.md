@@ -1,4 +1,4 @@
-<!-- i18n: source=semantic-repair.zh.md sha256=5928e93c2036f3e7da8a82c76f9f4835e543f79f09b7ea160c2763e531768e8d -->
+<!-- i18n: source=semantic-repair.zh.md sha256=b5135038bc259dc1efeb10881349c4bf4bd8ac42566d41dde8c8e006e62faa0b -->
 > **English** | [中文](semantic-repair.zh.md)
 
 # Semantic Repair (Agent semantic task)
@@ -119,7 +119,8 @@ is a workspace-relative path and must exist (to prevent fabrication). CLI valida
 (`orchestrator.read_repairs`, no breakage when the file does not exist; invalid →
 `OrchestrationError` with a line number); `unresolved` goes into `report.json`
 (`repairs_total`/`repairs_unresolved`) and triggers a `W_REPAIR_UNRESOLVED` hint
-(W level, does not block release).
+(W level, does not block release). A row whose unit was removed by a structure rebuild is
+**kept and flagged** (`W_REPAIR_STALE_UNIT`), never an error (issue #23).
 
 ### 3.3 Restructure registration (already wired)
 

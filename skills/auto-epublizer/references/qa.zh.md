@@ -124,6 +124,8 @@ report.json 落盘的计数字段只有 `inserts_missing_files`（进放行门�
   `references/delivery.md` 执行交付审计并写 `reviews/delivery-<ts>.md`。
 - `W_REPAIR_UNRESOLVED` → 语义整备有未决修复（`preprocessing/repairs.jsonl`
   中 status=unresolved）：能修则修后复跑 qa；确属存疑的在交付记录中说明。
+- `W_REPAIR_STALE_UNIT` → `repairs.jsonl` 有行引用的单元已被结构重建删除：历史 `done` 行可
+  忽略；`unresolved` 行请重挂现存单元。仅为 warning，不会中断 qa（issue #23）。
 - `W_NAMING` → 成品文件名与 slug 前缀不符；`-o` 重命名或按 `<slug>.epub`/`<slug>-bi.epub` 输出。
 - `W_STRUCT_MISSING` → structured/ 源文文件缺失（被误删）；从源文件重跑该单元 ingest。
 - `provenance_incomplete` →

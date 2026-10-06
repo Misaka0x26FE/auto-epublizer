@@ -97,6 +97,7 @@ reason 判定优先级 = 上表自上而下（先 g0 硬缺陷 → 冲突 → �
 | W_TOC_MISSING / W_NAMING | W | facts 源书签经规范化标题匹配后仍无法映射到 `unit` / `unit#anchor` 的条目（真实覆盖缺口） / 成品命名与 slug 不符 |
 | W_DELIVERY_AUDIT_MISSING | W | 全单元 built 但无交付记录 → 按 references/delivery.md 执行交付审计 |
 | W_REPAIR_UNRESOLVED | W | 语义整备有未决修复（repairs.jsonl unresolved）→ 能修则修，存疑的记录在交付记录 |
+| W_REPAIR_STALE_UNIT | W | repairs.jsonl 有行引用的单元已被结构重建删除 → 历史行可忽略；`unresolved` 行请重挂现存单元（issue #23） |
 
 ## 5. 工作区契约压缩版
 

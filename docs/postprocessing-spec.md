@@ -1,4 +1,4 @@
-<!-- i18n: source=postprocessing-spec.zh.md sha256=274bc9c189ad1ddb5bda711fabe50af63af862609009f4828055341edebef808 -->
+<!-- i18n: source=postprocessing-spec.zh.md sha256=d9bbf13c5d2b2c5bfd68a554acf3a79235bdcfe437006bec71fe26f65a6ccfae -->
 > **English** | [中文](postprocessing-spec.zh.md)
 
 # Post-Processing Spec: Acceptance and Implementation of Content Integrity / Media / EPUB Structure
@@ -110,9 +110,10 @@ into report.json):
 ```
 
 > TOC hierarchy reconciliation is performed after projection by `output.nav_depth` (same
-> algorithm as build); the projected depth follows the product's declaration (`nav.xhtml`'s
-> `<meta name="nav-depth">`; config parameters are only a fallback for old products),
-> avoiding false positives from config drift. `toc_depths_expected` is the expected sequence
+> algorithm as build); the **projection depth** follows the product's declaration —
+> `nav.xhtml`'s `<meta name="nav-projection">` (old products fall back to `nav-depth`;
+> since 2026-10-05 `nav-depth` declares the **actual rendered depth**), with config
+> parameters only a fallback, avoiding false positives from config drift. `toc_depths_expected` is the expected sequence
 > after projection; spine document names removed by projection are recorded in `nav_exempt`,
 > handed to `audit_epub` to exempt `E_TOC_COVERAGE` (the content is still in the spine
 > reading order, not missing).

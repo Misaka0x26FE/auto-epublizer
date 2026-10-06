@@ -1,4 +1,4 @@
-<!-- i18n: source=delivery.zh.md sha256=ca05bcd8565145b344b471c848fdc79746fa172170fe34923da4ee49a9bd7797 -->
+<!-- i18n: source=delivery.zh.md sha256=fd87420b0e98b9bdd8a5fbf7fef3ce8e2bcae0c23a18921422294a3386669dae -->
 > **English** | [中文](delivery.zh.md)
 
 # Delivery (delivery audit: mandatory full validation after qa and before delivery)
@@ -35,7 +35,7 @@ auto-epublizer qa                  # confirm released=True; released_reason=ok
 | `align_md_drift` | 0 (translation body consistent with alignment) |
 | `g0_terminology_open` / `g0_structure_open` | 0 / 0 |
 | `glossary_conflicts_open` / `catalog_unresolved_open` | 0 / 0 |
-| `W_INSERT_NO_DESC` / `W_REPAIR_UNRESOLVED` / `W_DELIVERY_AUDIT_MISSING` | review and handle item by item (see §4) |
+| `W_INSERT_NO_DESC` / `W_REPAIR_UNRESOLVED` / `W_REPAIR_STALE_UNIT` / `W_DELIVERY_AUDIT_MISSING` | review and handle item by item (see §4) |
 
 Error-level provenance findings (`provenance_findings`) must be cleared; warnings are
 interpreted item by item.
@@ -74,6 +74,8 @@ mkdir -p /tmp/epub-check && cd /tmp/epub-check && unzip -o <slug>.epub
   delivery record (decorative images are acceptable);
 - `W_REPAIR_UNRESOLVED` (unresolved semantic-repair fixes) interpreted item by item: fix
   what can be fixed; record genuinely doubtful ones in the delivery record.
+- `W_REPAIR_STALE_UNIT` (`repairs.jsonl` rows for units removed by a structure rebuild):
+  historical `done` rows are harmless; re-attach `unresolved` rows to a surviving unit.
 
 ## 5. Reader field test (optional, recommended)
 

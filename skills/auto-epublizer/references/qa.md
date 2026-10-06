@@ -1,4 +1,4 @@
-<!-- i18n: source=qa.zh.md sha256=a78b5f1433ff27e22866eb61211c3d7c5a3c30c78f6c0a6ebec3c36c8889c648 -->
+<!-- i18n: source=qa.zh.md sha256=fc6c3a977fbc3de39266022739e70deea1e30b9e8c7922c419b3e566df1ada6c -->
 > **English** | [中文](qa.zh.md)
 
 # QA (epubcheck + unpack audit)
@@ -146,6 +146,9 @@ the provenance result object and are not persisted — when a count is needed, t
 - `W_REPAIR_UNRESOLVED` → semantic repair has an unresolved fix (status=unresolved in
   `preprocessing/repairs.jsonl`): fix it if possible and rerun qa; explain genuinely
   doubtful ones in the delivery record.
+- `W_REPAIR_STALE_UNIT` → `repairs.jsonl` has rows whose unit was removed by a structure
+  rebuild: historical `done` rows can be ignored; re-attach `unresolved` rows to a surviving
+  unit. A warning only — it never aborts qa (issue #23).
 - `W_NAMING` → product filename does not match the slug prefix; rename with `-o` or output
   as `<slug>.epub`/`<slug>-bi.epub`.
 - `W_STRUCT_MISSING` → structured/ source file missing (accidentally deleted); rerun that

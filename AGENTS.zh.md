@@ -58,6 +58,9 @@ auto-epublizer preprocess <input>   # 新书：init + 嗅探/元数据/TOC/体�
 #    （自报五维）/ plan.md（方案决策）/ global.md（全局理解）/ units/<id>.md /
 #    terms.csv / risks.md / report.md
 auto-epublizer preprocess           # 已有工作区：幂等刷新 facts
+#    --force（省略 input）：从 source/ 原地重建 structured/+facts（误中断恢复）；
+#    --original <path>：交付原件归档到 references/user/；--progress：逐页进度到 stderr；
+#    支持 Kindle（.azw3/.azw/.mobi，经 calibre 转换）
 
 # 3.5 元数据核对与译者署名（agent 任务）：对照源文版权页核实 facts 嗅探值，
 #    经 meta 命令写回；译者署名默认=agent 框架名（OpenCode/DouBao…）
@@ -75,15 +78,18 @@ auto-epublizer knowledge status                 # 统计 + git 状态（--json �
 
 # 5. 翻译（agent 任务）：agent 读 structured/ 自己翻译，写 translation/ + align/，
 #    然后「import」登记：G0 校验 + 状态推进 + 术语冲突外置（terms.csv 可经 --terms 导入）
-auto-epublizer import [--unit <id>] [--terms preprocessing/terms.csv] [--reviewed]
+auto-epublizer import [--unit <id>] [--terms preprocessing/terms.csv] [--reviewed] [--force]
                                  # 登记 agent 手写翻译产物；--reviewed 把 aligned 单元推进
-                                 # reviewed（审校通过的显式登记；reviewed/built 跳过重导）
+                                 # reviewed（审校通过的显式登记；reviewed/built 跳过重导）；
+                                 # --force 对 reviewed/built 单元重跑阻断校验（交付后修订重登记；
+                                 # 通过保持原状态，失败回退 aligned）
 auto-epublizer g0                # 翻译/导入后立即静态校验（术语命中为真实缺陷须逐条核验；长度比才是 advisory）
 
 # 5.5 语义整备（agent 任务，条件触发）：facts 有可疑信号、或 OCR/扫描件路径时，
 #     按 references/repair.md 对照 raw 证据修复 structured/ 并写 preprocessing/repairs.jsonl；
 #     单元边界重切/合并另写 preprocessing/structure.csv 后登记（S3）
 auto-epublizer restructure [--workspace <dir>]   # 登记重建的单元结构（同 id 未变保留状态）
+auto-epublizer evidence breaks   # 导出页边界证据 → preprocessing/breaks.jsonl（判读跨页/断行碎片；只定位证据，不做语义合并）
 
 # 6. 审校（agent 任务）：agent 按 G1–G3 语义自行审校，写 reviews/review-<ts>/
 #    （issues/patches/summary/result.json；qa 从 result.json 读 g1/g2/g3 计数）
@@ -97,7 +103,9 @@ auto-epublizer build          # 纯译文 / 双语 EPUB → output/（--theme �
 
 # 8. 质检（G0 静态校验 + G4 审计 + G5 汇总放行 → report.json）
 auto-epublizer qa             # 结构审计 + epubcheck
-auto-epublizer status --json  # 查看进度/状态机/产物-状态对账
+auto-epublizer status --json  # 查看进度/状态机/产物-状态对账（含 next_tasks 机器指针）
+auto-epublizer status --all   # 多工作区总览（三档进度：released/built_not_released/preprocessing）
+auto-epublizer ledger         # 跨书台账 markdown（机器可重算列 + 待填领域/摘要）
 
 # 9. 交付审计（agent 任务，强制）：按 skills/auto-epublizer/references/delivery.md
 #    做全量独立对账 + 抽样验证 + 人肉核对 → 写 reviews/delivery-<ts>.md

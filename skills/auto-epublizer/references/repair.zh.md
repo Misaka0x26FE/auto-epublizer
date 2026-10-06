@@ -51,7 +51,8 @@
  "evidence": "structured/raw/pages/p012.png", "status": "done"}
 ```
 
-- `unit`：必填，必须是 `publication.json` 中的单元；
+- `unit`：必填，正常应为 `publication.json` 中的单元。结构重建删除该单元后，引用它的行
+  **保留并标记**（`qa` 出 `W_REPAIR_STALE_UNIT`），不再拒绝——历史行绝不中断 `qa`（issue #23）；
 - `kind`：`line_join|hyphen|ocr_char|mojibake|punct|header_footer|footnote|order|
   heading|boundary|classification|garbage|media|metadata|other`；
 - `pages` / `count`：可选（源页号 / 影响处数）；

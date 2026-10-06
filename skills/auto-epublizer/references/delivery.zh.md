@@ -29,7 +29,7 @@ auto-epublizer qa                  # 确认 released=True；released_reason=ok
 | `align_md_drift` | 0（译文正文与对照表一致） |
 | `g0_terminology_open` / `g0_structure_open` | 0 / 0 |
 | `glossary_conflicts_open` / `catalog_unresolved_open` | 0 / 0 |
-| `W_INSERT_NO_DESC` / `W_REPAIR_UNRESOLVED` / `W_DELIVERY_AUDIT_MISSING` | 逐条过目处置（见 §4） |
+| `W_INSERT_NO_DESC` / `W_REPAIR_UNRESOLVED` / `W_REPAIR_STALE_UNIT` / `W_DELIVERY_AUDIT_MISSING` | 逐条过目处置（见 §4） |
 
 error 级溯源发现（`provenance_findings`）必须清零；warning 逐条判读。
 
@@ -62,6 +62,8 @@ mkdir -p /tmp/epub-check && cd /tmp/epub-check && unzip -o <slug>.epub
   图片 alt：逐项补全，或在交付记录中写明「显式接受」及理由（装饰图可接受）；
 - `W_REPAIR_UNRESOLVED`（语义整备未决修复）逐条判读：能修则修；确属存疑的记入
   交付记录。
+- `W_REPAIR_STALE_UNIT`（`repairs.jsonl` 引用了被结构重建删除的单元）：历史 `done` 行无害；
+  `unresolved` 行请重挂现存单元。
 
 ## 5. 阅读器实测（可选，推荐）
 

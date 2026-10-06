@@ -1,4 +1,4 @@
-<!-- i18n: source=repair.zh.md sha256=e8a43f0f69f7bd1f8b3f23eef3f853d658eba32f748fccfa22ed0f3273424735 -->
+<!-- i18n: source=repair.zh.md sha256=356cca518438c2d7075287ae2e67bf5f1c63c9b9130fd2abb8c2b7d9cc1a8d04 -->
 > **English** | [中文](repair.zh.md)
 
 # Repair (semantic repair: parse defects / OCR correction / structural re-split)
@@ -66,7 +66,9 @@ paragraphs/structure are written back to structured and the unit is re-translate
  "evidence": "structured/raw/pages/p012.png", "status": "done"}
 ```
 
-- `unit`: required, must be a unit in `publication.json`;
+- `unit`: required; normally a unit in `publication.json`. A row whose unit was removed by a
+  structure rebuild is **kept and flagged** (`qa` emits `W_REPAIR_STALE_UNIT`), not rejected —
+  so historical rows never abort `qa` (issue #23);
 - `kind`: `line_join|hyphen|ocr_char|mojibake|punct|header_footer|footnote|order|
   heading|boundary|classification|garbage|media|metadata|other`;
 - `pages` / `count`: optional (source page number / number of affected places);

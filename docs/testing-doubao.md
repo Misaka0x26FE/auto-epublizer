@@ -1,4 +1,4 @@
-<!-- i18n: source=testing-doubao.zh.md sha256=f7d0149debf6ca4b0124f900a3b020a0172938c0d649c54d8bae337b7d2dfdaa -->
+<!-- i18n: source=testing-doubao.zh.md sha256=e8a546aac43107da999e120887ff4ce7978224b089d05b64a110cd052f52739c -->
 > **English** | [中文](testing-doubao.zh.md)
 
 # Testing Guide for Real Use in the DouBao Cloud Container
@@ -9,6 +9,11 @@
 > the field-test experience about "the agent main process completing translation/review"
 > (§9) is exactly the current way of working. Kept as a historical reference for network/
 > toolchain troubleshooting in the DouBao environment.
+>
+> **Also historical**: the `analyze` / `translate` / `review` subcommands were removed together
+> with the internal LLM paths — the **agent** does understanding/translation/review and registers
+> the result via `import` (+ `import --reviewed`). The command sequences in §3–§4 below are the
+> historical form and are not runnable as written.
 
 Purpose: in the **DouBao APP cloud container**, use a real book and a real agent to run the
 complete pipeline, verify the behavior promised by `AGENTS.md` / `skills/`, and record the
