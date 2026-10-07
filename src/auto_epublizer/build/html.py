@@ -26,8 +26,12 @@ _IMG_RE = re.compile(r"!\[([^\]]*)\]\(([^)]+)\)")
 # 归一为标准 markdown 图片（src 保留），避免内层 <img> 被外层链接二次转义。
 _PANDOC_LINKED_IMG = re.compile(r"\[\[!\[([^\]]*)\]\(([^)]+)\)[^\]]*\]\([^)]*\)[^\]]*\]\{[^}]*\}")
 _LINK_RE = re.compile(r"\[([^\]]+)\]\(([^)]+)\)")
-# 正文导航锚点：[]{#page_15}（ingest 保留的源 <a id>）→ 空锚点元素，供内部链接跳转
-_ANCHOR_INLINE_RE = re.compile(r"\[\]\{#([\w:.-]+)\}")
+# 正文导航锚点：[]{#page_15}（ingest 保留的源 <a id>）→ 空锚点元素，供内部链接跳转。
+# `#` 允许缺省：抽取器会丢掉属性里的井号，实测 Pentagon Papers 源侧并存
+# `[]{#GBS.0014.04}` 与 `[]{GBS.0014.05}` 两种写法，后者原样印给读者（全书 329 处）。
+# id 字符集**不放宽空格**——`[]{#word illegible}` 是校勘标记而非锚点，
+# 放宽会让它变成空锚点，等于悄悄删掉标记（比显示乱码更糟，见缺陷清单 pentagon ch05）。
+_ANCHOR_INLINE_RE = re.compile(r"\[\]\{#?([\w:.-]+)\}")
 # 标题上的 id 属性：``标题 {#ch01}`` → (标题, ch01)
 _HEADING_ID_RE = re.compile(r"\s*\{#([\w:.-]+)\}\s*$")
 _BOLD_RE = re.compile(r"\*\*((?:[^*]|\\\*)+)\*\*")
@@ -222,6 +226,61 @@ def _render_footnote_section(items: list[tuple[int, str]]) -> str:
     )
 
 
+def _split_heading_blocks(block: str) -> list[str]:
+    """块内二次切分：在**每个** ATX 标题行处切开，使每块各自以标题起头。
+
+    CommonMark 规定 ATX 标题可打断段落，但单纯按空行切块做不到——源抽取与
+    MinerU OCR 常丢失标题前的空行（实测 parliamentary-socialism 全书 33 处，
+    如题词「…Ramsay MacDonald, 1909」下一行紧跟 ``## 1. THE LIBERAL CONNECTION``）。
+    标题遂成为懒续行，被整体塞进 ``<p>``，读者直接看到字面 ``## 1. 与自由党的联系``。
+
+    切点必须**包含块首**（``i == 0``）才覆盖连续标题行 ``## A`` / ``### B``：
+    否则 ``## A`` 仍会命中块首标题分支、把 ``### B`` 当作其后正文塞进 ``<p>``
+    （实测 matla-al-sadayn-1 3 处、nazi-crimes-occupied-ussr-1 1 处）。
+
+    与 ``_MD_RESIDUE`` 的关系：审计原先只检查裸 ``##`` 是否整行出现，块首命中即放行，
+    故本形态**检测层与渲染层同时漏**（parliamentary-socialism 33 处零告警）。
+    围栏代码块内不切分（```` ``` ```` 内的 ``#`` 是内容不是标题）。
+    """
+    lines = block.splitlines()
+    starts: list[int] = []
+    fence = False
+    for i, line in enumerate(lines):
+        if line.lstrip().startswith("```"):
+            fence = not fence
+            continue
+        if fence:
+            continue
+        if _HEADING_RE.match(line):
+            starts.append(i)
+    if not starts:
+        return [block]
+    parts: list[str] = []
+    prev = 0
+    for i in starts:
+        part = "\n".join(lines[prev:i]).strip("\n")
+        if part.strip():
+            parts.append(part)
+        prev = i
+    parts.append("\n".join(lines[prev:]).strip("\n"))
+    return [p for p in parts if p.strip()]
+
+
+def _iter_blocks(md: str) -> list[str]:
+    """按空行切块 + 块内 ATX 标题二次切分。
+
+    ``markdown_to_xhtml`` 与 ``subheading_anchors`` **必须**共用本函数：
+    前者产出 ``id``、后者产出 nav 锚点，两套规则一旦分叉，目录链接即悬空。
+    """
+    blocks: list[str] = []
+    for raw in re.split(r"\n\s*\n", md):
+        block = raw.strip("\n")
+        if not block.strip():
+            continue
+        blocks.extend(_split_heading_blocks(block))
+    return blocks
+
+
 def _clean_pandoc_markers(md: str) -> str:
     """清理 pandoc 转出时的排版残留（确定性纯函数）：
     - 删除容器 div 标记行（:::/::: gallerytext/::: {.thumb …}/- ::: {…}）
@@ -267,11 +326,20 @@ def _fallback_alt(src: str) -> str:
 
 
 def _split_heading_id(text: str) -> tuple[str, str | None]:
-    """拆分标题末尾的 ``{#id}`` 属性，返回 (纯标题, id|None)。"""
+    """拆分标题末尾的 ``{#id}`` 属性，返回 (纯标题, id|None)。
+
+    pandoc 的行内锚点形态是 ``[]{#id}``（空方括号 + 属性），标题上两者常连用：
+    ``### **# 1**[]{#d1}``。只剥 ``{#d1}`` 会把空 ``[]`` 留给读者，渲染成
+    ``<h3 id="d1"><strong># 1</strong>[]</h3>``（Pentagon Papers 135 处正文标题 +
+    134 处 nav 标签）。故连同其前的 ``[]`` 一并吃掉。
+    """
     m = _HEADING_ID_RE.search(text)
     if not m:
         return text, None
-    return text[: m.start()].rstrip(), m.group(1)
+    head = text[: m.start()].rstrip()
+    if head.endswith("[]"):
+        head = head[:-2].rstrip()
+    return head, m.group(1)
 
 
 # 目录（nav）标签用的行内 markdown 剥离：nav 标签是纯文本，不经 _inline 渲染，
@@ -317,7 +385,7 @@ def _inline(text: str) -> str:
         # 否则 &quot; 等实体会被二次转义成 &amp;quot; 直接显示给读者。
         return f'<a href="{escape(href, quote=True)}">{label}</a>'
 
-    # 正文导航锚点 []{#id} → <a id="id"></a>（id 已由白名单正则约束，无需转义）
+    # 正文导航锚点 []{#id} / []{id} → <a id="id"></a>（id 已由白名单正则约束，无需转义）
     text = _ANCHOR_INLINE_RE.sub(r'<a id="\1"></a>', text)
     text = _IMG_RE.sub(_img, text)
     text = _LINK_RE.sub(_link, text)
@@ -386,15 +454,28 @@ def _split_pipe_row(line: str) -> list[str]:
     return [c.strip() for c in re.split(r"(?<!\\)\|", body)]
 
 
+# 表格单元格里的 ATX 标记：GFM 表格单元内不允许块级标题，源抽取却常把小节标题
+# 连同行内容一起吃进单元格（BLP 附录 2：`| **## 议会工党主席，1906—22** | |`）。
+# 渲染层只能按字面输出，读者遂在表格里看到字面 `##`。
+# 只吃**紧贴行首或紧贴行内 markdown 标记之后**的标记，避免误伤 `# 1` 这类
+# 编号内容（Pentagon Papers 的文件号就在正文标题里，属正常内容）。
+_CELL_ATX = re.compile(r"(?m)(^|(?<=\*\*)|(?<=\*)|(?<=`))#{1,6}[ \t]+")
+
+
+def _cell(text: str) -> str:
+    """单元格文本清洗：去掉无意义的 ATX 标记后交 `_inline` 渲染。"""
+    return _inline(escape(_CELL_ATX.sub(r"\1", text)))
+
+
 def _render_pipe_table(lines: list[str]) -> str:
     """md 管道表 → XHTML table（首行为表头，第二行为分隔行）。"""
-    head = "".join(f"<th>{_inline(escape(c))}</th>" for c in _split_pipe_row(lines[0]))
+    head = "".join(f"<th>{_cell(c)}</th>" for c in _split_pipe_row(lines[0]))
     rows = []
     for line in lines[2:]:
         if not line.strip() or "|" not in line:
             continue
         cells = _split_pipe_row(line)
-        rows.append("<tr>" + "".join(f"<td>{_inline(escape(c))}</td>" for c in cells) + "</tr>")
+        rows.append("<tr>" + "".join(f"<td>{_cell(c)}</td>" for c in cells) + "</tr>")
     return (
         '<table class="data"><thead><tr>'
         + head
@@ -453,10 +534,10 @@ def _render_simple_table(lines: list[str]) -> str | None:
         body = [ln for _i, ln in content[1:]]
 
     def head_cells(line: str) -> str:
-        return "".join(f"<th>{_inline(escape(c))}</th>" for c in _split_span_row(line, spans))
+        return "".join(f"<th>{_cell(c)}</th>" for c in _split_span_row(line, spans))
 
     def body_cells(line: str) -> str:
-        return "".join(f"<td>{_inline(escape(c))}</td>" for c in _split_span_row(line, spans))
+        return "".join(f"<td>{_cell(c)}</td>" for c in _split_span_row(line, spans))
 
     return (
         '<table class="data"><thead>'
@@ -513,7 +594,7 @@ def markdown_to_xhtml(
         fn_items.sort(key=lambda t: t[0])
     out: list[str] = []
     hcount = 0  # level≥2 标题计数（与 subheading_anchors 同规则，保证 nav 锚点不悬空）
-    for block in re.split(r"\n\s*\n", md):
+    for block in _iter_blocks(md):
         block = block.strip("\n")
         if not block.strip():
             continue
@@ -646,7 +727,7 @@ def subheading_anchors(md: str, unit_id: str) -> list[dict[str, Any]]:
     """
     anchors: list[dict[str, Any]] = []
     n = 0
-    for block in re.split(r"\n\s*\n", md):
+    for block in _iter_blocks(md):
         block = block.strip("\n")
         if not block.strip():
             continue
