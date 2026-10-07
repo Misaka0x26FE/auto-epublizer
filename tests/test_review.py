@@ -419,6 +419,41 @@ def test_g0_footnote_after_cjk_closing_quote_is_counted() -> None:
     assert count_footnote_refs("…production,’ 33") == 0
 
 
+def test_g0_footnote_ocr_dot_noise_before_dot_is_not_a_ref() -> None:
+    """点号紧跟前一个标点时是 OCR 残留、不是句末点（回归 #32）。
+
+    扫描版 PDF 文字层把页码引用与上标注码抽成点号堆叠的残片：
+    ``Oxford, 1979), .p..221: D. H. Aldcroft…``（``p.221`` 的点号重复两次）与
+    ``(1979)_,.08 19. J. G. Watkins…``（注码 8 前多出 ``_,``）。两者都被
+    ``_FOOTNOTE_REF_RE`` 读成「句末点 + 注码」，而缩写启发式要求点前是字母/№，
+    点前是标点时匹配不到 → 残片计入源侧计数；译文早已正常译作「第 221 页」而不计，
+    于是**源 2 / 译 0** 报脚注守恒硬缺陷、卡住 G5 放行（现场：
+    history-of-british-labour-party back-notes，618 块注释一字未丢）。
+    """
+    g = Glossary()
+    noise = (
+        "see R. B. McCallum, The Liberal Party and the Occupation of the Left, "
+        "in The End of the Peacetime: The Liberal Party in Transition, "
+        "1918-1922 Oxford, 1979), .p..221: D. H. Aldcroft, The British Economy "
+        "between the Wars: Instability and Development, PIII 1939 (1979)_,.08 "
+        "19. J. G. Watkins, ‘Ind"
+    )
+    assert count_footnote_refs(noise) == 0
+    assert not [
+        f for f in g0_unit_flags([{"seq": 1, "src": noise, "tgt": "参见，同上。"}], g)
+        if f.check == "footnote"
+    ]
+    # 真注码不得被这个排除吞掉：英文单引号收尾、中文闭合引号、CJK 句末点各 1 个
+    assert count_footnote_refs("…an absolute majority at last’.1 A second element") == 1
+    assert count_footnote_refs("『……生产。』33 但这件案子") == 1
+    assert count_footnote_refs("正文。1 而接下来") == 1
+    # 真正丢注码仍须报
+    assert any(
+        f.check == "footnote"
+        for f in g0_unit_flags([{"seq": 1, "src": "died.1 and later.2", "tgt": "死亡。1 "}], g)
+    )
+
+
 def test_detect_and_annotate_corrections() -> None:
     """勘误留痕：detect_corrections 命中先例；annotate 给 align 行补 corr: 前缀不改文本。"""
     assert detect_corrections("IDG reported in 19487") == [("IDG", "IDF"), ("19487", "1948")]

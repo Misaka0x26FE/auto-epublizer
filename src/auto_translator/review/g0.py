@@ -104,13 +104,31 @@ _ABBREV_STEMS = frozenset(
 _CJK_CHARS_RE = re.compile(r"[\u3400-\u4dbf\u4e00-\u9fff\u3040-\u30ff\uac00-\ud7af]")
 
 
+# OCR/抽取残留点（回归 #32，`history-of-british-labour-party` back-notes 实测）：
+# 扫描版 PDF 的文字层把**页码引用**与**上标注码**抽成点号堆叠的残片——
+#   `Oxford, 1979), .p..221: D. H. …`（`p.221` 的点号重复两次）
+#   `(1979)_,.08 19. J. G. …`（上标注码 8 前多出 `_,`）
+# 两处被 `_FOOTNOTE_REF_RE` 读成「句末点 + 注码」，而 `_ABBREV_BEFORE_RE` 要求点前是
+# 1~5 位字母/№，点前是标点时匹配不到 → 返回 False → 残片计入源侧计数。译文侧早已
+# 正常译作「第 221 页」而不计，**源 2 / 译 0** 于是报脚注守恒硬缺陷、卡住 G5 放行，
+# 实际一个字都没丢（判据类同 #3/#8/#22/#29/#31 五处已收窄的误报）。
+# 判据：点号紧跟前一个**标点**字符时该点是抽取残留、不是句末点。真注码前面必是
+# 完整词（`end. 5`）、CJK（`正文。1`）或闭合引号（『……生产。』33），不会紧跟标点，
+# 故本排除不会吞掉真注码。
+_OCR_NOISE_BEFORE_RE = re.compile(r"[.,;:!?'\"`~*_\-—–/\\|·•]\s*$")
+
+
 def _is_abbrev_dot(text: str, dot_index: int) -> bool:
-    """判断 ``dot_index`` 处的标点是否为缩写点（而非句末点）。
+    """判断 ``dot_index`` 处的标点是否**不该**被当作句末点（缩写点或 OCR 残留点）。
 
     缩写启发式只对**非 CJK** 词生效：中文句子以「正文。1」收尾时，点前是 1~2 字的
     中文词（正文/城/部…），若照搬「≤2 字符即缩写」会把它误判成缩写点而吞掉真注码
     （回归 #8 修复所引入；这里把 CJK 词排除在外）。
+
+    点前紧跟标点时（回归 #32）判为 OCR 残留点——见 ``_OCR_NOISE_BEFORE_RE`` 注释。
     """
+    if _OCR_NOISE_BEFORE_RE.search(text[:dot_index]):
+        return True
     m = _ABBREV_BEFORE_RE.search(text[:dot_index])
     if not m:
         return False
