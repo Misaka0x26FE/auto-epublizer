@@ -98,3 +98,37 @@ def test_table_cell_strips_atx_marker():
     assert "## 议会工党主席" not in out
     assert "<strong>议会工党主席，1906—22</strong>" in out
     assert "1906—8" in out
+
+
+def test_anchor_span_allows_space_before_brace():
+    """抽取噪声 `[] {#GBS.0053.02}`（`[]` 与 `{` 间有空格）也要认成锚点。"""
+    out = markdown_to_xhtml("承诺。[] {#GBS.0053.02}这当然\n", unit_id="ch03")
+    assert 'id="GBS.0053.02"' in out
+    assert "[]" not in out
+
+
+def test_anchor_space_does_not_span_lines():
+    """`[ \\t]*` 而非 `\\s*`：不得跨行把下一段的花括号一起吞掉。"""
+    out = markdown_to_xhtml("正文[]{#a}\n\n下一段 {attrs} 结束\n", unit_id="ch03")
+    assert 'id="a"' in out
+    assert "{attrs}" in out
+
+
+def test_plain_label_strips_spaced_anchor():
+    from auto_epublizer.build.html import plain_label
+
+    assert plain_label("**# 1**[] {#d1}") == "# 1"
+
+
+def test_empty_attr_block_removed():
+    """`{[]}[]{#id}`：锚点取出后，空属性壳 `{[]}` 不得以字面印给读者。"""
+    out = markdown_to_xhtml("前提。{[]}[]{#GBS.0682.04}\n", unit_id="ch11")
+    assert 'id="GBS.0682.04"' in out
+    assert "{[]}" not in out
+    assert "[]" not in out
+
+
+def test_plain_label_drops_empty_attr_block():
+    from auto_epublizer.build.html import plain_label
+
+    assert plain_label("**# 1**{[]}[]{#d1}") == "# 1"
