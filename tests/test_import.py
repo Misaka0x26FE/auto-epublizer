@@ -391,3 +391,44 @@ def test_g0_call_chains_share_length_thresholds(tmp_path: Path) -> None:
     result = orch.import_translations(store, config=cfg)
     import_flags = [w for w in result["warnings"] if w["check"] == "length"]
     assert import_flags  # import 链同口径
+
+
+def test_import_accepts_pure_heading_unit_with_empty_align(tmp_path: Path) -> None:
+    """回归 #34：整单元只有一个 `#` 标题块时，对照表**恒为空**，不得判「待译」。
+
+    `make_align` 逐块跳过以 `#` 开头的块，所以「部分分隔标题」单元
+    （`# Part I: Foundations` 之类）永远产不出任何对照表行。旧判据
+    `if not rows: pending_reasons` 于是把它永久判成待译 → `stale` 永远非空
+    → 整本书永远放行不了。现场：contentious-alliance 43 单元里的 7 个 `part-*`。
+
+    判据是**源文里没有任何非标题块**；正文单元缺对照表仍然照旧 pending
+    （见下一个用例）。
+    """
+    src = tmp_path / "book.md"
+    src.write_text("# 第一部：奠基\n", encoding="utf-8")
+    store = orch.init(str(src), workspace_dir=tmp_path / "ws")
+    (store.translation_dir / "body").mkdir(parents=True, exist_ok=True)
+    (store.translation_dir / "body" / "ch01.md").write_text(
+        "# 第一部：奠基\n", encoding="utf-8"
+    )
+    (store.translation_dir / "align").mkdir(parents=True, exist_ok=True)
+    store.unit_align_path("ch01").write_text("", encoding="utf-8")
+
+    result = orch.import_translations(store)
+    assert result["pending"] == [], result["pending"]
+    assert result["failed"] == []
+    assert result["imported"] == ["ch01"]
+    assert store.load_publication().units[0].status == "aligned"
+
+
+def test_import_still_blocks_body_unit_with_missing_align(tmp_path: Path) -> None:
+    """回归 #34 的配套：纯标题单元放行**不得**波及正文单元——正文缺对照表照旧待译。"""
+    store = _workspace(tmp_path)
+    (store.translation_dir / "body").mkdir(parents=True, exist_ok=True)
+    (store.translation_dir / "body" / "ch01.md").write_text(
+        "# 第一章\n\n第一句话。\n\n第二句话。\n", encoding="utf-8"
+    )
+    result = orch.import_translations(store)
+    assert result["imported"] == []
+    assert [p["unit"] for p in result["pending"]] == ["ch01"]
+    assert any("缺少对照表" in r for r in result["pending"][0]["reasons"])
