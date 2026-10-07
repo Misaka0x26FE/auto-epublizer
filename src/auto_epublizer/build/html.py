@@ -27,11 +27,16 @@ _IMG_RE = re.compile(r"!\[([^\]]*)\]\(([^)]+)\)")
 _PANDOC_LINKED_IMG = re.compile(r"\[\[!\[([^\]]*)\]\(([^)]+)\)[^\]]*\]\([^)]*\)[^\]]*\]\{[^}]*\}")
 _LINK_RE = re.compile(r"\[([^\]]+)\]\(([^)]+)\)")
 # 正文导航锚点：[]{#page_15}（ingest 保留的源 <a id>）→ 空锚点元素，供内部链接跳转。
-# `#` 允许缺省：抽取器会丢掉属性里的井号，实测 Pentagon Papers 源侧并存
-# `[]{#GBS.0014.04}` 与 `[]{GBS.0014.05}` 两种写法，后者原样印给读者（全书 329 处）。
-# id 字符集**不放宽空格**——`[]{#word illegible}` 是校勘标记而非锚点，
+# 两处放宽，均不放开 id 字符集：
+#   ① `#` 允许缺省：抽取器会丢属性里的井号，源侧并存 `[]{#GBS.0014.04}` 与
+#      `[]{GBS.0014.05}`（Pentagon Papers 329 处）。
+#   ② `[]` 与 `{` 之间允许空格：抽取噪声 `[] {#GBS.0053.02}`（Pentagon 29 处）。
+#      用 `[ \t]*` 而非 `\s*`，免得跨行吞掉后面的段落。
+# id 字符集**始终不含空格**——`[]{#word illegible}` 是校勘标记而非锚点，
 # 放宽会让它变成空锚点，等于悄悄删掉标记（比显示乱码更糟，见缺陷清单 pentagon ch05）。
-_ANCHOR_INLINE_RE = re.compile(r"\[\]\{#?([\w:.-]+)\}")
+_ANCHOR_INLINE_RE = re.compile(r"\[\][ \t]*\{#?([\w:.-]+)\}")
+# 空属性块 `{[]}`：只裹一个空 span 的 pandoc 属性表，无信息（见 `_inline` 里的说明）
+_EMPTY_ATTR_RE = re.compile(r"\{[ \t]*\[[ \t]*\][ \t]*\}")
 # 标题上的 id 属性：``标题 {#ch01}`` → (标题, ch01)
 _HEADING_ID_RE = re.compile(r"\s*\{#([\w:.-]+)\}\s*$")
 _BOLD_RE = re.compile(r"\*\*((?:[^*]|\\\*)+)\*\*")
@@ -346,8 +351,9 @@ def _split_heading_id(text: str) -> tuple[str, str | None]:
 # 故须在此去掉强调与行内锚点，否则读者在目录里看到字面 `**`、`[]{#…}`
 # （Pentagon Papers 全书 83% 标题行含 markdown；W_RESIDUE 豁免 nav.xhtml）。
 _LABEL_ANCHOR = re.compile(r"\{[^{}]*\}")  # 裸 {…} 属性块（含 {#id}）
-# pandoc 行内属性形态 `[]{#id}` / `[文本]{attrs}`：先吃掉方括号包裹再剥属性
-_LABEL_INLINE_ATTR = re.compile(r"\[([^\]]*)\]\{[^{}]*\}")
+# pandoc 行内属性形态 `[]{#id}` / `[文本]{attrs}`：先吃掉方括号包裹再剥属性。
+# `[]` 与 `{` 之间允许空格（抽取噪声 `[] {#id}`，Pentagon Papers 29 处）
+_LABEL_INLINE_ATTR = re.compile(r"\[([^\]]*)\][ \t]*\{[^{}]*\}")
 _LABEL_IMG = re.compile(r"!\[([^\]]*)\]\([^)]*\)")  # 图片 → 取 alt
 _LABEL_LINK = re.compile(r"\[([^\]]*)\]\([^)]*\)")  # 链接 → 取标签文本
 _LABEL_EMPH = re.compile(r"(\*{1,3}|_{1,3})(.+?)\1", re.S)
@@ -387,6 +393,10 @@ def _inline(text: str) -> str:
 
     # 正文导航锚点 []{#id} / []{id} → <a id="id"></a>（id 已由白名单正则约束，无需转义）
     text = _ANCHOR_INLINE_RE.sub(r'<a id="\1"></a>', text)
+    # 空属性块 `{[]}`：pandoc 转出噪声，属性表里只裹着一个空 span（Pentagon Papers
+    # 142 处，源侧形态 `{[]}[]{#GBS.0682.04}`）。锚点已被上一行取出，包裹它的
+    # 属性壳没有任何信息，留着就以字面 `{[]}` 印给读者。
+    text = _EMPTY_ATTR_RE.sub("", text)
     text = _IMG_RE.sub(_img, text)
     text = _LINK_RE.sub(_link, text)
     text = _BOLD_RE.sub(r"<strong>\1</strong>", text)
