@@ -738,6 +738,7 @@ def import_translations(
     failed: list[dict[str, Any]] = []
     warned: list[dict[str, Any]] = []
     skipped: list[str] = []
+    pure_heading: set[str] = set()   # 纯标题单元：本就不该有对照表行（见下）
 
     for unit in pub.units:
         if unit_id and unit.id != unit_id:
@@ -765,7 +766,24 @@ def import_translations(
             pending_reasons.append(f"缺少译文文件：{tgt_path}")
         rows = read_align(align_path) if align_path.is_file() else []
         if not rows:
-            pending_reasons.append(f"缺少对照表或对照表为空：{align_path}")
+            # **纯标题单元**例外（回归 #34，2026-10-08）。
+            # make_align 逐块跳过以 `#` 开头的块，故「整单元只有一个部分分隔标题」
+            # （`# Part I: Foundations` 之类）的对照表**恒为空**——而下面的
+            # `if not rows: pending` 会把它永远判成「待译」，
+            # 于是这类单元永远进不了 aligned，`stale` 永远非空，整本书永远放行不了。
+            # 现场：contentious-alliance 的 7 个 `part-*` 单元（43 单元里 7 个）。
+            # 判据：源文里**没有任何非标题块** ⟹ 本单元本就不该有对照表行。
+            # 这不是放宽——正文单元缺对照表仍然照旧 pending。
+            body_blocks = [
+                b
+                for b in re.split(r"\n\s*\n", (structured_md or "").strip("\n"))
+                if b.strip() and not b.strip().startswith("#")
+            ]
+            if not body_blocks:
+                rows = []
+                pure_heading.add(unit.id)
+            else:
+                pending_reasons.append(f"缺少对照表或对照表为空：{align_path}")
         if pending_reasons:
             # 未译单元是「待译」不是「失败」：也不继续跑文档/表格/术语检查——
             # 否则会为源文的**每个块**刷出一条「源文块未进对照表」告警
