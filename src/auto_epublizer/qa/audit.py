@@ -38,6 +38,17 @@ _MD_RESIDUE: tuple[tuple[str, re.Pattern[str]], ...] = (
     # ``&lt;div&gt;`` 原样印给读者（2026-10-06 Thiriart 封面整段 SVG 漏成乱码）。
     ("&lt;/", re.compile(r"&lt;/?[a-zA-Z][\w:.-]*(?:\s[^<>]*)?&gt;")),
     ("{=html}", re.compile(r"\{\s*=\s*html\s*\}")),
+    # 未渲染的 ATX 标题：源抽取/MinerU OCR 丢失标题前空行时，标题会成为懒续行落进
+    # `<p>`（parliamentary-socialism 33 处、sample-rtl-a-1 3 处、
+    # sample-document-d-1 1 处，epubcheck 与 G0 标题计数都不报）。
+    # 判据限定在**段首**，以免误报 Pentagon Papers 正文里合法的文件编号 `# 1`。
+    ("段首ATX标题", re.compile(r"<p[^>]*>\s*#{1,6}\s+\S")),
+    # 表格单元格里的 ATX 标记：GFM 单元格内无块级标题，渲染层按字面输出（BLP 附录 2）。
+    ("单元格ATX", re.compile(r"<t[dh][^>]*>\s*(?:<strong>|<em>|<code>)?\s*#{1,6}\s+\S")),
+    # 剥离 id 后残留的空 pandoc span（`[]{#d1}` 只剥了 `{#d1}`），
+    # 以及抽取丢失井号的锚点 `[]{GBS.0014.05}`。id 字符集不含空格，
+    # 故 `[]{#word illegible}` 之类校勘标记不会被本条误判。
+    ("空span", re.compile(r"\[\]")),
 )
 
 
