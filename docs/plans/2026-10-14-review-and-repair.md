@@ -588,6 +588,43 @@ report 声称代替产物检查。
 **验证**：全量 **531 passed**（516→531）、`ruff` 全绿；`invariants.{zh,md}`/`qa.{zh,md}`
 放行条件表与报告时效说明同步；i18n `--check`/`--links` OK。
 
+### 批次 D（输入解析、保真与可信边界）
+
+**先证后修（两条，均由最小坏文件/最小合成样本固定）**：
+
+1. **P0 越界读取（媒体引用缺包含性校验）**：`build/__init__.py::collect_media._resolve`
+   用 ``media_root / cand`` 词法拼接后直接 ``read_bytes()``——``../../…`` 链（或指向工作区
+   外的符号链接）可读取工作区之外乃至 ``/etc/*`` 的文件，并把 ``media/../../…`` 作为成员名
+   写进成品（越界读 → 成品外泄 + 非法成员名）。实测：读到 ``/etc/hostname`` 内容并产出
+   ``media/../../../../../../../../etc/hostname``；端到端成品里出现
+   ``OEBPS/media/../../../../../outside-secret.txt``。
+   修复：候选 ``resolve()``（含符号链接）后必须 ``is_relative_to(media_root)``，越界一律记入
+   ``dropped``（→ ``media_dropped`` 事件 + provenance ``E_MEDIA_EPUB_LOST`` 阻断放行）；
+   相邻合法用例（嵌套子目录、``raw/media`` 前缀去重、basename 兜底）保持不变。
+   同口径加固 ``qa/provenance._audit_inserts``：``source.file`` 越界计缺失、不去 stat 工作区外。
+   证据：回退 ``build/__init__.py`` + ``qa/provenance.py`` → 3 项失败（含上述成品成员名）
+   → 修复后 6 passed。
+
+2. **EPUB 源媒体引用未相对化（内容丢失 + 机器路径入产物）**：``read_epub`` 直接
+   ``run_pandoc(...)``，漏了 ``read_pandoc`` 里的 ``normalize_media_refs`` 一步——pandoc 的
+   **绝对**媒体路径原样进入 ``structured/``（机器路径进 git 追踪产物），且构建时
+   ``media_root/tmp/…`` 命中不到、basename 兜底也命中不到嵌套子目录 → 插图丢失。
+   修复：``read_epub`` 同样 ``normalize_media_refs(run_pandoc(...), media_dir)``。
+   证据：合成 EPUB（嵌套 ``img/pic.png`` + 脚注 + h1/h2）修复前 structured 含绝对路径、成品
+   缺图；修复后引用为 ``raw/media/img/pic.png``、成品含 ``OEBPS/media/img/pic.png`` 与脚注内容。
+
+**守恒断言（合成样本，离线）**：新增 ``tests/test_ingest_boundary.py`` 8 项：EPUB 源标题层级/
+脚注/嵌套媒体守恒（pandoc 用例带 ``skipif`` 门控）；越界引用四形态（相对 ``..``、绝对路径、
+符号链接、合法嵌套对照）；成品不含 ``..`` 成员名；inserts 越界；坏 zip 与缺 pandoc 的明确
+错误（不静默空章节/假成功）。既有 ``test_reading_order``/``test_tables``/``test_formula``/
+``test_rtl``/``test_links`` 覆盖其余守恒维度。
+
+**验证**：全量 **539 passed**（531→539）、``ruff`` 全绿。**工具缺口（未验证项）**：本机无
+tesseract/ocrmypdf/rapidocr，扫描 PDF 的离线 OCR 路由仅以合成样本/伪后端覆盖
+（``test_fake_ocr_backend``），真实扫描件的 OCR 质量未验；MinerU 走既有 mock 测试
+（``test_mineru``），未访问真实 API。
+
+
 
 
 

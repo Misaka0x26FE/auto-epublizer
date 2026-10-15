@@ -75,6 +75,15 @@ agent 在 plan.md 记录最终路由与依据（含「是否已询问用户 Mine
 ingest 会把多出的那层 `media/` 拍平到 `raw/media/`、把引用改写成工作区相对的
 `raw/media/<name>`（与下文「中间产物」的布局一致），并剔除图片属性块（渲染层不处理该
 语法，原先会作为字面文本漏进成品）。非本地引用（http/…）保持原样。
+**EPUB 源同样归一化**（2026-10 D 组修复）：`read_epub` 此前漏了这一步，绝对媒体路径会进入
+`structured/` 且构建时命中不到嵌套子目录 → 插图丢失；现与 docx 路径同口径。
+
+**媒体引用必须落在 `structured/raw/media/` 之内**（2026-10 D 组修复，安全边界）：构建收集
+媒体时对候选路径做 `resolve()`（含符号链接）后的包含性校验；`../…`、绝对路径、指向工作区
+外的符号链接一律**拒绝读取**并记入 `media_dropped` 事件（随后由 provenance
+`E_MEDIA_EPUB_LOST` 阻断放行）——此前这些形态可读取工作区之外（乃至 `/etc/*`）的文件并把
+`media/../../…` 写进成品。`raw/inserts/<id>.json` 的 `source.file` 同样受包含性校验。
+合法形态（嵌套子目录、`raw/media/` 前缀、basename 兜底）不受影响。
 
 不支持的其他格式：先转 PDF/TXT/Markdown，或 `pandoc` 处理后转 PDF 兜底。
 

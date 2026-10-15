@@ -24,7 +24,13 @@ from pathlib import Path
 from urllib.parse import unquote
 
 from .models import KIND_HEADING, KIND_TEXT, SourceDocument, SourceSegment, SourceUnit
-from .pandoc_reader import PandocError, pandoc_available, parse_markdown_units, run_pandoc
+from .pandoc_reader import (
+    PandocError,
+    normalize_media_refs,
+    pandoc_available,
+    parse_markdown_units,
+    run_pandoc,
+)
 
 _DC = "http://purl.org/dc/elements/1.1/"
 _XHTML_TYPES = {"application/xhtml+xml", "text/html"}
@@ -544,7 +550,7 @@ def read_epub(path: str | Path, *, media_dir: str | Path | None = None) -> Sourc
     if not linear:
         raise EpubError("EPUB 无可用的线性 spine 项")
 
-    content = run_pandoc(path, media_dir=media_dir)
+    content = normalize_media_refs(run_pandoc(path, media_dir=media_dir), media_dir)
     basenames = [posixpath.basename(i.zip_path) for i in linear]
     blocks = split_by_spine_anchors(content, basenames)
     if blocks is None:

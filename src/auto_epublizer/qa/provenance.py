@@ -12,6 +12,7 @@ postprocessing-spec §2/§3 的实现，四类检查全部只出信号不出裁�
 
 from __future__ import annotations
 
+import contextlib
 import math
 import posixpath
 import re
@@ -229,9 +230,16 @@ def _audit_inserts(result: ProvenanceResult, structured_dir: Path) -> None:
     if not records:
         return
     result.inserts_total = len(records)
-    raw_dir = structured_dir / "raw"
+    raw_dir = (structured_dir / "raw").resolve()
     for r in records:
-        if r.file and not (raw_dir / r.file).is_file():
+        # 包含性校验（D 组）：source.file 解析后必须落在 structured/raw 内——
+        # 越界路径不泄露主机文件存在性，直接计为缺失（与 collect_media 同口径）。
+        inside = False
+        if r.file:
+            with contextlib.suppress(OSError, ValueError):
+                resolved = (raw_dir / r.file).resolve()
+                inside = resolved.is_relative_to(raw_dir) and resolved.is_file()
+        if r.file and not inside:
             result.inserts_missing_files += 1
             result.add("error", "E_INSERT_MISSING_FILE", f"插入内容文件缺失：{r.id}（{r.file}）")
         page = r.source.page
