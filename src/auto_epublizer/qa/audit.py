@@ -32,6 +32,67 @@ _MD_RESIDUE: tuple[tuple[str, re.Pattern[str]], ...] = (
 )
 
 
+# ── 版面型候选（issue #38）───────────────────────────────────────────────
+# 上面 32 个检查码全是「结构/资源/元数据」类：XML 层面完全合法、内容却被版面
+# 重排切碎的缺陷天然看不见。三类典型形态：汉字间虚假空格（词被劈开）、段落未以
+# 句末标点收束（页边界切断）、注码被夹进词组。全部为 **warning 候选**（W_*），
+# 供 agent 核证——诗歌、标题、合法空格与统计数字不得因此自动阻断或改写。
+_CJK_CLASS = r"[\u3400-\u4dbf\u4e00-\u9fff\u3040-\u30ff\uac00-\ud7af]"
+_CJK_ONE_RE = re.compile(_CJK_CLASS)
+_CJK_SPACE_CJK_RE = re.compile(rf"{_CJK_CLASS}[ \u3000]{_CJK_CLASS}")
+_PARA_RE = re.compile(r"<p\b[^>]*>(.*?)</p>", re.DOTALL | re.IGNORECASE)
+_HTML_TAG_RE = re.compile(r"<[^>]+>")
+# 汉字 + 空白 + 1~3 位数字 + 空白 + 汉字；末字为量词时视为统计数字（见 _MEASURE_AFTER）
+_NOTE_IN_PHRASE_RE = re.compile(rf"{_CJK_CLASS}\s(\d{{1,3}})\s({_CJK_CLASS})")
+_MEASURE_AFTER = (
+    "人年月日个名条吨米位页章节周天号项次辆架台艘款种岁分秒时元角"
+    "枚张封把支颗只头匹双套组批届栋间处座"  # 常见量词（减少候选噪声；非穷举）
+)
+# 合法的段落收束（含引号/括号收尾与省略号）
+_PARA_END_OK = "。！？…!?;；”’\"'」』）)】〕》>"
+
+
+def _layout_candidates(result: AuditResult, name: str, content: str) -> None:
+    """版面型候选（issue #38）：每文档每类至多一条 W 级提示，供 agent 逐条核证。
+
+    只报「可定位的形态」：① 同段落 ≥2 处汉字间空格；② ≥20 字段落末字为汉字或
+    悬挂的逗号/顿号/分号；③ 汉字-空格-数字-空格-汉字且数字后不是量词。简洁与诗行
+    可能命中 ①②，但它们只是候选（非阻断、不自动改写），由 agent 结合源件判断。
+    """
+    for m in _PARA_RE.finditer(content):
+        body = _HTML_TAG_RE.sub("", m.group(1)).strip()
+        n_spaced = len(_CJK_SPACE_CJK_RE.findall(body))
+        if n_spaced >= 2:
+            result.add(
+                "warning",
+                "W_CJK_SPACED",
+                f"汉字间疑似虚假空格（{n_spaced} 处，疑词被劈开）：{name}",
+            )
+            break
+    for m in _PARA_RE.finditer(content):
+        body = _HTML_TAG_RE.sub("", m.group(1)).strip()
+        if len(body) < 20 or body[-1] in _PARA_END_OK:
+            continue
+        if _CJK_ONE_RE.match(body[-1]) or body[-1] in "，、；,":
+            result.add(
+                "warning",
+                "W_PARA_UNCLOSED",
+                f"段落未以句末标点收束（末字「{body[-1]}」，疑页边界切断）：{name}",
+            )
+            break
+    text = _HTML_TAG_RE.sub("", content)
+    for m in _NOTE_IN_PHRASE_RE.finditer(text):
+        if m.group(2) in _MEASURE_AFTER:
+            continue  # 量词前数字是统计数字（`共 3 人`），不是注码
+        snippet = text[max(0, m.start() - 6) : m.end() + 6].replace("\n", " ")
+        result.add(
+            "warning",
+            "W_NOTE_IN_PHRASE",
+            f"疑似注码夹进词组（…{snippet}…）：{name}",
+        )
+        break
+
+
 @dataclass
 class AuditFinding:
     level: str  # error | warning
@@ -327,6 +388,12 @@ def audit_epub(path: str | Path, *, nav_exempt: set[str] | None = None) -> Audit
                 if pattern.search(content):
                     result.add("warning", "W_RESIDUE", f"markdown 标记残留（{label}）：{name}")
                     break
+
+        # 9b. 版面型候选（issue #38）：warning 级、供 agent 核证；不阻断、不自动改写
+        for name in names:
+            if not name.endswith(".xhtml") or name.endswith(("nav.xhtml", "landmarks.xhtml")):
+                continue
+            _layout_candidates(result, name, zf.read(name).decode("utf-8"))
 
         # 10. 元数据完备（postprocessing-spec P2）：次级 DC 项缺失**或空白**提示（供 agent 补全）
         missing_meta = [

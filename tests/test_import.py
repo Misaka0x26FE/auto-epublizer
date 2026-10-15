@@ -5,6 +5,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
+
 from auto_epublizer import orchestrator as orch
 from auto_translator.glossary import load_glossary_csv
 
@@ -296,3 +298,96 @@ def test_import_passes_md_align_consistent_with_footnote(tmp_path: Path) -> None
             f.write(json.dumps(row, ensure_ascii=False) + "\n")
     result = orch.import_translations(store)
     assert result["imported"] == ["ch01"], result["failed"]
+
+
+def test_import_terms_missing_file_fails_before_write(tmp_path: Path) -> None:
+    """回归（issue #36）：--terms 路径不存在必须报错，不得静默写回空表。"""
+    store = _workspace(tmp_path)
+    _write_agent_products(store)
+    with pytest.raises(orch.OrchestrationError) as ei:
+        orch.import_translations(store, terms_path=str(tmp_path / "nope.csv"))
+    msg = str(ei.value)
+    assert "术语提案文件不存在" in msg
+    assert "nope.csv" in msg  # 报出解析后的实际路径，便于定位 cwd 相对约定
+    assert not (store.analysis_dir / "glossary.csv").exists()  # 写回前失败
+
+
+def test_import_terms_bom_and_zero_rows_visible(tmp_path: Path) -> None:
+    """回归（issue #36）：带 BOM 的提案照常导入；0 有效行时结果可见（不静默）。"""
+    store = _workspace(tmp_path)
+    _write_agent_products(store)
+    terms = tmp_path / "terms.csv"
+    terms.write_text(
+        "source,target,type,aliases,gender,reading,status,note\ncriticize,批评,term,,,,seed,\n",
+        encoding="utf-8-sig",  # BOM：修复前整表丢光
+    )
+    result = orch.import_translations(store, terms_path=str(terms))
+    assert result["terms"]["proposed"] == 1
+    assert result["terms"]["skipped"] == 0
+    entries = load_glossary_csv(store.analysis_dir / "glossary.csv")
+    assert any(e.source == "criticize" and e.target == "批评" for e in entries)
+
+    empty = tmp_path / "empty.csv"
+    empty.write_text(
+        "source,target,type,aliases,gender,reading,status,note\n", encoding="utf-8-sig"
+    )
+    result2 = orch.import_translations(store, terms_path=str(empty))
+    assert result2["terms"]["proposed"] == 0  # CLI 据此打印可见警告，不再「告警=0」
+
+
+def test_import_conflicts_new_and_open_reported_separately(tmp_path: Path) -> None:
+    """回归（issue #35）：新增/待裁决分开；重复导入幂等；resolved 不要求重裁。"""
+    store = _workspace(tmp_path)
+    _write_agent_products(store)
+    store.analysis_dir.mkdir(parents=True, exist_ok=True)
+    (store.analysis_dir / "glossary.csv").write_text(
+        "source,target,type,aliases,gender,reading,status,note\n"
+        "zone,赤区,term,,,,confirmed,\n"
+        "zone,苏区,term,,,,seed,\n",
+        encoding="utf-8",
+    )
+    r1 = orch.import_translations(store)
+    assert r1["conflicts_new"] == 1  # 本次新检出
+    assert r1["conflicts_open"] == 1  # 待裁决总数
+    ledger = store.analysis_dir / "glossary_conflicts.jsonl"
+    first_bytes = ledger.read_text(encoding="utf-8")
+    assert len(first_bytes.strip().splitlines()) == 1
+
+    r2 = orch.import_translations(store)  # 重复导入：不重复追加、不把已有行报成本次新增
+    assert r2["conflicts_new"] == 0
+    assert r2["conflicts_open"] == 1  # 历史 open 仍提示
+    assert ledger.read_text(encoding="utf-8") == first_bytes
+
+    # agent 裁决：写回 glossary.csv（只留一条）+ 账本标记 resolved → 待裁决归零、不再要求重裁
+    row = json.loads(first_bytes.splitlines()[0])
+    row["status"] = "resolved"
+    ledger.write_text(json.dumps(row, ensure_ascii=False) + "\n", encoding="utf-8")
+    (store.analysis_dir / "glossary.csv").write_text(
+        "source,target,type,aliases,gender,reading,status,note\nzone,赤区,term,,,,confirmed,\n",
+        encoding="utf-8",
+    )
+    r3 = orch.import_translations(store)
+    assert r3["conflicts_new"] == 0
+    assert r3["conflicts_open"] == 0
+
+
+def test_g0_call_chains_share_length_thresholds(tmp_path: Path) -> None:
+    """回归（issue #39）：import / g0 / qa 三条调用链必须同用一份长度比配置。
+
+    修复前 import_translations 与 g0_check 都硬编码默认阈值，自定义 ``too_short``
+    只在 qa 链生效——同一份 align 在不同命令下 verdict 不一致。
+    """
+    from auto_common.config import Config
+
+    store = _workspace(tmp_path)
+    _write_agent_products(store)
+    cfg = Config()
+    cfg.qc.length_ratio = {"too_short": 0.99, "too_long": 3.0, "min_src_chars": 20}
+
+    g0_flags = [f for f in orch.g0_check(store, config=cfg)["flags"] if f["check"] == "length"]
+    assert g0_flags  # 自定义阈值生效（默认 0.30 时这些行不报）
+    qa_flags = [f for f in orch._collect_g0_flags(store, cfg) if f["check"] == "length"]
+    assert qa_flags  # qa 链同口径
+    result = orch.import_translations(store, config=cfg)
+    import_flags = [w for w in result["warnings"] if w["check"] == "length"]
+    assert import_flags  # import 链同口径

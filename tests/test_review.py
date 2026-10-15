@@ -8,6 +8,7 @@ from auto_translator.review import (
     check_alignment,
     count_footnote_refs,
     detect_corrections,
+    footnote_numbers,
     g0_unit_flags,
     length_ratio,
 )
@@ -48,6 +49,49 @@ def test_g0_unit_flags_terminology_and_length() -> None:
     flags = g0_unit_flags(rows, g)
     assert any(f.check == "terminology" for f in flags)
     assert any(f.check == "length" and "空" in f.message for f in flags)
+
+
+def test_length_ratio_short_source_protection() -> None:
+    """回归（issue #39）：短源行的比值是纯噪声（0.01 即翻转判定），不得报长度比。"""
+    g = Glossary()
+    rows = [
+        {"seq": 1, "src": "1", "tgt": "1"},
+        {"seq": 2, "src": "Contents", "tgt": "目录"},
+        {"seq": 3, "src": "Chapter One", "tgt": "第一章"},
+        {"seq": 4, "src": "A Note on Suicide", "tgt": "自杀论札记"},
+    ]
+    assert not [f for f in g0_unit_flags(rows, g) if f.check == "length"]
+
+
+def test_length_ratio_keeps_empty_target_check_on_short_source() -> None:
+    """短源保护不豁免「译文为空」（issue #39 保留项）：页码源行漏译仍可见。"""
+    rows = [{"seq": 1, "src": "1", "tgt": ""}]
+    flags = [f for f in g0_unit_flags(rows, Glossary()) if f.check == "length"]
+    assert len(flags) == 1
+    assert "空" in flags[0].message
+    assert flags[0].data["src_len"] == 1  # 长度上下文随告警给出
+
+
+def test_length_ratio_long_source_flagged_with_length_context() -> None:
+    """长源行仍按比值判定，且 data 带 src_len/tgt_len 上下文供 agent 复核。"""
+    src = "See the discussion on pages 112-114 above."
+    rows = [
+        {"seq": 1, "src": src, "tgt": "见图。"},
+        {"seq": 2, "src": src + " " + src, "tgt": "短。"},
+    ]
+    flags = [f for f in g0_unit_flags(rows, Glossary()) if f.check == "length"]
+    assert len(flags) == 2  # 低于下限：疑似漏译
+    assert flags[0].data["src_len"] == len(src)
+    assert flags[0].data["tgt_len"] == 3
+    assert flags[0].data["ratio"] < 0.30
+    assert flags[1].data["ratio"] < 0.30
+
+
+def test_length_ratio_min_src_chars_overridable() -> None:
+    """短源下限可显式收紧（默认保护是阈值，不是硬编码判断）。"""
+    rows = [{"seq": 1, "src": "Chapter One", "tgt": "第一章"}]
+    flags = [f for f in g0_unit_flags(rows, Glossary(), min_src_chars=5) if f.check == "length"]
+    assert len(flags) == 1  # 下限调低后，短行照常参与比值判定
 
 
 def test_count_footnote_refs() -> None:
@@ -231,6 +275,101 @@ def test_g0_footnote_tgt_may_exceed_src_cjk_asymmetry() -> None:
         {"seq": 1, "src": "18,000 died.1 and later.2", "tgt": "18,000 人死亡。1 "},
     ]
     assert any(f.check == "footnote" for f in g0_unit_flags(lost, g))
+
+
+def test_footnote_numbers_superscript_forms() -> None:
+    """回归（issue #34）：上标注码（紧贴前一 token、前为收尾标点）必须提取到。"""
+    assert footnote_numbers("(Zentralbauleitung)14 and more") == {14}
+    assert footnote_numbers("(Krematorium)22 Head of the department") == {22}
+    assert footnote_numbers("organigram:46 Head") == {46}
+    assert footnote_numbers('signed "The Final Solution"14 next') == {14}
+    assert footnote_numbers("（中央建筑管理局）14 及其后续") == {14}  # 译文侧同一判据
+    assert footnote_numbers("组织图：46 后续") == {46}  # 全角冒号形态
+    assert footnote_numbers("击打囚犯，39 一些监工") == {39}  # 全角逗号形态（现场实测）
+    assert footnote_numbers("见〔240〕与[241]") == {240, 241}  # 括号式（译文侧注文）
+
+
+def test_footnote_numbers_negative_controls() -> None:
+    """负对照（issue #34）：与注码同形的非注码不得提取。"""
+    assert footnote_numbers("4 departments and 11 Construction Offices") == set()
+    assert footnote_numbers("in 1941 the war began") == set()
+    assert footnote_numbers("an area of 6 km2 was cleared") == set()
+    assert footnote_numbers("(6 square mile) area") == set()
+    assert footnote_numbers("125,000 inmates were registered") == set()
+    assert footnote_numbers("section 1a of the order") == set()
+    assert footnote_numbers("see стр.66 and рис.3 above") == set()
+    assert footnote_numbers("(in ’000 m2)164") == {164}  # 千分位刻度 000 不算注号
+
+
+def test_footnote_numbers_keep_legacy_sentence_final() -> None:
+    """句末式与上标式并存：``decisive.2`` 仍提取，且不因新分支重复。"""
+    assert footnote_numbers("proved decisive.2 And more") == {2}
+    assert footnote_numbers("whole villages.1") == {1}
+
+
+def test_count_footnote_refs_gate_stays_sentence_final() -> None:
+    """守恒门口径不变（issue #34 实证）：上标形态不进计数门，避免形态不对称误报。"""
+    assert count_footnote_refs("(Zentralbauleitung)14 and more") == 0
+    assert count_footnote_refs("（中央建筑管理局）14 及其后续") == 0
+    assert count_footnote_refs("proved decisive.2 And more") == 1
+
+
+def test_count_footnote_defs_separate_from_refs() -> None:
+    """引用与定义分开统计：``[^label]:`` 定义行单独计数。"""
+    from auto_translator.review import count_footnote_defs, count_footnote_marks
+
+    text = "text[^1] more\n\n[^1]: note body\n"
+    assert count_footnote_defs(text) == 1
+    assert count_footnote_marks(text) == 2  # 引用 + 定义
+    assert count_footnote_refs(text) == 0  # 数字式注码为 0
+
+
+def test_g0_footnote_suspect_reports_missing_superscript_numbers() -> None:
+    """回归（issue #34）：译文丢掉上标注码时，advisory 差集必须报出该注号与样本行。
+
+    守恒计数门保持句末式口径（两侧同为 0，不报也不误报）；真丢失以集合差集
+    报出，供 agent 逐条核证（N 阶段身份契约落地后由 ref_id 守恒阻断）。
+    """
+    g = Glossary()
+    rows = [
+        {
+            "seq": 1,
+            "src": "(Zentralbauleitung)14 and (Krematorium)22 were named",
+            "tgt": "（中央建筑管理局）14 及其后",
+        }
+    ]
+    flags = {f.check: f for f in g0_unit_flags(rows, g)}
+    assert "footnote" not in flags  # 计数门不因放宽而改判
+    suspect = flags["footnote_suspect"]
+    assert suspect.data["numbers"] == [22]
+    assert suspect.data["samples"] == [{"seq": 1, "number": 22}]
+
+
+def test_g0_footnote_suspect_quiet_when_tgt_uses_other_forms() -> None:
+    """译文用另一种排法承载同一注号时，差集判据不误报（形态无关）。"""
+    g = Glossary()
+    rows = [
+        {"seq": 1, "src": "(Krematorium)22 was named", "tgt": "（焚尸场）22 被点名"},
+        {"seq": 2, "src": "organigram:46 here", "tgt": "组织图：46 如下"},
+        {"seq": 3, "src": "see 〔240〕", "tgt": "见〔240〕"},
+    ]
+    flags = [f for f in g0_unit_flags(rows, g) if f.check == "footnote_suspect"]
+    assert not flags
+
+
+def test_g0_footnote_breakdown_reports_refs_and_defs() -> None:
+    """丢定义（而非引用）时 data 能区分两类计数（issue #34 分开统计）。"""
+    g = Glossary()
+    rows = [
+        {"seq": 1, "src": "text[^1] and more words here", "tgt": "正文[^1]及更多词"},
+        {"seq": 2, "src": "[^1]: note body", "tgt": ""},
+    ]
+    flags = [f for f in g0_unit_flags(rows, g) if f.check == "footnote"]
+    assert len(flags) == 1
+    data = flags[0].data
+    assert data["src_refs"] == 0 and data["tgt_refs"] == 0  # 句末式：本例无
+    assert data["src_defs"] == 1 and data["tgt_defs"] == 0
+    assert data["src_marks"] == 2 and data["tgt_marks"] == 1
 
 
 def test_g0_footnote_after_cjk_closing_quote_is_counted() -> None:
