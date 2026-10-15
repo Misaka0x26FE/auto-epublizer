@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# Copyright (C) 2026 Misaka0x26FE
 """RunStore：工作区状态的一致性读写。
 
 - 同目录临时文件 + ``os.replace`` 原子写；

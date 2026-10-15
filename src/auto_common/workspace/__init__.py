@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# Copyright (C) 2026 Misaka0x26FE
 """工作区：publication.json 权威索引 + RunStore（原子写/锁/sha256 绑定/账本/快照）。"""
 
 from __future__ import annotations

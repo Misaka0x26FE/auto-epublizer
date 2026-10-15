@@ -22,7 +22,7 @@ QC、文体、PDF、许可证）收敛成可执行的两大模块 + 其他事项
 无 MCP、无子代理），agent 仅凭仓库内 `AGENTS.md` + `skills/` + `docs/` 即可完成一本书的
 完整高质量处理。所有智能环节由 CLI 内部调用 OpenAI 兼容 API 完成。
 
-**许可**：自身代码 AGPL-3.0；第三方依赖保留各自许可并登记。
+**许可**：自身代码 AGPL-3.0-only；第三方依赖保留各自许可并登记。
 
 ---
 
@@ -84,7 +84,7 @@ auto-epublizer/
 ├── config.example.yaml            # 配置示例
 ├── AGENTS.md                      # agent 入口契约
 ├── README.md
-├── LICENSE                        # AGPL-3.0
+├── LICENSE                        # AGPL-3.0-only
 └── THIRD_PARTY_LICENSES.md        # 第三方依赖许可登记
 ```
 
@@ -181,7 +181,7 @@ C8（QC）→ C9/C10（封装+审计）→ C12（CLI 贯穿）。
 | `docs/pdf-parsing.md` | PDF 方案（按页切片 + 溯源 + 页转图） |
 | `docs/genre-style.md` + `docs/genres/*.md` | 文体优化（小说/学术/论文/诗歌/报刊） |
 | `template/` | 工作区目录模板 |
-| `LICENSE` | AGPL-3.0 |
+| `LICENSE` | AGPL-3.0-only |
 
 **参考外部项目**：`~/github/epub-builder`（稳定 ID / 内容树 / 验证门禁 / 原图优先）、
 `~/github/wenyi`（RunStore / LLM 抽象 / 术语库 / Review 体系）、`~/work/translate`（11 本书实战规范）。

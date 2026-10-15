@@ -1,4 +1,4 @@
-<!-- i18n: source=development-plan.zh.md sha256=7899a205ed96e81ca531e6341c3bde2971531b1ae13fcc8d018c97957054cfc4 -->
+<!-- i18n: source=development-plan.zh.md sha256=2ba2589d507f3bc013fe44feb7bf998690d13ecb1c70f1a3a8db49f263f314a2 -->
 > **English** | [中文](development-plan.zh.md)
 
 # auto-epublizer Project Development Plan
@@ -26,7 +26,7 @@ A Python CLI, two capabilities, one shared pipeline:
 `skills/` + `docs/`, the agent can complete a full high-quality processing of a book. All intelligent
 stages are completed by the CLI internally calling an OpenAI-compatible API.
 
-**License**: own code AGPL-3.0; third-party dependencies retain their own licenses and are registered.
+**License**: own code AGPL-3.0-only; third-party dependencies retain their own licenses and are registered.
 
 ---
 
@@ -87,7 +87,7 @@ auto-epublizer/
 ├── config.example.yaml            # configuration example
 ├── AGENTS.md                      # agent entry contract
 ├── README.md
-├── LICENSE                        # AGPL-3.0
+├── LICENSE                        # AGPL-3.0-only
 └── THIRD_PARTY_LICENSES.md        # third-party dependency license registry
 ```
 
@@ -184,7 +184,7 @@ All design documents are persisted in `docs/`; use them as authoritative during 
 | `docs/pdf-parsing.md` | PDF approach (page slicing + provenance + page-to-image) |
 | `docs/genre-style.md` + `docs/genres/*.md` | genre optimization (novel/academic/paper/poetry/newspaper) |
 | `template/` | workspace directory template |
-| `LICENSE` | AGPL-3.0 |
+| `LICENSE` | AGPL-3.0-only |
 
 **Reference external projects**: `~/github/epub-builder` (stable ID / content tree / validation gates / original-image first),
 `~/github/wenyi` (RunStore / LLM abstraction / glossary / Review system), `~/work/translate` (11-book real-world specification).

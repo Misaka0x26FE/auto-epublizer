@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# Copyright (C) 2026 Misaka0x26FE
 """auto_translator：翻译引擎包（术语/文体/对齐/G0 校验/审校契约）。
 
 依赖 auto_common（config/workspace），不依赖 auto_epublizer（EPUB 转制）。

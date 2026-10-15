@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# Copyright (C) 2026 Misaka0x26FE
 """RTL（从右向左）文本抽取支持：检测、归一化、行内逻辑序还原。
 
 PDF 中的 RTL 文本（波斯语/阿拉伯语/希伯来语等）常用**呈现形字符**

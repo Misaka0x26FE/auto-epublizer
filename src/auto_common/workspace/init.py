@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# Copyright (C) 2026 Misaka0x26FE
 """工作区初始化：创建目录骨架、导入源文件、计算 source_sha256、原子提交 publication.json。"""
 
 from __future__ import annotations
@@ -24,10 +26,14 @@ def init_workspace(
     target_language: str | None = None,
     references: Sequence[str | Path] | None = None,
     original: str | Path | None = None,
+    producer: str | None = None,
 ) -> RunStore:
     """初始化一个工作区并返回其 RunStore。
 
     publication.json 是初始化成功的最终标志：目录骨架与账本先落盘，最后原子提交。
+
+    ``producer``：工具身份（如 ``auto-epublizer@0.1.0``，由 CLI 传入；#40 §5.2）——
+    写入 metadata 与 run_initialized 事件，使「工作区是否由本工具产出」可机器判定。
     """
     source = Path(input_path)
     if not source.is_file():
@@ -80,6 +86,7 @@ def init_workspace(
             source_sha256=digest,
             source_original=original_rel,
             target_language=lang,
+            producer=producer or "",
         ),
         config=ConfigSnapshot(
             bilingual=cfg.pipeline.bilingual,
@@ -94,6 +101,7 @@ def init_workspace(
         title=pub.meta.title,
         source_sha256=digest,
         target_lang=lang,
+        producer=pub.meta.producer,
     )
     return store
 

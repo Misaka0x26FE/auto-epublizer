@@ -1,4 +1,4 @@
-<!-- i18n: source=AGENTS.zh.md sha256=fd82bca13ed204218db770be978f483a857bede93a37aa0b117ef0fec4bdd11e -->
+<!-- i18n: source=AGENTS.zh.md sha256=387cd8327ef2dd5dcdb53e7ed83c186b4a4aeeba5ae4235e03e5dcff6c758ffc -->
 > **English** | [中文](AGENTS.zh.md)
 
 # auto-epublizer repository guide (for coding agents developing/maintaining this project)
@@ -57,9 +57,14 @@ shared pipeline:
   popup notes) is in [docs/epub-template-spec.md](docs/epub-template-spec.md); the
   post-processing acceptance and implementation plan (content provenance / media / TOC
   hierarchy) is in [docs/postprocessing-spec.md](docs/postprocessing-spec.md).
-- **License**: the project's own code is **AGPL-3.0**; third-party dependencies keep their
-  own licenses and are registered in `THIRD_PARTY_LICENSES.md` (AGPL dependencies may be
-  used directly, as they are compatible with the project license).
+- **License**: the project's own code is **AGPL-3.0-only** (source files carry SPDX headers
+  and a copyright line; `pyproject.toml`'s `license` is an SPDX expression); third-party
+  dependencies keep their own licenses and are registered in `THIRD_PARTY_LICENSES.md`
+  (AGPL dependencies may be used directly, as they are compatible with the project
+  license). **Origin is identifiable and nothing is tracked**: no
+  telemetry/heartbeat/deployment detection; workspace `meta.producer` + the
+  `run_initialized` event + the build-log attribution line make origin machine-decidable
+  (issue #40).
 
 ## Standard workflow for processing a work
 
@@ -289,7 +294,7 @@ address is **built into the software** (`auto_common.config.DEFAULT_KNOWLEDGE_RE
   (see "Standard workflow" 4.5 / 6.5).
 
 > License boundary: **knowledge store content = CC BY-SA 4.0**; **this project's code =
-> AGPL-3.0**. The two do not overlap.
+> AGPL-3.0-only**. The two do not overlap.
 
 **Preprocessing division of labour**: the `preprocess` command produces only zero-token
 facts (sniff/metadata/TOC/health/size); **approach decisions and layered understanding are

@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# Copyright (C) 2026 Misaka0x26FE
 """EPUB 读取器：按 OPF spine 切分单元，内联非线性 spine 项，清洗 pandoc 残留。
 
 背景（真书 dogfooding 发现，见 lessons/2026-09-11-epub-nonlinear-spine-tables.md）：

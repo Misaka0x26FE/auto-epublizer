@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# Copyright (C) 2026 Misaka0x26FE
 """长期多书工作根（work root）脚手架生成（issue #30 §1–§3）。
 
 agent 按模板一键生成标准长期工作区：复制仓库内 ``template/work-root/`` 骨架

@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# Copyright (C) 2026 Misaka0x26FE
 """术语表数据模型与三态生命周期。
 
 权威存储是 ``analysis/glossary.csv``（人类/agent 可读），冲突外置到

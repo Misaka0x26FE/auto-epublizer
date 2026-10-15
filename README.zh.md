@@ -157,5 +157,12 @@ PDF 解析难点与方案见 [docs/pdf-parsing.md](docs/pdf-parsing.zh.md)。
 
 ## 许可
 
-项目自身代码采用 **AGPL-3.0**；第三方依赖保留各自许可证并在
+项目自身代码采用 **AGPL-3.0-only**（SPDX 表达式；源码文件带
+`SPDX-License-Identifier: AGPL-3.0-only` 与版权行；分发元数据见 `pyproject.toml` 的
+`license`）；第三方依赖保留各自许可证并在
 [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md) 登记。
+
+**来源可识别、不追踪**：程序不含遥测/心跳/部署识别；工作区在 `publication.json`
+记录 `meta.producer`（如 `auto-epublizer@0.1.0`）并在 `events.jsonl` 的
+`run_initialized` 事件给出同一标识，`build` 日志固定带工具名 + 许可证 + 源码地址——
+第三方可据此指回源码，工具不做任何出网行为。（issue #40 §5）

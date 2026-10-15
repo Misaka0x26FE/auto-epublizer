@@ -624,6 +624,35 @@ tesseract/ocrmypdf/rapidocr，扫描 PDF 的离线 OCR 路由仅以合成样本/
 （``test_fake_ocr_backend``），真实扫描件的 OCR 质量未验；MinerU 走既有 mock 测试
 （``test_mineru``），未访问真实 API。
 
+### 批次 E2（#40 许可与署名 + CLI 契约）
+
+**#40 处理结果**（按「不加遥测、不改书稿版权」边界实施）：
+
+1. **§5.1 版权/SPDX 声明**（原 2/62 → 现 **65/65**）：`src/` 下全部 ``.py`` 带
+   ``SPDX-License-Identifier: AGPL-3.0-only`` + ``Copyright (C) 2026 Misaka0x26FE``；
+   ``pyproject.toml`` 的 ``license`` 改为 SPDX 表达式 ``AGPL-3.0-only``；离线打包实测
+   wheel METADATA 为 ``License-Expression: AGPL-3.0-only`` + ``License-File: LICENSE``
+   （PEP 639）；回归 ``tests/test_licensing.py`` 逐文件核对（含版权行）防回退。
+2. **§5.2 来源可识别（不追踪）**：``PublicationMeta.producer``（init 写入
+   ``auto-epublizer@<version>``）+ ``run_initialized`` 事件同一字段 + ``build`` 日志固定带
+   工具/许可证/源码地址；旧工作区（无该字段）照常解析（空串）。
+   **未做（明确保留）**：程序内不加遥测/心跳/部署识别（issue §3 结论）；成品内 about 页
+   仍未接线（``output.about_page`` 仍是保留项，配置文档已注明）——issue 允许「about 页或
+   build 日志」二选一，本批取 build 日志 + 工作区指纹路径。
+3. **条款论证**：issue §2 的「纯本地 CLI，AGPL §13 不触发（无服务端交互）」保留为设计
+   前提；本批不新增任何出网行为（``doctor --ping``/MinerU/知识库 push 仍由用户显式触发）。
+
+**e-contract（CLI 契约）**：修复 ``IngestError`` 由 ``RuntimeError`` 改为 ``ValueError``
+（与 ``InitError``/``SourceIdentityError`` 同口径）——此前 ``init <不支持的格式>`` 因 CLI
+只捕获 ``ValueError`` 而冒未捕获异常；现统一为中文提示 + 非零退出码（回归含「无 traceback」
+断言）。新增 ``tests/test_cli_contract.py`` 3 项：``next_tasks.done_when.cmd`` 必为已注册
+命令（含「notes register」组合形态；跨 4 个工作区状态）、可预期错误退出码与中文提示、长标题
+下 ``status --json`` 可解析且 ``notes``/``report`` 段齐备。
+
+**验证**：全量 **547 passed**（539→547）、``ruff`` 全绿；离线 ``uv build`` 成功（wheel+sdist）；
+README/AGENTS/development-plan/pdf-parsing 中英同步（i18n ``--check``/``--links`` OK）。
+
+
 
 
 

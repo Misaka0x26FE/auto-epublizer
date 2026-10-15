@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# Copyright (C) 2026 Misaka0x26FE
 """输入解析：把源文件归一化为 Document → Unit → Segment 结构。
 
 - 非 PDF 一律先走 pandoc → Markdown（纯文本）+ 抽取媒体；

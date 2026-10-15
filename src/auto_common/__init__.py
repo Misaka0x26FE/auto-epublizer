@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# Copyright (C) 2026 Misaka0x26FE
 """auto_common：基础设施包（EPUB 工作流的共同依赖）。
 
 包含：配置（config）、工作区管理（workspace）。

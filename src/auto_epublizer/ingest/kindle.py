@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# Copyright (C) 2026 Misaka0x26FE
 """Kindle 容器支持（``.azw3`` / ``.azw`` / ``.mobi``，issue #30 §4.1）。
 
 经 calibre 的 ``ebook-convert`` 转为临时 EPUB，再走既有 EPUB 读取链。转换器缺失或失败时

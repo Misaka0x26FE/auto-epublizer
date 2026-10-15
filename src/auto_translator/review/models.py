@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# Copyright (C) 2026 Misaka0x26FE
 """审校数据模型：Issue（G1 产出/G2 定谳）、Patch（G3 影子修订）、收敛判定。"""
 
 from __future__ import annotations

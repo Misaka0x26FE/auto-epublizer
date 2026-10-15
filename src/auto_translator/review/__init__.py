@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# Copyright (C) 2026 Misaka0x26FE
 """审校（QC G0–G3）：G0 零 token 校验 + agent 手写审校产物的 schema/常量契约。
 
 G1–G3 的语义审校由操作 CLI 的 agent 完成：agent 按 G0–G3 语义自行审校，

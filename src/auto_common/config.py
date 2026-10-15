@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# Copyright (C) 2026 Misaka0x26FE
 """pydantic 配置模型：对齐 docs/configuration.md 的目标 schema。
 
 唯一 LLM 原则：CLI 只做确定性、零 token 计算，配置中没有任何 LLM provider 段；

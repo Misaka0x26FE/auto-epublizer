@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# Copyright (C) 2026 Misaka0x26FE
 """环境与能力自检（doctor）：纯只读探测，不改任何状态。
 
 探测三件事，供 agent 在开工前判断能力边界与 ingest 路由：

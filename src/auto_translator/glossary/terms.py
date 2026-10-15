@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# Copyright (C) 2026 Misaka0x26FE
 """术语注入过滤与命中检查（纯函数）。
 
 - ``terms_in_text``：返回正文实际出现的术语子集（NFKC 归一化 + 词边界），用于批级注入。

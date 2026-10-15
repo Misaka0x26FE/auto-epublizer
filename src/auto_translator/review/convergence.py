@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# Copyright (C) 2026 Misaka0x26FE
 """G3 收敛状态机（纯逻辑，可测）。
 
 终态判定（对齐 docs/quality-control.md §5）：

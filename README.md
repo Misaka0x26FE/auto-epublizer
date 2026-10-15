@@ -1,4 +1,4 @@
-<!-- i18n: source=README.zh.md sha256=55a556cefd5fdc2516857da7c38f104eee3ce21d7a9d81e186453f33038aec2d -->
+<!-- i18n: source=README.zh.md sha256=fa73ee1f0fb694c5eead92b30bde3d8364256785cb31706395e1cbb1fbbed5c6 -->
 > **English** | [中文](README.zh.md)
 
 # auto-epublizer
@@ -179,5 +179,14 @@ AI-facing docs:
 
 ## License
 
-The project's own code is **AGPL-3.0**; third-party dependencies keep their own licenses
-and are registered in [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md).
+The project's own code is **AGPL-3.0-only** (SPDX expression; source files carry
+`SPDX-License-Identifier: AGPL-3.0-only` plus a copyright line; distribution metadata is
+in `pyproject.toml`'s `license`); third-party dependencies keep their own licenses and are
+registered in [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md).
+
+**Origin is identifiable; nothing is tracked**: the program contains no telemetry,
+heartbeat or deployment detection; a workspace records `meta.producer` (e.g.
+`auto-epublizer@0.1.0`) in `publication.json` and the same identifier in the
+`run_initialized` event of `events.jsonl`, and the `build` log always carries the tool
+name + license + source URL — so a third party can point back at the source, while the
+tool itself never makes an outbound call for this. (issue #40 §5)

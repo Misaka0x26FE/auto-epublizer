@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# Copyright (C) 2026 Misaka0x26FE
 """核心数据结构：Document → Unit → Segment。
 
 Segment 是最小可对齐 / 可回填的翻译单元（通常一个段落或一个标题）；

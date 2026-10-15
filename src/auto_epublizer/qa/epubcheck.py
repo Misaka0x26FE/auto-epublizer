@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# Copyright (C) 2026 Misaka0x26FE
 """epubcheck 集成：本地 jar 校验，零 error 放行（测试中跳过）。"""
 
 from __future__ import annotations

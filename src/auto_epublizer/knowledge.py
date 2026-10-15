@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# Copyright (C) 2026 Misaka0x26FE
 """统一术语库/知识库编排：持久化目录解析 + git 持续维护 + 命令实现。
 
 - 目录解析优先级：``--dir`` > 环境变量 ``AUTO_EPUBLIZER_HOME`` > 配置

@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# Copyright (C) 2026 Misaka0x26FE
 """PDF 读取器：pymupdf 按页切片抽文字层 + 版面块 → 逐页落 structured/raw/。
 
 每页独立处理、独立落盘、可单独重跑（断点续跑粒度 = 页）；页级结果保留坐标与

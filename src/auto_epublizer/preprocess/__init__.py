@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# Copyright (C) 2026 Misaka0x26FE
 """预处理（确定性事实层）：嗅探 + 元数据 + TOC + 体检 + 规模 → preprocessing/facts.*。
 
 预处理是 agent 任务：本包只产出零 token 事实（facts.json/facts.md，含 agent 待办），

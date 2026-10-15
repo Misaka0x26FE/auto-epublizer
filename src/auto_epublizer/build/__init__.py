@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# Copyright (C) 2026 Misaka0x26FE
 """EPUB 3 打包：把结构化单元 XHTML + 媒体资源封装为确定性标准 EPUB。
 
 - 纯 Python 直写 zip（mimetype 首位未压缩），不依赖 pandoc/calibre。

@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# Copyright (C) 2026 Misaka0x26FE
 """pandoc 统一处理非 PDF 格式（HTML / DOCX / EPUB）→ Markdown 纯文本 + 媒体抽取。"""
 
 from __future__ import annotations

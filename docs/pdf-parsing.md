@@ -1,4 +1,4 @@
-<!-- i18n: source=pdf-parsing.zh.md sha256=8aba86a33a6f733a25d8f7fe05bfedbcf819554fcb6b42a98d42a25bd0fd63f1 -->
+<!-- i18n: source=pdf-parsing.zh.md sha256=4bc1ca08fe8903c51641557b01e64afffecc45954a1e82d7b367d9f848636c2c -->
 > **English** | [中文](pdf-parsing.zh.md)
 
 # PDF Parsing and EPUB Conversion Plan
@@ -62,7 +62,7 @@ Ten major difficulties ordered by severity:
 
 ## 4. License Constraints
 
-This project's own code uses **AGPL-3.0**; third-party dependencies retain their own licenses and are registered in `THIRD_PARTY_LICENSES.md`.
+This project's own code uses **AGPL-3.0-only**; third-party dependencies retain their own licenses and are registered in `THIRD_PARTY_LICENSES.md`.
 Because the project is AGPL, **AGPL dependencies may be used directly** (same-license compatible), with no need for process isolation as in MIT projects:
 
 | Library | License | Conclusion |

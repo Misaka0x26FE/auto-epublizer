@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# Copyright (C) 2026 Misaka0x26FE
 """报告失效证据链（B2）：产物摘要与「旧报告不再代表当前产物」的判定。
 
 ``report.json`` 记录生成时刻的 ``artifacts_digest``（源哈希 + 每单元
