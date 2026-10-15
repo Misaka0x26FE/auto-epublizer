@@ -684,6 +684,45 @@ preprocess 拥有产物契约读取且错误按 ``ValueError`` 口径）+ 单元
 traceback（与迁移前同文案）；``orch.read_catalog is preprocess.artifacts.read_catalog``；
 ``docs/semantic-repair`` 中英同步（i18n OK）。
 
+### 批次 F（测试质量与风险覆盖）
+
+**f-regressions（每个修复批次的失败回归 + 前后证据）**：
+
+| 批次 | 回归（用例） | 修复前证据 |
+|---|---|---|
+| E-1（#33/#35/#36） | BOM 容忍 / `--terms` 缺失写回前失败 / 空结果可见 / 冲突新增与待裁决分离 / 工具树跳过 / ledger 单行 | 回退 `src/` → 6 failed |
+| B-1（#39/#34/#38） | 长度比短源保护与阈值覆盖 / 注码上标形态与负对照 / 差集 advisory / 布局候选正例与合法负对照 | 回退 `src/` → 6 failed |
+| N（#37/#34） | `tests/test_notes.py` 28 项（登记门/导入门/成品门/失效链/跨文件/一注多引/部分遗漏/等量错配/多段/媒体） | 篡改成品 → `notes_open` 精准定位（smoke） |
+| A（状态安全） | `tests/test_state_safety.py` 7 项（失败保旧值/并发不共享 tmp/中断恢复/源字节不变/幂等计数/身份拒绝） | 回退 `store.py` → 2 failed |
+| B2（放行真值表） | `tests/test_release_truth_table.py` 15 项（含 6 个独立破坏场景与 ZIP 独立核对） | 三处缺陷先复现（forward advisory 误升硬门/空对照表跳过/无指纹当当前证据） |
+| D（输入边界） | `tests/test_ingest_boundary.py` 8 项（越界四形态/符号链接/守恒/坏文件与缺工具） | 回退两文件 → 3 failed（含成品出现 `OEBPS/media/../../…`） |
+| E2（#40/契约） | `tests/test_licensing.py` 5 项 + `tests/test_cli_contract.py` 3 项 | init 不支持格式冒 traceback（修复前） |
+| C（架构） | 架构 2 项 + 扩展 1 项；单元 2 项 | 行为保持：551 passed + 真实 CLI 同文案 smoke |
+
+**f-audit（mock 面与真实覆盖核实）**：
+
+- mock/monkeypatch 共 60 处 / 8 文件，逐文件核对**全部**用于外部边界或故障注入
+  （epubcheck jar、MinerU HTTP、calibre/kindle、git、pandoc 可用性、原子写故障注入、体积
+  阈值注入），无用 mock 替代内部业务逻辑；`match=` 断言 11 处均为契约消息（错误分类/行号/
+  API key 提示），非纯措辞测试——**未删除任何用例**（无「只固定措辞/实现细节」的无效测试）。
+- 「真实 CLI review 登记」：原仅领域层覆盖（`test_import::test_import_reviewed_marks_aligned_units`）；
+  新增 `tests/test_external_tools.py::test_real_cli_import_reviewed_registers_reviewed_state`
+  走真实 CLI（`import` → `import --reviewed` → `status --json`），并把文档化的「两步登记」
+  契约固定进断言（防静默改变语义）。
+- 「工具执行覆盖」：原 `run_epubcheck` 仅有「缺 jar」路径与 stub（密闭策略）；新增
+  `test_real_epubcheck_executes_and_clean_product_releases`（java + jar 可用时**真实执行**，
+  断言 `ran=True`、零 error、`released=True(ok)`；不可用则 skip 并给出原因）。本机真实执行通过。
+
+**f-report（skip 与外部工具缺口，单独列出）**：
+
+- 条件 skip（工具存在即运行）：pandoc 门控 3 项（`test_epub_reader` 2 + `test_ingest_boundary` 1）、
+  epubcheck 门控 1 项（`test_external_tools`）。
+- 本机缺口：tesseract / ocrmypdf / rapidocr-onnxruntime 未安装，MinerU 无 key —— 扫描 PDF 的
+  离线 OCR 只经 `FakeOcrBackend` 覆盖（`pdf.ocr` 路由有用例），**真实扫描件的 OCR 质量未验证**；
+  MinerU 仅 mock 覆盖、未访问真实 API（`doctor --ping` 未启用网络探测）。
+- 全量用例离线可跑（`uv run --offline pytest`）；F 组新增 2 项后全量 **553 passed**（551→553）。
+
+
 
 
 
