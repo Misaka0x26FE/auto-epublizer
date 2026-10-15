@@ -82,18 +82,42 @@ def artifacts_digest(store: Any, *, epub_path: str | Path | None = None) -> str:
             if path is not None and path.is_file():
                 h.update(_file_sha256(path).encode())
             h.update(b"\n")
+    # 放行硬门输入（F2）：注释契约、源盘点/整备、术语表与冲突账本——
+    # 漏一项就会出现「摘要未变但重跑 qa 变 released=False」的假有效报告。
     for extra in (
         "structured/notes.json",
         "translation/notes.json",
         "preprocessing/catalog.csv",
         "preprocessing/repairs.jsonl",
         "preprocessing/facts.json",
+        "analysis/glossary.csv",
+        "analysis/glossary_conflicts.jsonl",
     ):
         path = store.dir / extra
         h.update(f"{extra}:".encode())
         if path.is_file():
             h.update(_file_sha256(path).encode())
         h.update(b"\n")
+    # 注释登记绑定状态（登记摘要决定成品注释门与译注要求，F2）
+    h.update(b"notes_summary:")
+    h.update(json.dumps(getattr(pub, "notes", None), ensure_ascii=False, sort_keys=True).encode())
+    h.update(b"\n")
+    # inserts：单文件内容 + 引用资源存在性（E_INSERT_MISSING_FILE 的真实输入，F2）
+    inserts_dir = store.structured_dir / "raw" / "inserts"
+    if inserts_dir.is_dir():
+        raw_dir = store.structured_dir / "raw"
+        for ins in sorted(inserts_dir.glob("*.json")):
+            h.update(f"insert:{ins.name}:".encode())
+            h.update(_file_sha256(ins).encode())
+            try:
+                record = json.loads(ins.read_text(encoding="utf-8"))
+                ref = str((record or {}).get("file") or "")
+            except (OSError, json.JSONDecodeError):
+                ref = ""
+            if ref:
+                exists = (raw_dir / ref).is_file()
+                h.update(b":file:" + (b"1" if exists else b"0"))
+            h.update(b"\n")
     review_path = latest_review_result_path(store)
     h.update(b"review:")
     if review_path is not None:

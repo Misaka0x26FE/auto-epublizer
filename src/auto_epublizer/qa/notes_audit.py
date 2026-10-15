@@ -22,6 +22,7 @@ import zipfile
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
+from urllib.parse import unquote
 
 _TAG_RE = re.compile(r"<[^>]+>")
 _ANCHOR_RE = re.compile(r"<a\b[^>]*>", re.IGNORECASE)
@@ -52,6 +53,7 @@ def _norm_md(md: str) -> str:
     text = re.sub(r"(?m)^#{1,6}\s+", "", text)  # 标题标记
     text = re.sub(r"[*_`]+", "", text)
     text = re.sub(r"!\[[^\]]*\]\([^)]*\)", "", text)  # 图片留空
+    text = _IMG_RE.sub("", text)  # HTML 图片同样留空（媒体由专用核对负责）
     text = re.sub(r"\[([^\]]*)\]\([^)]*\)", r"\1", text)  # 链接留标签
     return re.sub(r"\s+", "", text)
 
@@ -67,17 +69,27 @@ _MD_IMG_RE = re.compile(r"!\[[^\]]*\]\(\s*<?([^)>\s]+)>?[^)]*\)")
 
 
 def _norm_media_ref(ref: str) -> str:
-    """媒体引用规范形（用于注文图片核对）：去查询/片段、OEBPS/ 与 raw/ 前缀。"""
-    r = (ref or "").strip().split("?", 1)[0].split("#", 1)[0].lstrip("./")
+    """媒体引用规范形：URI 解码 + 去查询/片段 + 去 `./`/`OEBPS/`/`raw/` 前缀。
+
+    源引用（markdown）、渲染 URL（HTML ``src``，可能 URI 转义）与包内成员名属于
+    不同表示域；此处统一到**成员身份域**（F5），并保留完整目录身份——不以 basename
+    补偿路径差异（F4：同名不同目录是两张图）。
+    """
+    r = unquote((ref or "").strip().split("?", 1)[0].split("#", 1)[0])
+    r = r.lstrip("./")
     if r.startswith("OEBPS/"):
         r = r[len("OEBPS/") :]
     if r.startswith("raw/media/"):
+        r = "media/" + r[len("raw/media/") :]
+    elif r.startswith("raw/"):
         r = r[len("raw/") :]
     return r
 
 
 def _md_media_refs(md: str) -> set[str]:
-    return {_norm_media_ref(m.group(1)) for m in _MD_IMG_RE.finditer(md or "")}
+    out = {_norm_media_ref(m.group(1)) for m in _MD_IMG_RE.finditer(md or "")}
+    out |= {r for r in _aside_media_refs(md or "") if r}  # markdown 内嵌 HTML <img>
+    return {r for r in out if r}
 
 
 def _aside_media_refs(html: str) -> set[str]:
@@ -257,13 +269,12 @@ def audit_notes_epub(
         want_media = _md_media_refs(expected_md)
         have_media = _aside_media_refs(aside[1])
         if want_media and not want_media <= have_media:
-            missing_refs = sorted(want_media - have_media)
-            if not {Path(x).name for x in want_media} <= {Path(x).name for x in have_media}:
-                result.add(
-                    "E_NOTES_MEDIA_MISSING",
-                    f"注文 {nid} 的图片未渲染进 aside：{'、'.join(missing_refs[:4])}",
-                    missing=nid,
-                )
+            # F4：完整资源身份；同名不同目录不得互相冒充
+            result.add(
+                "E_NOTES_MEDIA_MISSING",
+                f"注文 {nid} 的图片未渲染进 aside：{'、'.join(sorted(want_media - have_media)[:4])}",
+                missing=nid,
+            )
         for ref in sorted(have_media):
             if f"OEBPS/{ref}" not in all_names:
                 result.add(
