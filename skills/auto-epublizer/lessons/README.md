@@ -1,4 +1,4 @@
-<!-- i18n: source=README.zh.md sha256=8124b22066a33407f83d64cc44e948b0e20a84c405705cd7dd8f5a45bb5869fc -->
+<!-- i18n: source=README.zh.md sha256=bc14519d2ba906b4203d7acc38dec30522785543580e176060e5c69f8ef696e6 -->
 > **English** | [中文](README.zh.md)
 
 # Lessons (distilled field experience)
@@ -42,6 +42,8 @@ downstream agents to directly consult and handle when they encounter the same ty
 | [2026-09-11-epub-nonlinear-spine-tables.md](2026-09-11-epub-nonlinear-spine-tables.md) | EPUB nonlinear spine items (tables) skipped by pandoc + heading anchor leftovers + frontmatter fragmentation → split by OPF spine and inline nonlinear items | fixed (ingest/epub_reader.py + test_epub_reader.py) |
 | [2026-09-12-epub-internal-links-anchors.md](2026-09-12-epub-internal-links-anchors.md) | EPUB internal links/page anchors/heading id carrying pandoc source-file prefixes → rewrite by spine mapping to finished-product units (cross-unit links / same-unit pure anchors) | fixed (structure/links.py + build/html.py + ingest/epub_reader.py) |
 | [2026-09-13-delivery-integrity.md](2026-09-13-delivery-integrity.md) | Tool QA all passes yet 38/72 images missing (translated body loses image paragraphs, conservation only checks align) → delivery audit independent reconciliation + rebuild with align + full re-verification | landed (qa/provenance.py reconciliation automation + references/delivery.md mandatory checklist) |
+| [2026-10-15-media-ref-containment.md](2026-10-15-media-ref-containment.md) | Escaping media references (`../`/absolute/outward symlink) get read into the product: containment check + dropped trace + `E_MEDIA_EPUB_LOST` block | fixed (build/collect_media + qa/provenance + tests/test_ingest_boundary.py) |
+| [2026-10-15-epub-source-media-normalization.md](2026-10-15-epub-source-media-normalization.md) | EPUB sources with absolute media paths: machine paths leak into artifacts, nested illustrations lost from the product → `read_epub` now normalises media references | fixed (ingest/epub_reader.py + tests/test_ingest_boundary.py) |
 
 ## Source and destination (how experience gets here)
 
@@ -52,6 +54,9 @@ downstream agents to directly consult and handle when they encounter the same ty
 - **Real-book dogfooding** (2026-09-04): the verification record in §6 of the plan
   `docs/plans/2026-09-04-pdf-dogfooding.md` is the experience source, deposited in this entry as a
   lesson; the plan document retains the verification context.
+- **Full-project review** (2026-10-14/15, `docs/plans/2026-10-14-review-and-repair.md`): the group D
+  media-boundary fixes were reproduced with minimal bad files/synthetic EPUBs and verified by
+  regressions; the two `2026-10-15-*` entries come from that record (plan §7 keeps the context).
 - **Main-repo fix status**: each entry's "Status" column marks whether it is fixed (`已修复` + commit
   hash); the unfixed ones (e.g. fenced code blocks) are clear follow-up development gaps.
 

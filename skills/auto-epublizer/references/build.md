@@ -1,4 +1,4 @@
-<!-- i18n: source=build.zh.md sha256=c2b4c41846ad303e6343bbf40035cdc07ded7c1513edc4b814c7ee96942e9a64 -->
+<!-- i18n: source=build.zh.md sha256=32717969eda5854f39c9ba7b814e67dc94b0abf6c9f3e378ae5a4a0588ab57bd -->
 > **English** | [中文](build.zh.md)
 
 # Build (EPUB packaging)
@@ -43,6 +43,15 @@ DC metadata comes from `publication.json.meta`: `dc:title`, `dc:creator`, `dc:la
 
 ## Notes
 
+- **Media reference boundary** (2026-10, group D fix): the build only collects media that
+  resolves **inside** `structured/raw/media/` (after following symlinks); `../…`, absolute
+  paths and symlinks pointing outside the workspace are **refused** and recorded in the
+  `media_dropped` event of `events.jsonl`, then blocked from release by provenance
+  `E_MEDIA_EPUB_LOST` (media are never dropped silently).
+- **Build-log attribution** (issue #40; no outbound calls): the `EPUB 已生成` line always
+  carries the tool name + version + license + source URL, and the workspace
+  `meta.producer` plus the `run_initialized` event expose the same identifier so origin is
+  machine-decidable.
 - **Theme** (`--theme` / `config.output.theme`): `standard` (serif + 1.7 line spacing + indent + justified + centered headings,
   default) / `compact` (sans-serif + 1.4 + no indent) / `spacious` (serif + 2.0). Only controls typographic fine-tuning;
   no specific font names/colors/font sizes (audit blocks them: `E_THEME_FONT`/`E_THEME_COLOR`).

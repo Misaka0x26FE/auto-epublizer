@@ -1,4 +1,4 @@
-<!-- i18n: source=postprocessing-spec.zh.md sha256=d9bbf13c5d2b2c5bfd68a554acf3a79235bdcfe437006bec71fe26f65a6ccfae -->
+<!-- i18n: source=postprocessing-spec.zh.md sha256=1e86f940eddb86041695c0b04f3c7728e85bb1072f6fceee502559d9d72efcad -->
 > **English** | [中文](postprocessing-spec.zh.md)
 
 # Post-Processing Spec: Acceptance and Implementation of Content Integrity / Media / EPUB Structure
@@ -195,6 +195,13 @@ On top of the existing G5 release conditions (`g2_confirmed==0 or all revised` +
 - finished-product presentation reconciliation zeroed (delivery audit S1): `align_md_drift == 0`, `epub_media_missing == 0`,
   `epub_footnotes_missing == 0`, `epub_coverage ≈ 1.0` (md↔align consistent, product actual content
   reconciled against build input with no missing); build-time media drops are written to an `events.jsonl` `media_dropped` event for tracing
+  (**escaping references** — `../`, absolute paths, symlinks pointing outside the workspace — are
+  refused and traced, never dropped silently, and then block release via `E_MEDIA_EPUB_LOST`)
+- `catalog_unresolved_open == 0` (open source-inventory items when `catalog.csv` exists)
+- **Books with notes: the product note gate** (independently parses the final XHTML; zero violations
+  of noteref/footnote/cross-file backlinks/numbering, empty `notes_findings` and zero `notes_missing`,
+  otherwise `released_reason=notes_open` blocks; implementation in `qa/notes_audit.py`, contract in
+  `references/notes.md`)
 
 > Implementation see `qa/report.py::generate_report` (`prov_ok` aggregate determination + `released_reason` breakdown).
 - Insert content files zero missing (`inserts_missing_files == 0`, pdf-content-spec §9:

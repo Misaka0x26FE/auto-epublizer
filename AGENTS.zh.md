@@ -278,6 +278,9 @@ CLI → Orchestrator（薄 façade）→ 领域服务 → glossary / align / g0 
 - `auto_translator` 只依赖 `auto_common`，不得依赖 `auto_epublizer`。
 - `orchestrator.py` 只装配与路由，不直接调用领域函数，不持有线程池。
 - 下层不得反向导入 orchestrator。
+- 共享数据模型归 `models` 模块（如 `auto_translator.review.models.G0Flag`）；**模块级导入图必须无环**（`test_no_module_level_import_cycles` 固定），互相引用的实现走函数内延迟导入。
+- 预处理产物的 schema 契约读取归 `preprocess/`（`preprocessing/catalog.csv`、`repairs.jsonl` → `preprocess/artifacts.py`；契约错误为 `ArtifactContractError(ValueError)`）。
+- 用户可预期输入错误须为 `ValueError` 子类（`InitError`/`SourceIdentityError`/`IngestError`/`ArtifactContractError`），CLI 统一转中文提示 + 非零退出码，不冒 traceback。
 - 全库不得有任何 LLM 模块/调用（唯一 LLM 原则，由架构边界测试强制）。
 - 并发属于具体领域服务；结果必须按稳定原文序合并，不得让线程完成顺序改变输出。
 - 第三方依赖保留各自许可证并在 `THIRD_PARTY_LICENSES.md` 登记；AGPL 依赖可直接引入（项目自身为 AGPL）。

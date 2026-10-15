@@ -1,4 +1,4 @@
-<!-- i18n: source=README.zh.md sha256=b50fc172ebf6c61d7f7baebe17c37823edceb0f7372f4c7ad02dcd5878151692 -->
+<!-- i18n: source=README.zh.md sha256=08ddfad50ad89f353b6a6332a373209c870cd1f944bdf408aa1b979efd743f61 -->
 > **English** | [中文](README.zh.md)
 
 # Task cards (weak-model path)
@@ -19,6 +19,7 @@ work from the machine pointer returned by `status --json`.
 | `translate` | [translate-unit.md](translate-unit.md) |
 | `import` | [import-unit.md](import-unit.md) |
 | `review` | [review-unit.md](review-unit.md) |
+| `notes_verify` / `notes_register` | [notes.md](notes.md) |
 | `build` / `qa` / `delivery` | [build-qa-delivery.md](build-qa-delivery.md) |
 
 Each card is self-contained (one screen): restate the scene → action → done-when → failure
