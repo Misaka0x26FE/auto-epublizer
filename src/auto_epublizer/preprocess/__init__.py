@@ -8,7 +8,17 @@
 
 from __future__ import annotations
 
+from .artifacts import ArtifactContractError, read_catalog, read_repairs
 from .facts import collect_facts, render_facts_md, write_facts
 from .sniff import SniffError, sniff
 
-__all__ = ["SniffError", "collect_facts", "render_facts_md", "sniff", "write_facts"]
+__all__ = [
+    "ArtifactContractError",
+    "SniffError",
+    "collect_facts",
+    "read_catalog",
+    "read_repairs",
+    "render_facts_md",
+    "sniff",
+    "write_facts",
+]

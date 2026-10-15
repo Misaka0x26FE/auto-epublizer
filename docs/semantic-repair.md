@@ -1,4 +1,4 @@
-<!-- i18n: source=semantic-repair.zh.md sha256=b5135038bc259dc1efeb10881349c4bf4bd8ac42566d41dde8c8e006e62faa0b -->
+<!-- i18n: source=semantic-repair.zh.md sha256=e107878a8edf69db0078e2d16611e8d78239c39357ebb72aead7c67504d07920 -->
 > **English** | [中文](semantic-repair.zh.md)
 
 # Semantic Repair (Agent semantic task)
@@ -116,8 +116,11 @@ appends a "semantic repair" item.
 pages?, count?, summary, method?, evidence?, status}`; `status ∈ done|unresolved`; `unit`
 must exist, the `kind` enum is in `references/repair.md`, `summary` is non-empty, `evidence`
 is a workspace-relative path and must exist (to prevent fabrication). CLI validation
-(`orchestrator.read_repairs`, no breakage when the file does not exist; invalid →
-`OrchestrationError` with a line number); `unresolved` goes into `report.json`
+(`preprocess/artifacts.py::read_repairs`, re-exported as `orchestrator.read_repairs`; no
+breakage when the file does not exist; invalid → `ArtifactContractError` with a line number;
+since group C the contract is owned by the preprocessing layer and the error follows the
+`ValueError` convention, so the CLI renders it as a Chinese message); `unresolved` goes into
+`report.json`
 (`repairs_total`/`repairs_unresolved`) and triggers a `W_REPAIR_UNRESOLVED` hint
 (W level, does not block release). A row whose unit was removed by a structure rebuild is
 **kept and flagged** (`W_REPAIR_STALE_UNIT`), never an error (issue #23).

@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 from auto_translator.analysis import detect_genre, detect_language
+from auto_translator.analysis.detect import detect_source_language
 from auto_translator.analysis.service import render_style_md
 from auto_translator.genre.langprofile import get_langprofile
 from auto_translator.genre.profiles import get_profile
@@ -17,6 +18,15 @@ def test_detect_language() -> None:
     assert detect_language("こんにちは世界、これは日本語です") == "ja"
     assert detect_language("Привет мир") == "ru"
     assert detect_language("안녕하세요") == "ko"
+
+
+def test_detect_source_language_policy() -> None:
+    """C 组迁入的判定策略：空样本/无拉丁字母 → und，其余沿用 detect_language。"""
+    assert detect_source_language("") == "und"
+    assert detect_source_language("   \n") == "und"
+    assert detect_source_language("12345 67890") == "und"  # 判 en 但无拉丁字母 → 诚实 und
+    assert detect_source_language("Hello world") == "en"
+    assert detect_source_language("你好，世界") == "zh"
 
 
 def test_detect_genre() -> None:

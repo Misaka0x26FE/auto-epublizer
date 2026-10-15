@@ -8,6 +8,7 @@ from pathlib import Path
 import pytest
 
 from auto_epublizer import orchestrator as orch
+from auto_epublizer.preprocess.artifacts import ArtifactContractError
 from auto_translator.translation.align import write_align
 
 
@@ -105,7 +106,7 @@ def test_read_repairs_missing_unit_marked_not_raised(tmp_path: Path) -> None:
 def test_read_repairs_contract_errors(tmp_path: Path, row: dict, fragment: str) -> None:
     store = _workspace(tmp_path)
     _write_repairs(store, [row])
-    with pytest.raises(orch.OrchestrationError) as e:
+    with pytest.raises(ArtifactContractError) as e:
         orch.read_repairs(store)
     assert fragment in str(e.value) and "第 1 行" in str(e.value)
 
@@ -116,7 +117,7 @@ def test_read_repairs_bad_json_line(tmp_path: Path) -> None:
     p.parent.mkdir(parents=True, exist_ok=True)
     valid = '{"unit": "ch01", "kind": "other", "summary": "x", "status": "done"}'
     p.write_text(f"{valid}\nnot-json\n", encoding="utf-8")
-    with pytest.raises(orch.OrchestrationError) as e:
+    with pytest.raises(ArtifactContractError) as e:
         orch.read_repairs(store)
     assert "第 2 行" in str(e.value)
 

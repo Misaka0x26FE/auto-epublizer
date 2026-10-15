@@ -102,8 +102,10 @@ facts 可疑信号（每单元）   →     读 raw 证据（页图/页 JSON/   
 `preprocessing/repairs.jsonl`（agent 手写，操作级）：`{unit, kind, pages?, count?,
 summary, method?, evidence?, status}`；`status ∈ done|unresolved`；`unit` 必须存在、
 `kind` 枚举见 `references/repair.md`、`summary` 非空、`evidence` 为工作区相对路径
-且必须存在（防杜撰）。CLI 校验（`orchestrator.read_repairs`，文件不存在零破坏；
-非法 → `OrchestrationError` 带行号）；`unresolved` 进 `report.json`
+且必须存在（防杜撰）。CLI 校验（`preprocess/artifacts.py::read_repairs`，经
+`orchestrator.read_repairs` 重导出；文件不存在零破坏；非法 → `ArtifactContractError`
+带行号；C 组起契约归预处理层拥有，错误按 `ValueError` 口径由 CLI 转中文提示）；
+`unresolved` 进 `report.json`
 （`repairs_total`/`repairs_unresolved`）并触发 `W_REPAIR_UNRESOLVED` 提示
 （W 级，不阻断放行）。行引用的单元若已被结构重建删除，则**保留并标记**
 （`W_REPAIR_STALE_UNIT`），绝不报错（issue #23）。

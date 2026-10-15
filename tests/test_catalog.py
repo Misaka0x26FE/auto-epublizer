@@ -7,6 +7,7 @@ from pathlib import Path
 import pytest
 
 from auto_epublizer import orchestrator as orch
+from auto_epublizer.preprocess.artifacts import ArtifactContractError
 
 
 def _workspace(tmp_path: Path):
@@ -45,17 +46,17 @@ def test_read_catalog_valid_and_contract_errors(tmp_path: Path) -> None:
 
     # kind 非法
     _write_catalog(store, ["X,badkind,included,p1,ch01,"])
-    with pytest.raises(orch.OrchestrationError, match="kind 非法"):
+    with pytest.raises(ArtifactContractError, match="kind 非法"):
         orch.read_catalog(store)
 
     # included 缺 unit_id
     _write_catalog(store, ["X,toc,included,p1,,"])
-    with pytest.raises(orch.OrchestrationError, match="unit_id"):
+    with pytest.raises(ArtifactContractError, match="unit_id"):
         orch.read_catalog(store)
 
     # excluded 缺理由
     _write_catalog(store, ["X,toc,excluded,p1,,"])
-    with pytest.raises(orch.OrchestrationError, match="理由"):
+    with pytest.raises(ArtifactContractError, match="理由"):
         orch.read_catalog(store)
 
 
@@ -126,7 +127,7 @@ def test_read_catalog_absent_status(tmp_path: Path) -> None:
 
     # absent 必填依据
     _write_catalog(store, ["Ghost figure,figure,absent,,,"])
-    with pytest.raises(orch.OrchestrationError, match="note"):
+    with pytest.raises(ArtifactContractError, match="note"):
         orch.read_catalog(store)
 
 
