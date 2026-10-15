@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# Copyright (C) 2026 Misaka0x26FE
 """typer CLI 命令入口：init/convert/status/build/qa/preprocess/doctor/import/g0/version。"""
 
 from __future__ import annotations
@@ -352,7 +354,12 @@ def build(
         console.print(
             f"[yellow]⚠ {len(missing)} 个单元缺译文，已按源文打包（状态未推进 built）：{shown}[/yellow]"
         )
-    console.print(f"[green]EPUB 已生成：[/green]{out}")
+    # 来源可识别（#40 §5.2）：build 日志固定带工具与许可证行（不出网、不做部署识别）
+    console.print(
+        f"[green]EPUB 已生成：[/green]{out}"
+        f"[dim]（auto-epublizer {__version__}，AGPL-3.0-only；"
+        f"https://github.com/Misaka0x26FE/auto-epublizer）[/dim]"
+    )
 
 
 @app.command()

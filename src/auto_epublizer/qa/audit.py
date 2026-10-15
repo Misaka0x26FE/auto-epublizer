@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# Copyright (C) 2026 Misaka0x26FE
 """EPUB 解包逐项审计：结构性检查（零 token、离线）。"""
 
 from __future__ import annotations

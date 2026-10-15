@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# Copyright (C) 2026 Misaka0x26FE
 """四层结构归类与清洗纯函数。
 
 - classify_units：把归一化单元映射到 frontmatter/body/backmatter 与稳定 ID；

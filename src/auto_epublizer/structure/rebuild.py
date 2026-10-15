@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# Copyright (C) 2026 Misaka0x26FE
 """结构重建编排：把归一化单元清洗、归类并落盘到 structured/。"""
 
 from __future__ import annotations

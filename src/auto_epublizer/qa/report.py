@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# Copyright (C) 2026 Misaka0x26FE
 """QA 报告汇总：G5 交付验收 = G0 静态告警 + G1–G3 审校结果 + G4 结构审计 → report.json。"""
 
 from __future__ import annotations

@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# Copyright (C) 2026 Misaka0x26FE
 """多栏阅读顺序重排（纯函数，确定性）。
 
 规则（docs/pdf-content-spec.md §6）：

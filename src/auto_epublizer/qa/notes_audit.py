@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# Copyright (C) 2026 Misaka0x26FE
 """成品注释门（N5）：独立解析最终 EPUB 的 XHTML，与已登记注释逐条对账。
 
 **独立性**：本模块不使用构建渲染函数重建期望，也不读构建中间态——只读成品 XML +

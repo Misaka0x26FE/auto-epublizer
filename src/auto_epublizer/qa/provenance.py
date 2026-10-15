@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# Copyright (C) 2026 Misaka0x26FE
 """后处理溯源审计（零 token、离线、确定性）。
 
 postprocessing-spec §2/§3 的实现，四类检查全部只出信号不出裁决：

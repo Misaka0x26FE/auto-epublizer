@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# Copyright (C) 2026 Misaka0x26FE
 """EPUB 内部链接 / 锚点重写：把 pandoc 产出的源文件引用映射到成品单元文件。
 
 背景

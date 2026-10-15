@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# Copyright (C) 2026 Misaka0x26FE
 """按扩展名分发到对应读取器，并把归一化结果落到工作区 structured/raw/。"""
 
 from __future__ import annotations
@@ -16,7 +18,14 @@ from .pdf_reader import PdfError, read_pdf
 from .text_reader import read_text
 
 
-class IngestError(RuntimeError):
+class IngestError(ValueError):
+    """源文件/输入问题（可预期用户错误）。
+
+    继承 ``ValueError`` 而非 ``RuntimeError``：与 ``InitError``/``SourceIdentityError``
+    同口径，使 CLI 的 ``except (ValueError, OSError, …)`` 统一转成中文提示 + 非零退出码
+    （E2 契约：不支持格式等用户可预期错误不得冒 traceback）。
+    """
+
     """用户可见的输入处理错误。"""
 
 

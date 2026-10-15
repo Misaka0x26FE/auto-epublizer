@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# Copyright (C) 2026 Misaka0x26FE
 """文体档案（声明式数据）：按 genre 键加载，新增体裁不改代码。
 
 文体档案决定分析维度、术语类型白名单、翻译指引、审校侧重与辅文侧重；

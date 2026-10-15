@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# Copyright (C) 2026 Misaka0x26FE
 """QA：解包逐项审计 + epubcheck 集成 + 质量报告。
 
 - 解包逐项审计：mimetype 首位未压缩、container 指向 OPF、manifest/spine 一致、

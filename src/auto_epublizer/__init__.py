@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# Copyright (C) 2026 Misaka0x26FE
 """auto-epublizer：翻译 + 转 EPUB 的 Python CLI（转 EPUB + 编排层）。
 
 三包结构（monorepo）：``auto_common``（基础设施）← ``auto_translator``（翻译引擎）

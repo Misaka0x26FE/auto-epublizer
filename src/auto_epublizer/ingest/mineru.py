@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# Copyright (C) 2026 Misaka0x26FE
 """MinerU 外部解析 API 后端（确定性外部解析服务，非 LLM）。
 
 扫描件 PDF 的**最优先**解析方案：MinerU 做版面分析 + OCR，能识别换行/段落/

@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# Copyright (C) 2026 Misaka0x26FE
 """工作区权威数据模型：publication.json 的 schema。
 
 publication.json 是初始化成功的最终标志与唯一真相：DC 元数据 + 配置快照 + 内容树
@@ -70,6 +72,9 @@ class PublicationMeta(BaseModel):
     genre: str | None = None  # 体裁（文体档案由 agent 依据源文自行判定并在 style.md 声明）
     publisher: str | None = None
     date: str | None = None
+    # 来源可识别（#40 §5.2）：工具身份固定写入（如 auto-epublizer@0.1.0）——
+    # 机器可判定「这份工作区是否由本工具产出」，不做任何出网/遥测
+    producer: str = ""
     identifier: Identifier = Field(default_factory=Identifier)
     source: str = ""  # 相对 source/ 的主文件路径
     source_sha256: str = ""  # 源内容身份（64 位十六进制）

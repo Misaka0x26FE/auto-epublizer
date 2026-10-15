@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# Copyright (C) 2026 Misaka0x26FE
 """语言特定指引（langprofile）：与文体无关的语言陷阱提示。"""
 
 from __future__ import annotations

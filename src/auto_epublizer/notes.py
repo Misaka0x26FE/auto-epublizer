@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# Copyright (C) 2026 Misaka0x26FE
 """注释结构化与绑定（N 阶段）：``notes.json`` 契约、候选盘点与确定性校验。
 
 **职责边界**（单 LLM 原则）：本模块只做确定性计算——提取候选、校验契约、算摘要；

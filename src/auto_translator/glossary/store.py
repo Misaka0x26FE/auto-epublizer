@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# Copyright (C) 2026 Misaka0x26FE
 """统一术语库（跨工作区）领域逻辑：CSV 超集 schema + 语言对键 + 合并/导出 + 冲突账本。
 
 与工作区权威 ``analysis/glossary.csv`` 的区别：

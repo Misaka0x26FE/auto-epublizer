@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# Copyright (C) 2026 Misaka0x26FE
 """句级对齐：拆句 + 生成 align/<id>.jsonl 对照表（纯函数）。"""
 
 from __future__ import annotations

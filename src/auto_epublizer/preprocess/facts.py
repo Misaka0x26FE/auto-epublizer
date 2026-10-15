@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# Copyright (C) 2026 Misaka0x26FE
 """预处理事实收集与落盘：preprocessing/facts.json + facts.md。
 
 全部确定性、零 token。facts 是 agent 做方案决策（plan.md）与分层理解

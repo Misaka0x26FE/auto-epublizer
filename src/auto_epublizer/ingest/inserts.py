@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# Copyright (C) 2026 Misaka0x26FE
 """插入内容（插图/表格/公式）描述文件：structured/raw/inserts/。
 
 每个插入内容一份 ``<id>.json``（CLI 生成确定性字段，agent 补语义字段）——这是

@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# Copyright (C) 2026 Misaka0x26FE
 """Orchestrator：薄 façade，只装配与路由，不直接调用领域函数、不持有线程池。
 
 唯一 LLM 原则：编排层不做任何 LLM 调用——理解/翻译/审校由操作 CLI 的 agent 完成，
@@ -15,6 +17,7 @@ from auto_common.config import Config
 from auto_common.workspace import RunStore, init_workspace, read_json
 from auto_translator.translation.align import read_align
 
+from . import __version__
 from .build import build_epub, collect_media, subheading_anchors
 from .build.html import render_bilingual_document, render_document, slug_file
 from .ingest import load_document
@@ -45,6 +48,7 @@ def init(
         references=references,
         workspace_dir=workspace_dir,
         original=original,
+        producer=f"auto-epublizer@{__version__}",  # 来源标识（#40 §5.2）
     )
     prepare_structure(store, config=config, progress=progress)
     return store

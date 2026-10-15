@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# Copyright (C) 2026 Misaka0x26FE
 """源文件内容嗅探（确定性、零 token）：类型判定 + 元数据 + TOC + 体检信号。
 
 按扩展名分发，直读源文件（zipfile/fitz/正则），不经 ingest reader：

@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# Copyright (C) 2026 Misaka0x26FE
 """表格双路径提取（docs/pdf-content-spec.md §4）。
 
 ``page.find_tables()`` 检出表格后按内容分流：

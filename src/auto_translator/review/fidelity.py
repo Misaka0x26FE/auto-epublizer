@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# Copyright (C) 2026 Misaka0x26FE
 """源保真校验（fidelity）：align 的 src 侧与 structured 原文的双向绑定。
 
 对照表的 ``src`` 由 agent 手写摘抄——没有任何校验时，译文可能针对被改写/截断/

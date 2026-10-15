@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# Copyright (C) 2026 Misaka0x26FE
 """页边界证据导出（issue #14 / #10-B3；确定性、零 token）。
 
 四层切分把**页/行边界当段落边界**，数字版又把印刷页眉/页底注内联进正文流，导致

@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# Copyright (C) 2026 Misaka0x26FE
 """术语表 CSV 读写与三态合并（单线程裁决）。
 
 权威 CSV 列序（与 template/analysis/glossary.csv 一致）：

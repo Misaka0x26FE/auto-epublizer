@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# Copyright (C) 2026 Misaka0x26FE
 """PDF 插图提取与整页/内嵌路由（docs/pdf-content-spec.md §3/§7/§8）。
 
 版面判据（确定性主判据）：

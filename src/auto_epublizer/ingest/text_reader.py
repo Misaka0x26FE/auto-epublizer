@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# Copyright (C) 2026 Misaka0x26FE
 """纯文本 / Markdown 读取器：识别章节标题、按空行切段。"""
 
 from __future__ import annotations

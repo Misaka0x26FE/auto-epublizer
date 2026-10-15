@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# Copyright (C) 2026 Misaka0x26FE
 """术语表：三态生命周期 + CSV 权威 + 冲突外置 + 注入过滤。"""
 
 from __future__ import annotations

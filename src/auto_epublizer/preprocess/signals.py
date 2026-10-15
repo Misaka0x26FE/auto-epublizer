@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# Copyright (C) 2026 Misaka0x26FE
 """结构化文本可疑信号检测（语义整备信号层；零 token 纯函数，只出信号不做判断）。
 
 给 agent 指路「哪些单元可能有解析/OCR 缺陷」——信号是线索不是缺陷，全部为保守

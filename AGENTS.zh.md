@@ -39,7 +39,7 @@
 - **产物规范**：EPUB 形态规范（无样式模板 / 有限主题 / 标准弹窗注释）见
   [docs/epub-template-spec.md](docs/epub-template-spec.zh.md)；后处理验收与实现计划
   （内容溯源 / 媒体 / 目录层级）见 [docs/postprocessing-spec.md](docs/postprocessing-spec.zh.md)。
-- **许可**：本项目自身代码采用 **AGPL-3.0**；第三方依赖保留各自许可证，并在 `THIRD_PARTY_LICENSES.md` 登记（AGPL 依赖可直接引入，与项目同许可兼容）。
+- **许可**：本项目自身代码采用 **AGPL-3.0-only**（源码文件带 SPDX 头与版权行；`pyproject.toml` 的 `license` 为 SPDX 表达式）；第三方依赖保留各自许可证，并在 `THIRD_PARTY_LICENSES.md` 登记（AGPL 依赖可直接引入，与项目同许可兼容）。**来源可识别、不追踪**：无遥测/心跳/部署识别；工作区 `meta.producer` + `run_initialized` 事件 + `build` 日志署名固定可判（issue #40）。
 
 ## 处理一本著作的标准流程
 
@@ -236,7 +236,7 @@ skills/auto-epublizer/
 - 经 `knowledge push` 跨设备同步；经 `knowledge export`（播种）/ `knowledge import`
   （回写）与工作区 `analysis/glossary.csv` 双向流转（见「标准工作流」4.5 / 6.5）。
 
-> 许可证分界：**知识库内容 = CC BY-SA 4.0**；**本软件代码 = AGPL-3.0**，两者互不覆盖。
+> 许可证分界：**知识库内容 = CC BY-SA 4.0**；**本软件代码 = AGPL-3.0-only**，两者互不覆盖。
 
 **预处理分工**：`preprocess` 命令只产出零 token 事实（嗅探/元数据/TOC/体检/规模）；
 **方案决策与分层理解是 agent 任务**——读 facts.md 与 docs 决策表写 `plan.md`，

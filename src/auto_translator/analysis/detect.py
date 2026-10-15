@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# Copyright (C) 2026 Misaka0x26FE
 """源语言与体裁检测（纯函数启发式，零 token；LLM 覆盖由 analyze 阶段按需补充）。"""
 
 from __future__ import annotations

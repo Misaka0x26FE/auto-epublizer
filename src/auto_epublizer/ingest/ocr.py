@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# Copyright (C) 2026 Misaka0x26FE
 """OCR 抽象：RapidOCR 离线默认。
 
 - OCR 后端可插拔，测试用 fake；

@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# Copyright (C) 2026 Misaka0x26FE
 """公式检测（确定性特征，docs/pdf-content-spec.md §5）。
 
 三路特征任一命中即标记 type=formula：
