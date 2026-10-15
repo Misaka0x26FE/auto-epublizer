@@ -531,6 +531,11 @@ def collect_media(
 
         候选：原相对路径 → 去掉与 media_root 尾部重复的前缀（raw/media/x.png
         当 media_root 为 …/raw/media 时 → x.png）→ basename 兜底。
+
+        **包含性校验（D 组修复）**：候选解析（含符号链接）后必须落在 ``media_root``
+        之内，否则拒绝——此前 ``../`` 链可读取工作区之外（乃至 ``/etc/*``）的文件并作为
+        `media/../../…` 写进成品（越界读 → 成品外泄 + 非法成员名）。越界引用只记入
+        ``dropped``（构建期留痕 + provenance E_MEDIA_EPUB_LOST 阻断放行）。
         """
         candidates = [rel]
         parts = Path(rel).parts
@@ -544,12 +549,14 @@ def collect_media(
         for cand in candidates:
             p = media_root / cand
             try:
-                if p.is_file():
-                    data = p.read_bytes()
-                    if p.suffix.lower() == ".svg":
-                        decoded = data.decode("utf-8", errors="surrogateescape")
-                        data = dedupe_svg_ids(decoded).encode("utf-8", errors="surrogateescape")
-                    return p.relative_to(media_root).as_posix(), data
+                resolved = p.resolve()
+                if not resolved.is_relative_to(media_root) or not resolved.is_file():
+                    continue
+                data = resolved.read_bytes()
+                if resolved.suffix.lower() == ".svg":
+                    decoded = data.decode("utf-8", errors="surrogateescape")
+                    data = dedupe_svg_ids(decoded).encode("utf-8", errors="surrogateescape")
+                return resolved.relative_to(media_root).as_posix(), data
             except OSError:
                 continue
         return None

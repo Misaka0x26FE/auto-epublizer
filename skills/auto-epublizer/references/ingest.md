@@ -1,4 +1,4 @@
-<!-- i18n: source=ingest.zh.md sha256=99bdc2accfba1e9c5ed8723eec41c1db3fac0ccdaece8bd9316e51705a050139 -->
+<!-- i18n: source=ingest.zh.md sha256=7e1dbd04de567cc5ae27e2e623ec1676157f3c69e98fa2a89d60e71957a7b747 -->
 > **English** | [中文](ingest.zh.md)
 
 # Ingest (file parsing)
@@ -92,6 +92,18 @@ level into `raw/media/`, rewrites references to workspace-relative `raw/media/<n
 (matching the layout documented under "Intermediates"), and drops image attribute blocks
 (the renderer does not handle that syntax, so they used to leak into the EPUB as literal
 text). Non-local references (http/…) are left untouched.
+**EPUB sources are normalized the same way** (2026-10, group D fix): `read_epub` previously
+skipped this step, so absolute media paths landed in `structured/` and the build could not
+resolve nested subdirectories → illustrations were lost; it now matches the docx path.
+
+**Media references must stay inside `structured/raw/media/`** (2026-10, group D fix, security
+boundary): when collecting media, the build resolves each candidate path (following symlinks)
+and requires containment; `../…`, absolute paths and symlinks pointing outside the workspace
+are **refused** and recorded in the `media_dropped` event (then blocked from release by
+provenance `E_MEDIA_EPUB_LOST`) — previously these shapes could read files outside the
+workspace (even `/etc/*`) and write `media/../../…` into the product. `source.file` in
+`raw/inserts/<id>.json` is containment-checked as well. Legitimate shapes (nested
+subdirectories, the `raw/media/` prefix, basename fallback) are unaffected.
 
 Other unsupported formats: convert to PDF/TXT/Markdown first, or process with `pandoc`
 and fall back to PDF.
