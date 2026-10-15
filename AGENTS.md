@@ -1,4 +1,4 @@
-<!-- i18n: source=AGENTS.zh.md sha256=387cd8327ef2dd5dcdb53e7ed83c186b4a4aeeba5ae4235e03e5dcff6c758ffc -->
+<!-- i18n: source=AGENTS.zh.md sha256=8b05ece32fc08214803616ce8cfc88f625542f55f114ef6a6ff7d7417fa76b6b -->
 > **English** | [中文](AGENTS.zh.md)
 
 # auto-epublizer repository guide (for coding agents developing/maintaining this project)
@@ -344,6 +344,16 @@ CLI → Orchestrator (thin façade) → domain services → glossary / align / g
 - `orchestrator.py` only assembles and routes; it does not call domain functions directly
   and holds no thread pool.
 - Lower layers must not import orchestrator in reverse.
+- Shared data models live in a `models` module (e.g. `auto_translator.review.models.G0Flag`);
+  the **module-level import graph must be acyclic** (fixed by
+  `test_no_module_level_import_cycles`), and mutually referring implementations use
+  function-local lazy imports.
+- The schema contracts of preprocessing artifacts are owned by `preprocess/`
+  (`preprocessing/catalog.csv`, `repairs.jsonl` → `preprocess/artifacts.py`; contract errors
+  are `ArtifactContractError(ValueError)`).
+- User-predictable input errors must subclass `ValueError` (`InitError` /
+  `SourceIdentityError` / `IngestError` / `ArtifactContractError`); the CLI always renders them
+  as a Chinese message with a non-zero exit code and never prints a traceback.
 - The whole repository must contain no LLM module/call (single-LLM principle, enforced by
   the architecture-boundary tests).
 - Concurrency belongs to concrete domain services; results must be merged in stable source

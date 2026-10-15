@@ -18,6 +18,7 @@
 | `translate` | [translate-unit.zh.md](translate-unit.zh.md) |
 | `import` | [import-unit.zh.md](import-unit.zh.md) |
 | `review` | [review-unit.zh.md](review-unit.zh.md) |
+| `notes_verify` / `notes_register` | [notes.zh.md](notes.zh.md) |
 | `build` / `qa` / `delivery` | [build-qa-delivery.zh.md](build-qa-delivery.zh.md) |
 
 每张卡自包含（一屏以内）：重述现场 → 动作 → 完成判据 → 失败处置。`references/` 下的

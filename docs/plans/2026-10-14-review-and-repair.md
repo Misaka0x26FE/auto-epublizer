@@ -1,6 +1,7 @@
 # 2026-10-14 全项目审查与修复计划
 
-状态：规划中（已补入线上 issue 分诊、成品案例及“注释结构化与绑定”阶段；尚未实施修复）
+状态：**已完成**（2026-10-15）：S0 / E-1 / B-1 / N / A / B2 / D / E2 / C / F 全部实施并具前后证据
+（提交清单见 §7 末尾）；**V / H 与阅读器实测因缺外部材料保留阻塞项**（不宣称修复，见 §7「保留阻塞项」）。
 
 线上跟踪：[Issue #41](https://github.com/Misaka0x26FE/auto-epublizer/issues/41)。本文件与该 issue 正文同步；实施状态、回归证据与历史成品重建结果分别记录，不以更新计划代替完成修复。
 
@@ -745,11 +746,53 @@ traceback（与迁移前同文案）；``orch.read_catalog is preprocess.artifac
   MinerU 仅 mock 覆盖、未访问真实 API（`doctor --ping` 未启用网络探测）。
 - 全量用例离线可跑（`uv run --offline pytest`）；F 组新增 2 项后全量 **553 passed**（551→553）。
 
+### 批次 docs（文档同步与计划回写）
 
+- **AGENTS.**{zh,md} 架构边界新增三条契约：共享模型归 `models` 且**模块级导入图无环**（C 组）；
+  预处理产物 schema 契约归 `preprocess/`（`catalog.csv`/`repairs.jsonl`）；
+  可预期输入错误须为 `ValueError` 子类、CLI 统一中文提示 + 非零退出码（E2 口径）。
+- **references/build.**{zh,md} 补两条：媒体引用边界（D 组包含性校验 + `media_dropped` +
+  `E_MEDIA_EPUB_LOST`）与构建日志署名（#40，不出网）。
+- **任务卡补 N 阶段缺口**：新增 `references/taskcards/notes.{zh,md}`（`notes_verify`/
+  `notes_register` 现场 → 动作 → 完成判据 → 失败处置），索引补行；`tests/test_taskcards.py`
+  的 drift guard（`KINDS`/`_CARDS`）扩展覆盖两个注释 kind——此前新 kind 未被该 guard 覆盖。
+- **放行条件文档补齐**：`docs/quality-control` 与 `docs/postprocessing-spec` §5 的放行条件
+  列表补 `catalog_unresolved_open == 0`、**有注书成品注门**（`notes_open`）与越界媒体引用
+  的拒绝读取说明（对齐 `qa/report.py`/`qa/notes_audit.py` 实际行为）。
+- 其余 references 与 docs 已在对应批次同步：`ingest`（D）、`invariants`/`qa`（B2/N）、
+  `notes`/`review`（N）、`semantic-repair`（C）；README/AGENTS/development-plan/pdf-parsing（E2 许可）。
+- **新增 lessons 两篇（中英）**：`2026-10-15-media-ref-containment`、
+  `2026-10-15-epub-source-media-normalization`（附索引与「来源与去向」更新）。
+- i18n：受影响英文文件 `--finalize` 后 `--check` / `--links` 均 OK。
 
+### 完成状态与提交清单（2026-10-15）
 
+基线 `4d76c62` 之后共 10 个提交（**均未推送**）：
 
+| 批次 | 提交 | 内容 |
+|---|---|---|
+| 计划 | `98eac6e` | 新增本计划（含 S0/E-1/B-1 实施记录） |
+| E-1 + B-1 | `e6396c1` | #33/#35/#36 + #39/#34/#38（退出码/术语/ledger/长度/注码/版面候选） |
+| — | `386ebf6` | 示例配置补 `min_src_chars` 短源保护项 |
+| N | `1ac3233` | 注释结构化与绑定：notes.json 权威 + 原位标记 + 三道独立硬门 + 全书构建 |
+| A | `e8b58b0` | 原子写唯一临时名 + fsync + 失败清理（并发/失败/恢复 7 项回归） |
+| B2 | `a4a14d9` | 放行真值表（15 项）+ `blocking` 级别统一 + 报告指纹失效链 |
+| D | `421cf46` | P0 媒体越界读修复 + EPUB 源媒体引用归一化 |
+| E2 | `131993c` | #40 全源码 SPDX/来源标识 + CLI 契约（`IngestError` 口径） |
+| C | `6867d50` | 架构最小重构：导入图 0 环 + 4 处归位（模型/探测/策略/契约） |
+| F | `2140ba7` | 真实 epubcheck 执行 + 真实 CLI review 登记覆盖 + 回归映射与工具缺口报告 |
 
+**最终验证**：`uv run --offline pytest -q` = **553 passed**；`ruff check` / `ruff format --check`
+全绿；`python3 scripts/i18n.py --check` / `--links` = OK；离线 `uv build` 成功且 wheel
+METADATA 为 `License-Expression: AGPL-3.0-only`（Metadata 2.5）。
 
+### 保留阻塞项（缺外部材料，未完成部分）
 
-
+- **V（导航与结构恢复）**：需回源确认前置页角色/导论起点/章节目录边界并建立**独立期望树**；
+  本机无目标书的源工作区与 raw 证据 → 保留阻塞，**不得从 EPUB 数字顺序猜配**。
+- **H（历史成品回收）**：典型成品 `forced-labour-and-extermination` 的源工作区/构建版本未定位
+  → 逐本记录（EPUB 哈希/源身份/注释盘点/期望树/重建版本/QA/阅读器验收/副本同步）无法执行；
+  按要求不删除旧版、不手改 released、不直接编辑已交付 ZIP。
+- **阅读器实测**（弹窗、往返、目录真实落点）：需真机阅读器环境；源码或截图结构推断不算实测。
+- **#34 真实书私有验收**（`auschwitz-central-construction-office`）：本机无该工作区。
+- **扫描件 OCR 质量**：无 tesseract/ocrmypdf/rapidocr/MinerU key（详见 F 报告），仅伪后端覆盖。

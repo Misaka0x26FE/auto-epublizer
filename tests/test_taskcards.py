@@ -8,7 +8,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 CARDS = ROOT / "skills" / "auto-epublizer" / "references" / "taskcards"
 
-# S1 _derive_next_tasks 会产出的 kind（QA 触发 build/qa/delivery 三种）
+# S1 _derive_next_tasks 会产出的 kind（QA 触发 build/qa/delivery 三种；N 阶段新增注释任务）
 KINDS = [
     "preprocess",
     "write_preprocessing",
@@ -17,6 +17,8 @@ KINDS = [
     "translate",
     "import",
     "review",
+    "notes_verify",
+    "notes_register",
     "build",
     "qa",
     "delivery",
@@ -31,6 +33,7 @@ _CARDS = [
     "translate-unit",
     "import-unit",
     "review-unit",
+    "notes",
     "build-qa-delivery",
 ]
 

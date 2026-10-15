@@ -37,6 +37,8 @@
 | [2026-09-11-epub-nonlinear-spine-tables.md](2026-09-11-epub-nonlinear-spine-tables.zh.md) | EPUB 非线性 spine 项（表格）被 pandoc 跳过 + 标题锚点残留 + 前置辅文切碎 → 按 OPF spine 切分并内联非线性项 | 已修复（ingest/epub_reader.py + test_epub_reader.py） |
 | [2026-09-12-epub-internal-links-anchors.md](2026-09-12-epub-internal-links-anchors.zh.md) | EPUB 内部链接/页码锚点/标题 id 带 pandoc 源文件前缀 → 按 spine 映射重写为成品单元（跨单元链接 / 同单元纯锚点） | 已修复（structure/links.py + build/html.py + ingest/epub_reader.py） |
 | [2026-09-13-delivery-integrity.md](2026-09-13-delivery-integrity.zh.md) | 工具 QA 全过仍缺 38/72 张图（译文正文丢图片段，守恒只查 align）→ 交付审计独立对账 + 以 align 重建 + 全量重验 | 已落地（qa/provenance.py 对账自动化 + references/delivery.md 强制清单） |
+| [2026-10-15-media-ref-containment.md](2026-10-15-media-ref-containment.zh.md) | 媒体引用越界（`../`/绝对路径/外指符号链接）会被读进成品：包含性校验 + 丢弃留痕 + `E_MEDIA_EPUB_LOST` 阻断 | 已修复（build/collect_media + qa/provenance + tests/test_ingest_boundary.py） |
+| [2026-10-15-epub-source-media-normalization.md](2026-10-15-epub-source-media-normalization.zh.md) | EPUB 源的绝对媒体路径：机器路径入产物、嵌套插图在成品丢失 → `read_epub` 补媒体引用归一化 | 已修复（ingest/epub_reader.py + tests/test_ingest_boundary.py） |
 
 ## 来源与去向（经验怎么进这里）
 
@@ -46,6 +48,9 @@
   JavaScript 权威指南 文件夹）。
 - **真书 dogfooding**（2026-09-04）：计划 `docs/plans/2026-09-04-pdf-dogfooding.md`
   §6 的验证记录是经验来源，本篇将其沉淀为 lessons；计划文档保留验证上下文。
+- **全项目审查**（2026-10-14/15，`docs/plans/2026-10-14-review-and-repair.md`）：
+  D 组的媒体边界修复用最小坏文件/合成 EPUB 复现并以回归固定，两篇 `2026-10-15-*`
+  即来自该记录（上下文见计划 §7）。
 - **主仓库修复状态**：每篇「状态」列标注是否已修复（`已修复` + 提交号），未修复的
   （如围栏代码块）是明确的后续开发缺口。
 

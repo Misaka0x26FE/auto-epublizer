@@ -163,11 +163,16 @@ Autofix（可选）：先写可恢复索引 `reviews/<ts>/autofix/index.json`，
   **`g0_structure_open == 0`**（标记/脚注守恒违例；`structure_open`）；
   **`glossary_conflicts_open == 0`**（未决术语冲突；`glossary_conflict_open`——
   裁决写回 glossary.csv 前不放行）；
+  **`catalog_unresolved_open == 0`**（`catalog.csv` 存在时的源盘点未决项；
+  `catalog_unresolved_open`——先决内容不得带病放行）；
   `g4_epubcheck_errors == 0`；`g4_audit == "pass"`；溯源完整
   （`provenance_coverage ≈ 1.0`（无翻译产物为 null）、三边对账/媒体溯源零缺失、
   `toc_flat == false`、溯源 findings 无 error 级）；
   成品呈现对账清零（**`align_md_drift == 0`、`epub_media_missing == 0`、
-  `epub_footnotes_missing == 0`、`epub_coverage ≈ 1.0`**，交付审计 S1）。
+  `epub_footnotes_missing == 0`、`epub_coverage ≈ 1.0`**，交付审计 S1）；
+  **有注书另加成品注门**（`notes_findings` 空、`notes_missing` 零：noteref/footnote/
+  回链/编号违例零，否则 `released_reason=notes_open` 阻断放行；见
+  `qa/notes_audit.py` 与 `references/notes.md`）。
   G0 **长度比**告警是 advisory，不阻断（英→中长度比天然偏低，实测大量误报）；
   epubcheck 未运行（jar 缺失）视为未验证，不放行。
 

@@ -1,4 +1,4 @@
-<!-- i18n: source=quality-control.zh.md sha256=0bb972ef8dd274c0d10d90774155a24d55dbc08830572b9ace12d2f354e96d86 -->
+<!-- i18n: source=quality-control.zh.md sha256=3f748e36e8275375f7896d2f1cdf30bc6da7b0ac5323902413b7d5100c18267d -->
 > **English** | [中文](quality-control.zh.md)
 
 # Quality-Control Process Design (auto-epublizer)
@@ -160,13 +160,18 @@ Autofix (optional): first write a recoverable index `reviews/<ts>/autofix/index.
   **`g0_terminology_open == 0`** (a G0 terminology hit is a real defect — the translation is missing a glossary source term and must be verified and cleared one by one, otherwise `released_reason=terminology_open`);
   **`g0_structure_open == 0`** (marker/footnote conservation violations; `structure_open`);
   **`glossary_conflicts_open == 0`** (undecided terminology conflicts; `glossary_conflict_open` — no release before the arbitration is written back to glossary.csv);
+  **`catalog_unresolved_open == 0`** (open items of the source inventory when `catalog.csv` exists; `catalog_unresolved_open` — unresolved content must not be released);
   `g4_epubcheck_errors == 0`; `g4_audit == "pass"`; complete provenance
   (`provenance_coverage ≈ 1.0` (null when there is no translation artifact), zero missing
   in tri-lateral reconciliation/media provenance, `toc_flat == false`, no error-level
   provenance findings);
   finished-product presentation reconciliation cleared (**`align_md_drift == 0`,
   `epub_media_missing == 0`, `epub_footnotes_missing == 0`, `epub_coverage ≈ 1.0`**,
-  delivery audit S1).
+  delivery audit S1);
+  **books with notes add the product note gate** (empty `notes_findings` and zero
+  `notes_missing`: zero violations of noteref/footnote/backlink/numbering, otherwise
+  `released_reason=notes_open` blocks release; see `qa/notes_audit.py` and
+  `references/notes.md`).
   The G0 **length-ratio** warning is advisory and does not block (English→Chinese length
   ratios are naturally low, with many observed false positives); epubcheck not run (jar
   missing) counts as unverified and does not release.

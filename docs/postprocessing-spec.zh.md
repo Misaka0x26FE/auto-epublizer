@@ -186,6 +186,12 @@
 - 成品呈现对账清零（交付审计 S1）：`align_md_drift == 0`、`epub_media_missing == 0`、
   `epub_footnotes_missing == 0`、`epub_coverage ≈ 1.0`（md↔align 一致、成品实际包含
   与 build 输入对账无缺）；构建期媒体丢弃写 `events.jsonl` `media_dropped` 事件留痕
+ （**越界引用**——`../`、绝对路径、指向工作区外的符号链接——只拒绝读取并留痕，
+ 绝不静默丢弃，随后由 `E_MEDIA_EPUB_LOST` 阻断放行）
+- `catalog_unresolved_open == 0`（`catalog.csv` 存在时的源盘点未决项）
+- **有注书：成品注门**（独立解析最终 XHTML；noteref/footnote/跨文件回链/编号零违例，
+  `notes_findings` 空、`notes_missing` 零，否则 `released_reason=notes_open` 阻断；
+  实现见 `qa/notes_audit.py`，契约见 `references/notes.md`）
 
 > 实现见 `qa/report.py::generate_report`（`prov_ok` 聚合判定 + `released_reason` 细分）。
 - 插入内容文件零缺失（`inserts_missing_files == 0`，pdf-content-spec §9：
