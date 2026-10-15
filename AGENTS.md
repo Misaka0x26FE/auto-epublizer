@@ -1,4 +1,4 @@
-<!-- i18n: source=AGENTS.zh.md sha256=f4fdef27d69070c08571854aaa427e3a2a1614e3021abf04646a628d3e0b1b7e -->
+<!-- i18n: source=AGENTS.zh.md sha256=fd82bca13ed204218db770be978f483a857bede93a37aa0b117ef0fec4bdd11e -->
 > **English** | [中文](AGENTS.zh.md)
 
 # auto-epublizer repository guide (for coding agents developing/maintaining this project)
@@ -119,6 +119,16 @@ auto-epublizer g0                # run static validation right after translating
 auto-epublizer restructure [--workspace <dir>]   # register rebuilt unit structure (unchanged ids keep state)
 auto-epublizer evidence breaks   # export page-boundary evidence → preprocessing/breaks.jsonl (for judging page/line-split fragments; locates evidence only, no semantic merge)
 
+# 5.7 Note structuring and binding (mandatory for books with notes; see references/notes.md):
+#     notes candidates exports candidates → the agent reviews the source item by item
+#     (disposition=note|not_note) → write structured/notes.json plus in-place body markers
+#     [^ref-000123] → notes register (separation-registration gate: contract + two-way marker
+#     reconciliation + summary into publication.json.notes); during translation keep the same
+#     ref_id and write translation/notes.json, which import validates
+auto-epublizer notes candidates  # → preprocessing/note_candidates.jsonl (zero-token; re-runs keep dispositions)
+auto-epublizer notes register    # register structured/notes.json (separation-registration gate)
+auto-epublizer notes status      # summary / stale / candidate disposition progress (--json for machines)
+
 # 6. Review (agent task): the agent performs G1–G3 semantic review itself and writes
 #    reviews/review-<ts>/ (issues/patches/summary/result.json; qa reads g1/g2/g3 counts
 #    from result.json)
@@ -228,8 +238,13 @@ stay Chinese-only.
 ├── structured/       ③ source split by the four-layer publication structure (frontmatter/body/backmatter/media)
 │                     + raw/ (intermediates from processing the source: OCR page images, PDF→HTML,
 │                     pages/ (rendered scanned pages), mineru/ (MinerU artifacts), persisted for review)
+│                     + notes.json (source-note authority for books with notes: notes/references/
+│                     two-way location evidence/verification verdicts; in-place body markers
+│                     [^ref-…]; the CLI reads but never writes it)
 ├── analysis/         ④ layered understanding (agent artifacts: overview/global/units/keypoints/glossary, etc.)
 ├── translation/      ⑤ translation (mirrors the structured tree) + align/<unit-id>.jsonl sentence-level alignment
+│                     + notes.json (translated notes: complete target_markdown under the same note_id,
+│                     bound to the source-note digest)
 ├── reviews/          ⑥ review-run records review-<ts>/ (issues/patches/summary/result.json)
 ├── references/       ⑦ references: user/ (user uploads) + web/ (agent web retrieval) + index.jsonl
 ├── preprocessing/    ⑧ preprocessing layer: facts.json/facts.md (CLI zero-token facts) +
@@ -237,6 +252,7 @@ stay Chinese-only.
 │                       + catalog.csv (optional source inventory: included/physical/excluded/unresolved)
 │                       + repairs.jsonl (optional semantic-repair trace: done/unresolved)
 │                       + structure.csv (optional structural-rebuild list, used by restructure)
+│                       + note_candidates.jsonl (books with notes: candidates + dispositions exported by notes candidates)
 ├── publication.json  authoritative index (DC metadata + content tree + state machine + config snapshot)
 ├── .progress.json    (reserved) batch-level checkpoint; not written today, so resume = unit-level skip
 ├── glossary.db       terminology-store internal index (optional, SQLite)
@@ -372,12 +388,15 @@ multi-column/bookmark chaptering) is in
 ## Quality-check flow (G0–G5 + delivery audit)
 
 1. **Zero-token cheap validation**: alignment completeness, abnormal length ratio
-   (<0.30 / >3.0 / empty, advisory), terminology hits (hard), insert-marker/footnote-marker
+   (<0.30 / >3.0 / empty, advisory; short-source protection `qc.length_ratio.min_src_chars`
+   defaults to 20, issue #39), terminology hits (hard), insert-marker/footnote-marker
    conservation (hard, unit-level total comparison, covering both pandoc `[^N]` and
    sentence-final digit forms), heading conservation (hard, per-level h1–h6 count
    reconciliation between structured and translation; issue #12), source fidelity
    (align src ↔ structured bidirectional block-level binding; reverse mismatch = src was
-   rewritten/fabricated, blocks import; forward missing block = advisory).
+   rewritten/fabricated, blocks import; forward missing block = advisory), note-number set
+   difference (`footnote_suspect`, advisory: note numbers present on the source side but
+   absent from the translation, with per-line samples; issue #34).
 2. **Batch review agent (cheap)**: missing/added/mistranslation/terminology/pronoun; better
    to omit than to over-flag; the JSON protocol must end with `reviewed_segments` +
    `complete:true`, otherwise the whole batch is retried.
@@ -391,6 +410,11 @@ multi-column/bookmark chaptering) is in
 5. **EPUB structure QA**: epubcheck zero errors + item-by-item unpack audit (mimetype
    first, manifest/spine/nav parse, cover, lang, one h1 per chapter, bidirectional footnote
    links, no leftovers).
+5b. **Product note gate (books with notes, phase N)**: independently parse the final XHTML —
+   each registered reference has exactly one noteref anchor whose href points at a real
+   aside, note content matches the translated note, backlinks cover every reference, and
+   `inventory=none` is zero-to-zero; unsemantic/partial/mismatched notes block release with
+   `released_reason=notes_open` (see `skills/auto-epublizer/references/notes.md`).
 6. **Delivery acceptance**: aggregate G0–G4 + provenance audit into `report.json`
    (g0_flags/g1_issues/g2_confirmed/g3_termination/error_rate/provenance_coverage/
    units_missing/media_lost/released/released_reason); the release conditions are
@@ -406,7 +430,9 @@ multi-column/bookmark chaptering) is in
    docs/postprocessing-spec.md §5). Finished-product presentation reconciliation must also
    be zero: `epub_media_missing`/`epub_footnotes_missing`/`align_md_drift` = 0 and
    `epub_coverage ≈ 1.0` (delivery audit S1; md is the build input and align is the
-   validation baseline, and both are reconciled independently against the product).
+   validation baseline, and both are reconciled independently against the product). For
+   books with notes, additionally **product note gate cleared** (`notes_findings` /
+   `notes_missing`; `released_reason=notes_open`).
 7. **Delivery audit (agent gate, mandatory after qa released)**: per
    `skills/auto-epublizer/references/delivery.md`, perform independent reconciliation +
    unpack sampling (first/middle/last + high-risk chapters: body probes / image viewing /

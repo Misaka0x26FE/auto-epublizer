@@ -91,6 +91,14 @@ auto-epublizer g0                # 翻译/导入后立即静态校验（术语�
 auto-epublizer restructure [--workspace <dir>]   # 登记重建的单元结构（同 id 未变保留状态）
 auto-epublizer evidence breaks   # 导出页边界证据 → preprocessing/breaks.jsonl（判读跨页/断行碎片；只定位证据，不做语义合并）
 
+# 5.7 注释结构化与绑定（有注书必做；详见 references/notes.md）：notes candidates 导出候选 →
+#     agent 回看源件逐条核证（disposition=note|not_note）→ 写 structured/notes.json 与正文
+#     原位标记 [^ref-000123] → notes register（分离登记门：契约 + 标记双向对账 + 摘要写
+#     publication.json.notes）；翻译时保留同一 ref_id 并写 translation/notes.json，import 校验
+auto-epublizer notes candidates  # → preprocessing/note_candidates.jsonl（零 token；重跑保留处置）
+auto-epublizer notes register    # 登记 structured/notes.json（分离登记门）
+auto-epublizer notes status      # 摘要 / stale / 候选处置进度（--json 供机器读）
+
 # 6. 审校（agent 任务）：agent 按 G1–G3 语义自行审校，写 reviews/review-<ts>/
 #    （issues/patches/summary/result.json；qa 从 result.json 读 g1/g2/g3 计数）
 
@@ -102,7 +110,7 @@ auto-epublizer knowledge import --workspace .   # 跨书同键异译外置到统
 auto-epublizer build          # 纯译文 / 双语 EPUB → output/（--theme 选排版主题）
 
 # 8. 质检（G0 静态校验 + G4 审计 + G5 汇总放行 → report.json）
-auto-epublizer qa             # 结构审计 + epubcheck
+auto-epublizer qa             # 结构审计 + epubcheck（有注书另跑独立成品注释门；notes_open 阻断放行）
 auto-epublizer status --json  # 查看进度/状态机/产物-状态对账（含 next_tasks 机器指针）
 auto-epublizer status --all   # 多工作区总览（三档进度：released/built_not_released/preprocessing）
 auto-epublizer ledger         # 跨书台账 markdown（机器可重算列 + 待填领域/摘要）
@@ -187,8 +195,11 @@ skills/auto-epublizer/
 ├── structured/       ③ 按出版物四层结构拆分的源文（frontmatter/body/backmatter/media）
 │                     + raw/（处理源文件的中间产物：OCR 页图、PDF→HTML、
 │                     pages/（扫描页渲染图）、mineru/（MinerU 解析产物），持久化供审查）
+│                     + notes.json（有注书的**源注文权威**：注文/引用/双位置证据/核证结论；
+│                     正文原位标记 [^ref-…]；CLI 只读不写）
 ├── analysis/         ④ 分层理解（agent 产物：overview/global/units/keypoints/glossary 等）
 ├── translation/      ⑤ 译文（镜像 structured 树）+ align/<unit-id>.jsonl 句级对照表
+│                     + notes.json（译注：同 note_id 的完整译注，绑定源注文摘要）
 ├── reviews/          ⑥ 审校运行记录 review-<ts>/（issues/patches/summary/result.json）
 ├── references/       ⑦ 参考：user/（用户上传）+ web/（agent 网络检索）+ index.jsonl
 ├── preprocessing/    ⑧ 预处理层：facts.json/facts.md（CLI 零 token 事实）+
@@ -196,6 +207,7 @@ skills/auto-epublizer/
 │                       + catalog.csv（可选源盘点：included/physical/excluded/unresolved）
 │                       + repairs.jsonl（可选语义整备留痕：done/unresolved）
 │                       + structure.csv（可选结构重建清单，restructure 登记用）
+│                       + note_candidates.jsonl（有注书：notes candidates 导出的注释候选+处置）
 ├── publication.json  权威索引（DC 元数据 + 内容树 + 状态机 + 配置快照）
 ├── .progress.json    （预留）批次级断点；当前未落盘，断点=单元级跳过
 ├── glossary.db       术语库内部索引（可选，SQLite）
@@ -298,15 +310,21 @@ skills 的能力-路由决策表选择 ingest 路由（pandoc / 按页切片 / �
 
 ## 质量检验流程（G0–G5 + 交付审计）
 
-1. **零 token 廉价校验**：对照表完整性、长度比异常（<0.30 / >3.0 / 空，advisory）、
+1. **零 token 廉价校验**：对照表完整性、长度比异常（<0.30 / >3.0 / 空，advisory；
+   短源保护 `qc.length_ratio.min_src_chars` 默认 20，issue #39）、
    术语命中（硬）、插入标记/脚注标记守恒（硬，单元级总量比对，含 pandoc `[^N]` 与
    句末数字两种表示）、标题守恒（硬，structured 与 translation 的 h1–h6 逐层计数
    对账；issue #12）、源保真（align src ↔ structured 双向块级绑定；反向失配
-   =src 被改写/杜撰，import 阻断；前向缺块=advisory）。
+   =src 被改写/杜撰，import 阻断；前向缺块=advisory）、注号差集
+   （`footnote_suspect`，advisory：源侧有而译文侧没有的注号 + 行级样本，issue #34）。
 2. **逐批审校 Agent（cheap）**：missing/added/mistranslation/terminology/pronoun；宁缺毋滥；JSON 协议末尾必须 `reviewed_segments` + `complete:true`，违例整批重试。
 3. **证据取证 Agent Loop（strong）**：候选先取证再裁决，禁止假设未取得的上下文；术语库与影子修订都是待核验材料。
 4. **冲突仲裁 + 影子修订 + 盲复审**：跨块矛盾终局仲裁；Fixer 只在影子 overlay 改；下一轮盲审不传旧说明；连续 clean 确认或 max_rounds 收敛；振荡检测（摘要 SHA-256 循环）。
 5. **EPUB 结构 QA**：epubcheck 零 error + 解包逐项审计（mimetype 首位、manifest/spine/nav 解析、封面、lang、每章一个 h1、脚注双向跳转、无残留）。
+5b. **成品注释门（有注书，N 阶段）**：独立解析最终 XHTML——每条已登记引用恰好一个
+   noteref 锚点且 href 指向真实 aside、注文内容与译注一致、回链覆盖每条引用、
+   `inventory=none` 零对零；未语义化/部分遗漏/错配 → `released_reason=notes_open`
+   阻断放行（见 `skills/auto-epublizer/references/notes.md`）。
 6. **交付验收**：汇总 G0–G4 + 溯源审计生成 `report.json`（g0_flags/g1_issues/g2_confirmed/
    g3_termination/error_rate/provenance_coverage/units_missing/media_lost/released/
    released_reason），放行条件为 **G0 术语命中清零**（`terminology` 是真实缺陷，非 advisory）、
@@ -318,6 +336,7 @@ skills 的能力-路由决策表选择 ingest 路由（pandoc / 按页切片 / �
    三边对账/媒体溯源零缺失、目录层级不扁平；详见 docs/postprocessing-spec.md §5）。
    成品呈现对账同样清零：`epub_media_missing`/`epub_footnotes_missing`/`align_md_drift` 为 0、
    `epub_coverage ≈ 1.0`（交付审计 S1；md 是 build 输入、align 是校验基准，二者与成品独立对账）。
+   有注书另加**成品注释门清零**（`notes_findings` / `notes_missing`；`released_reason=notes_open`）。
 7. **交付审计（agent 门，qa released 之后强制执行）**：按
    `skills/auto-epublizer/references/delivery.md` 做独立对账 + 解包抽查（首/中/尾 +
    高风险章：正文探针/看图/脚注内容）+ 人肉核对（目录/封面/元数据）+ inserts 描述

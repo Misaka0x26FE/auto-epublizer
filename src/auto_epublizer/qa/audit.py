@@ -404,12 +404,16 @@ def audit_epub(path: str | Path, *, nav_exempt: set[str] | None = None) -> Audit
         if missing_meta:
             result.add("warning", "W_META_INCOMPLETE", "DC 元数据缺失：" + "、".join(missing_meta))
 
-        # 11. 内部锚点与脚注回链（postprocessing-spec P2）
+        # 11. 内部锚点与脚注回链（postprocessing-spec P2；N 阶段支持跨文件回链）
+        docs: dict[str, str] = {}
+        ids_by_doc: dict[str, set[str]] = {}
         for name in names:
             if not name.endswith(".xhtml"):
                 continue
-            content = zf.read(name).decode("utf-8")
-            ids = set(re.findall(r'\bid="([^"]+)"', content))
+            docs[name] = zf.read(name).decode("utf-8")
+            ids_by_doc[name] = set(re.findall(r'\bid="([^"]+)"', docs[name]))
+        for name, content in docs.items():
+            ids = ids_by_doc[name]
             for href in re.findall(r'href="#([^"]+)"', content):
                 if href not in ids:
                     result.add("error", "E_ANCHOR", f"内部锚点无法解析（#{href}）：{name}")
@@ -419,11 +423,25 @@ def audit_epub(path: str | Path, *, nav_exempt: set[str] | None = None) -> Audit
                 re.DOTALL,
             ):
                 fn_id, body = m.group(1), m.group(2)
-                back = re.findall(r'href="#([^"]+)"', body)
-                if not back or back[0] not in ids:
-                    result.add(
-                        "error", "E_FN_BACKLINK", f"脚注 {fn_id} 缺回链或回链不可解析：{name}"
+                backs = re.findall(r'<a\b[^>]*epub:type="backlink"[^>]*href="([^"]+)"', body)
+                if not backs:
+                    result.add("error", "E_FN_BACKLINK", f"脚注 {fn_id} 缺回链：{name}")
+                    continue
+                for href in backs:
+                    file_part, _, frag = href.partition("#")
+                    key = (
+                        file_part
+                        if not file_part or file_part.startswith("OEBPS/")
+                        else f"OEBPS/{file_part}"
                     )
+                    target_ids = ids_by_doc.get(key, set()) if key else ids
+                    if not frag or frag not in target_ids:
+                        result.add(
+                            "error",
+                            "E_FN_BACKLINK",
+                            f"脚注 {fn_id} 回链不可解析：{name}（{href}）",
+                        )
+                        break
 
         # 12. 双语成对（postprocessing-spec P2）：class=src/tgt 段落数一致
         for name in names:

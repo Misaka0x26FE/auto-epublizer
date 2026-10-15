@@ -49,6 +49,9 @@ class QaResult:
     # 语义整备（S2）：修复留痕计数（unresolved 仅 W 级提示，不阻断）
     repairs_total: int = 0
     repairs_unresolved: int = 0
+    # N 阶段成品注释门：error 级发现必须清零才能放行
+    notes_missing: list[str] = field(default_factory=list)
+    notes_findings: list[dict[str, Any]] = field(default_factory=list)
     provenance_findings: list[dict[str, Any]] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
@@ -70,6 +73,7 @@ def generate_report(
     catalog_unresolved_open: int = 0,
     repairs_total: int = 0,
     repairs_unresolved: int = 0,
+    notes_audit: dict[str, Any] | None = None,
 ) -> QaResult:
     """聚合 G0–G4 + 溯源审计生成放行报告。
 
@@ -116,6 +120,10 @@ def generate_report(
     # error 级溯源发现必须清零：E_UNIT_ORDER（spine 含未知文档）、E_MEDIA_ORDER
     # （图片相对顺序错乱）、E_INSERT_BAD_SOURCE 等均为真实缺陷（与 provenance.ok 一致）
     prov_error_findings = [f for f in prov_findings if f.get("level") == "error"]
+    # N 阶段成品注释门（N5）：error 级发现不得放行（无注书零对零合法 → 无发现）
+    notes_findings = list((notes_audit or {}).get("findings") or [])
+    notes_missing = list((notes_audit or {}).get("missing") or [])
+    notes_ok = not notes_findings
     prov_ok = (
         (coverage is None or coverage >= 0.9999)
         and units_missing == 0
@@ -148,6 +156,7 @@ def generate_report(
         and epubcheck.errors == 0
         and audit.ok
         and prov_ok
+        and notes_ok
     )
     if released:
         reason = "ok"
@@ -159,6 +168,8 @@ def generate_report(
         reason = "structure_open"
     elif not confirmed_resolved:
         reason = "unresolved_confirmed"
+    elif not notes_ok:
+        reason = "notes_open"
     elif not audit.ok:
         reason = "audit_failed"
     elif catalog_unresolved_open:
@@ -217,5 +228,7 @@ def generate_report(
         epub_coverage=round(epub_coverage, 6) if epub_coverage is not None else None,
         repairs_total=repairs_total,
         repairs_unresolved=repairs_unresolved,
+        notes_missing=notes_missing,
+        notes_findings=notes_findings,
         provenance_findings=prov_findings,
     )

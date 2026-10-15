@@ -405,12 +405,16 @@ def audit_provenance(
                 if doc_imgs.get(name, Counter()).get(ref, 0) < cnt:
                     result.epub_media_missing.append(f"{e['id']}:{ref}")
             # 脚注呈现：md 定义数 ↔ 成品 aside 数（双语不渲染脚注，跳过）
-            md_defs = len(re.findall(r"(?m)^\s*\[\^[^\]]+\]:", md_text))
-            epub_defs = doc_fn.get(name, 0)
-            if md_defs != epub_defs:
-                result.epub_footnotes_missing.append(
-                    f"{e['id']}（md {md_defs} / EPUB {epub_defs}）"
-                )
+            # N 阶段：使用原位标记（[^ref-…]）的文档由**独立成品注释门**
+            # （qa/notes_audit.py）逐条对账（跨文件/一注多引/内容核对），
+            # 这里跳过旧口径——否则会把「md 无 [^label]: 定义」误判为脚注丢失。
+            if not re.search(r"\[\^ref-\d{6,}\]", md_text):
+                md_defs = len(re.findall(r"(?m)^\s*\[\^[^\]]+\]:", md_text))
+                epub_defs = doc_fn.get(name, 0)
+                if md_defs != epub_defs:
+                    result.epub_footnotes_missing.append(
+                        f"{e['id']}（md {md_defs} / EPUB {epub_defs}）"
+                    )
         # 正文段落探针：md 每段（build 同款渲染）应出现在成品文档中
         missing, n = _probe_missing(md_text, text)
         probe_total += n
