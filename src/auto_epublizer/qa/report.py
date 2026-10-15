@@ -52,6 +52,9 @@ class QaResult:
     # N 阶段成品注释门：error 级发现必须清零才能放行
     notes_missing: list[str] = field(default_factory=list)
     notes_findings: list[dict[str, Any]] = field(default_factory=list)
+    # B2 报告失效证据链：生成时刻的产物摘要 + 被审计成品路径（status/ledger 据此判过期）
+    artifacts_digest: str = ""
+    artifacts_epub: str = ""
     provenance_findings: list[dict[str, Any]] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
@@ -96,10 +99,14 @@ def generate_report(
     g3_termination = str(rev.get("termination", ""))
     g3_rounds = int(rev.get("rounds", 0) or 0)
     flags = list(g0_flags or [])
-    g0_terminology_open = sum(1 for f in flags if f.get("check") == "terminology")
-    # 结构违例：标记/脚注守恒（S1.2）+ 标题守恒（issue #12）+ 表格形状/源保真（S4.1/S4.2 预留）
+    # 放行硬门只计 blocking 告警（B 组真值表）：fidelity 前向缺块/长度比/注号差集等
+    # advisory 已在告警里带 blocking=False，不得计入 g0_structure_open/terminology_open。
+    _STRUCT_CHECKS = ("align", "marker", "footnote", "heading", "table", "fidelity")
+    g0_terminology_open = sum(
+        1 for f in flags if f.get("check") == "terminology" and f.get("blocking", True)
+    )
     g0_structure_open = sum(
-        1 for f in flags if f.get("check") in ("marker", "footnote", "heading", "table", "fidelity")
+        1 for f in flags if f.get("blocking", True) and f.get("check") in _STRUCT_CHECKS
     )
     error_rate = (g2_confirmed / total_sentences) if total_sentences else 0.0
 

@@ -160,11 +160,18 @@ _COPYRIGHT_MARKERS = (
 
 @dataclass(frozen=True)
 class G0Flag:
-    """一条确定性告警。"""
+    """一条确定性告警。
+
+    ``blocking``：是否属于**放行硬门**（默认 True）。advisory 类告警显式置 False
+    （如 fidelity 前向缺块、footnote_suspect、length）——import / qa 汇总 / CLI 渲染
+    统一读该字段，避免「同一告警在 import 是 advisory、在放行汇总是硬门」的口径分叉
+    （B 组真值表核对发现：forward fidelity 曾被 g0_structure_open 计为硬门）。
+    """
 
     check: str
     message: str
     data: dict[str, Any] = field(default_factory=dict)
+    blocking: bool = True
 
 
 def count_markers(text: str, pattern: re.Pattern[str] = _MARKER_RE) -> int:
@@ -548,15 +555,34 @@ def g0_unit_flags(
         tgt_len = len(tgt.strip())
         if not tgt.strip():
             flags.append(
-                G0Flag("length", "译文为空", {"seq": seq, "src_len": src_len, "tgt_len": 0})
+                G0Flag(
+                    "length",
+                    "译文为空",
+                    {"seq": seq, "src_len": src_len, "tgt_len": 0},
+                    blocking=False,
+                )
             )
         elif src_len >= min_src_chars:
             ratio = length_ratio(src, tgt)
             context = {"seq": seq, "src_len": src_len, "tgt_len": tgt_len}
             if ratio < too_short:
-                flags.append(G0Flag("length", "长度比过低（疑漏译）", {**context, "ratio": ratio}))
+                flags.append(
+                    G0Flag(
+                        "length",
+                        "长度比过低（疑漏译）",
+                        {**context, "ratio": ratio},
+                        blocking=False,
+                    )
+                )
             elif ratio > too_long:
-                flags.append(G0Flag("length", "长度比过高（疑失控）", {**context, "ratio": ratio}))
+                flags.append(
+                    G0Flag(
+                        "length",
+                        "长度比过高（疑失控）",
+                        {**context, "ratio": ratio},
+                        blocking=False,
+                    )
+                )
         for hit in terminology_hits(src, tgt, glossary):
             flags.append(
                 G0Flag(
@@ -630,6 +656,7 @@ def g0_unit_flags(
                 f"{'…' if len(missing_numbers) > 12 else ''}）"
                 "：集合差集判据，须逐条核证（可能是排法差异，也可能是真丢失）",
                 {"numbers": missing_numbers, "samples": samples},
+                blocking=False,
             )
         )
     if structured_md is not None and translation_md is not None:

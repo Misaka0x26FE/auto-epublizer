@@ -18,7 +18,8 @@ from auto_translator.translation.align import read_align
 from .build import build_epub, collect_media, subheading_anchors
 from .build.html import render_bilingual_document, render_document, slug_file
 from .ingest import load_document
-from .qa import audit_epub, audit_notes_epub, generate_report, run_epubcheck
+from .qa import artifacts_digest, audit_epub, audit_notes_epub, generate_report, run_epubcheck
+from .qa.artifacts import report_state
 from .qa.provenance import audit_provenance
 from .structure import rebuild_structure, skip_empty_unit, unit_heading, write_structured
 
@@ -854,11 +855,12 @@ def import_translations(
             translation_md=translation_md,
             **_g0_thresholds(config or Config()),
         ):
-            # 源保真反向违例（src 不在源文中）= 对照表不可信，阻断登记；
+            # 源保真：反向失配（blocking=True，src 不在源文中）= 对照表不可信，阻断登记；
+            # 前向缺块（blocking=False，可能为合法剔除）与其余硬缺陷类/advisory 收进告警：
             # 其余硬缺陷类（terminology/marker/footnote/heading）与前向缺块
             # （fidelity）、advisory（length）收进告警：import 期不阻断，
             # 漏修被 G5 放行门兜底
-            if f.check == "fidelity" and "不在源文中" in f.message:
+            if f.check == "fidelity" and f.blocking:
                 errors.append(f"源保真：{f.message}（seq={f.data.get('seq')}）")
                 continue
             if f.check in (
@@ -870,7 +872,14 @@ def import_translations(
                 "heading",
                 "fidelity",
             ):
-                warned.append({"unit": unit.id, "check": f.check, "message": f.message})
+                warned.append(
+                    {
+                        "unit": unit.id,
+                        "check": f.check,
+                        "message": f.message,
+                        "blocking": bool(f.blocking),
+                    }
+                )
         if errors:
             if force and was_done:
                 # --force 重校验失败：显式回退 aligned，待修复后重导（不静默）
@@ -1099,6 +1108,17 @@ def set_meta(
     return {"updated": changed, "meta": pub.meta.model_dump()}
 
 
+def _qa_requires_align(store: RunStore, unit: Any) -> bool:
+    """该单元在 qa 必须有非空对照表：有译文文件，或状态已进入译文族。
+
+    未译单元（无译文、状态 pending/split/analyzed）与**源文回退构建**的单元
+    （convert 工作区、frontmatter 回退单元）不要求——避免把「没有译文」误判成对照表缺失。
+    """
+    rel = (unit.meta or {}).get("rel_path")
+    has_translation = bool(rel) and (store.translation_dir / rel).is_file()
+    return has_translation or unit.status in ("translated", "aligned", "reviewed")
+
+
 def g0_check(
     store: RunStore, *, unit_id: str | None = None, config: Config | None = None
 ) -> dict[str, Any]:
@@ -1114,7 +1134,7 @@ def g0_check(
         if unit_id and unit.id != unit_id:
             continue
         rows = read_align(store.unit_align_path(unit.id))
-        if not rows:
+        if not rows and not _qa_requires_align(store, unit):
             continue
         checked.append(unit.id)
         rel_path = (unit.meta or {}).get("rel_path")
@@ -1135,9 +1155,9 @@ def g0_check(
             translation_md=translation_md,
             **_g0_thresholds(cfg),
         ):
-            flags.append({"unit": unit.id, "check": f.check, "message": f.message, "data": f.data})
+            flags.append(_flag_dict(unit.id, f))
         for f in _unit_doc_flags(store, rel_path) if rel_path else []:
-            flags.append({"unit": unit.id, "check": f.check, "message": f.message, "data": f.data})
+            flags.append(_flag_dict(unit.id, f))
     return {"checked_units": checked, "flags": flags}
 
 
@@ -1151,7 +1171,7 @@ def _collect_g0_flags(store: RunStore, config: Config | None = None) -> list[dic
     flags: list[dict[str, Any]] = []
     for unit in store.load_publication().units:
         rows = read_align(store.unit_align_path(unit.id))
-        if not rows:
+        if not rows and not _qa_requires_align(store, unit):
             continue
         rel_path = (unit.meta or {}).get("rel_path")
         structured_path = store.structured_dir / rel_path if rel_path else None
@@ -1171,9 +1191,9 @@ def _collect_g0_flags(store: RunStore, config: Config | None = None) -> list[dic
             translation_md=translation_md,
             **_g0_thresholds(cfg),
         ):
-            flags.append({"unit": unit.id, "check": f.check, "message": f.message, "data": f.data})
+            flags.append(_flag_dict(unit.id, f))
         for f in _unit_doc_flags(store, rel_path) if rel_path else []:
-            flags.append({"unit": unit.id, "check": f.check, "message": f.message, "data": f.data})
+            flags.append(_flag_dict(unit.id, f))
     return flags
 
 
@@ -1591,6 +1611,9 @@ def qa(
                 "交付前按 references/delivery.md 执行全量校验并写记录",
             }
         )
+    # B2 报告失效证据链：记录生成时刻的产物摘要与被审计成品路径（status/ledger 据此判过期）
+    report.artifacts_digest = artifacts_digest(store, epub_path=epub)
+    report.artifacts_epub = str(epub)
     store.save_qa(report.to_dict())
     return report.to_dict()
 
@@ -1648,6 +1671,17 @@ def _task(
         task["unit"] = unit
     task["done_when"] = done_when if done_when is not None else {"cmd": kind}
     return task
+
+
+def _flag_dict(unit_id: str, f: Any) -> dict[str, Any]:
+    """G0Flag → 机器可读 dict（含 ``blocking``：advisory/硬门的统一判据，B 组真值表）。"""
+    return {
+        "unit": unit_id,
+        "check": f.check,
+        "message": f.message,
+        "data": f.data,
+        "blocking": bool(getattr(f, "blocking", True)),
+    }
 
 
 def _notes_next_task(store: RunStore, pub: Any) -> dict[str, Any] | None:
@@ -1893,10 +1927,15 @@ def status_all(base_dir: str | Path) -> list[dict[str, Any]]:
                 report = read_json(report_path)
             except (OSError, ValueError):
                 report = {}
-        if report_path.is_file() and report.get("released"):
-            progress = "released"
-        elif report_path.is_file():
-            progress = "built_not_released"
+        report_stale = False
+        if report_path.is_file():
+            report_info = report_state(RunStore(ws))
+            report_stale = bool(report_info["stale"])
+            progress = (
+                "released"
+                if (report_info["released"] and not report_stale)
+                else "built_not_released"
+            )
         else:
             progress = "preprocessing"
         published_slug = pub.get("slug")
@@ -1914,6 +1953,7 @@ def status_all(base_dir: str | Path) -> list[dict[str, Any]]:
                 "has_report": report_path.is_file(),
                 "released": report.get("released"),
                 "released_reason": report.get("released_reason"),
+                "report_stale": report_stale,
                 "progress": progress,
                 "facts_created_at": (
                     datetime.fromtimestamp(facts_path.stat().st_mtime).isoformat()
@@ -2012,6 +2052,10 @@ def status(store: RunStore, *, as_json: bool = False) -> dict[str, Any]:
             stale.append(
                 {"id": "catalog", "status": "included_unbound", "reason": "catalog_binding_broken"}
             )
+    # B2 报告失效对账：报告声称 released 但产物已变 → 过期（不得当当前证据）
+    report_info = report_state(store)
+    if report_info["stale"]:
+        stale.append({"id": "report", "status": "stale", "reason": "report_stale"})
     # N 阶段注释登记对账（只读）：摘要、失效与候选未决
     notes_state = notes_status(store)
     if notes_state["stale"]:
@@ -2026,6 +2070,7 @@ def status(store: RunStore, *, as_json: bool = False) -> dict[str, Any]:
         "preprocessing_complete": preprocessing_complete,
         "catalog": catalog,
         "notes": notes_state,
+        "report": report_info,
         "stale": stale,
         "next_tasks": _derive_next_tasks(
             store,

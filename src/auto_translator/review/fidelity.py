@@ -63,6 +63,7 @@ def fidelity_flags(structured_md: str, rows: list[dict[str, Any]]) -> list[G0Fla
                     "fidelity",
                     "源文块未进对照表",
                     {"block": i, "head": block[:40]},
+                    blocking=False,  # 前向缺块=advisory（可能为合法剔除）；反向失配才是硬缺陷
                 )
             )
     source_norm = norm_text("".join(all_lines(structured_md)))

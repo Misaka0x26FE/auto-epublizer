@@ -1,4 +1,4 @@
-<!-- i18n: source=invariants.zh.md sha256=67c67e3af4ac52fa3aa59bdfaa08a7c4d6a0325f013d21afaf820ffb8b2a0b0c -->
+<!-- i18n: source=invariants.zh.md sha256=0e98c116c0346da8317dab7acf0eed6d643bd450795dc07ae0f1bacf747ea242 -->
 > **English** | [中文](invariants.zh.md)
 
 # Invariants quick-reference card (invariants)
@@ -29,7 +29,8 @@
 | `g2_confirmed == 0` or all revised (`g2_confirmed <= g3_patched`) | `unresolved_confirmed` |
 | `g0_terminology_open == 0` (terminology hit = real defect) | `terminology_open` |
 | `glossary_conflicts_open == 0` (terminology conflict unresolved; no release before the arbitration is written back to glossary.csv) | `glossary_conflict_open` |
-| `g0_structure_open == 0` (marker/footnote/table/fidelity violations) | `structure_open` |
+| `g0_structure_open == 0` (**blocking** align/marker/footnote/heading/table/fidelity violations) | `structure_open` |
+| `notes_ok` (books with notes: product note gate has no findings; zero-to-zero for none) | `notes_open` |
 | `catalog_unresolved_open == 0` (unresolved source-inventory items; only checked when catalog.csv exists) | `catalog_open` |
 | `audit.ok` (G4 unpack audit zero error) | `audit_failed` |
 | `prov_ok` (coverage≈1.0 or null, units_missing/media_lost/inserts_missing_files/toc_flat, no error-level findings) | `provenance_incomplete` |
@@ -37,19 +38,33 @@
 | `epubcheck.errors == 0` | `epubcheck_errors` |
 
 reason determination priority = top to bottom of the table above (first g0 hard defects →
-conflict → structure → audit → provenance → epubcheck).
+conflict → structure → notes → review → audit → provenance → epubcheck).
+
+**Report freshness (B2)**: `report.json` records the `artifacts_digest` taken at generation
+time (source hash + each unit's structured/translation/align + note files + latest review
+result + product bytes) and the audited `artifacts_epub`. After any artifact changes,
+`status`/`status_all`/`ledger` treat that report as stale (`report_stale`, progress
+downgraded to `built_not_released`); re-running `qa` also rejects the old product against
+the new artifacts (coverage/drift/note-content reconciliation). The old "don't touch files
+after review" verbal convention is no longer the only safeguard.
 
 ## 3. G0 checks (`auto_translator/review/g0.py::g0_unit_flags`)
 
-| check | semantics | level |
+Each flag carries a `blocking` field (default True): import blocking, G5 release counting
+and CLI red/yellow rendering **all read that field** instead of guessing the level from the
+check name or message text (B2 truth-table correction).
+
+| check | semantics | level (`blocking`) |
 |---|---|---|
-| `align` | seq continuous 1..N, no empty src/tgt (violation blocks that unit's import) | hard (blocking) |
-| `terminology` | glossary source appears but the translation lacks the target | **hard defect** |
-| `marker` | `{fig:NNN}` etc. markers **unit-level total** src/tgt consistent | **hard defect** |
-| `footnote` | pandoc `[^label]` + sentence-final numeric note-reference total consistent | **hard defect** |
-| `table` | table shape conservation (table count/per-table row-column counts; import **blocks**) | **hard defect (blocking)** |
-| `fidelity` | align src ↔ structured bidirectional coverage (S4.1) | **hard defect** |
-| `length` | length ratio `[0.30, 3.0]` | advisory |
+| `align` | seq continuous 1..N, no empty src/tgt; an empty/missing alignment for a unit with a registered translation is a hard gate in qa too | hard |
+| `terminology` | glossary source appears but the translation lacks the target | hard |
+| `marker` | `{fig:NNN}` etc. markers **unit-level total** src/tgt consistent | hard |
+| `footnote` | pandoc `[^label]` + sentence-final numeric note-reference total consistent | hard |
+| `heading` | structured↔translation h1–h6 per-level counts (issue #12) | hard |
+| `table` | table shape conservation (table count/per-table row-column counts) | hard |
+| `fidelity` | forward missing block (may be a legitimate removal) **advisory**; reverse src not in source (rewritten/fabricated) hard | forward `False` / reverse `True` |
+| `length` | length ratio (with short-source protection `qc.length_ratio.min_src_chars`) | advisory (`False`) |
+| `footnote_suspect` | note-number set difference present on the source side but absent from the translation | advisory (`False`) |
 
 Conservation classes compare **unit-level totals**: splitting/joining sentences so that a
 marker moves to an adjacent line does not false-report; loss always reports.

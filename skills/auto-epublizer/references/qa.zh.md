@@ -59,7 +59,9 @@ auto-epublizer qa [--epub <path>] [--workspace <dir>]
 - `g4_epubcheck_errors == 0`（epubcheck 已实际运行）
 - `g4_audit == "pass"`（解包审计零 error）
 - G0 术语命中清零（`g0_terminology_open == 0`；长度比类告警才是 advisory）
-- G0 结构违例清零（`g0_structure_open == 0`：标记/脚注守恒）
+- G0 结构违例清零（`g0_structure_open == 0`：**blocking** 的 align/marker/footnote/
+  heading/table/fidelity；fidelity 前向缺块与长度比是 advisory，不计入）
+- 成品注释门清零（有注书：`notes_findings == 0`；`inventory=none` 时零对零）
 - 未决术语冲突清零（`glossary_conflicts_open == 0`；未清零 → `glossary_conflict_open`——
   回 analysis/glossary_conflicts.jsonl 裁决写回 glossary.csv 后重跑 qa）
 - 审校 `g2_confirmed == 0` 或全部已修订
@@ -71,11 +73,18 @@ auto-epublizer qa [--epub <path>] [--workspace <dir>]
   `epub_footnotes_missing == 0`、`align_md_drift == 0`、`epub_coverage ≈ 1.0`
   （成品实际包含 ↔ 译文正文/对照表）
 
+> **报告时效**：`report.json` 记录生成时的 `artifacts_digest`（源哈希 + 各单元
+> structured/translation/align + 注释文件 + 最新审校 result + 成品字节）。之后改过
+> 译文/对照表/审校/注释或成品，`status`/`status_all`/`ledger` 即把报告标为过期
+> （`report_stale`，进度降为 `built_not_released`）；须重跑 `build`/`qa` 才恢复。
+> 重跑 qa 时旧成品与当前产物不一致也会被 coverage/drift/注释内容核对拒绝。
+
 > `qa released=True` 只代表已知契约全绿；**交付前还须执行 `references/delivery.md`
 > 的交付审计清单**（独立对账 + 人工抽查 + 写交付记录），两者都完成才算交付。
 
 `released` 为 False 时看 `released_reason` 判定原因：
-`unresolved_confirmed`（G2 确认未修订）/ `audit_failed` / `provenance_incomplete`
+`unresolved_confirmed`（G2 确认未修订）/ `structure_open`（含 align 缺失/空对照表）/
+`notes_open`（有注书成品注释门未清零）/ `audit_failed` / `provenance_incomplete`
 （溯源不完整：看 `provenance_findings` 里的 E_UNIT_MISSING/E_UNIT_ORDER/E_MEDIA_LOST/
 E_MEDIA_ORDER/E_MEDIA_EPUB_LOST/E_FN_EPUB_LOST/E_EPUB_PARA_LOST/E_ALIGN_MD_DRIFT/
 E_TOC_FLAT/E_INSERT_MISSING_FILE/E_INSERT_BAD_SOURCE 定位）/

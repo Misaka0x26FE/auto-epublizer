@@ -554,6 +554,41 @@ H 逐本记录重建/阅读器验收/副本同步，缺源证据的具体书保�
   reviewed/built 跳过、force 失败回退 aligned）。
 - 全量 **516 passed**、`ruff check` / `ruff format --check` 全绿。
 
+### 批次 B2（发布完整性：真值表 / 失效链 / 破坏场景）
+
+**真值表**落在 `tests/test_release_truth_table.py` 文件头（条件 → 拥有层 → 级别 → 用例），
+共 15 项；既有 `test_qa`/`test_notes` 覆盖术语/结构/冲突/catalog/审校/epubcheck/溯源/注释门。
+
+**发现与修复（先复现后修）**：
+
+1. **forward fidelity 级别分叉**：文档写明「前向缺块=advisory」，但 `qa/report.py` 按
+   check 名把所有 `fidelity` 计入 `g0_structure_open` —— 同一告警在 import 是 advisory、
+   在放行时是硬门。修复：`G0Flag` 增加 `blocking` 字段（默认 True）；fidelity 前向、
+   长度比、注码差集显式 `False`；两条 G0 链序列化该字段；`report.py` 只计 blocking；
+   import 阻断与 CLI 红/黄渲染统一读该字段（不再靠消息文本/检查名猜级别）。
+2. **空/缺失对照表的已登记单元在 qa 被跳过**（`if not rows: continue`）：把 align 清空后
+   qa 仍 `released=True`。修复：对「有译文文件或状态进入译文族」的单元，即使 rows 为空
+   也跑 `check_alignment`（产出 `align`「对照表为空」，硬门，定位到单元）；源文回退/
+   convert 工作区不要求（避免把「无译文」误判成缺失）。另把 `align` 纳入放行硬门集合。
+3. **旧报告被当当前证据**：`report.json` 无产物指纹——改译文/align/审校后
+   `status`/`ledger` 仍显示 released。修复：新增 `qa/artifacts.py`（`artifacts_digest`：
+   源哈希 + 各单元 structured/translation/align + 注释文件 + 最新审校 result + 成品字节；
+   `report_state`）；`qa` 写入 `artifacts_digest`/`artifacts_epub`；`status` 增加 `report`
+   段与 stale 项；`status_all` 增 `report_stale`，过期即把进度降为 `built_not_released`。
+
+**破坏场景（拒绝放行 + 定位）**：forward advisory vs reverse hard、align 清空、
+catalog 未决、审校未修（g2>g3）、epubcheck 未运行、术语/结构（test_qa）、注释门
+（test_notes）、篡改 nav（`audit_failed` + `E_NAV_HREF`）、删 spine 文档
+（`audit_failed` + `E_MANIFEST_HREF`/`E_NAV_HREF`/`E_NCX_HREF`/`E_LANDMARKS_HREF`）。
+
+**成品 ZIP 独立核对**：干净工作区经真实 CLI `import→build→qa` 放行后，直接解析 ZIP 验证
+mimetype 首位未压缩、container/opf/nav 存在、spine 文档在、单 h1、nav 为 toc——不以
+report 声称代替产物检查。
+
+**验证**：全量 **531 passed**（516→531）、`ruff` 全绿；`invariants.{zh,md}`/`qa.{zh,md}`
+放行条件表与报告时效说明同步；i18n `--check`/`--links` OK。
+
+
 
 
 

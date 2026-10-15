@@ -569,7 +569,7 @@ def import_cmd(
     # 硬缺陷类（术语命中/标记/脚注守恒等）：红色 ✗；advisory（长度比等）：黄色 ⚠
     _HARD_CHECKS = {"terminology", "marker", "footnote", "table", "fidelity"}
     for w in result["warnings"][:20]:
-        hard = w["check"] in _HARD_CHECKS
+        hard = bool(w.get("blocking", w["check"] in _HARD_CHECKS))
         color = "[red]" if hard else "[yellow]"
         mark = "✗" if hard else "⚠"
         console.print(
@@ -577,7 +577,9 @@ def import_cmd(
         )
     if len(result["warnings"]) > 20:
         console.print(f"  … 共 {len(result['warnings'])} 条告警")
-    n_term = sum(1 for w in result["warnings"] if w["check"] in _HARD_CHECKS)
+    n_term = sum(
+        1 for w in result["warnings"] if bool(w.get("blocking", w["check"] in _HARD_CHECKS))
+    )
     if n_term:
         console.print(
             f"[red]其中硬缺陷 {n_term} 条（术语命中/标记/脚注守恒等，真实缺陷），"
@@ -666,7 +668,7 @@ def g0(
     _HARD_CHECKS = {"terminology", "marker", "footnote", "table", "fidelity"}
     n_hard = 0
     for f in result["flags"]:
-        if f["check"] in _HARD_CHECKS:
+        if bool(f.get("blocking", f["check"] in _HARD_CHECKS)):
             n_hard += 1
             console.print(f"[red]✗ {f['unit']} {f['check']}：{f['message']}[/red]")
         else:

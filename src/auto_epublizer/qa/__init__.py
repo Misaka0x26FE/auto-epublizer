@@ -8,6 +8,7 @@
 
 from __future__ import annotations
 
+from .artifacts import artifacts_digest, latest_review_result_path, report_state
 from .audit import AuditFinding, AuditResult, audit_epub
 from .epubcheck import EpubcheckResult, run_epubcheck
 from .notes_audit import NotesAuditResult, audit_notes_epub
@@ -21,9 +22,12 @@ __all__ = [
     "NotesAuditResult",
     "ProvenanceResult",
     "QaResult",
+    "artifacts_digest",
     "audit_epub",
     "audit_notes_epub",
     "audit_provenance",
     "generate_report",
+    "latest_review_result_path",
+    "report_state",
     "run_epubcheck",
 ]
