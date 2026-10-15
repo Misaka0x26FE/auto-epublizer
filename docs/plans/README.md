@@ -39,4 +39,4 @@
 | [2026-10-04-backlog-three-items.md](2026-10-04-backlog-three-items.md) | 规划中 | 三项待办梳理：#16 导航层级（GitHub Issue，部分完成）+ skills 化（未立项）+ 工作原子化（规划中）——来源、真实状态核实与修改思路；已完成可行性审查（S-A 风险解除 / S-B 约束澄清 / 依赖修正） |
 | [2026-10-05-skills-standardization.md](2026-10-05-skills-standardization.md) | 已完成 | 仓库 skills 标准化（skills.sh / Agent Skills）：P0 合规 + P1 发布 + P2 SKILL.md 减重 + P3 原子任务卡（9 张双语）完成；P4 多 skill 拆分经真书实测判定「暂不拆分」（证据不支持）；含「全部事项」总表与实测记录 |
 | [2026-10-05-remaining-fixes.md](2026-10-05-remaining-fixes.md) | 已完成（R0–R4） | 现场核对（代码现状 + 本机真实工作区：布局嵌套/schema 异构）与剩余修复计划：R0 `status --all` 嵌套布局（新缺陷）→ R1 #14 页边界证据 → R2 #31 PDF 标题识别 → R3 #30 §4.1/4.4 → R4 模板固化 |
-| [2026-10-14-review-and-repair.md](2026-10-14-review-and-repair.md) | 已完成（V/H 阻塞） | 全项目审查与修复（线上 #41）：S0/E-1/B-1/N/A/B2/D/E2/C/F 全部实施并有前后证据（10 提交，553 passed，wheel SPDX 实测）；V 导航恢复、H 历史成品回收、阅读器实测、#34 真书私有验收、扫描件 OCR 质量因缺外部材料保留阻塞项（不宣称修复） |
+| [2026-10-14-review-and-repair.md](2026-10-14-review-and-repair.md) | 实施中（审查回流） | 原批次记录保留；后续实跑审查发现 P1/P2 漏门待修，V/H 仍阻塞；新增成品软件指纹（元数据/版权制作页/内容注释、实际工具快照），572 passed、1 skipped，源/译/双语真实 EPUBCheck 与制作页渲染已验 |

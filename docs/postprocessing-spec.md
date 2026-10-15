@@ -1,4 +1,4 @@
-<!-- i18n: source=postprocessing-spec.zh.md sha256=1e86f940eddb86041695c0b04f3c7728e85bb1072f6fceee502559d9d72efcad -->
+<!-- i18n: source=postprocessing-spec.zh.md sha256=dd8e8e7a462cc91d9d69551540f8a0b50ae21b0076c153eb681b7f28f8e12060 -->
 > **English** | [中文](postprocessing-spec.zh.md)
 
 # Post-Processing Spec: Acceptance and Implementation of Content Integrity / Media / EPUB Structure
@@ -169,8 +169,8 @@ into report.json):
 ### P2 — Supplementary Items (✅ Completed 2026-09-04)
 
 - ✅ Accessibility: no heading level skips (`E_HEADING_SKIP`); alt empty value (P1 already did `W_IMG_NO_ALT`), lang (existing `W_NO_LANG`)
-- ✅ Residue check: HTML comments (`E_RESIDUE`) / markdown·pandoc markers (`W_RESIDUE`: `![` `**` `:::` `{.` `[^`);
-  source-language character residue is a semantic judgement and goes to G1 review (agent task), not a deterministic check
+- ✅ Residue check: HTML comments (`E_RESIDUE`; only valid `auto-epublizer-build` structured JSON fingerprint comments are exempt—ordinary comments, forged prefixes, and malformed JSON remain errors) / markdown·pandoc markers (`W_RESIDUE`: `![` `**` `:::` `{.` `[^`);
+  source-language character residue is a semantic judgement for G1 review (agent task), not a deterministic check. A separate production-information page requires an OPF fingerprint declaration, a page marker, and a matching valid fingerprint before being excluded as non-manuscript material from body/TOC reconciliation; its filename or `linear="no"` alone is insufficient. See `docs/epub-template-spec.md` for software provenance and manuscript-rights boundaries.
 - ✅ Metadata completeness: missing creator/date/publisher/rights → `W_META_INCOMPLETE` (warning, for the agent to complete)
 - ✅ Bilingual provenance: `build --bilingual` src/tgt paragraph counts paired (`E_BI_PAIRS`)
 - ✅ Internal links: internal anchors resolvable (`E_ANCHOR`, including noteref→footnote) + footnote backlinks (`E_FN_BACKLINK`)

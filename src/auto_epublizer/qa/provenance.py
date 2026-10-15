@@ -31,6 +31,7 @@ from auto_translator.review.g0 import md_align_drift
 from auto_translator.translation.align import read_align
 
 from ..build import nav_depth_sequence, nav_toc_entries, slug_file, subheading_anchors
+from ..fingerprint import generated_pages
 from ..ingest.inserts import read_inserts
 from ..structure import skip_empty_unit
 
@@ -314,6 +315,7 @@ def audit_provenance(
         nav_depths = _nav_depths(zf)
         declared_depth = _nav_declared_depth(zf)
         opf_has_cover = _opf_has_cover(zf)
+        software_pages = generated_pages(zf)
         # EPUB 呈现对账（交付审计 S1.2）：按 spine 收集每文档的呈现数据
         opf_dir = _opf_dir(zf)
         zip_names = set(zf.namelist())
@@ -345,7 +347,9 @@ def audit_provenance(
     result.units_missing = [
         e["id"] for e, n in zip(expected, expected_names, strict=False) if n not in spine_set
     ]
-    result.units_unexpected = [n for n in spine_docs if n not in expected_set]
+    result.units_unexpected = [
+        n for n in spine_docs if n not in expected_set and n not in software_pages
+    ]
     actual_matched = [n for n in spine_docs if n in expected_set]
     result.units_order_ok = actual_matched == [n for n in expected_names if n in spine_set]
     if result.units_missing:

@@ -82,4 +82,5 @@ def read_text(path: str) -> SourceDocument:
         source_path=os.path.abspath(path),
         fmt="text",
         units=units,
+        meta={"processing_tools": []},
     )

@@ -31,12 +31,13 @@ import json
 import os
 import time
 import zipfile
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any
 
 import httpx
 
+from ..fingerprint import used_tool
 from .inserts import InsertRecord, InsertSource, next_insert_id, write_inserts
 from .models import KIND_HEADING, KIND_TEXT, SourceDocument, SourceSegment, SourceUnit
 
@@ -54,6 +55,8 @@ class MineruParseResult:
     content_list: list[dict[str, Any]] = field(default_factory=list)
     markdown: str = ""
     images: dict[str, bytes] = field(default_factory=dict)  # zip 相对路径 → 字节
+    # 由实际 API 客户端填充；注入的其他解析器不会自动冒称 MinerU/HTTPX。
+    processing_tools: list[dict[str, str | None]] = field(default_factory=list)
 
 
 class MineruClient:
@@ -122,7 +125,8 @@ class MineruClient:
             self._upload(client, file_url, data)
             zip_url = self._poll_done(client, batch_id)
             zip_bytes = self._download(client, zip_url)
-        return _unpack_zip(zip_bytes)
+        result = _unpack_zip(zip_bytes)
+        return replace(result, processing_tools=[used_tool("mineru"), used_tool("httpx")])
 
     def _create_batch(
         self, client: httpx.Client, name: str, model_version: str, language: str, is_ocr: bool
@@ -464,7 +468,11 @@ def _merge_results(results: list[MineruParseResult], page_counts: list[int]) -> 
     images: dict[str, bytes] = {}
     markdown_parts: list[str] = []
     offset = 0
+    processing_tools: list[dict[str, str | None]] = []
     for part_no, (result, pages) in enumerate(zip(results, page_counts, strict=True), start=1):
+        for tool in result.processing_tools:
+            if tool not in processing_tools:
+                processing_tools.append(tool)
         prefix = f"b{part_no}/"
         for name, data in result.images.items():
             images[prefix + name] = data
@@ -484,6 +492,7 @@ def _merge_results(results: list[MineruParseResult], page_counts: list[int]) -> 
         content_list=content_list,
         markdown="\n\n".join(markdown_parts),
         images=images,
+        processing_tools=processing_tools,
     )
 
 
@@ -498,11 +507,14 @@ def _parse_maybe_batched(
     """> ``batch_pages`` 页时顺序分批解析并合并（MinerU 单文件 ≤200 页限制）。"""
     pdf = Path(path)
     total = _pdf_page_count(pdf)
+    processing_tools = [used_tool("pymupdf")] if total > 0 else []
     if batch_pages <= 0 or total <= batch_pages:
-        return client.parse_file(pdf, model_version=model_version, language=language)
+        result = client.parse_file(pdf, model_version=model_version, language=language)
+        return replace(result, processing_tools=[*processing_tools, *result.processing_tools])
     parts = _split_pdf(pdf, batch_pages)
     if len(parts) <= 1:
-        return client.parse_file(pdf, model_version=model_version, language=language)
+        result = client.parse_file(pdf, model_version=model_version, language=language)
+        return replace(result, processing_tools=[*processing_tools, *result.processing_tools])
     results: list[MineruParseResult] = []
     for name, data in parts:
         try:
@@ -514,7 +526,8 @@ def _parse_maybe_batched(
                 f"MinerU 分批解析第 {len(results) + 1}/{len(parts)} 批失败：{e}"
             ) from e
     page_counts = [min(batch_pages, total - i * batch_pages) for i in range(len(parts))]
-    return _merge_results(results, page_counts)
+    result = _merge_results(results, page_counts)
+    return replace(result, processing_tools=[*processing_tools, *result.processing_tools])
 
 
 def read_mineru(
@@ -573,5 +586,9 @@ def read_mineru(
         source_path=os.path.abspath(str(path)),
         fmt="pdf",
         units=units,
-        meta={"pages": page_count, "parser": "mineru"},
+        meta={
+            "pages": page_count,
+            "parser": "mineru",
+            "processing_tools": result.processing_tools,
+        },
     )

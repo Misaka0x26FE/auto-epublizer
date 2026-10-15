@@ -10,6 +10,8 @@ from collections import Counter
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from ..fingerprint import strip_fingerprint_comments
+
 _XHTML = "application/xhtml+xml"
 _HTTPS = re.compile(r"^(https?|javascript|data):", re.IGNORECASE)
 
@@ -383,7 +385,7 @@ def audit_epub(path: str | Path, *, nav_exempt: set[str] | None = None) -> Audit
         for name in names:
             if not name.endswith(".xhtml") or name.endswith(("nav.xhtml", "landmarks.xhtml")):
                 continue
-            content = zf.read(name).decode("utf-8")
+            content = strip_fingerprint_comments(zf.read(name).decode("utf-8"))
             if "<!--" in content:
                 result.add("error", "E_RESIDUE", f"HTML 注释残留：{name}")
             for label, pattern in _MD_RESIDUE:

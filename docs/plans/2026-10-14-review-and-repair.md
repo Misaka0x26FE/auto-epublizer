@@ -1,9 +1,9 @@
 # 2026-10-14 全项目审查与修复计划
 
-状态：**已完成**（2026-10-15）：S0 / E-1 / B-1 / N / A / B2 / D / E2 / C / F 全部实施并具前后证据
-（提交清单见 §7 末尾）；**V / H 与阅读器实测因缺外部材料保留阻塞项**（不宣称修复，见 §7「保留阻塞项」）。
+状态：**实施中（审查回流）**。§7 保留原批次的完成记录；§8 已实现成品软件指纹，
+但后续审查仍有 P1/P2 待修项；V/H、阅读器注释实测及真实书回源验收仍阻塞，不宣称全项目整改完成。
 
-线上跟踪：[Issue #41](https://github.com/Misaka0x26FE/auto-epublizer/issues/41)。本文件与该 issue 正文同步；实施状态、回归证据与历史成品重建结果分别记录，不以更新计划代替完成修复。
+线上跟踪：[Issue #41](https://github.com/Misaka0x26FE/auto-epublizer/issues/41)。§7 为前批次记录，§8 为本轮本地审查与新增实现；本轮未修改线上 issue。实施状态、回归证据与历史成品重建分别记录。
 
 ## 1. 目标与边界
 
@@ -798,3 +798,67 @@ METADATA 为 `License-Expression: AGPL-3.0-only`（Metadata 2.5）。
 - **阅读器实测**（弹窗、往返、目录真实落点）：需真机阅读器环境；源码或截图结构推断不算实测。
 - **#34 真实书私有验收**（`auschwitz-central-construction-office`）：本机无该工作区。
 - **扫描件 OCR 质量**：无 tesseract/ocrmypdf/rapidocr/MinerU key（详见 F 报告），仅伪后端覆盖。
+
+## 8. 后续审查与成品软件指纹增补
+
+状态：**指纹增补已实现并验证；审查发现待修**。审查基线为 `4d76c62..c0e89c2`，
+覆盖关键正确性路径而非 129 个文件逐行全审；仅 SPDX 变动不算行为变化。前批次的
+553 passed 不作为本次审查结论，以下既有缺陷本轮只复现与报告，未擅自修复或结单。
+
+本次用户新增要求：EPUB 内包含项目名、项目地址、实际构建版本，以及实际使用的其他开源工具。
+实施边界：
+
+- OPF 元数据、内容 XHTML 的机器可读注释、版权页的独立制作声明使用同一份指纹。
+  无版权页时生成独立制作信息页，作为非线性 spine 文档并提供地标入口；不伪造原书版权页。
+- 不修改原书作者/译者/出版社和 `dc:rights`，软件许可证不自动扩张到书稿。
+- 构建身份取当前执行代码版本；源码检出时另记 revision/dirty，不复用 init 时的旧 producer。
+- 处理工具在实际成功的 ingest 路径记录名称、版本、项目 URL 与许可，随工作区持久化；
+  未调用的 OCR/转换器不列入。服务与开源软件区分，版本不明明确记未知，旧工作区明确未记录，
+  不根据当前安装列表倒推历史工具。默认制作声明不依赖网络，不含主机路径、密钥或唯一追踪 ID。
+- 保持输入/工具快照不变时构建确定性；源/译/双语共用构建内核。QA 仅认可有效的工具指纹注释，
+  其他残留注释仍报错；生成制作页不能被误报成丢失/未知书稿单元，其他未知文档照常阻断。
+- 补消费行为/边界回归，运行受影响测试、Ruff、i18n，使用真实 CLI 合成 EPUB 与 EPUBCheck 验证；
+  核对版权声明保留、元数据/注释一致、工具历史冻结、无多余工具与字节确定性。
+
+### 8.1 审查回流（未修复）
+
+| 级别 | 位置 | 已观察行为／影响 | 最小处置方向 |
+|---|---|---|---|
+| P1 | `orchestrator.py:1038–1040` | 合成源文导出的 2 个候选均判为 note，仍可登记 inventory=none，构建零语义注文且注释门 ok | 已核证候选必须与 note/ref 图对账，拒绝 note 候选与 none 矛盾及 present 的部分遗漏 |
+| P1 | `orchestrator.py:964–967` | 修改源注文并重新登记后，译注 source_notes_sha256 不符仍可 build，成品注释门也 ok | 共享加载/构建/审计入口验证译注源版本绑定，并按实际源/译模式检查需要的译注 |
+| P1 | `qa/notes_audit.py:48–56` | 注文图片不存在时 collect_media 删除引用，仅记 drop 事件，注释文本对账仍 ok | 单独核对注文媒体期待和实际 aside/包内资源，不能由去图片的文本规范化掩盖缺失 |
+| P1 | `qa/artifacts.py:35–57` | 已放行后新增 catalog unresolved，status 报告不 stale、台账仍 released；重跑 QA 才变为 catalog_open | 摘要覆盖所有放行输入及有序 publication 发布描述、实际源身份，不能排序抹去单元顺序 |
+| P2 | `orchestrator.py:1691–1700` | 旧报告过期被路由为 import --unit report，执行后同一任务持续返回 | 按 stale 类型分派 build/qa，不把 report 当真实单元 |
+| P2 | `qa/artifacts.py:92–93` / `orchestrator.py:1538` | QA 保存相对 EPUB 路径，切换 cwd 后未变的产物被误判 stale | 工作区内路径相对 store.dir 保存/解析，外部产物用规范化绝对路径 |
+| P2 | `qa/provenance.py:425–430` / `qa/audit.py` | 已登记 orphan_ok 无引用注文通过新注释门，却被旧门报 E_FN_EPUB_LOST / E_FN_BACKLINK | 根据已登记图移交旧计数/回链门，不通过伪造引用或删除合法注文解决 |
+| P2 | `AGENTS.zh.md:89–110` 及英文对应流程 | 标准流程先翻译/import，再到 5.7 注释登记，与前置绑定要求相反；workflow reference/机器指针则已前置 | 把中英文入口的核证/登记步骤移到翻译前，统一入口契约 |
+
+前 7 项均以临时合成工作区运行观察；报告/cwd 两项使用真实 EPUBCheck 的已放行产物，
+没有伪造检查器成功。最后一项为文档直接核对。脚本/书稿样本未加入永久仓库；
+这组结论不证明历史真实书已修好，也不承诺现有测试覆盖上述未修缺口。
+
+### 8.2 指纹实现与本次验证
+
+- 新增 `auto_epublizer/fingerprint.py`：项目 URL/软件许可、当前构建版本、源码 revision/dirty、
+  Python/Pydantic 运行时、冻结的实际处理工具；可见页、OPF aep:build 和 XHTML 注释共用数据。
+- ingest 各实际路径记录工具快照并通过 RunStore 保存；RapidOCR 只有真实处理页面才列入，
+  MinerU API 是版本/许可未知的服务，不倒推其内部实现。旧工作区 processing_tools=null 明示未知。
+- 已有版权页保留原文并追加独立软件声明；无版权页生成不覆盖同名书稿的非线性制作页，
+  从 copyright-page 地标访问。有效结构指纹注释被窄豁免，普通/坏 JSON 注释仍报 E_RESIDUE；
+  只有 OPF 与页内标识、指纹一致的制作页被识别为软件附页，其他未知文档仍阻断。
+- 新增消费行为测试 `tests/test_fingerprint.py` 与 `tests/test_processing_tools.py`：
+  当前构建/初始版本区分、源版权保留、JSON/XML 特殊字符、旧历史未知、工具冻结、
+  实际解析路径/失败保留、生成页同名冲突、辅助页篡改、残留门及重复构建字节一致。
+- **本次全套**：`uv run --offline pytest -q` → **572 passed, 1 skipped**；
+  `ruff check .` 通过，`ruff format --check .` → **299 files already formatted**；
+  i18n `--check` / `--links` 均 OK（5 对中英文文档已 finalize）。
+- **真实 CLI smoke**：源文 convert、译文 build、双语 build 均实际执行 EPUBCheck，
+  **零 error 且 released=true**；译文/双语保留 `dc:rights=© Original rights owner`。
+  实际 HTML→EPUB 记录 Pandoc **3.1.3**；纯 Markdown 不虚列额外外部解析工具。
+- **可见面**：从真实合成 EPUB 提取制作 XHTML/CSS，在 Chromium 实际渲染并查看，
+  确认项目链接、版本、源码 revision/modified 状态、软件许可边界和运行时工具可见。
+  这不是 EPUB 阅读器弹窗验收，不能据此消除 §7 的注释/目录真机阻塞。
+- 临时 EPUB、复现工作区、预览服务与浏览器页均已清理。未修改用户历史成品、未提交/推送代码，
+  未同步/关闭线上 issue；后续先修上述 P1 漏门，再安排真实书 V/H 回收。
+
+

@@ -26,7 +26,7 @@ auto-epublizer build [--bilingual] [-o <out.epub>] [--theme standard|compact|spa
 
 ## 确定性
 
-- 构建时间戳用冻结值（非 `time.Now()`），同一冻结工作区两次构建字节一致。
+- 构建时间戳用冻结值（非 `time.Now()`）；同一冻结工作区、相同构建版本/源码状态及运行时指纹下，两次构建字节一致。
 - 结果按稳定原文序合并，不随并发完成顺序变化。
 - 内部稳定 ID 不外泄到产物（脚注/尾注用确定性序号）。
 
@@ -35,6 +35,16 @@ auto-epublizer build [--bilingual] [-o <out.epub>] [--theme standard|compact|spa
 DC 元数据来自 `publication.json.meta`：`dc:title`、`dc:creator`、`dc:language`（译文用
 `target_language`，纯转换用源语言）、`dc:identifier`（isbn/uri/slug）、`dc:date`、
 `dc:publisher`、`dc:rights`。
+
+## 成品软件指纹
+
+- OPF 写入 `generator` 与自定义 `aep:` 元数据（`aep:build` 保存结构化构建记录）；内容 XHTML 的 head 内写入 `auto-epublizer-build` 前缀的 JSON 注释，供离线识别。
+- 指纹记录项目 `auto-epublizer`、[源码地址](https://github.com/Misaka0x26FE/auto-epublizer)、**当前实际构建版本**与可取得的源码 revision/dirty 状态，不把初始化时的 `meta.producer` 当成构建版本；不可取得的值明确为未知。
+- Python、Pydantic 是本次构建运行时；其他工具只列成功解析时冻结的实际使用记录，不枚举已安装依赖。未知版本保持未知；历史工作区未记录的上游工具不从当前环境倒推（`processing_tools=null` 表示历史未知，`[]` 表示已知未使用额外外部解析工具）。MinerU API 按外部服务标识，不声称其服务内部运行某个开源版本或采用某个开源许可。
+- 有 copyright 单元时，在其尾部追加独立软件声明，保留原版权内容；没有时生成独立制作信息页，设为非线性 spine（`linear="no"`），由 `copyright-page` 地标进入，不新增书稿单元、不进入正文 nav/NCX 目录。
+- 软件许可仅说明制作软件，不授予或改变书稿、译文、图像的许可。指纹不是数字签名，可以移除；记录过程无遥测、无网络请求，不写机器路径、密钥或唯一跟踪 ID。
+- 旧 `output.about_page` 是保留配置，不是这项强制构建指纹的开关，也不表示旧关于页功能已接线。
+- QA 仅对有效结构化指纹注释作残留豁免；制作页须由 OPF 指纹声明、页内制作标记及一致的有效 JSON 指纹共同识别，不能仅按文件名或任意 `linear="no"` 豁免正文对账/目录检查。普通注释、伪造前缀或损坏 JSON 仍属 `E_RESIDUE`。
 
 ## 命名
 

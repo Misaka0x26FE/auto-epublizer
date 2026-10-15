@@ -1,4 +1,4 @@
-<!-- i18n: source=AGENTS.zh.md sha256=8b05ece32fc08214803616ce8cfc88f625542f55f114ef6a6ff7d7417fa76b6b -->
+<!-- i18n: source=AGENTS.zh.md sha256=b7e24e259a557f95e844b0ddc94601f75714f1811d9070a10e672b1fc40d5090 -->
 > **English** | [中文](AGENTS.zh.md)
 
 # auto-epublizer repository guide (for coding agents developing/maintaining this project)
@@ -62,9 +62,23 @@ shared pipeline:
   dependencies keep their own licenses and are registered in `THIRD_PARTY_LICENSES.md`
   (AGPL dependencies may be used directly, as they are compatible with the project
   license). **Origin is identifiable and nothing is tracked**: no
-  telemetry/heartbeat/deployment detection; workspace `meta.producer` + the
-  `run_initialized` event + the build-log attribution line make origin machine-decidable
-  (issue #40).
+  telemetry/heartbeat/deployment detection. Workspace `meta.producer` and `run_initialized`
+  identify initialization; the build log and EPUB fingerprint identify the actual current
+  builder (project name/URL/version and available source revision/dirty state), not the
+  initialization version. OPF `generator` + custom `aep:` metadata and structured JSON
+  comments in content XHTML provide offline provenance. A separate software statement is
+  appended to an existing copyright unit without replacing it; otherwise, a non-linear
+  production-information page is reachable through a `copyright-page` landmark, not a
+  manuscript unit or body TOC entry. Python/Pydantic are build-runtime records; other tools
+  come only from successful-parsing snapshots. Unknown versions/history remain unknown,
+  never inferred from currently installed tools; MinerU API is a service, not a claim
+  about its internal open-source version/license. Recording makes no network requests
+  and includes no machine paths, secrets, or unique tracking IDs. The removable fingerprint
+  is not a digital signature and changes no manuscript/translation/image rights.
+  Legacy `output.about_page` remains reserved, not the fingerprint switch. QA recognizes
+  only valid structured fingerprint comments and production pages declared by OPF with
+  a page marker and matching fingerprint; ordinary residual comments remain errors.
+  See `skills/auto-epublizer/references/build.md`.
 
 ## Standard workflow for processing a work
 
