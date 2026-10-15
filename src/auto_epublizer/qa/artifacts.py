@@ -32,13 +32,46 @@ def latest_review_result_path(store: Any) -> Path | None:
     return candidates[-1] if candidates else None
 
 
+def _resolve_epub_path(store: Any, epub_path: str | Path | None) -> Path:
+    """成品路径归一（P2：相对路径相对 ``store.dir`` 解析，外部路径存绝对）。
+
+    评审复现：QA 保存相对 EPUB 路径后，切换 cwd 会让**未变的产物**被误判 stale。
+    规则：工作区内的路径一律用相对 ``store.dir`` 的规范形式参与摘要；工作区外的
+    成品用规范化绝对路径（摘要只吃内容，路径字符串仅用于定位文件）。
+    """
+    if not epub_path:
+        return store.output_dir / f"{store.load_publication().slug}.epub"
+    p = Path(epub_path)
+    if not p.is_absolute():
+        p = store.dir / p
+    return p
+
+
 def artifacts_digest(store: Any, *, epub_path: str | Path | None = None) -> str:
-    """当前产物集合的内容摘要（确定性；与 report.json 里记录的值比对判定过期）。"""
+    """当前产物集合的内容摘要（确定性；与 report.json 里记录的值比对判定过期）。
+
+    覆盖**全部放行输入**（P1 漏门修复）：按 publication **发布顺序**（不再按 id 排序，
+    排序会抹去单元顺序）编码单元发布描述 + structured/translation/align 内容 + 注释
+    文件 + 放行输入的预处理产物（`catalog.csv`/`repairs.jsonl`）+ 最新审校 result.json
+    + 实际源件字节 + 成品字节。
+    """
     pub = store.load_publication()
     h = hashlib.sha256()
     h.update(f"src:{pub.meta.source_sha256}\n".encode())
-    for unit in sorted(pub.units, key=lambda u: u.id):
-        rel = (unit.meta or {}).get("rel_path") or ""
+    # 实际源身份：文件字节哈希（meta 声明与磁盘不一致时摘要必然不同）
+    src_rel = str(getattr(pub.meta, "source", "") or "")
+    src_path = store.dir / src_rel if src_rel else None
+    h.update(b"srcfile:")
+    if src_path is not None and src_path.is_file():
+        h.update(_file_sha256(src_path).encode())
+    h.update(b"\n")
+    for unit in pub.units:  # 发布顺序，不排序
+        meta = unit.meta or {}
+        rel = meta.get("rel_path") or ""
+        h.update(
+            f"unit:{unit.id}:{meta.get('region', '')}:{unit.kind}:"
+            f"{meta.get('level', '')}:{rel}:{unit.title}\n".encode()
+        )
         pairs: list[tuple[str, Path | None]] = [
             ("structured", store.structured_dir / rel if rel else None),
             ("translation", store.translation_dir / rel if rel else None),
@@ -49,7 +82,13 @@ def artifacts_digest(store: Any, *, epub_path: str | Path | None = None) -> str:
             if path is not None and path.is_file():
                 h.update(_file_sha256(path).encode())
             h.update(b"\n")
-    for extra in ("structured/notes.json", "translation/notes.json"):
+    for extra in (
+        "structured/notes.json",
+        "translation/notes.json",
+        "preprocessing/catalog.csv",
+        "preprocessing/repairs.jsonl",
+        "preprocessing/facts.json",
+    ):
         path = store.dir / extra
         h.update(f"{extra}:".encode())
         if path.is_file():
@@ -60,7 +99,7 @@ def artifacts_digest(store: Any, *, epub_path: str | Path | None = None) -> str:
     if review_path is not None:
         h.update(_file_sha256(review_path).encode())
     h.update(b"\n")
-    epub = Path(epub_path) if epub_path else store.output_dir / f"{pub.slug}.epub"
+    epub = _resolve_epub_path(store, epub_path)
     h.update(b"epub:")
     if epub.is_file():
         h.update(_file_sha256(epub).encode())

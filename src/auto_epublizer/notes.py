@@ -378,6 +378,63 @@ def validate_candidates(data_lines: list[dict[str, Any]]) -> list[str]:
     return errors
 
 
+def _norm_cand(text: str) -> str:
+    """候选/注文文本的比对规范形（去空白与标记符号）。"""
+    t = re.sub(r"!\[[^\]]*\]\([^)]*\)", "", text or "")
+    t = re.sub(r"[*_`#>\[\]]+", "", t)
+    return re.sub(r"\s+", "", t)
+
+
+def validate_candidates_vs_graph(
+    candidates: list[dict[str, Any]], source_notes: dict[str, Any]
+) -> list[str]:
+    """P1 漏门修复：**已核证候选必须与注文/引用图对账**。
+
+    评审复现：合成源文导出 2 个候选均判 note，仍可 `notes register` 成
+    ``inventory=none``（构建零语义注文且成品注释门 ok）。本函数把核证结论与
+    登记图对齐，两条硬规则：
+
+    - ``inventory=none`` 与任何 ``disposition=note`` 候选矛盾 → 拒绝登记；
+    - ``inventory=present`` 时，每条 note 候选必须在图中留下证据（同单元/全局
+      注号 label 命中，或候选文本出现在某条注文的 source_markdown 中），否则视为
+      **部分遗漏**并拒绝登记。
+
+    仅统计 ``disposition=note``（``not_note`` 已核证为非注文，不参与）。
+    """
+    note_cands = [c for c in candidates if str(c.get("disposition") or "") == "note"]
+    if not note_cands:
+        return []
+    inventory = str(source_notes.get("inventory") or "")
+    if inventory == "none":
+        return [
+            f"已核证 {len(note_cands)} 条候选为 note，与 inventory=none 矛盾："
+            "须登记 present（建注文/引用图）或把这些候选改判 not_note"
+        ]
+    if inventory != "present":
+        return []
+    notes = [n for n in (source_notes.get("notes") or []) if isinstance(n, dict)]
+    refs = [r for r in (source_notes.get("references") or []) if isinstance(r, dict)]
+    labels = {str(n.get("source_label") or "") for n in notes}
+    labels |= {str(r.get("source_label") or "") for r in refs}
+    labels.discard("")
+    blob = _norm_cand("\n".join(str(n.get("source_markdown") or "") for n in notes))
+    uncovered: list[str] = []
+    for c in note_cands:
+        label = str(c.get("label") or "")
+        text = _norm_cand(str(c.get("text") or ""))
+        covered = bool(label and label in labels) or bool(text and text[:60] and text[:60] in blob)
+        if not covered:
+            uncovered.append(str(c.get("candidate_id") or label or "?"))
+    if uncovered:
+        return [
+            f"以下已核证 note 候选未进入注文/引用图（疑部分遗漏）："
+            f"{'、'.join(uncovered[:8])}"
+            + ("…" if len(uncovered) > 8 else "")
+            + "；须补齐注文/引用或在候选上改判 not_note"
+        ]
+    return []
+
+
 def read_candidates(path: str | Path) -> list[dict[str, Any]]:
     """读候选 JSONL（不存在返回空表）；坏行给出中文错误。"""
     p = Path(path)
