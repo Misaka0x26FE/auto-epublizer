@@ -102,6 +102,8 @@ class Publication(BaseModel):
     meta: PublicationMeta = Field(default_factory=PublicationMeta)
     config: ConfigSnapshot = Field(default_factory=ConfigSnapshot)
     units: list[Unit] = Field(default_factory=list)
+    # N 阶段注释登记摘要（CLI 写入；agent 不手改官方状态）。None=尚未登记。
+    notes: dict[str, Any] | None = None
 
     def unit(self, unit_id: str) -> Unit | None:
         for u in self.units:

@@ -151,8 +151,8 @@ def test_repo_links_resolve_and_match_language() -> None:
 
 
 def test_repo_has_expected_twin_pairs() -> None:
-    """60 对（README/AGENTS + skills 36 + docs 22）；docs/i18n.md 为双语例外。
+    """61 对（README/AGENTS + skills 37 + docs 22）；docs/i18n.md 为双语例外。
 
-    skills 36 = SKILL 1 + references 15 + taskcards 9 + lessons 11。
+    skills 37 = SKILL 1 + references 16 + taskcards 9 + lessons 11。
     """
-    assert len(i18n.iter_md(ROOT)) == len(i18n.audit_unpaired(ROOT)) + 60 * 2
+    assert len(i18n.iter_md(ROOT)) == len(i18n.audit_unpaired(ROOT)) + 61 * 2

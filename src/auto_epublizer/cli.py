@@ -21,6 +21,10 @@ console = Console()
 evidence_app = typer.Typer(help="证据导出（确定性、零 token）")
 app.add_typer(evidence_app, name="evidence")
 
+# 注释结构化与绑定子命令组（N 阶段：候选盘点 / 登记 / 状态，确定性）
+notes_app = typer.Typer(help="注释结构化与绑定（候选盘点 / 登记 / 状态）")
+app.add_typer(notes_app, name="notes")
+
 _CONFIG_PATH = "config.yaml"
 
 
@@ -234,6 +238,85 @@ def evidence_breaks_cmd(
         f"[green]页边界证据已生成：[/green]{result['path']}"
         f"（{result['breaks']} 条，候选 {result['candidates']}）"
     )
+
+
+@notes_app.command("candidates")
+def notes_candidates_cmd(
+    output: str | None = typer.Option(
+        None, "-o", "--output", help="输出路径（缺省 preprocessing/note_candidates.jsonl）"
+    ),
+    workspace: str | None = typer.Option(None, "--workspace", help="工作区目录"),
+    config: str | None = typer.Option(None, "--config", help="配置文件路径"),
+) -> None:
+    """导出注释候选（零 token；只读取结构化正文，重跑保留已有处置）。"""
+    cfg = load_config(config or _CONFIG_PATH)
+    store = _store_from(workspace, cfg)
+    try:
+        result = orch.notes_candidates(store, output=output)
+    except (ValueError, OSError, orch.OrchestrationError) as e:
+        raise typer.Exit(f"注释候选导出失败：{e}") from None
+    kinds = "、".join(f"{k}={v}" for k, v in sorted(result["by_kind"].items()))
+    console.print(f"[green]注释候选已导出：[/green]{result['candidates']} 条（{kinds}）")
+    console.print(
+        f"  写入 {result['path']}；保留已有处置 {result['dispositions_kept']} 条；"
+        "逐条核证后写 disposition=note|not_note"
+    )
+
+
+@notes_app.command("register")
+def notes_register_cmd(
+    workspace: str | None = typer.Option(None, "--workspace", help="工作区目录"),
+    config: str | None = typer.Option(None, "--config", help="配置文件路径"),
+) -> None:
+    """登记 structured/notes.json（分离登记门：契约校验 + 摘要写 publication.json）。"""
+    cfg = load_config(config or _CONFIG_PATH)
+    store = _store_from(workspace, cfg)
+    try:
+        result = orch.register_notes(store)
+    except (ValueError, OSError, orch.OrchestrationError) as e:
+        raise typer.Exit(f"注释登记失败：{e}") from None
+    s = result["summary"]
+    console.print(
+        f"[green]注释已登记：[/green]注文 {s['notes']} 条 / 引用 {s['references']} 条 / "
+        f"作用域 {s['scopes']} 个（inventory={s['inventory']}）"
+    )
+
+
+@notes_app.command("status")
+def notes_status_cmd(
+    workspace: str | None = typer.Option(None, "--workspace", help="工作区目录"),
+    json_output: bool = typer.Option(False, "--json", help="输出 JSON"),
+    config: str | None = typer.Option(None, "--config", help="配置文件路径"),
+) -> None:
+    """注释登记状态（只读）：摘要 / 失效 / 候选处置进度。"""
+    cfg = load_config(config or _CONFIG_PATH)
+    store = _store_from(workspace, cfg)
+    try:
+        data = orch.notes_status(store)
+    except (ValueError, OSError, orch.OrchestrationError) as e:
+        raise typer.Exit(f"注释状态读取失败：{e}") from None
+    if json_output:
+        _emit_json(json.dumps(data, ensure_ascii=False, indent=2))
+        return
+    reg = data.get("registered")
+    if reg:
+        console.print(
+            f"已登记：注文 {reg.get('notes')} 条 / 引用 {reg.get('references')} 条"
+            f"（inventory={reg.get('inventory')}）"
+            + ("[red]；摘要已失效（源注文已变更）[/red]" if data["stale"] else "")
+        )
+    else:
+        console.print("未登记（publication.json.notes 为空）")
+    cand = data["candidates"]
+    if cand["exists"]:
+        console.print(
+            f"候选：{cand['total']} 条，未决 {cand['pending']} 条"
+            + ("[yellow]（须逐条核证处置）[/yellow]" if cand["pending"] else "")
+        )
+    src = data["source_notes"]
+    console.print(f"源注文：{'有' if src['exists'] else '无'}（{src['path']}）")
+    tgt = data["translation_notes"]
+    console.print(f"译注：{'有' if tgt['exists'] else '无'}（{tgt['path']}）")
 
 
 @app.command()

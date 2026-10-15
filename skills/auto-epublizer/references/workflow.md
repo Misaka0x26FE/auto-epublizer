@@ -1,4 +1,4 @@
-<!-- i18n: source=workflow.zh.md sha256=0d9f4bf45495f851ab5f0129cf3fbdc8de3f98daf944f365f55ab842fdbe701f -->
+<!-- i18n: source=workflow.zh.md sha256=24ee6fc717a5d848c1d5fe3f5e11c22e621e124c8a49c562a15a87ee085f8c57 -->
 > **English** | [中文](workflow.zh.md)
 
 # Workflow (stage routing + command overview)
@@ -48,10 +48,17 @@ doctor (capability self-check: toolchain + self-reported multimodal/search)
   -> semantic repair (optional/conditional: triggered by suspicious signals in facts; mandatory
                  for OCR/scanned paths — per references/repair.md, repair structured/ against
                  raw evidence and write preprocessing/repairs.jsonl as a trace)
+  -> note structuring (mandatory for books with notes: notes candidates exports candidates →
+                 the agent verifies each one as disposition=note|not_note → write
+                 structured/notes.json + in-place body markers [^ref-…] → notes register;
+                 see references/notes.md)
   -> terminology seeding (knowledge export: same-language-pair confirmed terms -> preprocessing/terms.csv;
                  after agent review, import --terms into the workspace)
-  -> translation (agent hand-writes translation/ + align/, then import to register)
-  -> g0        (static validation: terminology hits = real defects that must be zeroed; length ratio = advisory)
+  -> translation (agent hand-writes translation/ + align/; for books with notes, keep the same
+                 ref_id at the corresponding semantic position and write translation/notes.json,
+                 then import to register)
+  -> g0        (static validation: terminology hits = real defects that must be zeroed; length ratio = advisory;
+                 the note-number set difference footnote_suspect = advisory for item-by-item verification)
   -> review    (QC G1–G3; after agent semantic review, write reviews/review-<ts>/result.json)
   -> unified store write-back (knowledge import: merge the workspace's confirmed terms into
                  the unified store and auto git commit; knowledge push syncs across devices;
@@ -139,6 +146,11 @@ auto-epublizer restructure [--workspace <dir>]
 
 # G0 zero-token static validation (run immediately after translation/import; terminology hits are a hard release gate, length ratio advisory)
 auto-epublizer g0 [--unit <id>] [--workspace <dir>]
+
+# note structuring and binding (books with notes; phase N: candidates → registration → product gate; see references/notes.md)
+auto-epublizer notes candidates [-o <jsonl>] [--workspace <dir>]  # export candidates (zero-token; re-runs keep dispositions)
+auto-epublizer notes register [--workspace <dir>]                 # separation-registration gate: validate and write publication.json.notes
+auto-epublizer notes status [--json] [--workspace <dir>]          # summary / stale / candidate disposition progress
 
 # build (translation missing falls back to source; --bilingual produces -bi.epub; --theme selects the layout theme)
 auto-epublizer build [--bilingual] [--theme standard|compact|spacious] [-o <out.epub>] [--workspace <dir>]

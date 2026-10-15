@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+import json
 import re
 from pathlib import Path
 from typing import Any
@@ -17,7 +18,7 @@ from auto_translator.translation.align import read_align
 from .build import build_epub, collect_media, subheading_anchors
 from .build.html import render_bilingual_document, render_document, slug_file
 from .ingest import load_document
-from .qa import audit_epub, generate_report, run_epubcheck
+from .qa import audit_epub, audit_notes_epub, generate_report, run_epubcheck
 from .qa.provenance import audit_provenance
 from .structure import rebuild_structure, skip_empty_unit, unit_heading, write_structured
 
@@ -236,6 +237,110 @@ def convert(
     )
 
 
+def _note_plan(
+    store: RunStore,
+    pub: Any,
+    entries: list[dict[str, Any]],
+    source_data: dict[str, Any],
+    target_data: dict[str, Any] | None,
+) -> dict[str, Any]:
+    """构造全书注释计划（N4，确定性）：作用域显示号 + 宿主单元 + 回链 + 文本。
+
+    规则：
+    - 显示号：按引用在 **spine 序 → 单元内正文标记位置** 的顺序，在各自 ``scope_id``
+      内从 1 递增（章内重号、跨章同号互不影响）；
+    - 宿主：注文渲染在 spine 序中**第一个引用它的单元**；跨文件引用 href 指回宿主；
+    - 未引用注文（``orphan_ok``）：挂在 ``scope_id`` 对应单元（存在时）或首个单元，
+      保留显示号并渲染（不得为凑对账删除）；
+    - 文本：译文单元用 ``target_markdown``（缺则构建报错），源文回退单元用
+      ``source_markdown``；由渲染循环按单元实际来源选择。
+    """
+
+    order_index = {str(e["id"]): i for i, e in enumerate(entries)}
+    file_by_unit = {str(e["id"]): f"{slug_file(e['id'])}.xhtml" for e in entries}
+    rel_by_unit = {u.id: (u.meta or {}).get("rel_path") for u in pub.units}
+    notes_by_id: dict[str, dict[str, Any]] = {
+        str(n.get("note_id")): n
+        for n in (source_data.get("notes") or [])
+        if isinstance(n, dict) and n.get("note_id")
+    }
+    targets: dict[str, dict[str, Any]] = {
+        str(t.get("note_id")): t
+        for t in ((target_data or {}).get("notes") or [])
+        if isinstance(t, dict) and t.get("note_id")
+    }
+    by_unit: dict[str, list[dict[str, Any]]] = {}
+    for r in source_data.get("references") or []:
+        if isinstance(r, dict) and r.get("unit"):
+            by_unit.setdefault(str(r["unit"]), []).append(r)
+
+    def _md(unit: str) -> str:
+        rel = rel_by_unit.get(unit)
+        p = store.structured_dir / rel if rel else None
+        return p.read_text(encoding="utf-8") if p is not None and p.is_file() else ""
+
+    ordered: list[tuple[int, int, str, dict[str, Any]]] = []
+    md_cache: dict[str, str] = {}
+    for unit, rs in by_unit.items():
+        md = md_cache.setdefault(unit, _md(unit))
+        for r in rs:
+            rid = str(r.get("ref_id") or "")
+            pos = md.find(f"[^{rid}]")
+            ordered.append((order_index.get(unit, 1 << 30), pos if pos >= 0 else 1 << 30, unit, r))
+    ordered.sort(key=lambda t: (t[0], t[1]))
+
+    counters: dict[str, int] = {}
+    number_by_note: dict[str, int] = {}
+    ref_info: dict[str, dict[str, Any]] = {}
+    host: dict[str, str] = {}
+    backlinks: dict[str, list[str]] = {}
+    for _, _, unit, r in ordered:
+        nid = str(r.get("note_id") or "")
+        note = notes_by_id.get(nid)
+        if note is None:
+            continue
+        scope = str(note.get("scope_id") or unit)
+        if nid not in number_by_note:
+            # 显示号按**注文**分配（一注多引同号）；跨作用域独立递增
+            counters[scope] = counters.get(scope, 0) + 1
+            number_by_note[nid] = counters[scope]
+        rid = str(r.get("ref_id") or "")
+        ref_info[rid] = {
+            "note_id": nid,
+            "number": number_by_note[nid],
+            "unit": unit,
+            "file": file_by_unit.get(unit, ""),
+        }
+        host.setdefault(nid, unit)
+        backlinks.setdefault(nid, []).append(f"{file_by_unit.get(unit, '')}#{rid}")
+    for nid in sorted(notes_by_id):
+        if nid in host:
+            continue
+        note = notes_by_id[nid]
+        scope = str(note.get("scope_id") or "")
+        counters[scope] = counters.get(scope, 0) + 1
+        number_by_note[nid] = counters[scope]
+        host[nid] = scope if scope in order_index else (str(entries[0]["id"]) if entries else "")
+        ref_info[f"__orphan__{nid}"] = {
+            "note_id": nid,
+            "number": number_by_note[nid],
+            "unit": host[nid],
+            "file": file_by_unit.get(host[nid], ""),
+        }
+    return {
+        "ref_info": ref_info,
+        "host": host,
+        "backlinks": backlinks,
+        "number_by_note": number_by_note,
+        "notes_by_id": notes_by_id,
+        "targets": targets,
+        "file_by_unit": file_by_unit,
+        # 渲染层需要 note_id → 宿主文件（跨文件 href 用；与宿主单元一致）
+        "href_by_note": {nid: file_by_unit.get(u, "") for nid, u in host.items()},
+        "units_missing": sorted(set(by_unit) - set(order_index)),
+    }
+
+
 def _render_and_pack(
     store: RunStore,
     pub: Any,
@@ -258,7 +363,8 @@ def _render_and_pack(
     目录投影（epub-template-spec §3）：``nav_depth`` 限制 nav/NCX 嵌套深度。
     封面：cover 单元的首个图片 → ``cover-image`` 属性 + spine ``linear="no"``。
     """
-    from .build.html import FootnoteState
+    from . import notes as notes_mod
+    from .build.html import FootnoteState, NoteItem, NoteRef
 
     nav_depth = nav_depth if nav_depth is not None else Config().output.nav_depth
     out_path = Path(output) if output else store.output_dir / f"{pub.slug}{suffix}.epub"
@@ -270,10 +376,63 @@ def _render_and_pack(
     cover_media: str | None = None
     built_ids: list[str] = []
     fallback_ids: list[str] = []
+    # N 阶段：结构化注释计划（已登记且 inventory=present 时启用；否则旧路径不变）
+    notes_ctx = _load_notes_context(store, pub)
+    note_plan: dict[str, Any] | None = None
+    if notes_ctx is not None and str(notes_ctx["data"].get("inventory") or "") == "present":
+        note_plan = _note_plan(store, pub, entries, notes_ctx["data"], notes_ctx.get("target"))
+        if note_plan["units_missing"]:
+            raise OrchestrationError(
+                "注释引用的单元未参与构建："
+                + "、".join(note_plan["units_missing"][:8])
+                + "（不得静默丢弃引用）"
+            )
+
+    def _note_items_for(unit_id: str, *, from_translation: bool) -> list[NoteItem]:
+        """该单元要渲染的注文（宿主为它）；译文单元缺译注 → 阻断构建（不静默降级）。"""
+        items: list[NoteItem] = []
+        if note_plan is None:
+            return items
+        for nid, host_unit in note_plan["host"].items():
+            if host_unit != unit_id:
+                continue
+            number = int(note_plan["number_by_note"].get(nid) or 0)
+            if from_translation:
+                t = note_plan["targets"].get(nid)
+                if t is None or not str(t.get("target_markdown") or "").strip():
+                    raise OrchestrationError(
+                        f"译文构建缺译注：{nid}（宿主单元 {unit_id}）；"
+                        "补齐 translation/notes.json 后重新 import"
+                    )
+                text = str(t["target_markdown"])
+            else:
+                text = str((note_plan["notes_by_id"].get(nid) or {}).get("source_markdown") or "")
+            text, note_media, note_dropped = collect_media(text, media_root)
+            if note_dropped:
+                media_dropped[f"notes/{nid}"] = note_dropped
+            for epub_path, data in note_media:
+                media[epub_path] = data
+            items.append(
+                NoteItem(
+                    note_id=nid,
+                    number=number,
+                    text_md=text,
+                    backlinks=tuple(note_plan["backlinks"].get(nid, [])),
+                )
+            )
+        return items
+
     for e in entries:
         rel = e.get("rel_path")
         if not rel:
             continue
+        unit_refs: dict[str, NoteRef] = {}
+        unit_items: list[NoteItem] = []
+        if note_plan is not None:
+            for rid, info in note_plan["ref_info"].items():
+                if info["unit"] != e["id"] or rid.startswith("__orphan__"):
+                    continue
+                unit_refs[rid] = NoteRef(ref_id=rid, note_id=info["note_id"], number=info["number"])
         if bilingual:
             rows = read_align(store.unit_align_path(e["id"]))
             if not rows:
@@ -281,10 +440,19 @@ def _render_and_pack(
             heading = unit_heading("\n".join(r.get("tgt", "") for r in rows))
             if heading:
                 e["title"] = heading
+            unit_items = _note_items_for(e["id"], from_translation=True)
             content.append(
                 (
                     f"{slug_file(e['id'])}.xhtml",
-                    render_bilingual_document(e["title"], rows, lang_src=src_lang, lang_tgt=lang),
+                    render_bilingual_document(
+                        e["title"],
+                        rows,
+                        lang_src=src_lang,
+                        lang_tgt=lang,
+                        note_refs=unit_refs or None,
+                        note_items=unit_items or None,
+                        href_by_note=note_plan["href_by_note"] if note_plan else None,
+                    ),
                 )
             )
             built_ids.append(e["id"])
@@ -302,6 +470,14 @@ def _render_and_pack(
         md_text = md_path.read_text(encoding="utf-8")
         if skip_empty_unit(md_text, e["title"]):
             continue
+        # 未配对引用不得静默：正文标记必须都在登记计划内（登记门/导入门之外的构建兜底）
+        if note_plan is not None:
+            unknown = [m for m in notes_mod.extract_markers(md_text) if m not in unit_refs]
+            if unknown:
+                raise OrchestrationError(
+                    f"{e['id']}：构建发现未登记标记 {'、'.join('[' + '^' + u + ']' for u in unknown[:5])}"
+                    "（不得静默丢弃；先 notes register / import 登记）"
+                )
         heading = unit_heading(md_text)
         if heading:
             e["title"] = heading
@@ -316,6 +492,10 @@ def _render_and_pack(
             media[epub_path] = data
         if e.get("kind") == "cover" and unit_media and cover_media is None:
             cover_media = unit_media[0][0]
+        if note_plan is not None:
+            unit_items = _note_items_for(
+                e["id"], from_translation=prefer_translation and md_path is translation
+            )
         built_ids.append(e["id"])
         content.append(
             (
@@ -326,9 +506,19 @@ def _render_and_pack(
                     lang=lang,
                     unit_id=e["id"],
                     fn_state=FootnoteState(),  # 每单元一份：章内独立编号
+                    note_refs=unit_refs or None,
+                    note_items=unit_items or None,
+                    href_by_note=note_plan["href_by_note"] if note_plan else None,
                 ),
             )
         )
+    if note_plan is not None:
+        referenced_units = {v["unit"] for v in note_plan["ref_info"].values()}
+        dropped = sorted(referenced_units - set(built_ids))
+        if dropped:
+            raise OrchestrationError(
+                "以下单元的注释引用未进入成品（不得静默丢弃）：" + "、".join(dropped[:8])
+            )
     if media_dropped:
         # 构建期静默丢弃留痕（交付审计 S1.3）：主对账由 provenance E_MEDIA_EPUB_LOST 兜底
         store.log_event("media_dropped", refs=media_dropped)
@@ -562,6 +752,10 @@ def import_translations(
         }
 
     glossary = Glossary(load_glossary_csv(glossary_path))
+    # N 阶段：注释绑定上下文（已登记时启用翻译导入门；未登记则历史路径不变）
+    notes_ctx = _load_notes_context(store, pub)
+    from . import notes as notes_mod
+
     imported: list[str] = []
     revalidated: list[str] = []
     pending: list[dict[str, Any]] = []
@@ -620,6 +814,39 @@ def import_translations(
             translation_md = tgt_path.read_text(encoding="utf-8")
             for d in md_align_drift(translation_md, rows, title=unit.title):
                 errors.append(f"文档一致性：{d}")
+        # N 阶段翻译导入门：译文原位标记守恒 + 所需译注齐全（源注文已登记时启用）
+        if notes_ctx is not None:
+            unit_refs = [
+                r
+                for r in (notes_ctx["data"].get("references") or [])
+                if isinstance(r, dict) and str(r.get("unit") or "") == unit.id
+            ]
+            if unit_refs:
+                found = notes_mod.extract_markers(translation_md or "")
+                want = {str(r.get("ref_id")) for r in unit_refs}
+                for rid in sorted(want - set(found)):
+                    errors.append(f"注释标记：译文缺 [^{rid}]（引用丢失）")
+                for rid in sorted(set(found) - want):
+                    errors.append(f"注释标记：译文出现未登记标记 [^{rid}]")
+                for rid in sorted(want & set(found)):
+                    if found.count(rid) != 1:
+                        errors.append(
+                            f"注释标记：[^{rid}] 在译文中出现 {found.count(rid)} 次（应恰好 1 次）"
+                        )
+                need = {str(r.get("note_id")) for r in unit_refs}
+                target = notes_ctx.get("target")
+                if target is None:
+                    errors.append(
+                        f"译注：缺 translation/notes.json（本单元引用 {len(need)} 条注文，须完整译注）"
+                    )
+                else:
+                    for e in notes_mod.validate_translation_notes(
+                        notes_ctx["data"],
+                        target,
+                        source_notes_digest=str(notes_ctx["digest"]),
+                        required_note_ids=need,
+                    ):
+                        errors.append(f"译注：{e}")
         for f in g0_unit_flags(
             rows,
             glossary,
@@ -700,6 +927,141 @@ def import_translations(
         "conflicts_open": conflicts_open,
         "terms": terms_info,
         "reviewed": reviewed,
+    }
+
+
+def _load_notes_context(store: RunStore, pub: Any) -> dict[str, Any] | None:
+    """加载已登记注释上下文（源注文 + 译注）；登记摘要与文件摘要不一致时报错（失效链）。
+
+    未登记（``pub.notes`` 为空）返回 None：历史工作区继续走旧 ``[^label]`` 路径。
+    """
+    from . import notes as notes_mod
+
+    if not pub.notes:
+        return None
+    npath = notes_mod.source_notes_path(store)
+    if not npath.is_file():
+        raise OrchestrationError(
+            "已登记注释但 structured/notes.json 缺失（须重新核证并 notes register）"
+        )
+    digest = notes_mod.file_digest(npath)
+    if digest != str(pub.notes.get("source_notes_sha256") or ""):
+        raise OrchestrationError(
+            "structured/notes.json 与登记摘要不一致（源注文已变更）：须重跑 notes register"
+            "（必要时重译受影响注文）"
+        )
+    data = notes_mod.read_notes_json(npath)
+    tpath = notes_mod.translation_notes_path(store)
+    target = notes_mod.read_notes_json(tpath) if tpath.is_file() else None
+    return {"data": data, "digest": digest, "target": target}
+
+
+def notes_candidates(store: RunStore, *, output: str | None = None) -> dict[str, Any]:
+    """导出注释候选（N1，零 token）：structured/ 正文 → preprocessing/note_candidates.jsonl。
+
+    候选身份不带行号（内容哈希），重跑保留已有处置；只读取结构化正文，不修改。
+    """
+    from . import notes as notes_mod
+
+    pub = store.load_publication()
+    md_by_unit: dict[str, str] = {}
+    for u in pub.units:
+        rel = (u.meta or {}).get("rel_path")
+        p = store.structured_dir / rel if rel else None
+        if p is not None and p.is_file():
+            md_by_unit[u.id] = p.read_text(encoding="utf-8")
+    rows = notes_mod.extract_candidates(md_by_unit)
+    prior = {
+        str(r.get("candidate_id")): r
+        for r in notes_mod.read_candidates(notes_mod.candidates_path(store))
+    }
+    kept = 0
+    for r in rows:
+        prev = prior.get(str(r.get("candidate_id")))
+        if prev is not None and prev.get("disposition") in notes_mod.CANDIDATE_DISPOSITIONS:
+            r["disposition"] = prev["disposition"]
+            kept += 1
+    out_path = Path(output) if output else notes_mod.candidates_path(store)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(out_path, "w", encoding="utf-8") as f:
+        for r in rows:
+            f.write(json.dumps(r, ensure_ascii=False, sort_keys=True) + "\n")
+    by_kind: dict[str, int] = {}
+    for r in rows:
+        by_kind[str(r["kind"])] = by_kind.get(str(r["kind"]), 0) + 1
+    return {
+        "path": str(out_path),
+        "candidates": len(rows),
+        "dispositions_kept": kept,
+        "by_kind": by_kind,
+    }
+
+
+def register_notes(store: RunStore) -> dict[str, Any]:
+    """登记 ``structured/notes.json``（分离登记门）：契约校验 + 摘要写入 publication.json。
+
+    阻断项：schema/源哈希绑定；盘点结论不得留在 unverified；注文与引用身份、作用域、
+    双位置证据、未决状态；正文原位标记 ↔ 引用双向对账（present 时）；候选处置未决。
+    通过后仅把**摘要**写入 ``publication.json.notes``（状态只经 CLI 推进）。
+    """
+    from . import notes as notes_mod
+
+    pub = store.load_publication()
+    path = notes_mod.source_notes_path(store)
+    data = notes_mod.read_notes_json(path)
+    unit_ids = {u.id for u in pub.units}
+    source_sha256 = (str(pub.meta.source_sha256) or "").strip() or None
+    errors = notes_mod.validate_source_notes(data, source_sha256=source_sha256, unit_ids=unit_ids)
+    inventory = str(data.get("inventory") or "")
+    if inventory == "unverified":
+        errors.append("盘点结论仍是 unverified：须核证为 present（有注且已建绑定）或 none（无注）")
+    if inventory == "present":
+        md_by_unit: dict[str, str] = {}
+        for u in pub.units:
+            rel = (u.meta or {}).get("rel_path")
+            p = store.structured_dir / rel if rel else None
+            if p is not None and p.is_file():
+                md_by_unit[u.id] = p.read_text(encoding="utf-8")
+        refs = [r for r in (data.get("references") or []) if isinstance(r, dict)]
+        errors.extend(notes_mod.validate_markers_vs_references(md_by_unit, refs))
+    cands = notes_mod.read_candidates(notes_mod.candidates_path(store))
+    if cands:
+        errors.extend(notes_mod.validate_candidates(cands))
+    if errors:
+        raise OrchestrationError("注释登记失败：\n- " + "\n- ".join(errors))
+    summary = notes_mod.registration_summary(data, notes_mod.file_digest(path))
+    pub.notes = summary
+    store.save_publication(pub)
+    store.log_event("notes_registered", summary=summary)
+    return {"summary": summary}
+
+
+def notes_status(store: RunStore) -> dict[str, Any]:
+    """注释登记状态（只读）：登记摘要、文件摘要是否失效、候选处置进度。"""
+    from . import notes as notes_mod
+
+    pub = store.load_publication()
+    src = notes_mod.source_notes_path(store)
+    tgt = notes_mod.translation_notes_path(store)
+    cand = notes_mod.candidates_path(store)
+    digest = notes_mod.file_digest(src) if src.is_file() else None
+    registered = pub.notes
+    stale = bool(
+        registered and digest and str(registered.get("source_notes_sha256") or "") != digest
+    )
+    cands = notes_mod.read_candidates(cand)
+    pending = [c for c in cands if c.get("disposition") not in notes_mod.CANDIDATE_DISPOSITIONS]
+    return {
+        "registered": registered,
+        "source_notes": {"path": str(src), "exists": src.is_file(), "digest": digest},
+        "translation_notes": {"path": str(tgt), "exists": tgt.is_file()},
+        "candidates": {
+            "path": str(cand),
+            "exists": cand.is_file(),
+            "total": len(cands),
+            "pending": len(pending),
+        },
+        "stale": stale,
     }
 
 
@@ -1126,6 +1488,26 @@ def qa(
     # 先跑溯源审计拿到目录投影豁免集（与 build 同一 nav_depth），再解包结构审计
     provenance = audit_provenance(store, entries, epub, nav_depth=nav_depth)
     audit = audit_epub(epub, nav_exempt=set(provenance.nav_exempt))
+    # N 阶段成品注释门（N5）：独立解析成品 XHTML 对账已登记注释；未登记则跳过
+    notes_audit_dict: dict[str, Any] | None = None
+    try:
+        notes_ctx = _load_notes_context(store, pub)
+    except OrchestrationError as e:
+        notes_audit_dict = {
+            "findings": [{"level": "error", "code": "E_NOTES_STALE", "message": str(e)}],
+            "missing": ["stale"],
+            "orphan": [],
+        }
+        notes_ctx = None
+    if notes_ctx is not None:
+        notes_result = audit_notes_epub(
+            epub, source_notes=notes_ctx["data"], target_notes=notes_ctx.get("target")
+        )
+        notes_audit_dict = {
+            "findings": [dict(f) for f in notes_result.findings],
+            "missing": list(notes_result.missing),
+            "orphan": list(notes_result.orphan),
+        }
     review_result = _latest_review_result(store)
     g0_flags = _collect_g0_flags(store, config)
     toc_missing = _toc_missing_from_facts(store, entries)
@@ -1161,6 +1543,7 @@ def qa(
         catalog_unresolved_open=catalog_unresolved_open,
         repairs_total=len(repairs or []),
         repairs_unresolved=repairs_unresolved,
+        notes_audit=notes_audit_dict,
     )
     if repairs_unresolved:
         report.provenance_findings.append(
@@ -1267,6 +1650,57 @@ def _task(
     return task
 
 
+def _notes_next_task(store: RunStore, pub: Any) -> dict[str, Any] | None:
+    """N 阶段前置注释任务（零 token 纯对账）：候选未决 / 未登记 / 摘要失效。
+
+    只在书里**确实出现注文候选**时进入注释流程（否则无注书不增加步骤）；
+    候选文件缺失时现算一次（只读，不落盘）。
+    """
+    from . import notes as notes_mod
+
+    cands = notes_mod.read_candidates(notes_mod.candidates_path(store))
+    src_notes = notes_mod.source_notes_path(store)
+    if not cands and not src_notes.is_file() and not pub.notes:
+        md_by_unit: dict[str, str] = {}
+        for u in pub.units:
+            rel = (u.meta or {}).get("rel_path")
+            p = store.structured_dir / rel if rel else None
+            if p is not None and p.is_file():
+                md_by_unit[u.id] = p.read_text(encoding="utf-8")
+        cands = notes_mod.extract_candidates(md_by_unit)
+    if cands:
+        pending = [c for c in cands if c.get("disposition") not in notes_mod.CANDIDATE_DISPOSITIONS]
+        if pending:
+            return _task(
+                "notes_verify",
+                f"核证注释候选：{len(pending)} 条未决（回看源件后写 disposition=note|not_note，"
+                "有注的进 structured/notes.json）",
+                done_when={"file": "preprocessing/note_candidates.jsonl"},
+            )
+        if not pub.notes:
+            return _task(
+                "notes_register",
+                "候选已全部处置：写 structured/notes.json（注文/引用/正文原位标记）并运行 notes register",
+                done_when={"cmd": "notes register"},
+            )
+    if pub.notes:
+        digest = notes_mod.file_digest(src_notes) if src_notes.is_file() else None
+        if not digest or str(pub.notes.get("source_notes_sha256") or "") != digest:
+            return _task(
+                "notes_register",
+                "structured/notes.json 已变更：重跑 notes register（必要时重译受影响注文）",
+                done_when={"cmd": "notes register"},
+            )
+        return None
+    if src_notes.is_file():
+        return _task(
+            "notes_register",
+            "运行 notes register 登记已核证的 structured/notes.json",
+            done_when={"cmd": "notes register"},
+        )
+    return None
+
+
 def _derive_next_tasks(
     store: RunStore,
     pub: Any,
@@ -1317,6 +1751,10 @@ def _derive_next_tasks(
                     done_when={"file": "preprocessing/repairs.jsonl"},
                 )
             ]
+    # B2. 注释结构化（N 阶段）：候选未决 / 未登记 / 摘要失效 → 先于分析与翻译
+    notes_task = _notes_next_task(store, pub)
+    if notes_task is not None:
+        return [notes_task]
     # C. 理解层 analysis（可选层）：overview/global 皆无 → 逐单元分析（每批 ≤5，防贪多）
     if (
         not (store.analysis_dir / "overview.md").is_file()
@@ -1574,6 +2012,10 @@ def status(store: RunStore, *, as_json: bool = False) -> dict[str, Any]:
             stale.append(
                 {"id": "catalog", "status": "included_unbound", "reason": "catalog_binding_broken"}
             )
+    # N 阶段注释登记对账（只读）：摘要、失效与候选未决
+    notes_state = notes_status(store)
+    if notes_state["stale"]:
+        stale.append({"id": "notes", "status": "stale", "reason": "notes_changed_since_register"})
     data = {
         "slug": pub.slug,
         "title": pub.meta.title,
@@ -1583,6 +2025,7 @@ def status(store: RunStore, *, as_json: bool = False) -> dict[str, Any]:
         "has_preprocessing": has_preprocessing,
         "preprocessing_complete": preprocessing_complete,
         "catalog": catalog,
+        "notes": notes_state,
         "stale": stale,
         "next_tasks": _derive_next_tasks(
             store,

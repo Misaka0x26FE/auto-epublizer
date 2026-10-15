@@ -476,4 +476,49 @@ H 逐本记录重建/阅读器验收/副本同步，缺源证据的具体书保�
   回归：回退 `src/` 后正例 failed → 修复后 2 passed。
 - 全量：**481 passed**（B-1 前 466；+15），`ruff check` / `ruff format --check` 全绿。
 
+### 批次 N（注释结构化与绑定，issue #37/#34；端到端已落地）
+
+本批把计划 §N1–N6 的**拟实施契约**落为可执行能力（新增 2 个领域模块、1 个子命令组、
+3 道门与全链路测试），并记录残余未验证项。
+
+- **N2 身份契约**：`structured/notes.json`（源注文/引用/双位置证据/核证结论，权威）+
+  `translation/notes.json`（同 `note_id` 的完整译注，绑定源注文 sha256）+
+  正文原位标记 `[^ref-000123]`（标记即 ref_id，不编码显示号）+
+  `publication.json.notes`（CLI 写的登记摘要，agent 不手改）。领域模块
+  `src/auto_epublizer/notes.py`；成品独立门 `src/auto_epublizer/qa/notes_audit.py`。
+- **N1 候选盘点**：`auto-epublizer notes candidates` → `preprocessing/note_candidates.jsonl`
+  （marker/pandoc_ref/definition/numbered_paragraph 四类；身份为内容哈希、不含行号，重跑
+  保留已有处置）；复核确认清洗层不含「删注文候选」逻辑（structure/links 只做链接/锚点归一）。
+- **N3 登记与检索**：`notes register`（分离登记门：schema/源哈希绑定/身份唯一/作用域/
+  双位置证据/unresolved 未决阻断/正文标记 ↔ 引用双向对账/候选处置完整性）；
+  `import` 扩展（翻译导入门：译文标记守恒 + 译注齐全 + 摘要绑定，缺失即阻断该单元）；
+  `status --json` 增加 `notes` 段与 `notes_verify`/`notes_register` 前置任务
+  （只在书内确有注文候选时出现，无注书不增步骤）。
+- **N4 全书级构建**：`_note_plan`（作用域显示号、宿主=spine 序首个引用单元、一注多引回链、
+  未引用注文按 `orphan_ok` 保留渲染）+ `build/html.py`（标准 noteref / `aside epub:type=footnote`
+  /跨文件 href/完整块级 Markdown/注文媒体收集）；发现未登记标记或未进成品的引用即报错
+  （**不静默丢弃**）。
+- **N5 三道独立硬门 + 失效**：登记门/导入门/成品门（成品门**独立解析最终 XHTML**，不与渲染
+  函数共享期望）；放行条件新增 `notes_ok`，拒绝原因 `released_reason=notes_open`；源注文/
+  译注变更后 `E_NOTES_STALE` 在 import/build/qa 明确阻断；旧 `[^label]:` 对照在有原位标记的
+  文档上让位于成品门（消除重复口径），`E_FN_BACKLINK` 升级为支持跨文件回链解析。
+- **验证**：
+  - 单元/集成：`tests/test_notes.py` **28 项**（候选处置保留、登记门各阻断项、导入门、
+    构建渲染、跨文件+一注多引+章内重号、多段注文、带媒体注文、部分遗漏、等量错配、
+    坏回链/孤儿锚点、none 零对零、失效链、报告放行条件）；
+  - 真实 CLI smoke（`<scratch>/notes-smoke`）：init → notes candidates → agent 核证写
+    notes.json/标记 → notes register → 译文/align/译注 → import（0 告警）→ g0（0 告警）→
+    build → qa（**released: True / ok**）→ status --json；独立解析成品引用图：
+    3 个 noteref 锚点全部指向真实 aside、一注多引回链完整、跨文件 href 正确；
+  - 拒绝放行实测：篡改成品去掉语义节点 → `released: False（notes_open）` +
+    `E_NOTES_ANCHOR_MISSING` 定位 `ref-000001`；
+  - 全量 **509 passed**；`ruff check` / `ruff format --check` 全绿。
+- **文档同步**：新增 `skills/auto-epublizer/references/notes.{zh,md}`；`SKILL.{zh,md}` 路由表、
+  `manifest.json`、`references/workflow.{zh,md}` 命令总览、`AGENTS.{zh,md}`（标准流程 5.7、
+  目录契约、QC 流程 5b + 放行条件）同步；i18n `--check`/`--links` 为 OK（孪生对 60→61）。
+- **残余未验证项**：V/H（典型成品缺源工作区/raw 证据，见 §6）与阅读器实测（弹窗/往返需真机）
+  不在本批；#34 的 auschwitz 真实书私有验收仍待办；`structured/raw/media` 内注文媒体的
+  「源件抽取」环节由既有 ingest 负责，本批只验证了收集与渲染链路。
+
+
 

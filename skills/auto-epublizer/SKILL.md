@@ -7,7 +7,7 @@ metadata:
   suite: auto-epublizer
   workspace_model: publication.json
 ---
-<!-- i18n: source=SKILL.zh.md sha256=9194b4fdec9105448a12953ee0c57f0c3199fba22f0b78de80a1381eddd09aee -->
+<!-- i18n: source=SKILL.zh.md sha256=b50f7255b5e1760c161e28f34962edbe3723fee70f13ba8eedd05c48d57abef2 -->
 > **English** | [中文](SKILL.zh.md)
 
 # auto-epublizer
@@ -67,6 +67,7 @@ the reference needed for the current stage.
 | Four-layer structure classification, cleaning, running head/footer and page-number removal, provenance | `references/structure.md` |
 | Layered understanding, terminology seeding, language/genre detection | `references/analysis.md` |
 | Chunk translation, sentence-level alignment, three-state terminology loop, agent handwritten-translation path | `references/translation.md` |
+| Note structuring and binding (books with notes: candidates → registration → product gate) | `references/notes.md` |
 | Six-gate QC (G0–G5) operational guide | `references/review.md` |
 | Pre-delivery full validation (after qa, before delivery; mandatory) | `references/delivery.md` |
 | EPUB build, deterministic packaging | `references/build.md` |

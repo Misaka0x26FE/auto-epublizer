@@ -42,6 +42,9 @@ doctor（能力自检：工具链 + 自报 multimodal/search）
   -> 语义整备 （可选/条件：facts 可疑信号触发；OCR/扫描件路径必做——按
                  references/repair.md 对照 raw 证据修复 structured/ 并写
                  preprocessing/repairs.jsonl 留痕）
+   -> 注释结构化（有注书必做：notes candidates 导出候选 → agent 逐条核证
+                 disposition=note|not_note → 写 structured/notes.json + 正文原位标记
+                 [^ref-…] → notes register；详见 references/notes.md）
   -> 术语播种  （knowledge export：同语对已确认术语 -> preprocessing/terms.csv；
                  agent 审阅增删后 import --terms 导入工作区）
   -> 翻译      （agent 手写 translation/ + align/，然后 import 登记）
@@ -123,6 +126,11 @@ auto-epublizer restructure [--workspace <dir>]
 
 # G0 零 token 静态校验（翻译/导入后立即跑；术语命中是放行硬门，长度比 advisory）
 auto-epublizer g0 [--unit <id>] [--workspace <dir>]
+
+# 注释结构化与绑定（有注书；N 阶段：候选盘点 → 登记 → 成品门；详见 references/notes.md）
+auto-epublizer notes candidates [-o <jsonl>] [--workspace <dir>]  # 导出候选（零 token；重跑保留处置）
+auto-epublizer notes register [--workspace <dir>]                 # 分离登记门：校验并写 publication.json.notes
+auto-epublizer notes status [--json] [--workspace <dir>]          # 摘要 / stale / 候选处置进度
 
 # 封装（译文缺省回退源文；--bilingual 产出 -bi.epub；--theme 选排版主题）
 auto-epublizer build [--bilingual] [--theme standard|compact|spacious] [-o <out.epub>] [--workspace <dir>]

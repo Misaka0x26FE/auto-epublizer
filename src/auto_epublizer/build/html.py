@@ -13,6 +13,7 @@
 from __future__ import annotations
 
 import re
+from dataclasses import dataclass
 from html import escape
 from typing import Any
 
@@ -73,6 +74,74 @@ class FootnoteState:
 
     def has(self, unit_id: str, label: str) -> bool:
         return (unit_id, label) in self._numbers
+
+
+# ── N 阶段：结构化注释渲染（notes.json → noteref/footnote + 跨文件回链）──────
+
+_NOTE_MARKER_RE = re.compile(r"\[\^(ref-\d{6,})\]")
+
+
+@dataclass(frozen=True)
+class NoteRef:
+    """一条已登记引用的渲染信息：显示号（按作用域确定）与所属注文。"""
+
+    ref_id: str
+    note_id: str
+    number: int
+
+
+@dataclass(frozen=True)
+class NoteItem:
+    """宿主单元要渲染的注文：完整 Markdown + 全部引用回链（一注多引/跨文件）。"""
+
+    note_id: str
+    number: int
+    text_md: str
+    backlinks: tuple[str, ...]  # ["ch01.xhtml#ref-000001", ...]
+
+
+def _substitute_note_markers(
+    xhtml: str,
+    refs: dict[str, NoteRef],
+    href_by_note: dict[str, str],
+) -> str:
+    """把字面 ``[^ref-…]`` 替换为标准 noteref 锚点；href 指向注文宿主文件的 aside。
+
+    未进计划的标记保留字面（登记门/导入门已保证不会发生；保留便于审计定位而非静默丢弃）。
+    """
+    if "^ref-" not in xhtml:
+        return xhtml
+
+    def _sub(m: re.Match[str]) -> str:
+        rid = m.group(1)
+        r = refs.get(rid)
+        if r is None:
+            return m.group(0)
+        target = href_by_note.get(r.note_id, "")
+        href = f"{target}#fn-{r.note_id}" if target else f"#fn-{r.note_id}"
+        return (
+            f'<sup class="noteref"><a epub:type="noteref" role="doc-noteref" '
+            f'id="{rid}" href="{escape(href, quote=True)}">[{r.number}]</a></sup>'
+        )
+
+    return _NOTE_MARKER_RE.sub(_sub, xhtml)
+
+
+def _render_notes_section(items: list[NoteItem]) -> str:
+    """渲染宿主单元的注释区：完整块级 Markdown + 每条引用独立回链。"""
+    asides: list[str] = []
+    for it in items:
+        body = markdown_to_xhtml(it.text_md, unit_id="")
+        backs = " ".join(
+            f'<a epub:type="backlink" href="{escape(b, quote=True)}">↩</a>' for b in it.backlinks
+        )
+        asides.append(
+            f'<aside epub:type="footnote" id="fn-{it.note_id}" role="doc-footnote">'
+            f"<p>[{it.number}]</p>\n{body}\n<p>{backs}</p></aside>"
+        )
+    return (
+        '<section class="footnotes" epub:type="footnotes">\n' + "\n".join(asides) + "\n</section>"
+    )
 
 
 def _split_footnote_defs(md: str) -> tuple[str, dict[str, str]]:
@@ -357,11 +426,23 @@ def _maybe_render_table(block: str) -> str | None:
     return None
 
 
-def markdown_to_xhtml(md: str, *, unit_id: str = "", fn_state: FootnoteState | None = None) -> str:
+def markdown_to_xhtml(
+    md: str,
+    *,
+    unit_id: str = "",
+    fn_state: FootnoteState | None = None,
+    note_refs: dict[str, NoteRef] | None = None,
+    note_items: list[NoteItem] | None = None,
+    href_by_note: dict[str, str] | None = None,
+) -> str:
     """把 markdown 正文转换为 XHTML 片段（h1–h6 / p / figure，文本统一转义）。
 
-    ``unit_id`` + ``fn_state`` 提供时启用脚注语义化：``[^label]`` → noteref、
+    ``unit_id`` + ``fn_state`` 提供时启用旧记法脚注语义化：``[^label]`` → noteref、
     定义块 → 章末 aside，章内序号从 1 起独立编号。
+
+    ``note_refs`` + ``note_items``（N 阶段）启用**结构化注释**：正文
+    ``[^ref-…]`` → 标准 noteref（跨文件 href 由 ``href_by_note`` 给出），宿主单元
+    末尾渲染完整注文（一注多引各自回链）。与旧记法互不干扰（标记前缀不同）。
     """
     md = _clean_pandoc_markers(md)
     md = _PANDOC_LINKED_IMG.sub(lambda m: f"![{m.group(1)}]({m.group(2).strip()})", md)
@@ -462,12 +543,15 @@ def markdown_to_xhtml(md: str, *, unit_id: str = "", fn_state: FootnoteState | N
                 # 图片段落：不加首行缩进、居中（class=imgp 由 style.css 控制）
                 rendered = rendered.replace("<p>", '<p class="imgp">', 1)
             out.append(rendered)
+    body = "\n".join(out)
     if fn_state is not None and fn_defs:
-        body = "\n".join(out)
         body = _substitute_noterefs(body, unit_id, fn_defs, fn_state)
         body += "\n" + _render_footnote_section(fn_items)
-        return body
-    return "\n".join(out)
+    if note_refs:
+        body = _substitute_note_markers(body, note_refs, href_by_note or {})
+    if note_items:
+        body += "\n" + _render_notes_section(note_items)
+    return body
 
 
 def _page(title: str, body: str, *, lang: str) -> str:
@@ -524,12 +608,23 @@ def render_document(
     lang: str,
     unit_id: str = "",
     fn_state: FootnoteState | None = None,
+    note_refs: dict[str, NoteRef] | None = None,
+    note_items: list[NoteItem] | None = None,
+    href_by_note: dict[str, str] | None = None,
 ) -> str:
     """渲染一页纯译文文档（md_text 为结构化单元 markdown）。
 
-    ``unit_id`` + ``fn_state`` 提供时启用脚注语义化（epub-template-spec §6）。
+    ``unit_id`` + ``fn_state`` 提供时启用旧记法脚注语义化；``note_refs`` /
+    ``note_items`` 提供时启用 N 阶段结构化注释（epub-template-spec §6）。
     """
-    body = markdown_to_xhtml(md_text, unit_id=unit_id, fn_state=fn_state)
+    body = markdown_to_xhtml(
+        md_text,
+        unit_id=unit_id,
+        fn_state=fn_state,
+        note_refs=note_refs,
+        note_items=note_items,
+        href_by_note=href_by_note,
+    )
     return _page(title, body, lang=lang)
 
 
@@ -540,8 +635,15 @@ def render_bilingual_document(
     lang_src: str,
     lang_tgt: str,
     order: str = "target_first",
+    note_refs: dict[str, NoteRef] | None = None,
+    note_items: list[NoteItem] | None = None,
+    href_by_note: dict[str, str] | None = None,
 ) -> str:
-    """渲染一页双语对照文档：每句源/译段落上下交错，class=src/tgt。"""
+    """渲染一页双语对照文档：每句源/译段落上下交错，class=src/tgt。
+
+    源/译引用锚点独立（``ref_id`` 在译文侧），注文按宿主渲染（N 阶段），
+    跨文件 href 由 ``href_by_note`` 给出。
+    """
     pairs: list[str] = []
     for r in rows:
         src, tgt = r.get("src", ""), r.get("tgt", "")
@@ -551,7 +653,12 @@ def render_bilingual_document(
         else:
             pairs.append(f'<p class="src" lang="{escape(lang_src, quote=True)}">{escape(src)}</p>')
             pairs.append(f'<p class="tgt" lang="{escape(lang_tgt, quote=True)}">{escape(tgt)}</p>')
-    return _page(title, "\n".join(pairs), lang=lang_tgt)
+    body = "\n".join(pairs)
+    if note_refs:
+        body = _substitute_note_markers(body, note_refs, href_by_note or {})
+    if note_items:
+        body += "\n" + _render_notes_section(note_items)
+    return _page(title, body, lang=lang_tgt)
 
 
 def slug_file(unit_id: str) -> str:

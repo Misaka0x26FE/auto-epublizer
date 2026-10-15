@@ -55,6 +55,7 @@ multimodal / search**（能否看图、有无搜索工具，CLI 无法探测）�
 | 四层结构归类、清洗、页眉页脚/页码剔除、溯源 | `references/structure.md` |
 | 分层理解、术语播种、语言/体裁检测 | `references/analysis.md` |
 | 切片翻译、句级对齐、术语三态闭环、agent 手写翻译路径 | `references/translation.md` |
+| 注释结构化与绑定（有注书：候选盘点到成品门） | `references/notes.md` |
 | 六道关 QC（G0–G5）操作指引 | `references/review.md` |
 | 交付前全量校验（qa 之后、交付之前，强制） | `references/delivery.md` |
 | EPUB 封装、确定性构建 | `references/build.md` |
