@@ -25,6 +25,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from urllib.parse import unquote
 
+from ..fingerprint import used_tool
 from .models import KIND_HEADING, KIND_TEXT, SourceDocument, SourceSegment, SourceUnit
 from .pandoc_reader import (
     PandocError,
@@ -553,10 +554,13 @@ def read_epub(path: str | Path, *, media_dir: str | Path | None = None) -> Sourc
         raise EpubError("EPUB 无可用的线性 spine 项")
 
     content = normalize_media_refs(run_pandoc(path, media_dir=media_dir), media_dir)
+    processing_tools = [used_tool("pandoc")]
     basenames = [posixpath.basename(i.zip_path) for i in linear]
     blocks = split_by_spine_anchors(content, basenames)
     if blocks is None:
-        return _fallback_by_heading(path, package, content)
+        doc = _fallback_by_heading(path, package, content)
+        doc.meta["processing_tools"] = processing_tools
+        return doc
 
     units: list[SourceUnit] = []
     with zipfile.ZipFile(path) as zf:
@@ -607,7 +611,11 @@ def read_epub(path: str | Path, *, media_dir: str | Path | None = None) -> Sourc
         source_path=str(path.resolve()),
         fmt="epub",
         units=units,
-        meta={"via": "pandoc-epub", **package.metadata},
+        meta={
+            "via": "pandoc-epub",
+            **package.metadata,
+            "processing_tools": processing_tools,
+        },
     )
 
 

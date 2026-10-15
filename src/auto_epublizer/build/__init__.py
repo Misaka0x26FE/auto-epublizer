@@ -21,6 +21,13 @@ from urllib.parse import quote
 
 from auto_common.workspace import Publication
 
+from ..fingerprint import (
+    VOCAB_URL,
+    build_fingerprint,
+    fingerprint_json,
+    software_page,
+    stamp_document,
+)
 from .html import slug_file, subheading_anchors
 
 __all__ = [
@@ -168,6 +175,7 @@ def _render_opf(
     *,
     cover_item_id: str | None = None,
     cover_docs: set[str] | None = None,
+    fingerprint: dict[str, Any],
 ) -> str:
     """渲染 content.opf：manifest / spine / DC 元数据 / dcterms:modified / 封面 meta。
 
@@ -180,7 +188,8 @@ def _render_opf(
     cover_docs = cover_docs or set()
     m = [
         '<?xml version="1.0" encoding="utf-8"?>',
-        f'<package xmlns="{_NS_OPF}" version="3.0" unique-identifier="pub-id">',
+        f'<package xmlns="{_NS_OPF}" version="3.0" unique-identifier="pub-id" '
+        f'prefix="aep: {VOCAB_URL}">',
         f'  <metadata xmlns:dc="{_NS_DC}">',
         f'    <dc:identifier id="pub-id">{escape(uid)}</dc:identifier>',
         f"    <dc:title>{escape(meta.title)}</dc:title>",
@@ -203,6 +212,14 @@ def _render_opf(
     if meta.rights:
         m.append(f"    <dc:rights>{escape(meta.rights)}</dc:rights>")
     m.append(f'    <meta property="dcterms:modified">{escape(modified)}</meta>')
+    project = fingerprint["project"]
+    m.append(
+        f'    <meta name="generator" content="{escape(project["name"] + " " + project["version"], quote=True)}"/>'
+    )
+    for key in ("name", "url", "version", "license", "revision"):
+        if project.get(key) is not None:
+            m.append(f'    <meta property="aep:{key}">{escape(str(project[key]))}</meta>')
+    m.append(f'    <meta property="aep:build">{escape(fingerprint_json(fingerprint))}</meta>')
     if cover_item_id:
         m.append(f'    <meta name="cover" content="{escape(cover_item_id)}"/>')
     m.append("  </metadata>")
@@ -444,6 +461,8 @@ def _render_ncx(
 def _render_landmarks(
     content_entries: list[dict[str, Any]],
     lang: str,
+    *,
+    copyright_page: str | None = None,
 ) -> str:
     """渲染 landmarks（frontmatter / bodymatter / backmatter 地标）。
 
@@ -465,6 +484,8 @@ def _render_landmarks(
             href = f"{slug_file(e['id'])}.xhtml"
             landmarks.append((region, href, labels[region]))
             break
+    if copyright_page:
+        landmarks.append(("copyright-page", copyright_page, "制作信息"))
     lis = []
     for etype, href, label in landmarks:
         lis.append(
@@ -623,6 +644,38 @@ def build_epub(
     out_path.parent.mkdir(parents=True, exist_ok=True)
     ts = _parse_modified(modified)
     css = _STYLE_CSS + theme_css(theme)
+    # 制作信息属于软件附页，不是源书单元；不覆盖作者、译者或作品版权。
+    fingerprint = build_fingerprint(pub)
+    names = {fn for fn, _ in content_files}
+    copyright_page = next(
+        (
+            f"{slug_file(e['id'])}.xhtml"
+            for e in entries
+            if e.get("kind") == "copyright" and f"{slug_file(e['id'])}.xhtml" in names
+        ),
+        None,
+    )
+    generated_page: str | None = None
+    if copyright_page is None:
+        generated_page = "auto-epublizer-build-info.xhtml"
+        suffix = 1
+        while generated_page in names:
+            generated_page = f"auto-epublizer-build-info-{suffix}.xhtml"
+            suffix += 1
+        fingerprint["generated_page"] = generated_page
+    content_files = [
+        (fn, stamp_document(text, fingerprint, lang, visible=fn == copyright_page))
+        for fn, text in content_files
+    ]
+    if generated_page:
+        # 原 spine 相对顺序不变；制作页在源文之前，但不成为正文/导航的父节点。
+        cover_names = {f"{slug_file(e['id'])}.xhtml" for e in entries if e.get("kind") == "cover"}
+        position = next(
+            (i for i, (fn, _) in enumerate(content_files) if fn not in cover_names),
+            len(content_files),
+        )
+        content_files.insert(position, (generated_page, software_page(fingerprint, lang)))
+        copyright_page = generated_page
 
     content_entries = _content_entries(entries, content_files)
     spine_ids = [fn for fn, _ in content_files]
@@ -633,6 +686,8 @@ def build_epub(
         if e.get("kind") == "cover"
         and f"{slug_file(e['id'])}.xhtml" in {fn for fn, _ in content_files}
     }
+    if generated_page:
+        cover_docs.add(generated_page)  # 软件附页同样为非线性内容，可从 copyright-page 地标进入。
 
     items: list[tuple[str, str, str, str | None]] = [
         ("nav", "nav.xhtml", "application/xhtml+xml", "nav"),
@@ -656,11 +711,18 @@ def build_epub(
             items.append((item_id, href, media_type, props))
 
     opf = _render_opf(
-        pub, lang, modified, items, spine_ids, cover_item_id=cover_item_id, cover_docs=cover_docs
+        pub,
+        lang,
+        modified,
+        items,
+        spine_ids,
+        cover_item_id=cover_item_id,
+        cover_docs=cover_docs,
+        fingerprint=fingerprint,
     )
     nav = _render_nav(pub, content_entries, lang, nav_depth=nav_depth)
     ncx = _render_ncx(pub, content_entries, nav_depth=nav_depth)
-    landmarks = _render_landmarks(content_entries, lang)
+    landmarks = _render_landmarks(content_entries, lang, copyright_page=copyright_page)
     container = (
         '<?xml version="1.0" encoding="utf-8"?>\n'
         '<container version="1.0" '

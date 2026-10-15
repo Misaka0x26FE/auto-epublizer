@@ -40,6 +40,16 @@
   [docs/epub-template-spec.md](docs/epub-template-spec.zh.md)；后处理验收与实现计划
   （内容溯源 / 媒体 / 目录层级）见 [docs/postprocessing-spec.md](docs/postprocessing-spec.zh.md)。
 - **许可**：本项目自身代码采用 **AGPL-3.0-only**（源码文件带 SPDX 头与版权行；`pyproject.toml` 的 `license` 为 SPDX 表达式）；第三方依赖保留各自许可证，并在 `THIRD_PARTY_LICENSES.md` 登记（AGPL 依赖可直接引入，与项目同许可兼容）。**来源可识别、不追踪**：无遥测/心跳/部署识别；工作区 `meta.producer` + `run_initialized` 事件 + `build` 日志署名固定可判（issue #40）。
+  成品来源另由 OPF `generator` + 自定义 `aep:` 元数据、内容 XHTML 中的结构化 JSON 注释记录：
+  项目名/URL/**当前实际构建版本**与可取得的源码 revision/dirty，不把初始化 `meta.producer`
+  当成构建版本。有 copyright 单元时尾部追加独立软件声明并保留原版权；否则生成非线性
+  spine 制作信息页，以 `copyright-page` 地标进入，不新增书稿单元、不进入正文目录。
+  Python/Pydantic 是构建运行时，其他工具只列成功解析时冻结的实际记录；未知版本和历史
+  未记录工具保持未知，不从当前安装环境倒推。MinerU API 是外部服务，不宣称其内部开源
+  版本或许可。记录不出网、不含机器路径/密钥/唯一跟踪 ID；指纹可移除、非数字签名，
+  不授予或改变书稿/译文/图像许可。旧 `output.about_page` 是保留项而非指纹开关。
+  QA 只豁免有效结构化指纹注释；制作页须有 OPF 声明、页内标记和一致指纹，普通残留
+  注释仍报错。详见 `skills/auto-epublizer/references/build.md`。
 
 ## 处理一本著作的标准流程
 

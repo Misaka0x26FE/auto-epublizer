@@ -58,7 +58,7 @@ multimodal / search**（能否看图、有无搜索工具，CLI 无法探测）�
 | 注释结构化与绑定（有注书：候选盘点到成品门） | `references/notes.md` |
 | 六道关 QC（G0–G5）操作指引 | `references/review.md` |
 | 交付前全量校验（qa 之后、交付之前，强制） | `references/delivery.md` |
-| EPUB 封装、确定性构建 | `references/build.md` |
+| EPUB 封装、确定性构建、成品软件指纹与独立制作声明（不改变书稿版权） | `references/build.md` |
 | epubcheck + 解包审计、质量报告 | `references/qa.md` |
 | 文体档案（novel/academic/paper/poetry/newspaper）应用 | `references/style.md` |
 | 放行条件全集 / 错误码速查 / 排障判读 | `references/invariants.md` |

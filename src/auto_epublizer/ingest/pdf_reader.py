@@ -22,6 +22,7 @@ from pathlib import Path
 
 import pymupdf as fitz  # pymupdf（fitz 为兼容别名）
 
+from ..fingerprint import used_tool
 from .formula import is_formula_block, is_math_font
 from .images import (
     FULL_PAGE_AREA_RATIO,
@@ -32,7 +33,7 @@ from .images import (
 )
 from .inserts import InsertRecord, InsertSource, next_insert_id, write_inserts
 from .models import KIND_HEADING, KIND_TEXT, SourceDocument, SourceSegment, SourceUnit
-from .ocr import OcrBackend
+from .ocr import OcrBackend, RapidOcrBackend
 from .reading_order import sort_reading_order
 from .rtl import detect_book_rtl, normalize_and_reorder
 from .tables import extract_tables
@@ -521,6 +522,7 @@ def read_pdf(
     records: list[InsertRecord] = []
     text_blocks_total = 0
     page_count = doc.page_count
+    processing_tools = [used_tool("pymupdf")]
     rtl_flag = _resolve_rtl(doc, rtl)
     toc = doc.get_toc(simple=True)
     raw_path: Path | None = Path(raw_dir) if raw_dir is not None else None
@@ -541,6 +543,9 @@ def read_pdf(
             if not blocks and ocr_backend is not None:
                 blocks = _ocr_page(page, ocr_backend, dpi=page_dpi, render_dir=pages_dir)
                 ocr_used = True
+                # 只登记本页确实调用的内置实现；自定义/测试后端不冒称 RapidOCR。
+                if type(ocr_backend) is RapidOcrBackend and len(processing_tools) == 1:
+                    processing_tools.append(used_tool("rapidocr"))
             if raw_path is not None:
                 media_dir = raw_path / "media"
                 if ocr_used:
@@ -624,5 +629,5 @@ def read_pdf(
         source_path=os.path.abspath(str(path)),
         fmt="pdf",
         units=units,
-        meta={"pages": page_count, "rtl": rtl_flag},
+        meta={"pages": page_count, "rtl": rtl_flag, "processing_tools": processing_tools},
     )

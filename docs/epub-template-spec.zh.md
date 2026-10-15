@@ -6,6 +6,16 @@
 交给阅读系统，只保留功能性最小样式，并预留克制的主题选项。它是「后处理规范」
 （`docs/postprocessing-spec.md`）中媒体/样式验收标准的依据。
 
+### 成品软件来源与书稿权利边界
+
+构建必须在 OPF 写 `generator` 和自定义 `aep:` 元数据（结构化记录为 `aep:build`），并在内容 XHTML head 内写 `auto-epublizer-build` JSON 注释。记录包含项目名 `auto-epublizer`、[项目 URL](https://github.com/Misaka0x26FE/auto-epublizer)、当前构建版本及可取得的源码 revision/dirty；初始化 `meta.producer` 不是当前构建身份。
+
+Python/Pydantic 描述构建运行时；其他工具仅使用成功解析时冻结的记录，不将已安装依赖冒充实际使用。未知版本明确未知，历史工作区缺记录不从当前安装环境倒推；MinerU API 是外部服务，不宣称其内部开源版本或许可。
+
+有 copyright 单元时，在原内容尾部追加独立软件声明，不替换作者/译者版权；没有时生成独立制作信息页，采用非线性 spine（`linear="no"`）和 `copyright-page` 地标入口，不新增书稿单元、不进入正文 nav/NCX 目录。软件许可不授予或改变书稿、译文、图像的权利。旧 `output.about_page` 仍是保留配置，不是强制指纹的开关，也不代表旧关于页功能已接线。
+
+指纹可离线读取，无遥测、无网络请求，不含机器路径、密钥或唯一跟踪 ID；它不是数字签名，可移除。QA 仅豁免有效结构化指纹注释；独立制作页须同时满足 OPF 指纹声明、页内制作标记和一致的有效 JSON 指纹，不能仅凭文件名或 `linear="no"` 豁免内容对账/目录检查。普通残留注释、伪造前缀、损坏 JSON 仍报 `E_RESIDUE`。详见 `skills/auto-epublizer/references/build.md`。
+
 ## 1. 设计理念
 
 > EPUB 3 的设计哲学是「内容与呈现分离」：结构层决定导航与无障碍，呈现层交给阅读器。

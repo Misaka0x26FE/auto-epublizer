@@ -9,6 +9,7 @@ from pathlib import Path
 
 from auto_common.workspace import RunStore
 
+from ..fingerprint import used_tool
 from .epub_reader import EpubError, read_epub
 from .kindle import KINDLE_EXTS, KindleError, as_epub
 from .mineru import MineruClient, MineruError, read_mineru
@@ -105,7 +106,10 @@ def load_document(
     if ext in KINDLE_EXTS:
         try:
             with as_epub(path) as epub_path:
-                return read_epub(epub_path, media_dir=media)
+                calibre = used_tool("calibre")
+                doc = read_epub(epub_path, media_dir=media)
+                doc.meta["processing_tools"].insert(0, calibre)
+                return doc
         except (KindleError, EpubError) as e:
             raise IngestError(str(e)) from e
     # EPUB：按 OPF spine 切分并内联非线性项（表格等）；结构异常回退通用 pandoc 路径

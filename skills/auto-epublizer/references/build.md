@@ -1,4 +1,4 @@
-<!-- i18n: source=build.zh.md sha256=32717969eda5854f39c9ba7b814e67dc94b0abf6c9f3e378ae5a4a0588ab57bd -->
+<!-- i18n: source=build.zh.md sha256=a8e5893d349627a1a3e04d67c247e89eefe88b2a001b71a04eba771ede5156cc -->
 > **English** | [中文](build.zh.md)
 
 # Build (EPUB packaging)
@@ -27,13 +27,23 @@ auto-epublizer build [--bilingual] [-o <out.epub>] [--theme standard|compact|spa
 
 ## Determinism
 
-- The build timestamp uses a frozen value (not `time.Now()`); two builds of the same frozen workspace are byte-identical.
+- The build timestamp uses a frozen value (not `time.Now()`); two builds of the same frozen workspace with the same builder version/source state and runtime fingerprint are byte-identical.
 - Results are merged in stable source order and do not change with concurrent completion order.
 - Internal stable IDs do not leak into artifacts (footnotes/endnotes use deterministic sequence numbers).
 
 ## Metadata
 
 DC metadata comes from `publication.json.meta`: `dc:title`, `dc:creator`, `dc:language` (the translation uses `target_language`, pure conversion uses the source language), `dc:identifier` (isbn/uri/slug), `dc:date`, `dc:publisher`, `dc:rights`.
+
+## Product software fingerprint
+
+- OPF includes `generator` and custom `aep:` metadata (`aep:build` stores the structured build record); content XHTML carries a JSON comment prefixed with `auto-epublizer-build` in its head for offline identification.
+- The fingerprint records `auto-epublizer`, its [source URL](https://github.com/Misaka0x26FE/auto-epublizer), the **actual current build version**, and source revision/dirty state when available. Initialization-time `meta.producer` is not the build version; unavailable values remain explicitly unknown.
+- Python and Pydantic describe the current build runtime. Other tools appear only from actual-use records frozen after successful parsing, not from an inventory of installed dependencies. Unknown versions remain unknown; unrecorded historical tools are not inferred from the current environment (`processing_tools=null` means history unknown; `[]` means no additional external parsing tool was used). MinerU API is identified as an external service, without claiming an internal open-source version or license.
+- When a copyright unit exists, a separate software statement is appended without replacing its copyright text. Otherwise, a separate production-information page is generated with a non-linear spine entry (`linear="no"`) and a `copyright-page` landmark. It is not a manuscript unit and does not enter the body nav/NCX TOC.
+- Software licenses do not grant or change rights to the manuscript, translation, or images. The fingerprint is removable, not a digital signature. Recording uses no telemetry or network requests and includes no machine paths, secrets, or unique tracking IDs.
+- Legacy `output.about_page` remains reserved configuration, not a switch for this mandatory build fingerprint; it does not mean the legacy about-page feature is wired up.
+- QA exempts only valid structured fingerprint comments from residue checks. A production page requires an OPF fingerprint declaration, its page marker, and a matching valid JSON fingerprint; a filename or arbitrary `linear="no"` alone grants no body-reconciliation/TOC exemption. Ordinary comments, forged prefixes, and malformed JSON remain `E_RESIDUE`.
 
 ## Naming
 

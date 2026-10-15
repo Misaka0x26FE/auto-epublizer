@@ -11,6 +11,7 @@ import shutil
 import subprocess
 from pathlib import Path
 
+from ..fingerprint import used_tool
 from .models import KIND_HEADING, KIND_TEXT, SourceDocument, SourceSegment, SourceUnit
 
 
@@ -171,5 +172,5 @@ def read_pandoc(
         source_path=os.path.abspath(str(path)),
         fmt=fmt,
         units=units,
-        meta={"via": "pandoc"},
+        meta={"via": "pandoc", "processing_tools": [used_tool("pandoc")]},
     )

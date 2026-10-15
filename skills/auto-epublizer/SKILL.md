@@ -7,7 +7,7 @@ metadata:
   suite: auto-epublizer
   workspace_model: publication.json
 ---
-<!-- i18n: source=SKILL.zh.md sha256=b50f7255b5e1760c161e28f34962edbe3723fee70f13ba8eedd05c48d57abef2 -->
+<!-- i18n: source=SKILL.zh.md sha256=cac4d29045a0062de470bb22c83e32f5bd90cdf98daf69818d98bae61f3599a3 -->
 > **English** | [中文](SKILL.zh.md)
 
 # auto-epublizer
@@ -70,7 +70,7 @@ the reference needed for the current stage.
 | Note structuring and binding (books with notes: candidates → registration → product gate) | `references/notes.md` |
 | Six-gate QC (G0–G5) operational guide | `references/review.md` |
 | Pre-delivery full validation (after qa, before delivery; mandatory) | `references/delivery.md` |
-| EPUB build, deterministic packaging | `references/build.md` |
+| EPUB build, deterministic packaging, product software fingerprint and separate production statement (no change to manuscript rights) | `references/build.md` |
 | epubcheck + unpack audit, quality report | `references/qa.md` |
 | Genre profile (novel/academic/paper/poetry/newspaper) application | `references/style.md` |
 | Complete release-conditions set / error-code quick reference / troubleshooting interpretation | `references/invariants.md` |

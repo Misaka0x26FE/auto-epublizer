@@ -75,6 +75,8 @@ class PublicationMeta(BaseModel):
     # 来源可识别（#40 §5.2）：工具身份固定写入（如 auto-epublizer@0.1.0）——
     # 机器可判定「这份工作区是否由本工具产出」，不做任何出网/遥测
     producer: str = ""
+    # 实际 ingest 工具与当时版本；None=历史未记录，[]=明确未用额外解析工具。
+    processing_tools: list[dict[str, str | None]] | None = None
     identifier: Identifier = Field(default_factory=Identifier)
     source: str = ""  # 相对 source/ 的主文件路径
     source_sha256: str = ""  # 源内容身份（64 位十六进制）

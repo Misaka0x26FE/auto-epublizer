@@ -160,8 +160,8 @@
 ### P2 — 补充项（✅ 已完成 2026-09-04）
 
 - ✅ 可访问性：标题无跳级（`E_HEADING_SKIP`）；alt 空值（P1 已做 `W_IMG_NO_ALT`）、lang（原有 `W_NO_LANG`）
-- ✅ 残留检查：HTML 注释（`E_RESIDUE`）/ markdown·pandoc 标记（`W_RESIDUE`：`![` `**` `:::` `{.` `[^`）；
-  源语言字符残留属语义判断，归 G1 审校（agent 任务），不做确定性检查
+- ✅ 残留检查：HTML 注释（`E_RESIDUE`，仅有效 `auto-epublizer-build` 结构化 JSON 指纹注释豁免，普通注释/伪造前缀/坏 JSON 仍报错）/ markdown·pandoc 标记（`W_RESIDUE`：`![` `**` `:::` `{.` `[^`）；
+  源语言字符残留属语义判断，归 G1 审校（agent 任务），不做确定性检查。独立制作信息页须由 OPF 指纹声明、页内制作标记及一致有效指纹共同识别，才不作为书稿单元参与正文/目录对账；仅文件名或 `linear="no"` 不足以豁免。软件指纹与书稿版权边界见 `docs/epub-template-spec.md`。
 - ✅ 元数据完备：creator/date/publisher/rights 缺失 → `W_META_INCOMPLETE`（告警，供 agent 补全）
 - ✅ 双语溯源：`build --bilingual` src/tgt 段落数成对（`E_BI_PAIRS`）
 - ✅ 内部链接：内部锚点可解析（`E_ANCHOR`，含 noteref→footnote）+ 脚注回链（`E_FN_BACKLINK`）
