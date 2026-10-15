@@ -378,28 +378,45 @@ def validate_candidates(data_lines: list[dict[str, Any]]) -> list[str]:
     return errors
 
 
-def _norm_cand(text: str) -> str:
-    """候选/注文文本的比对规范形（去空白与标记符号）。"""
-    t = re.sub(r"!\[[^\]]*\]\([^)]*\)", "", text or "")
-    t = re.sub(r"[*_`#>\[\]]+", "", t)
-    return re.sub(r"\s+", "", t)
+def _cand_binding(row: dict[str, Any]) -> tuple[str, str]:
+    """候选上的稳定身份绑定：返回 (kind, id)。kind ∈ {"ref","note",""}。"""
+    nid = str(row.get("note_id") or "").strip()
+    rid = str(row.get("ref_id") or "").strip()
+    if rid:
+        return "ref", rid
+    if nid:
+        return "note", nid
+    return "", ""
+
+
+# 引用型候选（正文注号出现处）→ ref_id；注文型候选（注文文本）→ note_id
+_REF_KINDS = ("marker", "pandoc_ref")
+_NOTE_KINDS = ("definition", "numbered_paragraph")
 
 
 def validate_candidates_vs_graph(
-    candidates: list[dict[str, Any]], source_notes: dict[str, Any]
+    candidates: list[dict[str, Any]],
+    source_notes: dict[str, Any],
+    *,
+    unit_kinds: dict[str, str] | None = None,
 ) -> list[str]:
-    """P1 漏门修复：**已核证候选必须与注文/引用图对账**。
+    """F1 漏门修复：已核证候选必须**绑定稳定身份**并与注文/引用图确定性对账。
 
-    评审复现：合成源文导出 2 个候选均判 note，仍可 `notes register` 成
-    ``inventory=none``（构建零语义注文且成品注释门 ok）。本函数把核证结论与
-    登记图对齐，两条硬规则：
+    增量审查复现：跨章重号时，用「全局注号集合」或「前 60 字前缀」判定会让缺注/缺引用
+    蒙混通过；真实两章各含注号 1、登记图只有第一章一注一引时，登记仍成功。本函数改为：
 
-    - ``inventory=none`` 与任何 ``disposition=note`` 候选矛盾 → 拒绝登记；
-    - ``inventory=present`` 时，每条 note 候选必须在图中留下证据（同单元/全局
-      注号 label 命中，或候选文本出现在某条注文的 source_markdown 中），否则视为
-      **部分遗漏**并拒绝登记。
+    - ``inventory=none`` 与任何 ``disposition=note`` 候选矛盾 → 拒绝（保留首轮修复）；
+    - ``inventory=present`` 时，每条 note 候选必须按种类绑定稳定 id：
+      引用型（``marker``/``pandoc_ref``）→ ``ref_id``；注文型（``definition``/
+      ``numbered_paragraph``）→ ``note_id``；
+    - 对账规则（全部确定性，不做全局同号/短前缀猜配）：
+      引用型：引用必须存在、与候选同单元、注号一致（双方都有时）、且不得与其它候选重复绑定；
+      注文型：注文必须存在、不得重复绑定；并且要么**同单元存在指向它的引用**，
+      要么该单元是 ``notes`` 类单元且（双方都有数字注号时）注号一致；
+    - 每条违规逐条给出候选 id/单元/注号与原因，便于一次修复。
 
-    仅统计 ``disposition=note``（``not_note`` 已核证为非注文，不参与）。
+    ``unit_kinds``：``publication.json`` 的 单元 id → kind（缺省时不做 notes 类单元判定，
+    此时注文型候选必须有同单元引用）。
     """
     note_cands = [c for c in candidates if str(c.get("disposition") or "") == "note"]
     if not note_cands:
@@ -412,27 +429,79 @@ def validate_candidates_vs_graph(
         ]
     if inventory != "present":
         return []
-    notes = [n for n in (source_notes.get("notes") or []) if isinstance(n, dict)]
-    refs = [r for r in (source_notes.get("references") or []) if isinstance(r, dict)]
-    labels = {str(n.get("source_label") or "") for n in notes}
-    labels |= {str(r.get("source_label") or "") for r in refs}
-    labels.discard("")
-    blob = _norm_cand("\n".join(str(n.get("source_markdown") or "") for n in notes))
-    uncovered: list[str] = []
+    notes_by_id = {
+        str(n.get("note_id")): n
+        for n in (source_notes.get("notes") or [])
+        if isinstance(n, dict) and n.get("note_id")
+    }
+    refs_by_id = {
+        str(r.get("ref_id")): r
+        for r in (source_notes.get("references") or [])
+        if isinstance(r, dict) and r.get("ref_id")
+    }
+    refs_by_unit: dict[str, list[dict[str, Any]]] = {}
+    for ref in refs_by_id.values():
+        refs_by_unit.setdefault(str(ref.get("unit") or ""), []).append(ref)
+    kinds = unit_kinds or {}
+    errors: list[str] = []
+    used: dict[str, str] = {}
     for c in note_cands:
-        label = str(c.get("label") or "")
-        text = _norm_cand(str(c.get("text") or ""))
-        covered = bool(label and label in labels) or bool(text and text[:60] and text[:60] in blob)
-        if not covered:
-            uncovered.append(str(c.get("candidate_id") or label or "?"))
-    if uncovered:
-        return [
-            f"以下已核证 note 候选未进入注文/引用图（疑部分遗漏）："
-            f"{'、'.join(uncovered[:8])}"
-            + ("…" if len(uncovered) > 8 else "")
-            + "；须补齐注文/引用或在候选上改判 not_note"
-        ]
-    return []
+        cid = str(c.get("candidate_id") or "?")
+        unit = str(c.get("unit") or "")
+        label = str(c.get("label") or "").strip()
+        kind = str(c.get("kind") or "")
+        where = f"{cid}（{unit}，注号 {label or '—'}，{kind}）"
+        bind_kind, bind_id = _cand_binding(c)
+        if kind in _REF_KINDS:
+            if bind_kind != "ref":
+                errors.append(f"{where} 缺少 ref_id 绑定：须写明候选对应的稳定引用 id")
+                continue
+            ref = refs_by_id.get(bind_id)
+            if ref is None:
+                errors.append(f"{where} 绑定的 ref_id 不在登记图中：{bind_id}")
+                continue
+            if str(ref.get("unit") or "") != unit:
+                errors.append(
+                    f"{where} 绑定的引用属于其它单元（{ref.get('unit')}）：跨章同号不得互相冒充"
+                )
+                continue
+            ref_label = str(ref.get("label_text") or "").strip()
+            if label and ref_label and label != ref_label:
+                errors.append(f"{where} 与绑定引用注号不一致（引用为 {ref_label}）")
+                continue
+            if bind_id in used:
+                errors.append(f"{where} 与 {used[bind_id]} 重复绑定同一引用 {bind_id}")
+                continue
+            used[bind_id] = cid
+        elif kind in _NOTE_KINDS:
+            if bind_kind != "note":
+                errors.append(f"{where} 缺少 note_id 绑定：须写明候选对应的稳定注文 id")
+                continue
+            note = notes_by_id.get(bind_id)
+            if note is None:
+                errors.append(f"{where} 绑定的 note_id 不在登记图中：{bind_id}")
+                continue
+            if bind_id in used:
+                errors.append(f"{where} 与 {used[bind_id]} 重复绑定同一注文 {bind_id}")
+                continue
+            same_unit_ref = any(
+                str(r.get("note_id") or "") == bind_id for r in refs_by_unit.get(unit, [])
+            )
+            if not same_unit_ref:
+                if kinds.get(unit) != "notes":
+                    errors.append(
+                        f"{where} 绑定的注文在正文单元缺少同单元引用："
+                        "正文注文候选必须由本单元的引用支撑（跨章重号不得互相冒充）"
+                    )
+                    continue
+                note_label = str(note.get("source_label") or "").strip()
+                if label.isdigit() and note_label.isdigit() and label != note_label:
+                    errors.append(f"{where} 与绑定注文注号不一致（注文为 {note_label}）")
+                    continue
+            used[bind_id] = cid
+        else:
+            errors.append(f"{where} 未知候选种类：{kind!r}")
+    return errors
 
 
 def read_candidates(path: str | Path) -> list[dict[str, Any]]:

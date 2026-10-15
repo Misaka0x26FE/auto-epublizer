@@ -380,8 +380,8 @@ def _render_and_pack(
     built_ids: list[str] = []
     fallback_ids: list[str] = []
     # N 阶段：结构化注释计划（已登记且 inventory=present 时启用；否则旧路径不变）
-    # P1：按实际构建模式要求译注（prefer_translation=true 时译文参与构建，译注必须齐备）
-    notes_ctx = _load_notes_context(store, pub, require_target=prefer_translation)
+    # F3：按**实际渲染来源**判定译注要求（注文宿主单元是否真的用译文渲染）
+    notes_ctx = _load_notes_context(store, pub, prefer_translation=prefer_translation)
     note_plan: dict[str, Any] | None = None
     if notes_ctx is not None and str(notes_ctx["data"].get("inventory") or "") == "present":
         note_plan = _note_plan(store, pub, entries, notes_ctx["data"], notes_ctx.get("target"))
@@ -756,7 +756,9 @@ def import_translations(
         }
 
     glossary = Glossary(load_glossary_csv(glossary_path))
-    # N 阶段：注释绑定上下文（已登记时启用翻译导入门；未登记则历史路径不变）
+    # N 阶段：注释绑定上下文（已登记时启用翻译导入门；未登记则历史路径不变）。
+    # 导入的译注要求由逐单元门（validate_translation_notes + required_note_ids）承担，
+    # 共享加载入口不重复要求/校验（F3：避免与「实际渲染来源」判定分叉）。
     notes_ctx = _load_notes_context(store, pub)
     from . import notes as notes_mod
 
@@ -942,8 +944,34 @@ def import_translations(
     }
 
 
+def _notes_target_in_use(
+    store: RunStore, pub: Any, data: dict[str, Any], *, prefer_translation: bool
+) -> bool:
+    """译注是否**实际参与**本次渲染：注文宿主单元中任意一个以译文渲染才需要译注。
+
+    F3（增量审查）：`build()` 允许缺译文回退源文，因此「偏好译文」不等于「实际使用译文」；
+    全源文回退的构建不应被缺失/过期的译注阻断，而实际使用译注的路径仍必须绑定校验。
+    """
+    if not prefer_translation:
+        return False
+    hosts = {
+        str(r.get("unit") or "")
+        for r in (data.get("references") or [])
+        if isinstance(r, dict) and r.get("unit")
+    }
+    if not hosts:
+        return False
+    for unit in pub.units:
+        if unit.id not in hosts:
+            continue
+        rel = (unit.meta or {}).get("rel_path")
+        if rel and (store.translation_dir / rel).is_file():
+            return True
+    return False
+
+
 def _load_notes_context(
-    store: RunStore, pub: Any, *, require_target: bool = False
+    store: RunStore, pub: Any, *, prefer_translation: bool = False
 ) -> dict[str, Any] | None:
     """加载已登记注释上下文（源注文 + 译注）；登记摘要与文件摘要不一致时报错（失效链）。
 
@@ -971,18 +999,19 @@ def _load_notes_context(
     data = notes_mod.read_notes_json(npath)
     tpath = notes_mod.translation_notes_path(store)
     target = notes_mod.read_notes_json(tpath) if tpath.is_file() else None
-    # P1：译注要求只对 inventory=present 生效（无注书零对零，不需要译注）
-    if str(data.get("inventory") or "") == "present":
-        if target is not None:
-            bound = str(target.get("source_notes_sha256") or "")
-            if bound != digest:
-                raise OrchestrationError(
-                    "译注绑定的源注文摘要不符（structured/notes.json 已变更，须重译受影响注文）"
-                )
-        elif require_target:
+    # 译注要求只对 inventory=present 且**实际使用译注**的路径生效（F3）
+    if str(data.get("inventory") or "") == "present" and _notes_target_in_use(
+        store, pub, data, prefer_translation=prefer_translation
+    ):
+        if target is None:
             raise OrchestrationError(
-                "已登记注释但 translation/notes.json 缺失：译文将无注文内容"
-                "（须写译注并重跑 import 登记）"
+                "已登记注释且本单元以译文渲染，但 translation/notes.json 缺失："
+                "译文将无注文内容（须写译注并重跑 import 登记）"
+            )
+        bound = str(target.get("source_notes_sha256") or "")
+        if bound != digest:
+            raise OrchestrationError(
+                "译注绑定的源注文摘要不符（structured/notes.json 已变更，须重译受影响注文）"
             )
     return {"data": data, "digest": digest, "target": target}
 
@@ -1011,6 +1040,10 @@ def notes_candidates(store: RunStore, *, output: str | None = None) -> dict[str,
         prev = prior.get(str(r.get("candidate_id")))
         if prev is not None and prev.get("disposition") in notes_mod.CANDIDATE_DISPOSITIONS:
             r["disposition"] = prev["disposition"]
+            # F1：稳定身份绑定随处置一并保留（重跑不丢核证结果）
+            for key in ("note_id", "ref_id"):
+                if prev.get(key):
+                    r[key] = prev[key]
             kept += 1
     out_path = Path(output) if output else notes_mod.candidates_path(store)
     out_path.parent.mkdir(parents=True, exist_ok=True)
@@ -1058,8 +1091,12 @@ def register_notes(store: RunStore) -> dict[str, Any]:
     cands = notes_mod.read_candidates(notes_mod.candidates_path(store))
     if cands:
         errors.extend(notes_mod.validate_candidates(cands))
-        # P1 漏门：核证结论必须与注文/引用图对账（none 矛盾 / present 部分遗漏）
-        errors.extend(notes_mod.validate_candidates_vs_graph(cands, data))
+        # P1/F1：核证结论必须绑定稳定身份并与注文/引用图确定性对账
+        errors.extend(
+            notes_mod.validate_candidates_vs_graph(
+                cands, data, unit_kinds={u.id: u.kind for u in pub.units}
+            )
+        )
     if errors:
         raise OrchestrationError("注释登记失败：\n- " + "\n- ".join(errors))
     summary = notes_mod.registration_summary(data, notes_mod.file_digest(path))
@@ -1454,14 +1491,10 @@ def qa(
     audit = audit_epub(epub, nav_exempt=set(provenance.nav_exempt))
     # N 阶段成品注释门（N5）：独立解析成品 XHTML 对账已登记注释；未登记则跳过
     # P1：按实际源/译模式要求译注（有译文参与成品 → 译注必须齐备，否则成品注文为空）
-    _has_translation = any(
-        (store.translation_dir / (u.meta or {}).get("rel_path", "")).is_file()
-        for u in pub.units
-        if (u.meta or {}).get("rel_path")
-    )
+    # F3：qa 与 build 使用同一「实际来源」证据（注文宿主单元是否以译文渲染）
     notes_audit_dict: dict[str, Any] | None = None
     try:
-        notes_ctx = _load_notes_context(store, pub, require_target=_has_translation)
+        notes_ctx = _load_notes_context(store, pub, prefer_translation=True)
     except OrchestrationError as e:
         notes_audit_dict = {
             "findings": [{"level": "error", "code": "E_NOTES_STALE", "message": str(e)}],
@@ -1623,8 +1656,9 @@ def _notes_next_task(store: RunStore, pub: Any) -> dict[str, Any] | None:
         if pending:
             return _task(
                 "notes_verify",
-                f"核证注释候选：{len(pending)} 条未决（回看源件后写 disposition=note|not_note，"
-                "有注的进 structured/notes.json）",
+                f"核证注释候选：{len(pending)} 条未决（回看源件后写 disposition=note|not_note；"
+                "判 note 的须绑定稳定身份：引用型候选写 ref_id、注文型候选写 note_id，"
+                "并把这些注文/引用写入 structured/notes.json）",
                 done_when={"file": "preprocessing/note_candidates.jsonl"},
             )
         if not pub.notes:

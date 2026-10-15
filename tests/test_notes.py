@@ -252,11 +252,11 @@ def test_import_gate_blocks_stale_translation_notes_digest(tmp_path: Path) -> No
         ],
         target_notes=stale,
     )
-    # P1 漏门修复：译注绑定校验上移到**共享加载入口**（import/build/qa 同一口径），
-    # 导入在进入逐单元门之前即报错（消息含「摘要不符」）。
-    with pytest.raises(orch.OrchestrationError) as ei:
-        orch.import_translations(store)
-    assert "摘要不符" in str(ei.value)
+    # F3：导入路径的译注要求由**逐单元门**承担（按被导入单元的实际使用判定），
+    # 共享加载入口不重复要求——过期绑定仍在导入门逐条阻断（含「摘要不符」）。
+    result = orch.import_translations(store)
+    assert result["failed"], result
+    assert any("摘要不符" in e for e in result["failed"][0]["errors"])
 
 
 def test_import_blocks_when_source_notes_changed_after_register(tmp_path: Path) -> None:
@@ -801,50 +801,142 @@ def test_register_rejects_note_candidates_with_none_inventory(tmp_path: Path) ->
     assert "inventory=none" in str(ei.value)
 
 
-def test_register_rejects_note_candidate_missing_from_graph(tmp_path: Path) -> None:
-    """P1：inventory=present 时，已核证 note 候选必须在注文/引用图中留证据（部分遗漏）。"""
-    store = _notes_ws(tmp_path)
-    (store.preprocessing_dir).mkdir(parents=True, exist_ok=True)
+def _candidate(**kw) -> dict:
+    row = {
+        "candidate_id": "c-1",
+        "unit": "ch01",
+        "kind": "marker",
+        "label": "1",
+        "line": 3,
+        "text": "First sentence.1",
+        "disposition": "note",
+    }
+    row.update(kw)
+    return row
+
+
+def _write_candidates(store, rows: list[dict]) -> None:
+    store.preprocessing_dir.mkdir(parents=True, exist_ok=True)
     (store.preprocessing_dir / "note_candidates.jsonl").write_text(
-        json.dumps(
-            {
-                "candidate_id": "c-orphan",
-                "unit": "ch01",
-                "kind": "numbered_paragraph",
-                "label": "99",
-                "line": 9,
-                "text": "99 Ein voellig anderer Hinweis.",
-                "disposition": "note",
-            },
-            ensure_ascii=False,
-        )
-        + "\n",
-        encoding="utf-8",
+        "".join(json.dumps(r, ensure_ascii=False) + "\n" for r in rows), encoding="utf-8"
+    )
+
+
+def test_register_requires_bound_note_candidates(tmp_path: Path) -> None:
+    """F1：判 note 的候选必须绑定稳定身份（引用型→ref_id，注文型→note_id）。"""
+    store = _notes_ws(tmp_path)
+    data = _src_notes(store)  # 只插一次原位标记，后续复用同一份登记数据
+    # 无绑定 → 拒绝
+    _write_candidates(store, [_candidate()])
+    with pytest.raises(orch.OrchestrationError) as ei:
+        _register(store, data)
+    assert "缺少 ref_id 绑定" in str(ei.value)
+    # 绑定到不存在的 ref → 拒绝
+    _write_candidates(store, [_candidate(ref_id="ref-999999")])
+    with pytest.raises(orch.OrchestrationError) as ei:
+        _register(store, data)
+    assert "不在登记图中" in str(ei.value)
+    # 正例：同单元、同注号绑定 → 通过
+    _write_candidates(store, [_candidate(ref_id="ref-000001")])
+    assert _register(store, data)["summary"]["inventory"] == "present"
+    # 重复绑定同一引用 → 拒绝
+    _write_candidates(
+        store,
+        [
+            _candidate(candidate_id="c-1", ref_id="ref-000001"),
+            _candidate(candidate_id="c-2", ref_id="ref-000001", text="另一处 .1"),
+        ],
     )
     with pytest.raises(orch.OrchestrationError) as ei:
-        _register(store)
-    assert "部分遗漏" in str(ei.value)
-    # 有证据的候选（label 命中注文 source_label）不受影响
-    (store.preprocessing_dir / "note_candidates.jsonl").write_text(
-        json.dumps(
-            {
-                "candidate_id": "c-ok",
-                "unit": "ch01",
-                "kind": "marker",
-                "label": "1",
-                "line": 3,
-                "text": "First sentence.1",
-                "disposition": "note",
-            },
-            ensure_ascii=False,
-        )
-        + "\n",
+        _register(store, data)
+    assert "重复绑定同一引用" in str(ei.value)
+
+
+def test_register_rejects_cross_unit_note_binding(tmp_path: Path) -> None:
+    """F1（增量审查复现）：跨章同号候选不得用全局同号/前缀冒充第一章的注文。"""
+    tmp_path.mkdir(parents=True, exist_ok=True)
+    src = tmp_path / "book.md"
+    src.write_text(
+        "# Chapter I\n\nFirst sentence.1\n\n# Chapter II\n\nSecond sentence.\n",
         encoding="utf-8",
     )
-    assert (
-        _register(store, _src_notes(store, marker_in_body=False))["summary"]["inventory"]
-        == "present"
+    store = orch.init(str(src), workspace_dir=str(tmp_path / "ws"))
+    # ch01 正文写原位标记；ch02 是另一章的注文（编号段落），不写标记
+    md1 = store.structured_dir / "body" / "ch01.md"
+    md1.write_text("# Chapter I\n\nFirst sentence.[^ref-000001]\n", encoding="utf-8")
+    md2 = store.structured_dir / "body" / "ch02.md"
+    md2.write_text(
+        "# Chapter II\n\nSecond sentence.\n\n1 Zweiter Hinweis mit Text.\n", encoding="utf-8"
     )
+    data = {
+        "schema_version": "1",
+        "source_sha256": store.load_publication().meta.source_sha256,
+        "inventory": "present",
+        "notes": [
+            {
+                "note_id": "n-000001",
+                "scope_id": "ch01",
+                "source_label": "1",
+                "note_type": "footnote",
+                "source_markdown": "Erste Anmerkung.",
+                "source_locations": [{"kind": "page", "page": 1}],
+                "status": "verified",
+            }
+        ],
+        "references": [
+            {
+                "ref_id": "ref-000001",
+                "note_id": "n-000001",
+                "unit": "ch01",
+                "scope_id": "ch01",
+                "label_text": "1",
+                "status": "verified",
+            }
+        ],
+    }
+    _write_candidates(
+        store,
+        [
+            _candidate(
+                candidate_id="c-c1-m",
+                unit="ch01",
+                kind="marker",
+                label="1",
+                text="First sentence.1",
+                ref_id="ref-000001",
+            ),
+            _candidate(
+                candidate_id="c-c1-d",
+                unit="ch01",
+                kind="numbered_paragraph",
+                label="1",
+                text="1 Erste Anmerkung mit Text.",
+                note_id="n-000001",
+            ),
+            _candidate(
+                candidate_id="c-c2-m",
+                unit="ch02",
+                kind="marker",
+                label="1",
+                text="Second sentence.1",
+                ref_id="ref-000001",
+            ),
+            _candidate(
+                candidate_id="c-c2-d",
+                unit="ch02",
+                kind="numbered_paragraph",
+                label="1",
+                text="1 Zweiter Hinweis mit Text.",
+                note_id="n-000001",
+            ),
+        ],
+    )
+    with pytest.raises(orch.OrchestrationError) as ei:
+        _register(store, data)
+    msg = str(ei.value)
+    assert "跨章同号" in msg or "其它单元" in msg, msg
+    assert "重复绑定同一注文" in msg or "本单元的引用支撑" in msg, msg
+    assert "c-c2-m" in msg and "c-c2-d" in msg, msg
 
 
 def test_build_blocks_when_translation_notes_binding_stale(tmp_path: Path) -> None:
@@ -956,3 +1048,89 @@ def test_report_goes_stale_when_catalog_unresolved_added_after_release(
     )
     state = report_state(store)
     assert state["stale"] is True, state
+
+
+def test_build_allows_source_fallback_without_any_translation(tmp_path: Path) -> None:
+    """F3：全源文回退构建（工作区无任何译文/译注）不得被「译注缺失」阻断。"""
+    store = _notes_ws(tmp_path)
+    _register(store)
+    epub = orch.build(store)  # 无 translation/ 完全合法：源文回退
+    assert epub.is_file()
+
+
+def test_build_ignores_stale_translation_notes_when_not_used(tmp_path: Path) -> None:
+    """F3：存在但**未被使用**的旧译注（源文回退路径）不得阻断构建。"""
+    store = _notes_ws(tmp_path)
+    _register(store)
+    (store.translation_dir).mkdir(parents=True, exist_ok=True)
+    (store.translation_dir / "notes.json").write_text(
+        json.dumps(
+            {
+                "schema_version": "1",
+                "source_notes_sha256": "0" * 64,  # 过期绑定
+                "notes": [{"note_id": "n-000001", "target_markdown": "旧译文。"}],
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    epub = orch.build(store)  # 该译注不参与渲染 → 不校验、不阻断
+    assert epub.is_file()
+
+
+def test_build_blocks_when_used_translation_notes_stale(tmp_path: Path) -> None:
+    """F3 对照：注文宿主单元**实际以译文渲染**时，过期译注仍必须阻断。"""
+    store = _notes_ws(tmp_path)
+    _register(store)
+    _write_translation(
+        store,
+        md="# 第一章\n\n第一句话[^ref-000001]。\n",
+        rows=[
+            {
+                "seq": 1,
+                "src": "First sentence.[^ref-000001]",
+                "tgt": "第一句话[^ref-000001]。",
+                "note": None,
+            }
+        ],
+        target_notes={
+            "schema_version": "1",
+            "source_notes_sha256": "0" * 64,  # 过期绑定，但该单元确实用译文渲染
+            "notes": [{"note_id": "n-000001", "target_markdown": "译文注文。"}],
+        },
+    )
+    import pytest as _pytest
+
+    with _pytest.raises(orch.OrchestrationError) as ei:
+        orch.build(store)
+    assert "摘要不符" in str(ei.value)
+
+
+def test_candidates_rerun_preserves_identity_bindings(tmp_path: Path) -> None:
+    """F1：候选重跑保留 note_id/ref_id 绑定（与 disposition 同生命周期）。"""
+    store = _notes_ws(tmp_path)
+    first = orch.notes_candidates(store)
+    rows = [
+        json.loads(ln)
+        for ln in (store.preprocessing_dir / "note_candidates.jsonl")
+        .read_text(encoding="utf-8")
+        .splitlines()
+        if ln.strip()
+    ]
+    assert rows, first
+    rows[0]["disposition"] = "note"
+    rows[0]["ref_id"] = "ref-000001"
+    (store.preprocessing_dir / "note_candidates.jsonl").write_text(
+        "".join(json.dumps(r, ensure_ascii=False) + "\n" for r in rows), encoding="utf-8"
+    )
+    orch.notes_candidates(store)  # 重跑
+    again = [
+        json.loads(ln)
+        for ln in (store.preprocessing_dir / "note_candidates.jsonl")
+        .read_text(encoding="utf-8")
+        .splitlines()
+        if ln.strip()
+    ]
+    kept = [r for r in again if r.get("candidate_id") == rows[0]["candidate_id"]]
+    assert kept and kept[0].get("ref_id") == "ref-000001"
+    assert kept[0].get("disposition") == "note"
