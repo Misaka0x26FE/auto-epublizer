@@ -744,7 +744,7 @@ traceback（与迁移前同文案）；``orch.read_catalog is preprocess.artifac
 
 ### 完成状态与提交清单（2026-10-15）
 
-基线 `4d76c62` 之后共 11 个提交（**均未推送**）：
+基线 `4d76c62` 之后共 12 个提交（**已推送** GitHub `Misaka0x26FE/auto-epublizer` 与 Gitee 镜像，`4d76c62..badf4f5`）：
 
 | 批次 | 提交 | 内容 |
 |---|---|---|
@@ -759,6 +759,7 @@ traceback（与迁移前同文案）；``orch.read_catalog is preprocess.artifac
 | C | `6867d50` | 架构最小重构：导入图 0 环 + 4 处归位（模型/探测/策略/契约） |
 | F | `2140ba7` | 真实 epubcheck 执行 + 真实 CLI review 登记覆盖 + 回归映射与工具缺口报告 |
 | docs | `2bbb64b` | 文档矩阵同步（AGENTS/build/taskcards/放行条件）+ lessons 两篇 + 计划回写「已完成」 |
+| — | `badf4f5` | 提交清单补 docs 提交（计数修正） |
 
 **最终验证**：`uv run --offline pytest -q` = **553 passed**；`ruff check` / `ruff format --check`
 全绿；`python3 scripts/i18n.py --check` / `--links` = OK；离线 `uv build` 成功且 wheel
