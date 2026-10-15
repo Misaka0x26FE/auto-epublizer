@@ -17,6 +17,8 @@ qc:
   length_ratio:
     too_short: 0.30     # 低于此长度比告警（疑漏译）
     too_long: 3.0       # 高于此长度比告警（疑失控）
+    min_src_chars: 20   # 短源保护：源文不足此字符数时不做比值判定（issue #39；
+                        # 译文为空仍告警，不受此保护影响）
   epubcheck:
     jar: "~/.cache/epubcheck.jar"
     strict: true
