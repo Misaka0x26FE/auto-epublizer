@@ -79,11 +79,16 @@ def entry_to_row(entry: GlossaryEntry) -> dict[str, str]:
 
 
 def load_glossary_csv(path: str | Path) -> list[GlossaryEntry]:
-    """读取权威 CSV，容忍缺列（旧案例用 ``category,source,target,note`` 时由调用方先转换）。"""
+    """读取权威 CSV，容忍缺列（旧案例用 ``category,source,target,note`` 时由调用方先转换）。
+
+    ``utf-8-sig``：Excel 另存的 CSV 常带 BOM；用 ``utf-8`` 读会让首列名变成
+    ``\\ufeffsource``，``DictReader`` 取不到 ``source`` 而**整表静默丢光**
+    （issue #36）。与 ``structure.csv`` 的读取口径保持一致。
+    """
     p = Path(path)
     if not p.is_file():
         return []
-    text = p.read_text(encoding="utf-8")
+    text = p.read_text(encoding="utf-8-sig")
     reader = csv.DictReader(io.StringIO(text))
     entries: list[GlossaryEntry] = []
     for row in reader:
@@ -106,15 +111,38 @@ def save_glossary_csv(path: str | Path, entries: list[GlossaryEntry]) -> None:
 
 
 def write_conflicts_jsonl(path: str | Path, conflicts: list[GlossaryConflict]) -> int:
-    """把术语冲突外置到 glossary_conflicts.jsonl（追加式）；返回写入条数。"""
+    """把术语冲突外置到 glossary_conflicts.jsonl（追加式、按身份去重）；返回**本次新增**条数。
+
+    去重键 ``(source, existing_target, proposed_target)``：同一冲突重复检出不再追加，
+    重复 ``import`` 幂等（issue #35）；已有行（含已裁决的 ``resolved``）不被改写、不删除。
+    """
     if not conflicts:
         return 0
     p = Path(path)
+    seen: set[tuple[str, str, str]] = set()
+    if p.is_file():
+        for row in read_conflicts_jsonl(p):
+            seen.add(
+                (
+                    str(row.get("source", "")),
+                    str(row.get("existing_target", "")),
+                    str(row.get("proposed_target", "")),
+                )
+            )
+    fresh: list[GlossaryConflict] = []
+    for c in conflicts:
+        key = (c.source, c.existing_target, c.proposed_target)
+        if key in seen:  # 含同批内重复（防御）
+            continue
+        seen.add(key)
+        fresh.append(c)
+    if not fresh:
+        return 0
     p.parent.mkdir(parents=True, exist_ok=True)
     with open(p, "a", encoding="utf-8") as f:
-        for c in conflicts:
+        for c in fresh:
             f.write(json.dumps(c.as_jsonl(), ensure_ascii=False, sort_keys=True) + "\n")
-    return len(conflicts)
+    return len(fresh)
 
 
 def read_conflicts_jsonl(path: str | Path) -> list[dict]:
@@ -124,7 +152,7 @@ def read_conflicts_jsonl(path: str | Path) -> list[dict]:
         return []
     seen: set[tuple[str, str]] = set()
     out: list[dict] = []
-    for line in p.read_text(encoding="utf-8").splitlines():
+    for line in p.read_text(encoding="utf-8-sig").splitlines():
         line = line.strip()
         if not line:
             continue
@@ -173,7 +201,7 @@ def load_legacy_category_csv(path: str | Path) -> list[GlossaryEntry]:
     p = Path(path)
     if not p.is_file():
         return []
-    reader = csv.DictReader(io.StringIO(p.read_text(encoding="utf-8")))
+    reader = csv.DictReader(io.StringIO(p.read_text(encoding="utf-8-sig")))
     entries: list[GlossaryEntry] = []
     for row in reader:
         source = (row.get("source") or "").strip()

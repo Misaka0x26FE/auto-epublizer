@@ -30,6 +30,15 @@ def _pdf_progress(page: int, total: int) -> None:
         typer.echo(f"  解析 PDF {page}/{total} 页", err=True)
 
 
+def _emit_plain(text: str) -> None:
+    """输出纯文本（markdown/JSON 等）：绕过 rich 按终端宽度自动换行。
+
+    rich 默认会在控制台宽度处折行并插入真实换行，破坏机器可解析正文
+    （JSON、markdown 表格等）。``soft_wrap=True`` 关闭换行与裁切。
+    """
+    console.print(text, soft_wrap=True, markup=False, highlight=False)
+
+
 def _emit_json(text: str) -> None:
     """输出机器可读 JSON：绕过 rich 按终端宽度自动换行。
 
@@ -37,7 +46,7 @@ def _emit_json(text: str) -> None:
     使 ``json.loads`` 失败、机器指针不可用（2026-10-05 真书实测发现）。
     ``soft_wrap=True`` 关闭换行与裁切。
     """
-    console.print(text, soft_wrap=True, markup=False, highlight=False)
+    _emit_plain(text)
 
 
 def _find_workspace(base: Path) -> Path:
@@ -185,7 +194,8 @@ def ledger(
         Path(output).write_text(text, encoding="utf-8")
         console.print(f"[green]台账已写入：[/green]{output}（{len(rows)} 个工作区）")
     else:
-        console.print(text)
+        # markdown 表格每条记录必须保持一行：走纯文本输出，不经 Rich 折行（issue #33）
+        _emit_plain(text)
 
 
 @app.command()
@@ -447,7 +457,12 @@ def import_cmd(
     store = _store_from(workspace, cfg)
     try:
         result = orch.import_translations(
-            store, unit_id=unit, terms_path=terms, mark_reviewed=reviewed, force=force
+            store,
+            unit_id=unit,
+            terms_path=terms,
+            mark_reviewed=reviewed,
+            force=force,
+            config=cfg,
         )
     except (ValueError, OSError, orch.OrchestrationError) as e:
         raise typer.Exit(f"导入失败：{e}") from None
@@ -487,15 +502,43 @@ def import_cmd(
         )
     for sid in result["skipped"]:
         console.print(f"[dim]- {sid}：跳过（无 rel_path 或已 reviewed/built）[/dim]")
-    if result["conflicts_open"]:
+    # 术语提案（--terms）：显式坏输入已在上游报错；这里让「空结果」可见（issue #36）
+    terms_info = result.get("terms")
+    if terms_info is not None:
+        if terms_info["proposed"]:
+            extra = (
+                f"；跳过 {terms_info['skipped']} 条（缺 source/target）"
+                if terms_info.get("skipped")
+                else ""
+            )
+            console.print(
+                f"[green]术语提案已导入：[/green]{terms_info['proposed']} 条"
+                f"（来源 {terms_info['path']}）{extra}"
+            )
+        else:
+            console.print(
+                f"[yellow]⚠ 术语提案 0 条：{terms_info['path']} 无有效数据行"
+                "（需含 source/target 列与内容）[/yellow]"
+            )
+    # 术语冲突：本次新增 / 当前待裁决分开报（issue #35）——历史 resolved 不要求重裁
+    new_conflicts = result.get("conflicts_new") or 0
+    open_conflicts = result.get("conflicts_open") or 0
+    if new_conflicts:
         console.print(
-            f"[yellow]术语冲突 {result['conflicts_open']} 条已外置到 "
-            f"analysis/glossary_conflicts.jsonl，请裁决后写回 glossary.csv[/yellow]"
+            f"[yellow]术语冲突 本次新增 {new_conflicts} 条已外置到 "
+            f"analysis/glossary_conflicts.jsonl（当前待裁决 {open_conflicts} 条），"
+            f"请裁决后写回 glossary.csv[/yellow]"
         )
+    elif open_conflicts:
+        console.print(
+            f"[yellow]术语冲突 待裁决 {open_conflicts} 条（本批无新增；含历史未裁决记录，"
+            f"已裁决的无需重裁），请裁决后写回 glossary.csv[/yellow]"
+        )
+    terms_suffix = f" 术语={terms_info['proposed']}" if terms_info is not None else ""
     console.print(
         f"[green]导入完成：[/green]单元={len(result['imported'])} "
         f"待译={len(result.get('pending') or [])} 失败={len(result['failed'])} "
-        f"告警={len(result['warnings'])}"
+        f"告警={len(result['warnings'])}{terms_suffix}"
     )
 
 
@@ -533,7 +576,7 @@ def g0(
     cfg = load_config(config or _CONFIG_PATH)
     store = _store_from(workspace, cfg)
     try:
-        result = orch.g0_check(store, unit_id=unit)
+        result = orch.g0_check(store, unit_id=unit, config=cfg)
     except (ValueError, OSError, orch.OrchestrationError) as e:
         raise typer.Exit(f"G0 校验失败：{e}") from None
     # 硬缺陷类（术语命中/标记/脚注守恒等）红色 ✗，须逐条核验；其余 advisory 黄色 ⚠

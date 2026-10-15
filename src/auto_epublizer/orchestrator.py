@@ -473,6 +473,21 @@ def _unit_doc_flags(store: RunStore, rel_path: str) -> list[Any]:
     return table_shape_flags(src_md, tgt_md)
 
 
+def _g0_thresholds(cfg: Config) -> dict[str, Any]:
+    """G0 长度比阈值（三条调用链——import/g0/qa——统一从此取，口径一致；issue #39）。
+
+    ``min_src_chars``：短源保护——源文去空白后不足该字符数时不做比值判定
+    （判据与理由见 ``auto_translator.review.g0.MIN_SRC_CHARS``）。**译文为空**
+    检查不看源长，不受该保护影响。
+    """
+    lr = cfg.qc.length_ratio
+    return {
+        "too_short": float(lr.get("too_short", 0.30)),
+        "too_long": float(lr.get("too_long", 3.0)),
+        "min_src_chars": int(lr.get("min_src_chars", 20)),
+    }
+
+
 def import_translations(
     store: RunStore,
     *,
@@ -480,6 +495,7 @@ def import_translations(
     terms_path: str | None = None,
     mark_reviewed: bool = False,
     force: bool = False,
+    config: Config | None = None,
 ) -> dict[str, Any]:
     """把 agent 手写的 translation/ + align/ 登记进工作区（路径 B 一等入口）。
 
@@ -512,11 +528,21 @@ def import_translations(
     conflicts_path = store.analysis_dir / "glossary_conflicts.jsonl"
 
     # 可选：批量导入 agent 提取的新术语提案（propose 三态判定）
+    # 显式坏输入在写回前失败（issue #36）：路径相对 cwd 解析（不做工作区回退），
+    # 不存在直接报错，避免「导入完成、告警=0」被误读为成功。
+    terms_info: dict[str, Any] | None = None
     if terms_path:
-        glossary = Glossary(load_glossary_csv(glossary_path))
-        proposed = load_glossary_csv(terms_path)
-        for entry in proposed:
-            if entry.source and entry.target:
+        terms_file = Path(terms_path)
+        if not terms_file.is_file():
+            raise OrchestrationError(
+                f"术语提案文件不存在：{terms_file.resolve()}"
+                "（相对路径按当前工作目录解析；本命令不做工作区相对路径回退）"
+            )
+        proposed = load_glossary_csv(terms_file)
+        usable = [e for e in proposed if e.source and e.target]
+        if usable:
+            glossary = Glossary(load_glossary_csv(glossary_path))
+            for entry in usable:
                 glossary.propose(
                     entry.source,
                     entry.target,
@@ -528,7 +554,12 @@ def import_translations(
                     gender=entry.gender,
                     reading=entry.reading,
                 )
-        save_glossary_csv(glossary_path, glossary.entries())
+            save_glossary_csv(glossary_path, glossary.entries())
+        terms_info = {
+            "path": str(terms_file),
+            "proposed": len(usable),
+            "skipped": len(proposed) - len(usable),
+        }
 
     glossary = Glossary(load_glossary_csv(glossary_path))
     imported: list[str] = []
@@ -590,7 +621,11 @@ def import_translations(
             for d in md_align_drift(translation_md, rows, title=unit.title):
                 errors.append(f"文档一致性：{d}")
         for f in g0_unit_flags(
-            rows, glossary, structured_md=structured_md, translation_md=translation_md
+            rows,
+            glossary,
+            structured_md=structured_md,
+            translation_md=translation_md,
+            **_g0_thresholds(config or Config()),
         ):
             # 源保真反向违例（src 不在源文中）= 对照表不可信，阻断登记；
             # 其余硬缺陷类（terminology/marker/footnote/heading）与前向缺块
@@ -599,7 +634,15 @@ def import_translations(
             if f.check == "fidelity" and "不在源文中" in f.message:
                 errors.append(f"源保真：{f.message}（seq={f.data.get('seq')}）")
                 continue
-            if f.check in ("length", "terminology", "marker", "footnote", "heading", "fidelity"):
+            if f.check in (
+                "length",
+                "terminology",
+                "marker",
+                "footnote",
+                "footnote_suspect",
+                "heading",
+                "fidelity",
+            ):
                 warned.append({"unit": unit.id, "check": f.check, "message": f.message})
         if errors:
             if force and was_done:
@@ -622,10 +665,13 @@ def import_translations(
             imported.append(unit.id)
 
     # 术语冲突检测与外置（agent 裁决后写回 CSV）
+    # 分开两个数（issue #35）：written = 本次新增外置；conflicts_open = 账本里待裁决总数
+    # （含历史 open，已裁决的 resolved 不计）。不再把「文件已有行数」报成本次检出。
     conflicts = glossary.detect_conflicts()
-    prior = len(read_conflicts_jsonl(conflicts_path))
     written = write_conflicts_jsonl(conflicts_path, conflicts)
-    new_conflicts = prior + written
+    conflicts_open = sum(
+        1 for c in read_conflicts_jsonl(conflicts_path) if c.get("status") == "open"
+    )
 
     # --reviewed：审校通过的显式登记（aligned → reviewed，幂等）
     reviewed: list[str] = []
@@ -650,7 +696,9 @@ def import_translations(
         "failed": failed,
         "warnings": warned,
         "skipped": skipped,
-        "conflicts_open": new_conflicts,
+        "conflicts_new": written,
+        "conflicts_open": conflicts_open,
+        "terms": terms_info,
         "reviewed": reviewed,
     }
 
@@ -689,11 +737,14 @@ def set_meta(
     return {"updated": changed, "meta": pub.meta.model_dump()}
 
 
-def g0_check(store: RunStore, *, unit_id: str | None = None) -> dict[str, Any]:
+def g0_check(
+    store: RunStore, *, unit_id: str | None = None, config: Config | None = None
+) -> dict[str, Any]:
     """G0 零 token 静态校验（独立命令；翻译/导入后立即跑，不必等到 qa）。"""
     from auto_translator.glossary import Glossary, load_glossary_csv
     from auto_translator.review import g0_unit_flags
 
+    cfg = config or Config()
     pub = store.load_publication()
     flags: list[dict[str, Any]] = []
     checked: list[str] = []
@@ -720,6 +771,7 @@ def g0_check(store: RunStore, *, unit_id: str | None = None) -> dict[str, Any]:
             Glossary(load_glossary_csv(store.analysis_dir / "glossary.csv")),
             structured_md=structured_md,
             translation_md=translation_md,
+            **_g0_thresholds(cfg),
         ):
             flags.append({"unit": unit.id, "check": f.check, "message": f.message, "data": f.data})
         for f in _unit_doc_flags(store, rel_path) if rel_path else []:
@@ -753,10 +805,9 @@ def _collect_g0_flags(store: RunStore, config: Config | None = None) -> list[dic
         for f in g0_unit_flags(
             rows,
             glossary,
-            too_short=float(cfg.qc.length_ratio.get("too_short", 0.30)),
-            too_long=float(cfg.qc.length_ratio.get("too_long", 3.0)),
             structured_md=structured_md,
             translation_md=translation_md,
+            **_g0_thresholds(cfg),
         ):
             flags.append({"unit": unit.id, "check": f.check, "message": f.message, "data": f.data})
         for f in _unit_doc_flags(store, rel_path) if rel_path else []:
@@ -1337,6 +1388,16 @@ def _derive_next_tasks(
     return []
 
 
+def _is_tool_tree(d: Path) -> bool:
+    """是否是 CLI 自身的仓库/开发树（其 ``template/publication.json`` 是脚手架）。
+
+    工作根内常放一份工具仓库副本（``<base>/auto-epublizer/``，见 #33 现场布局），
+    其中的 ``template/`` 会被递归扫描误当工作区，使台账多出 ``sample-volume-*``
+    一类脚手架条目并虚增单元/词数。
+    """
+    return (d / "pyproject.toml").is_file() and (d / "src" / "auto_epublizer").is_dir()
+
+
 def status_all(base_dir: str | Path) -> list[dict[str, Any]]:
     """多工作区总览（issue #32）：扫描 base_dir 下的 auto-epublizer 工作区。
 
@@ -1365,6 +1426,10 @@ def status_all(base_dir: str | Path) -> list[dict[str, Any]]:
         if len(rel.parts) - 1 > 3 or any(p.startswith(".") for p in rel.parts[:-1]):
             continue
         ws = pub_file.parent
+        # 跳过 CLI 自身仓库树（issue #33）：base 自身若是仓库（用户在仓库内扫描）不跳过，
+        # 保持原行为；只排除嵌套在工作根里的工具目录副本。
+        if any(p != base and _is_tool_tree(p) for p in ws.parents):
+            continue
         try:
             pub = read_json(pub_file)
         except (OSError, ValueError):

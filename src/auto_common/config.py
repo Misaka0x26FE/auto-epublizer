@@ -41,7 +41,7 @@ class EpubcheckConfig(BaseModel):
 
 class QCConfig(BaseModel):
     length_ratio: dict[str, float] = Field(
-        default_factory=lambda: {"too_short": 0.30, "too_long": 3.0}
+        default_factory=lambda: {"too_short": 0.30, "too_long": 3.0, "min_src_chars": 20}
     )
     epubcheck: EpubcheckConfig = Field(default_factory=EpubcheckConfig)
 

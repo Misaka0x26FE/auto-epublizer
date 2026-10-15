@@ -761,3 +761,48 @@ def test_generate_report_delivery_audit_fields() -> None:
     assert result.epub_footnotes_missing == 1
     assert result.epub_coverage == 0.97
     assert result.released is False and result.released_reason == "provenance_incomplete"
+
+
+def _inject_para(out: Path, text: str) -> Path:
+    """把首段正文替换为给定文本（版面型候选测试用）。"""
+    target = out.with_name(f"inject-lay-{abs(hash(text))}.epub")
+    with zipfile.ZipFile(out) as zin, zipfile.ZipFile(target, "w") as zout:
+        for item in zin.infolist():
+            data = (
+                zin.read(item.filename).replace(
+                    "<p>正文。</p>".encode(), f"<p>{text}</p>".encode(), 1
+                )
+                if item.filename.endswith("front-preface.xhtml")
+                else zin.read(item.filename)
+            )
+            zout.writestr(item, data)
+    return target
+
+
+def test_audit_layout_candidates_reported(tmp_path: Path) -> None:
+    """回归（issue #38）：版面型缺陷（虚假空格/断段/注码夹词组）必须报 W 级候选。"""
+    out = _make_epub(tmp_path)
+
+    spaced = _inject_para(out, "早 先 一 场 自 杀 潮 的 阴 影 ， 进 一 步 加 剧 了 局 势 。")
+    result = audit_epub(spaced)
+    assert "W_CJK_SPACED" in {f.code for f in result.findings}
+    assert result.ok  # 候选不阻断放行
+
+    unclosed = _inject_para(out, "他用自 己的鲜 血写下了最后的遗言，此事迅速成为广泛讨论的焦点")
+    codes = {f.code for f in audit_epub(unclosed).findings}
+    assert "W_CJK_SPACED" in codes
+    assert "W_PARA_UNCLOSED" in codes
+
+    note = _inject_para(out, "这一事件引发了苏联媒体及 1 政治圈内的激烈辩论。")
+    codes = {f.code for f in audit_epub(note).findings}
+    assert "W_NOTE_IN_PHRASE" in codes
+
+
+def test_audit_layout_candidates_legit_text_not_flagged(tmp_path: Path) -> None:
+    """负对照（issue #38）：量词统计数字与正常收束不得误报候选，也不得自动改写。"""
+    out = _make_epub(tmp_path)
+    result = audit_epub(_inject_para(out, "他共获得 3 枚奖章，另有 12 名同事参加仪式。"))
+    codes = {f.code for f in result.findings}
+    assert "W_CJK_SPACED" not in codes
+    assert "W_PARA_UNCLOSED" not in codes
+    assert "W_NOTE_IN_PHRASE" not in codes

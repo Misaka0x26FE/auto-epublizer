@@ -119,6 +119,25 @@ def _is_abbrev_dot(text: str, dot_index: int) -> bool:
 
 # pandoc 脚注标记：[^label] 引用与 [^label]: 定义 统一计数
 _FN_PANDOC_RE = re.compile(r"\[\^[^\]\s]+\]")
+# pandoc 脚注定义行（行首 [^label]:）——与正文引用分开统计（issue #34）
+_FN_PANDOC_DEF_RE = re.compile(r"(?m)^\s*\[\^[^\]\s]+\]:")
+
+# 上标注码（issue #34）：PDF 文字层把注码排成上标时，注码紧贴前一 token，
+# 前一字符是收尾标点（右括号/引号/逗号/分号/冒号）而非句末标点。
+# 集合取舍：ASCII 按 issue 建议 `) . , ; : " ” ’ ]`；译文侧补**全角收尾括号**
+# `）」』】〕`、**全角冒号** `：` 与**全角逗号** `，`（现场实测：`击打囚犯，39 一些监工`
+# 的 `，39` 是真注码）。此正则仅供 `footnote_numbers` 集合提取（advisory 差集判据），
+# 不进守恒硬门——计数式放宽会造成两侧形态不对称而误报（见 count_footnote_refs 注释）。
+_FOOTNOTE_SUPER_RE = re.compile(
+    r"([)\]}"
+    r"”’\"'"
+    r".．,，;:："
+    r"）」』】〕"
+    r"])(\d{1,3})(?!\d)(?![\u4e00-\u9fff%％])(?![.)）、\]])(?=\s|$)"
+)
+
+# 括号式注号：〔240〕/ [240]（译文侧现场把注文写成「〔240〕 注文」，方头括号包裹）
+_FOOTNOTE_BRACKET_RE = re.compile(r"[〔\[](\d{1,3})[〕\]]")
 
 _HEADING_RE = re.compile(r"^(#{1,6})\s+", re.MULTILINE)
 
@@ -176,8 +195,13 @@ def count_footnote_refs(text: str) -> int:
 
     排除三类误报：① 缩写点后的数字（现场报告 #8）——``(стр.66)`` ``на стр.168``
     ``с.859`` ``гл.2`` ``20.Х.77`` 属页码/条款引用；② 枚举号位——``结婚礼。1. 订婚``
-    的 ``1`` 后紧跟 `.`/`)`/`）`/`、`，是列表序号；③ 量词/单位前的数字（回归 #22）——
+    的 ``1`` 后紧跟 `.`/`)`/`）`/`、`，是列表序号；③ 量词/单位前的数字（回归 #19）——
     ``。3 月`` ``。10 时`` ``。50 口径`` 是日期/时刻/口径写法。
+
+    守恒门（``footnote``）保持本口径不变：它要求**译文侧不少于源侧**，计数式放宽
+    会引入形态不对称（issue #34 实测：真实书源侧 +283 / 译文侧 +155，产出 133 条
+    负余量误报）。上标/括号等更宽的形态由 :func:`footnote_numbers` 与
+    ``footnote_suspect`` advisory 检查负责，待 N 阶段身份契约落地后再进硬门。
     """
     text = text or ""
     return sum(
@@ -185,6 +209,50 @@ def count_footnote_refs(text: str) -> int:
         for m in _FOOTNOTE_REF_RE.finditer(text)
         if not _is_abbrev_dot(text, m.start()) and not _is_measure_ref(text, m.end())
     )
+
+
+def footnote_numbers(text: str) -> set[int]:
+    """提取文本里的**注号集合**（句末式 ∪ 上标式 ∪ 括号式），用于缺失核证（issue #34）。
+
+    与 :func:`count_footnote_refs` 的区别：本函数只服务于 ``footnote_suspect``
+    advisory 检查（集合差集：源侧有而译文侧没有的注号），**不参与守恒硬门**。
+    接受更宽的形态（``(X)14``、``organigram:46``、``，23``、``〔240〕``），
+    因为差集判据对「多识别」有容忍度（译文侧多识别只会少报，不会误报），
+    而「少识别」正是要修的问题。
+
+    受约束判据（负对照见 tests/test_review.py）：紧贴收尾标点（``)"'.”’,;:：）」』】〕``）、
+    数字后接空白或行尾、``.``/``,`` 前一位不得是数字（小数/千分位）、复用缩写点与
+    量词排除；括号式 ``〔N〕``/``[N]``；首位为 0 的数字串（``000`` 千分位/占位）丢弃。
+    """
+    text = text or ""
+    out: set[int] = set()
+    for m in _FOOTNOTE_REF_RE.finditer(text):
+        if not _is_abbrev_dot(text, m.start()) and not _is_measure_ref(text, m.end()):
+            out.add(int(m.group(1)))
+    for m in _FOOTNOTE_SUPER_RE.finditer(text):
+        punct_pos = m.start(1)
+        punct = m.group(1)
+        if punct in ".．,," and punct_pos > 0 and text[punct_pos - 1].isdigit():
+            continue  # 小数（3.14）或千分位（125,000）
+        if punct == "." and _is_abbrev_dot(text, punct_pos):
+            continue  # 缩写点（стр.66 / рис.3）
+        if _is_measure_ref(text, m.end(2)):
+            continue  # 量词/单位（5 年）
+        token = m.group(2)
+        if token.startswith("0"):
+            continue  # 前导零（’000 千分位刻度）不是注号
+        out.add(int(token))
+    for m in _FOOTNOTE_BRACKET_RE.finditer(text):
+        token = m.group(1)
+        if token.startswith("0"):
+            continue  # 000 之类占位/千分位残片
+        out.add(int(token))
+    return out
+
+
+def count_footnote_defs(text: str) -> int:
+    """统计 pandoc 脚注**定义**行数（``[^label]: 文本``）——与正文引用分开统计。"""
+    return len(_FN_PANDOC_DEF_RE.findall(text or ""))
 
 
 def count_footnote_marks(text: str) -> int:
@@ -314,6 +382,13 @@ def length_ratio(src: str, tgt: str) -> float:
     return len((tgt or "").strip()) / s
 
 
+# 长度比检查的源文长度下限（字符数）：短源行上比值是纯噪声（issue #39）。
+# 现场：zh 目标、en 源，`Chapter One`→`第一章`（0.27）、`A Note on Suicide`→
+# `自杀论札记`（0.29）等合法短标题距阈值仅 0.01 即翻转判定；289 条告警全部误报。
+# 真漏译仍由两条硬信号兜住：译文为空（不看源长）与长源行比值过低。
+MIN_SRC_CHARS = 20
+
+
 def repair_missing_hyphens(text: str) -> str:
     """修复缺失的连字符/连接号（AlphaBeta→Alpha-Beta、19491955→1949-1955 等）。
 
@@ -417,6 +492,7 @@ def g0_unit_flags(
     *,
     too_short: float = 0.30,
     too_long: float = 3.0,
+    min_src_chars: int = MIN_SRC_CHARS,
     structured_md: str | None = None,
     translation_md: str | None = None,
 ) -> list[G0Flag]:
@@ -427,6 +503,19 @@ def g0_unit_flags(
     守恒）。守恒类做**单元级总量比对**而非行级——拆句/并句会把标记挪到相邻行，
     总量守恒恰好对应「一个都不能丢」且不误报。
 
+    ``length`` 的**短源保护**（issue #39）：源文去空白后不足 ``min_src_chars`` 个
+    字符时不做比值判定（含上界），因为短行上比值不携带信息（1 个字符的差就能翻转
+    判定）。两条真正重要的信号不受影响：**译文为空**（不看源长）与**长源行**的
+    比值越界。告警 data 带 ``src_len``/``tgt_len`` 长度上下文，便于 agent 复核。
+
+    ``footnote``（issue #34）：**守恒门保持句末式口径**（译文侧不得少于源侧）；
+    告警 data 分开给出 ``*_refs``（正文引用）与 ``*_defs``（pandoc 定义行）与
+    ``*_marks``（pandoc 标记总数），丢引用还是丢定义可见。更宽的注码形态
+    （``(X)14``、``organigram:46``、``，23``、``〔240〕``）由 **advisory**
+    ``footnote_suspect`` 以**集合差集**报出（源侧有而译文侧没有的注号 + 行级样本），
+    供 agent 逐条核证——计数式放宽会在真实书造成形态不对称误报（实测 133 条负余量），
+    故不进硬门；待 N 阶段身份契约（``ref_id`` 守恒）落地后由身份判据阻断真缺失。
+
     ``structured_md`` 非空时追加**源保真（fidelity）双向检查**（见 fidelity.py）：
     前向缺块=advisory、反向 src 失配=硬缺陷（import 阻断）。
     ``structured_md`` 与 ``translation_md`` 同时给出时执行**标题守恒**（issue #12）：
@@ -436,17 +525,38 @@ def g0_unit_flags(
     flags = list(check_alignment(rows))
     sum_marker_src = sum_marker_tgt = 0
     sum_fn_src = sum_fn_tgt = 0
+    # 引用与定义分开累计（issue #34）：refs=正文注码（句末式∪上标式），defs=pandoc
+    # 定义行，marks=pandoc 标记总数（引用+定义）。守恒比较仍用 refs+marks（拆句只挪
+    # 位置不改总量），但告警 data 带分解，丢的是引用还是定义一眼可见。
+    fn = {
+        "src_refs": 0,
+        "tgt_refs": 0,
+        "src_defs": 0,
+        "tgt_defs": 0,
+        "src_marks": 0,
+        "tgt_marks": 0,
+    }
+    # 注号集合（issue #34）：单元级并集 + 行级样本，用于 footnote_suspect 差集 advisory
+    fn_numbers_src: set[int] = set()
+    fn_numbers_tgt: set[int] = set()
+    row_numbers: list[tuple[Any, set[int], set[int]]] = []
     for r in rows:
         src = r.get("src") or ""
         tgt = r.get("tgt") or ""
         seq = r.get("seq")
-        ratio = length_ratio(src, tgt)
+        src_len = len(src.strip())
+        tgt_len = len(tgt.strip())
         if not tgt.strip():
-            flags.append(G0Flag("length", "译文为空", {"seq": seq}))
-        elif ratio < too_short:
-            flags.append(G0Flag("length", "长度比过低（疑漏译）", {"seq": seq, "ratio": ratio}))
-        elif ratio > too_long:
-            flags.append(G0Flag("length", "长度比过高（疑失控）", {"seq": seq, "ratio": ratio}))
+            flags.append(
+                G0Flag("length", "译文为空", {"seq": seq, "src_len": src_len, "tgt_len": 0})
+            )
+        elif src_len >= min_src_chars:
+            ratio = length_ratio(src, tgt)
+            context = {"seq": seq, "src_len": src_len, "tgt_len": tgt_len}
+            if ratio < too_short:
+                flags.append(G0Flag("length", "长度比过低（疑漏译）", {**context, "ratio": ratio}))
+            elif ratio > too_long:
+                flags.append(G0Flag("length", "长度比过高（疑失控）", {**context, "ratio": ratio}))
         for hit in terminology_hits(src, tgt, glossary):
             flags.append(
                 G0Flag(
@@ -457,8 +567,24 @@ def g0_unit_flags(
             )
         sum_marker_src += count_markers(src)
         sum_marker_tgt += count_markers(tgt)
-        sum_fn_src += count_footnote_refs(src) + count_footnote_marks(src)
-        sum_fn_tgt += count_footnote_refs(tgt) + count_footnote_marks(tgt)
+        src_marks = count_footnote_marks(src)
+        tgt_marks = count_footnote_marks(tgt)
+        src_refs = count_footnote_refs(src)
+        tgt_refs = count_footnote_refs(tgt)
+        fn["src_refs"] += src_refs
+        fn["tgt_refs"] += tgt_refs
+        fn["src_defs"] += count_footnote_defs(src)
+        fn["tgt_defs"] += count_footnote_defs(tgt)
+        fn["src_marks"] += src_marks
+        fn["tgt_marks"] += tgt_marks
+        sum_fn_src += src_refs + src_marks
+        sum_fn_tgt += tgt_refs + tgt_marks
+        # 注号集合（issue #34）：advisory 差集判据用，不进守恒门
+        src_row_nums = footnote_numbers(src)
+        tgt_row_nums = footnote_numbers(tgt)
+        fn_numbers_src |= src_row_nums
+        fn_numbers_tgt |= tgt_row_nums
+        row_numbers.append((seq, src_row_nums, tgt_row_nums))
     if sum_marker_src != sum_marker_tgt:
         flags.append(
             G0Flag(
@@ -481,7 +607,29 @@ def g0_unit_flags(
             G0Flag(
                 "footnote",
                 "脚注标记数量不守恒",
-                {"src": sum_fn_src, "tgt": sum_fn_tgt},
+                {"src": sum_fn_src, "tgt": sum_fn_tgt, **fn},
+            )
+        )
+    # issue #34：注号集合差集（源侧有而译文侧没有）——advisory，供 agent 逐条核证。
+    # 不做阻断：形态差异（译文用另一种排法）也可能落入差集；真实丢失由 N 阶段的
+    # ref_id 身份契约阻断。差集只报「源侧真实出现过的注号」，故信号量小可核。
+    missing_numbers = sorted(fn_numbers_src - fn_numbers_tgt)
+    if missing_numbers:
+        samples: list[dict[str, Any]] = []
+        for seq, src_nums, tgt_nums in row_numbers:
+            for n in missing_numbers:
+                if len(samples) >= 8:
+                    break
+                if n in src_nums and n not in tgt_nums:
+                    samples.append({"seq": seq, "number": n})
+        flags.append(
+            G0Flag(
+                "footnote_suspect",
+                f"译文疑似缺少源侧注号 {len(missing_numbers)} 个"
+                f"（{'/'.join(str(n) for n in missing_numbers[:12])}"
+                f"{'…' if len(missing_numbers) > 12 else ''}）"
+                "：集合差集判据，须逐条核证（可能是排法差异，也可能是真丢失）",
+                {"numbers": missing_numbers, "samples": samples},
             )
         )
     if structured_md is not None and translation_md is not None:

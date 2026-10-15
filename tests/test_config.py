@@ -11,7 +11,8 @@ from auto_common.config import Config, load_config
 def test_defaults() -> None:
     cfg = Config()
     assert cfg.language.target == "zh-CN"
-    assert cfg.qc.length_ratio == {"too_short": 0.30, "too_long": 3.0}
+    # min_src_chars：短源保护（issue #39）——不足该字符数的源行不做长度比判定
+    assert cfg.qc.length_ratio == {"too_short": 0.30, "too_long": 3.0, "min_src_chars": 20}
     assert cfg.pipeline.bilingual is False
     # 唯一 LLM 原则：配置模型没有任何 LLM provider 段
     assert "llm" not in Config.model_fields

@@ -233,3 +233,18 @@ def test_terminology_hit_normalizes_fullwidth_alias() -> None:
     hits = terminology_hits("交通(道路)部发布命令", "未用确认译法", g)
     assert len(hits) == 1
     assert hits[0].source == "Railway Board"
+
+
+def test_load_glossary_csv_tolerates_utf8_bom(tmp_path: Path) -> None:
+    """回归（issue #36）：Excel 另存的带 BOM CSV 曾整表静默丢光（0 条、不报错）。"""
+    p = tmp_path / "terms.csv"
+    p.write_text(
+        "source,target,type,aliases,gender,reading,status,note\n"
+        "zone,晨区,term,,,,confirmed,\n"
+        "criticize,批评,term,,,,seed,\n",
+        encoding="utf-8-sig",  # excel 另存：写入 UTF-8 BOM
+    )
+    assert p.read_bytes().startswith(b"\xef\xbb\xbf")  # 前提：文件确实带 BOM
+    entries = load_glossary_csv(p)
+    assert [e.source for e in entries] == ["zone", "criticize"]
+    assert entries[0].target == "晨区"
