@@ -252,8 +252,11 @@ def test_import_gate_blocks_stale_translation_notes_digest(tmp_path: Path) -> No
         ],
         target_notes=stale,
     )
-    result = orch.import_translations(store)
-    assert any("摘要不符" in e for e in result["failed"][0]["errors"])
+    # P1 漏门修复：译注绑定校验上移到**共享加载入口**（import/build/qa 同一口径），
+    # 导入在进入逐单元门之前即报错（消息含「摘要不符」）。
+    with pytest.raises(orch.OrchestrationError) as ei:
+        orch.import_translations(store)
+    assert "摘要不符" in str(ei.value)
 
 
 def test_import_blocks_when_source_notes_changed_after_register(tmp_path: Path) -> None:
@@ -761,3 +764,195 @@ def test_notes_with_media_are_collected_and_rendered(tmp_path: Path) -> None:
     ctx = notes_mod.read_notes_json(notes_mod.source_notes_path(store))
     tgt = notes_mod.read_notes_json(notes_mod.translation_notes_path(store))
     assert audit_notes_epub(epub, source_notes=ctx, target_notes=tgt).ok
+
+
+# ── P1 漏门回归（2026-10-15 审查回流）────────────────────────────────────────
+
+
+def test_register_rejects_note_candidates_with_none_inventory(tmp_path: Path) -> None:
+    """P1：已核证 note 候选与 inventory=none 矛盾 → 拒绝登记（此前可登记且门全绿）。"""
+    store = _notes_ws(tmp_path)
+    data = _src_notes(store)
+    data["inventory"] = "none"
+    data["notes"] = []
+    data["references"] = []
+    (store.preprocessing_dir).mkdir(parents=True, exist_ok=True)
+    (store.preprocessing_dir / "note_candidates.jsonl").write_text(
+        "\n".join(
+            json.dumps(
+                {
+                    "candidate_id": f"c-{i}",
+                    "unit": "ch01",
+                    "kind": "numbered_paragraph",
+                    "label": str(i),
+                    "line": i,
+                    "text": f"{i} Source note text.",
+                    "disposition": "note",
+                },
+                ensure_ascii=False,
+            )
+            for i in (1, 2)
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(orch.OrchestrationError) as ei:
+        _register(store, data)
+    assert "inventory=none" in str(ei.value)
+
+
+def test_register_rejects_note_candidate_missing_from_graph(tmp_path: Path) -> None:
+    """P1：inventory=present 时，已核证 note 候选必须在注文/引用图中留证据（部分遗漏）。"""
+    store = _notes_ws(tmp_path)
+    (store.preprocessing_dir).mkdir(parents=True, exist_ok=True)
+    (store.preprocessing_dir / "note_candidates.jsonl").write_text(
+        json.dumps(
+            {
+                "candidate_id": "c-orphan",
+                "unit": "ch01",
+                "kind": "numbered_paragraph",
+                "label": "99",
+                "line": 9,
+                "text": "99 Ein voellig anderer Hinweis.",
+                "disposition": "note",
+            },
+            ensure_ascii=False,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(orch.OrchestrationError) as ei:
+        _register(store)
+    assert "部分遗漏" in str(ei.value)
+    # 有证据的候选（label 命中注文 source_label）不受影响
+    (store.preprocessing_dir / "note_candidates.jsonl").write_text(
+        json.dumps(
+            {
+                "candidate_id": "c-ok",
+                "unit": "ch01",
+                "kind": "marker",
+                "label": "1",
+                "line": 3,
+                "text": "First sentence.1",
+                "disposition": "note",
+            },
+            ensure_ascii=False,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    assert (
+        _register(store, _src_notes(store, marker_in_body=False))["summary"]["inventory"]
+        == "present"
+    )
+
+
+def test_build_blocks_when_translation_notes_binding_stale(tmp_path: Path) -> None:
+    """P1：源注文变更并重登记后，译注摘要不符必须在 build（共享入口）阻断。"""
+    store = _notes_ws(tmp_path)
+    _register(store)
+    _write_translation(
+        store,
+        md="# 第一章\n\n第一句话[^ref-000001]。\n",
+        rows=[
+            {
+                "seq": 1,
+                "src": "First sentence.[^ref-000001]",
+                "tgt": "第一句话[^ref-000001]。",
+                "note": None,
+            }
+        ],
+        target_notes={
+            "schema_version": "1",
+            "source_notes_sha256": notes_mod.file_digest(notes_mod.source_notes_path(store)),
+            "notes": [{"note_id": "n-000001", "target_markdown": "译文注文。"}],
+        },
+    )
+    # 源注文变更 → 旧摘要失效（重新登记后译注仍是旧绑定）
+    data = _src_notes(store, text="Source note text CHANGED.", marker_in_body=False)
+    _register(store, data)
+    with pytest.raises(orch.OrchestrationError) as ei:
+        orch.build(store)
+    assert "摘要不符" in str(ei.value)
+
+
+def test_notes_product_gate_flags_note_media_missing(tmp_path: Path) -> None:
+    """P1：注文图片缺失不得被去图文本规范化掩盖——成品门单独核对注文媒体。"""
+    store = _notes_ws(tmp_path)
+    data = _src_notes(store, text="Note with image ![x](media/nope.png) here.")
+    _register(store, data)
+    _write_translation(
+        store,
+        md="# 第一章\n\n第一句话[^ref-000001]。\n",
+        rows=[
+            {
+                "seq": 1,
+                "src": "First sentence.[^ref-000001]",
+                "tgt": "第一句话[^ref-000001]。",
+                "note": None,
+            }
+        ],
+        target_notes={
+            "schema_version": "1",
+            "source_notes_sha256": notes_mod.file_digest(notes_mod.source_notes_path(store)),
+            "notes": [
+                {"note_id": "n-000001", "target_markdown": "带图注文 ![x](media/nope.png)。"}
+            ],
+        },
+    )
+    orch.import_translations(store)
+    epub = orch.build(store)
+    result = None
+    from auto_epublizer.qa.notes_audit import audit_notes_epub
+
+    tgt = notes_mod.read_notes_json(notes_mod.translation_notes_path(store))
+    result = audit_notes_epub(epub, source_notes=data, target_notes=tgt)
+    codes = [f["code"] for f in result.findings]
+    assert "E_NOTES_MEDIA_MISSING" in codes, codes
+
+
+def test_report_goes_stale_when_catalog_unresolved_added_after_release(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """P1：放行后新增 catalog unresolved → 报告必须过期（摘要覆盖全部放行输入）。"""
+    from auto_epublizer.qa.artifacts import report_state
+    from auto_epublizer.qa.epubcheck import EpubcheckResult
+
+    src = tmp_path / "book.md"
+    src.write_text("# Chapter I\n\nFirst sentence.\n", encoding="utf-8")
+    store = orch.init(str(src), workspace_dir=str(tmp_path / "root"))
+    assert store.dir.name == "book"
+    (store.translation_dir / "body").mkdir(parents=True, exist_ok=True)
+    (store.translation_dir / "body" / "ch01.md").write_text(
+        "# 第一章\n\n第一句话。\n", encoding="utf-8"
+    )
+    (store.translation_dir / "align").mkdir(parents=True, exist_ok=True)
+    (store.unit_align_path("ch01")).write_text(
+        json.dumps(
+            {"seq": 1, "src": "First sentence.", "tgt": "第一句话。", "note": None},
+            ensure_ascii=False,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    review_dir = store.reviews_dir / "review-20261015T000000"
+    review_dir.mkdir(parents=True, exist_ok=True)
+    (review_dir / "result.json").write_text(
+        json.dumps({"issue_count": 0, "g2_confirmed": 0, "termination": "clean_confirmed"}),
+        encoding="utf-8",
+    )
+    orch.import_translations(store)
+    for u in store.load_publication().units:
+        store.set_unit_status(u.id, "reviewed")
+    epub = orch.build(store)
+    monkeypatch.setattr(orch, "run_epubcheck", lambda *a, **k: EpubcheckResult(True, True, 0, 0))
+    report = orch.qa(store, epub_path=str(epub))
+    assert report["released"] is True, report.get("released_reason")
+    assert report_state(store)["stale"] is False
+    # 放行后新增未决源盘点 → 摘要输入变化 → 过期
+    (store.preprocessing_dir / "catalog.csv").write_text(
+        "item,kind,status,locator,unit_id,note\nX,figure,unresolved,page 9,,\n",
+        encoding="utf-8",
+    )
+    state = report_state(store)
+    assert state["stale"] is True, state

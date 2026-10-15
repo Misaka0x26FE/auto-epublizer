@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
+
+import pytest
 
 from auto_common.config import Config
 from auto_epublizer import orchestrator as orch
@@ -121,3 +124,58 @@ def test_next_tasks_repair_before_analysis(tmp_path: Path) -> None:
     head = orch.status(store)["next_tasks"][0]
     assert head["kind"] == "repair"
     assert head["done_when"] == {"file": "preprocessing/repairs.jsonl"}
+
+
+def test_next_tasks_report_stale_not_routed_as_unit(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """P2：报告过期（伪 stale 项）按 build→qa 分派，不得出现 `import --unit report`。"""
+    from auto_epublizer.qa.artifacts import report_state
+    from auto_epublizer.qa.epubcheck import EpubcheckResult
+
+    src = tmp_path / "book.md"
+    src.write_text("# Chapter I\n\nFirst sentence.\n", encoding="utf-8")
+    store = orch.init(str(src), workspace_dir=str(tmp_path / "root"))
+    (store.translation_dir / "body").mkdir(parents=True, exist_ok=True)
+    (store.translation_dir / "body" / "ch01.md").write_text(
+        "# 第一章\n\n第一句话。\n", encoding="utf-8"
+    )
+    (store.translation_dir / "align").mkdir(parents=True, exist_ok=True)
+    (store.unit_align_path("ch01")).write_text(
+        json.dumps(
+            {"seq": 1, "src": "First sentence.", "tgt": "第一句话。", "note": None},
+            ensure_ascii=False,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    orch.preprocess(store, config=Config())  # facts 也是放行输入（摘要覆盖）
+    for _name in ("capabilities.md", "global.md", "todo.md"):
+        (store.preprocessing_dir / _name).write_text("x", encoding="utf-8")
+    review_dir = store.reviews_dir / "review-20261015T000000"
+    review_dir.mkdir(parents=True, exist_ok=True)
+    (review_dir / "result.json").write_text(
+        json.dumps({"issue_count": 0, "g2_confirmed": 0, "termination": "clean_confirmed"}),
+        encoding="utf-8",
+    )
+    orch.import_translations(store)
+    for u in store.load_publication().units:
+        store.set_unit_status(u.id, "reviewed")
+    epub = orch.build(store)
+    monkeypatch.setattr(orch, "run_epubcheck", lambda *a, **k: EpubcheckResult(True, True, 0, 0))
+    report = orch.qa(store, epub_path=str(epub))
+    assert report["released"] is True, report.get("released_reason")
+    assert report_state(store)["stale"] is False
+    # 使报告过期：新增未决 catalog（摘要输入变化）
+    (store.preprocessing_dir / "catalog.csv").write_text(
+        "item,kind,status,locator,unit_id,note\nX,figure,unresolved,page 9,,\n",
+        encoding="utf-8",
+    )
+    rep = report_state(store)
+    assert rep["stale"] is True, rep
+    tasks = orch.status(store)["next_tasks"]
+    assert tasks, "报告过期后必须给出下一步指针"
+    assert tasks[0]["kind"] in ("build", "qa"), tasks
+    for t_ in tasks:
+        done = t_.get("done_when") or {}
+        assert not (done.get("cmd") == "import" and done.get("unit") == "report"), tasks

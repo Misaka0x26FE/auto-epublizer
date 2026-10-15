@@ -162,10 +162,14 @@ def prepare_structure(
     pub = store.load_publication()
     entries = rebuild_structure(doc, pub)
     write_structured(store, doc, entries)
+    pub.meta.processing_tools = doc.meta["processing_tools"]
+    store.save_publication(pub)
     store.set_units(entries)
     for e in entries:
         store.set_unit_status(e["id"], "split")
-    store.log_event("structure_written", units=len(entries))
+    store.log_event(
+        "structure_written", units=len(entries), processing_tools=pub.meta.processing_tools
+    )
     return entries
 
 
@@ -376,7 +380,8 @@ def _render_and_pack(
     built_ids: list[str] = []
     fallback_ids: list[str] = []
     # N 阶段：结构化注释计划（已登记且 inventory=present 时启用；否则旧路径不变）
-    notes_ctx = _load_notes_context(store, pub)
+    # P1：按实际构建模式要求译注（prefer_translation=true 时译文参与构建，译注必须齐备）
+    notes_ctx = _load_notes_context(store, pub, require_target=prefer_translation)
     note_plan: dict[str, Any] | None = None
     if notes_ctx is not None and str(notes_ctx["data"].get("inventory") or "") == "present":
         note_plan = _note_plan(store, pub, entries, notes_ctx["data"], notes_ctx.get("target"))
@@ -937,10 +942,16 @@ def import_translations(
     }
 
 
-def _load_notes_context(store: RunStore, pub: Any) -> dict[str, Any] | None:
+def _load_notes_context(
+    store: RunStore, pub: Any, *, require_target: bool = False
+) -> dict[str, Any] | None:
     """加载已登记注释上下文（源注文 + 译注）；登记摘要与文件摘要不一致时报错（失效链）。
 
     未登记（``pub.notes`` 为空）返回 None：历史工作区继续走旧 ``[^label]`` 路径。
+
+    P1 漏门修复（评审复现：源注文变更并重登记后，译注 ``source_notes_sha256`` 不符仍可
+    build，成品注释门也 ok）：**共享加载入口**（import / build / qa 都经此）统一校验
+    译注与源注文的版本绑定；``require_target=True`` 时（按实际源/译模式）译注缺失即报错。
     """
     from . import notes as notes_mod
 
@@ -960,6 +971,19 @@ def _load_notes_context(store: RunStore, pub: Any) -> dict[str, Any] | None:
     data = notes_mod.read_notes_json(npath)
     tpath = notes_mod.translation_notes_path(store)
     target = notes_mod.read_notes_json(tpath) if tpath.is_file() else None
+    # P1：译注要求只对 inventory=present 生效（无注书零对零，不需要译注）
+    if str(data.get("inventory") or "") == "present":
+        if target is not None:
+            bound = str(target.get("source_notes_sha256") or "")
+            if bound != digest:
+                raise OrchestrationError(
+                    "译注绑定的源注文摘要不符（structured/notes.json 已变更，须重译受影响注文）"
+                )
+        elif require_target:
+            raise OrchestrationError(
+                "已登记注释但 translation/notes.json 缺失：译文将无注文内容"
+                "（须写译注并重跑 import 登记）"
+            )
     return {"data": data, "digest": digest, "target": target}
 
 
@@ -1034,6 +1058,8 @@ def register_notes(store: RunStore) -> dict[str, Any]:
     cands = notes_mod.read_candidates(notes_mod.candidates_path(store))
     if cands:
         errors.extend(notes_mod.validate_candidates(cands))
+        # P1 漏门：核证结论必须与注文/引用图对账（none 矛盾 / present 部分遗漏）
+        errors.extend(notes_mod.validate_candidates_vs_graph(cands, data))
     if errors:
         raise OrchestrationError("注释登记失败：\n- " + "\n- ".join(errors))
     summary = notes_mod.registration_summary(data, notes_mod.file_digest(path))
@@ -1427,9 +1453,15 @@ def qa(
     provenance = audit_provenance(store, entries, epub, nav_depth=nav_depth)
     audit = audit_epub(epub, nav_exempt=set(provenance.nav_exempt))
     # N 阶段成品注释门（N5）：独立解析成品 XHTML 对账已登记注释；未登记则跳过
+    # P1：按实际源/译模式要求译注（有译文参与成品 → 译注必须齐备，否则成品注文为空）
+    _has_translation = any(
+        (store.translation_dir / (u.meta or {}).get("rel_path", "")).is_file()
+        for u in pub.units
+        if (u.meta or {}).get("rel_path")
+    )
     notes_audit_dict: dict[str, Any] | None = None
     try:
-        notes_ctx = _load_notes_context(store, pub)
+        notes_ctx = _load_notes_context(store, pub, require_target=_has_translation)
     except OrchestrationError as e:
         notes_audit_dict = {
             "findings": [{"level": "error", "code": "E_NOTES_STALE", "message": str(e)}],
@@ -1531,7 +1563,13 @@ def qa(
         )
     # B2 报告失效证据链：记录生成时刻的产物摘要与被审计成品路径（status/ledger 据此判过期）
     report.artifacts_digest = artifacts_digest(store, epub_path=epub)
-    report.artifacts_epub = str(epub)
+    # P2：工作区内成品保存相对 store.dir 的规范路径（切 cwd 不误判 stale）；
+    # 工作区外成品保存规范化绝对路径。
+    try:
+        rel_epub = epub.relative_to(store.dir)
+    except ValueError:
+        rel_epub = None
+    report.artifacts_epub = str(rel_epub) if rel_epub is not None else str(epub.resolve())
     store.save_qa(report.to_dict())
     return report.to_dict()
 
@@ -1684,9 +1722,41 @@ def _derive_next_tasks(
                 for u in batch
             ]
     # D. 译文/对齐已落盘但状态未推进（stale）→ 先 import 登记
+    #    P2：`report`/`notes`/`catalog` 是**伪 stale 项**（不是真实单元）——按 stale 类型
+    #    分派 build/qa/notes register/catalog 修复，绝不可路由成 `import --unit report`
+    #    （否则执行后同一任务持续返回）。
+    _unit_ids = {u.id for u in pub.units}
     for s in stale:
         if s["id"] == "preprocessing":
             continue
+        reason = str(s.get("reason") or "")
+        if s["id"] not in _unit_ids:
+            if reason == "report_stale":
+                return [
+                    _task("build", "产物已变更：重建 EPUB（build）", done_when={"cmd": "build"}),
+                    _task(
+                        "qa",
+                        "重建后重跑 qa（放行结论须对应当前产物）",
+                        done_when={"cmd": "qa"},
+                    ),
+                ]
+            if reason == "notes_changed_since_register":
+                return [
+                    _task(
+                        "notes_register",
+                        "注释登记已失效：重跑 notes register（必要时重译受影响注文）",
+                        done_when={"cmd": "notes register"},
+                    )
+                ]
+            if reason == "catalog_binding_broken":
+                return [
+                    _task(
+                        "repair",
+                        "源盘点 included 项未绑定单元：修 preprocessing/catalog.csv",
+                        done_when={"file": "preprocessing/catalog.csv"},
+                    )
+                ]
+            continue  # 未知伪项：不当作真实单元 import
         return [
             _task(
                 "import",

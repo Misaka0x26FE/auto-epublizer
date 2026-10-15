@@ -62,6 +62,33 @@ def _norm_href(href: str) -> str:
     return h[len("OEBPS/") :] if h.startswith("OEBPS/") else h
 
 
+_IMG_RE = re.compile(r"<img\b[^>]*>", re.IGNORECASE)
+_MD_IMG_RE = re.compile(r"!\[[^\]]*\]\(\s*<?([^)>\s]+)>?[^)]*\)")
+
+
+def _norm_media_ref(ref: str) -> str:
+    """媒体引用规范形（用于注文图片核对）：去查询/片段、OEBPS/ 与 raw/ 前缀。"""
+    r = (ref or "").strip().split("?", 1)[0].split("#", 1)[0].lstrip("./")
+    if r.startswith("OEBPS/"):
+        r = r[len("OEBPS/") :]
+    if r.startswith("raw/media/"):
+        r = r[len("raw/") :]
+    return r
+
+
+def _md_media_refs(md: str) -> set[str]:
+    return {_norm_media_ref(m.group(1)) for m in _MD_IMG_RE.finditer(md or "")}
+
+
+def _aside_media_refs(html: str) -> set[str]:
+    out: set[str] = set()
+    for m in _IMG_RE.finditer(html or ""):
+        src = _attrs(m.group(0)).get("src") or ""
+        if src:
+            out.add(_norm_media_ref(src))
+    return out
+
+
 @dataclass
 class NotesAuditResult:
     missing: list[str] = field(default_factory=list)  # 登记了但成品缺/错/不匹配
@@ -103,7 +130,8 @@ def audit_notes_epub(
         result.add("E_NOTES_EPUB", f"成品不存在：{path}", missing=str(path))
         return result
     with zipfile.ZipFile(path) as zf:
-        files = [n for n in zf.namelist() if n.startswith("OEBPS/") and n.endswith(".xhtml")]
+        all_names = set(zf.namelist())
+        files = [n for n in all_names if n.startswith("OEBPS/") and n.endswith(".xhtml")]
         content = {n: zf.read(n).decode("utf-8", errors="replace") for n in files}
     # 收集成品中的 noteref 锚点与 footnote aside（含 id → 位置）
     anchor_by_id: dict[str, tuple[str, str]] = {}
@@ -210,11 +238,13 @@ def audit_notes_epub(
             result.add("E_NOTES_ASIDE_MISSING", f"注文 {nid} 在成品中没有 aside", missing=nid)
             continue
         expected = ""
+        expected_md = ""
         t = target_by_id.get(nid)
         if t is not None and str(t.get("target_markdown") or "").strip():
-            expected = _norm_md(str(t["target_markdown"]))
+            expected_md = str(t["target_markdown"])
         else:
-            expected = _norm_md(str((note_by_id.get(nid) or {}).get("source_markdown") or ""))
+            expected_md = str((note_by_id.get(nid) or {}).get("source_markdown") or "")
+        expected = _norm_md(expected_md)
         actual = _norm_html(aside[1])
         if expected and expected not in actual:
             result.add(
@@ -222,4 +252,23 @@ def audit_notes_epub(
                 f"注文 {nid} 的成品内容与登记文本不符（疑错配/截断）",
                 missing=nid,
             )
+        # P1 漏门修复：`_norm_md` 会把图片引用整段去掉，缺图不能被文本对账掩盖——
+        # 注文媒体必须单独核对（期待引用 ⊆ aside 实渲染），且实渲染资源必须在包内。
+        want_media = _md_media_refs(expected_md)
+        have_media = _aside_media_refs(aside[1])
+        if want_media and not want_media <= have_media:
+            missing_refs = sorted(want_media - have_media)
+            if not {Path(x).name for x in want_media} <= {Path(x).name for x in have_media}:
+                result.add(
+                    "E_NOTES_MEDIA_MISSING",
+                    f"注文 {nid} 的图片未渲染进 aside：{'、'.join(missing_refs[:4])}",
+                    missing=nid,
+                )
+        for ref in sorted(have_media):
+            if f"OEBPS/{ref}" not in all_names:
+                result.add(
+                    "E_NOTES_MEDIA_ABSENT",
+                    f"注文 {nid} 的图片资源不在包内：{ref}",
+                    missing=nid,
+                )
     return result
