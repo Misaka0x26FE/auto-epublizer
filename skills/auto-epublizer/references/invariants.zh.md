@@ -26,26 +26,39 @@
 | `g2_confirmed == 0` 或全部已修订（`g2_confirmed <= g3_patched`） | `unresolved_confirmed` |
 | `g0_terminology_open == 0`（术语命中=真实缺陷） | `terminology_open` |
 | `glossary_conflicts_open == 0`（术语冲突未裁决；裁决写回 glossary.csv 前不放行） | `glossary_conflict_open` |
-| `g0_structure_open == 0`（marker/footnote/table/fidelity 违例） | `structure_open` |
+| `g0_structure_open == 0`（**blocking** 的 align/marker/footnote/heading/table/fidelity 违例） | `structure_open` |
+| `notes_ok`（有注书：成品注释门 findings 为空；无注书零对零） | `notes_open` |
 | `catalog_unresolved_open == 0`（源盘点未决项；catalog.csv 存在时才检查） | `catalog_open` |
 | `audit.ok`（G4 解包审计零 error） | `audit_failed` |
 | `prov_ok`（coverage≈1.0 或 null、units_missing/media_lost/inserts_missing_files/toc_flat、findings 无 error 级） | `provenance_incomplete` |
 | `epubcheck.ran`（jar 缺失=未验证不放行） | `epubcheck_not_run` |
 | `epubcheck.errors == 0` | `epubcheck_errors` |
 
-reason 判定优先级 = 上表自上而下（先 g0 硬缺陷 → 冲突 → 结构 → 审计 → 溯源 → epubcheck）。
+reason 判定优先级 = 上表自上而下（先 g0 硬缺陷 → 冲突 → 结构 → 注释 → 审校 → 审计 → 溯源 → epubcheck）。
+
+**报告时效（B2）**：`report.json` 记录生成时刻的 `artifacts_digest`（源哈希 + 各单元
+structured/translation/align + 注释文件 + 最新审校 result.json + 成品字节）与被审计的
+`artifacts_epub`。任何产物变化后：`status`/`status_all`/`ledger` 把该报告视为过期
+（`report_stale`，进度降为 `built_not_released`）；重跑 `qa` 时旧成品与新译文不一致
+（coverage/drift/注释内容核对）也会被拒绝，不得把旧报告当新证据。旧的「审查后不再改
+文件」口头约定不再是唯一保障。
 
 ## 3. G0 检查项（`auto_translator/review/g0.py::g0_unit_flags`）
 
-| check | 语义 | 级别 |
+告警自带 `blocking` 字段（默认 True）：import 阻断、G5 放行计数与 CLI 红/黄渲染
+**统一读该字段**，不再靠 check 名或消息文本猜级别（B2 真值表修正）。
+
+| check | 语义 | 级别（`blocking`） |
 |---|---|---|
-| `align` | seq 连续 1..N、无空 src/tgt（违反阻断该单元 import） | 硬（阻断） |
-| `terminology` | glossary source 出现而译文缺 target | **硬缺陷** |
-| `marker` | `{fig:NNN}` 等标记 **单元级总量** src/tgt 一致 | **硬缺陷** |
-| `footnote` | pandoc `[^label]` + 句末数字注码总量一致 | **硬缺陷** |
-| `table` | 表格形状守恒（表数/逐表行列数；import **阻断**） | **硬缺陷（阻断）** |
-| `fidelity` | align src ↔ structured 双向覆盖（S4.1） | **硬缺陷** |
-| `length` | 长度比 `[0.30, 3.0]` | advisory |
+| `align` | seq 连续 1..N、无空 src/tgt；**已登记译文的单元对照表为空/缺失**也在 qa 计为硬门 | 硬 |
+| `terminology` | glossary source 出现而译文缺 target | 硬 |
+| `marker` | `{fig:NNN}` 等标记 **单元级总量** src/tgt 一致 | 硬 |
+| `footnote` | pandoc `[^label]` + 句末数字注码总量一致 | 硬 |
+| `heading` | structured↔translation h1–h6 逐层计数（issue #12） | 硬 |
+| `table` | 表格形状守恒（表数/逐表行列数） | 硬 |
+| `fidelity` | 前向缺块（合法剔除可能）**advisory**；反向 src 不在源文（改写/杜撰）硬 | 前向 `False` / 反向 `True` |
+| `length` | 长度比（含短源保护 `qc.length_ratio.min_src_chars`） | advisory（`False`） |
+| `footnote_suspect` | 源侧有而译文侧没有的注号集合差集 | advisory（`False`） |
 
 守恒类是**单元级总量**比对：拆句/并句把标记挪到相邻行不误报，丢失必报。
 

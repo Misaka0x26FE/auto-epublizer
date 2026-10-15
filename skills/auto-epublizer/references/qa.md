@@ -1,4 +1,4 @@
-<!-- i18n: source=qa.zh.md sha256=fc6c3a977fbc3de39266022739e70deea1e30b9e8c7922c419b3e566df1ada6c -->
+<!-- i18n: source=qa.zh.md sha256=63305096668680d3bd061f710b1a9a46ed27e2d9d8c0de13bc87f3b6018a0f84 -->
 > **English** | [中文](qa.zh.md)
 
 # QA (epubcheck + unpack audit)
@@ -63,8 +63,11 @@ auto-epublizer qa [--epub <path>] [--workspace <dir>]
 - `g4_audit == "pass"` (unpack audit zero error)
 - G0 terminology hits cleared (`g0_terminology_open == 0`; length-ratio warnings are the
   advisory ones)
-- G0 structural violations cleared (`g0_structure_open == 0`: marker/footnote
-  conservation)
+- G0 structural violations cleared (`g0_structure_open == 0`: **blocking** align/marker/
+  footnote/heading/table/fidelity; fidelity forward missing blocks and length ratios are
+  advisory and not counted)
+- Product note gate cleared (books with notes: `notes_findings == 0`; zero-to-zero when
+  `inventory=none`)
 - Unresolved terminology conflicts cleared (`glossary_conflicts_open == 0`; if not
   cleared → `glossary_conflict_open` — go back to analysis/glossary_conflicts.jsonl,
   arbitrate and write back to glossary.csv, then rerun qa)
@@ -83,8 +86,18 @@ auto-epublizer qa [--epub <path>] [--workspace <dir>]
 > reconciliation + manual spot-check + write the delivery record); only when both are
 > done does it count as delivered.
 
+> **Report freshness**: `report.json` records the `artifacts_digest` taken at generation
+> time (source hash + each unit's structured/translation/align + note files + latest review
+> result + product bytes). After the translation/alignment/review/notes or the product
+> change, `status`/`status_all`/`ledger` mark the report stale (`report_stale`, progress
+> downgraded to `built_not_released`); rerun `build`/`qa` to restore it. Re-running qa also
+> rejects an old product that disagrees with the current artifacts (coverage/drift/note
+> content reconciliation).
+
 When `released` is False, look at `released_reason` to determine the cause:
-`unresolved_confirmed` (G2 confirmed but unrevised) / `audit_failed` /
+`unresolved_confirmed` (G2 confirmed but unrevised) / `structure_open` (includes empty or
+missing alignment on registered units) / `notes_open` (product note gate not cleared for a
+book with notes) / `audit_failed` /
 `provenance_incomplete` (incomplete provenance: locate via the
 E_UNIT_MISSING/E_UNIT_ORDER/E_MEDIA_LOST/E_MEDIA_ORDER/E_MEDIA_EPUB_LOST/E_FN_EPUB_LOST/E_EPUB_PARA_LOST/E_ALIGN_MD_DRIFT/
 E_TOC_FLAT/E_INSERT_MISSING_FILE/E_INSERT_BAD_SOURCE entries in `provenance_findings`) /
