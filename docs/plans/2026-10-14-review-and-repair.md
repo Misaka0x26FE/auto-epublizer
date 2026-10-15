@@ -652,6 +652,39 @@ tesseract/ocrmypdf/rapidocr，扫描 PDF 的离线 OCR 路由仅以合成样本/
 **验证**：全量 **547 passed**（539→547）、``ruff`` 全绿；离线 ``uv build`` 成功（wheel+sdist）；
 README/AGENTS/development-plan/pdf-parsing 中英同步（i18n ``--check``/``--links`` OK）。
 
+### 批次 C（架构与技术债：最小重构）
+
+**实际 import 图核对（AST，含函数内延迟导入）**：
+
+- 跨包方向：``auto_epublizer → auto_common``（9 文件）、``auto_epublizer → auto_translator``
+  （5 文件）；无反向导入（``auto_common`` 不依赖另两包；``auto_translator`` 仅用 stdlib 与自身）。
+- 动态导入：全库仅 ``importlib.util.find_spec`` 能力探测；无 ``__import__``/动态模块加载。
+- **发现（债）**：``review/fidelity.py``（模块级 ``from .g0 import G0Flag``）与
+  ``review/g0.py``（函数内延迟 ``from .fidelity import fidelity_flags``）构成**双向依赖**
+  （非导入期环，但共享模型放错层）。修复：``G0Flag`` 迁入 ``review/models.py``（文档化的模型
+  家），``g0`` 保留重导出；双向依赖消除。修复后全库**模块级导入图 0 环**（AST 检测）。
+
+**编排层决策泄漏清单**（``orchestrator.py``；B 组后 2088 行 → C 组后 1966 行）：
+
+| 位置/内容 | 决定 |
+|---|---|
+| ``_ocr_backend_if_needed`` 内联 ``find_spec`` 能力探测 | **移出**：新增 ``ingest/ocr.py::rapidocr_available()``（与 doctor 同口径），编排层只读结果 |
+| ``_source_language`` 内联判定规则（en 无拉丁 → und） | **移出**：新增 ``analysis/detect.py::detect_source_language()``；编排层只做采样/截断 |
+| ``read_repairs``/``read_catalog``（catalog/repairs 契约校验约 130 行） | **移出**：新模块 ``preprocess/artifacts.py``（预处理层拥有自己的产物契约）+ ``ArtifactContractError(ValueError)``；``orch.read_*`` 经导入保持可用 |
+| ``_mineru_client_if_preferred``（ingest 后端路由） | 保留：路由是编排职责（config+环境变量+嗅探的组合选择） |
+| ``_note_plan``/``_render_and_pack``（跨单元注释/渲染装配） | 保留：跨单元装配 + 调用渲染，属 facade 职责（N 阶段测试覆盖） |
+| ``_norm_title``/``_title_match``/``_toc_missing_from_facts``（facts TOC × 单元标题） | 保留：跨产物一致性检查；``subheading_anchors`` 在 build，移出需跨层依赖或新模块，且无重复实现 |
+| ``render_ledger``（跨书台账渲染 27 行） | 保留：纯格式化，cli 直接调用，无重复 |
+| ``_derive_next_tasks``/``_task``/``_notes_next_task``（状态协议） | 保留：状态组装/协议职责，有专测覆盖 |
+
+**验收（c-verify）**：新增架构回归（模块级导入无环；orchestrator 无 ``find_spec``/``importlib``；
+preprocess 拥有产物契约读取且错误按 ``ValueError`` 口径）+ 单元（``detect_source_language``
+策略、``rapidocr_available`` 探测）；全量 **551 passed**（547→551）、ruff 全绿；真实 CLI smoke：
+坏 catalog → ``qa`` exit 1 + 「质检失败：catalog.csv 第 2 行：kind 非法（badkind）」+ 无
+traceback（与迁移前同文案）；``orch.read_catalog is preprocess.artifacts.read_catalog``；
+``docs/semantic-repair`` 中英同步（i18n OK）。
+
+
 
 
 

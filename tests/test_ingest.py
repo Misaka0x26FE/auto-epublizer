@@ -177,6 +177,15 @@ def test_create_ocr_backend() -> None:
         create_ocr_backend("nope")
 
 
+def test_rapidocr_available_is_a_capability_probe() -> None:
+    """能力探测归 ingest.ocr（C 组）：返回 bool，与 importlib 探测同口径。"""
+    import importlib.util
+
+    from auto_epublizer.ingest.ocr import rapidocr_available
+
+    assert rapidocr_available() is (importlib.util.find_spec("rapidocr_onnxruntime") is not None)
+
+
 def test_normalize_to_workspace(tmp_path: Path) -> None:
     src = tmp_path / "book.md"
     src.write_text("# 第一章\n\n正文。\n", encoding="utf-8")

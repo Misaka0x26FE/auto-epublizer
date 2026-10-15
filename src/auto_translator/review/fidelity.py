@@ -22,7 +22,7 @@ from __future__ import annotations
 import re
 from typing import Any
 
-from .g0 import G0Flag
+from .models import G0Flag
 
 # 纯 HTML 注释块（前向切块时跳过；正文中的注释残留由 G4 E_RESIDUE 管）
 _COMMENT_BLOCK = re.compile(r"^\s*<!--.*-->\s*$", re.DOTALL)

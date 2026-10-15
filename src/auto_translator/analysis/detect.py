@@ -38,6 +38,23 @@ def detect_language(text: str) -> str:
     return "en"
 
 
+def detect_source_language(sample: str) -> str:
+    """源语言判定策略（EPUB 元数据/翻译共用的确定性规则）。
+
+    - 空样本 → ``und``；
+    - ``detect_language`` 判 en 但样本不含拉丁字母（无法判定脚本）→ ``und``：
+      诚实标注未知，不把未知脚本误标为英文（C 组：规则自 orchestrator 迁入，
+      编排层只负责采样与截断）。
+    """
+    text = sample or ""
+    if not text.strip():
+        return "und"
+    detected = detect_language(text)
+    if detected == "en" and not _RE_LATIN.search(text):
+        return "und"
+    return detected
+
+
 # 学术/论文体裁的强信号关键词
 _ACADEMIC_MARKERS = (
     "参考文献",

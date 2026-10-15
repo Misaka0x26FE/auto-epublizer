@@ -21,6 +21,7 @@ from . import __version__
 from .build import build_epub, collect_media, subheading_anchors
 from .build.html import render_bilingual_document, render_document, slug_file
 from .ingest import load_document
+from .preprocess.artifacts import read_catalog, read_repairs
 from .qa import artifacts_digest, audit_epub, audit_notes_epub, generate_report, run_epubcheck
 from .qa.artifacts import report_state
 from .qa.provenance import audit_provenance
@@ -76,9 +77,9 @@ def _ocr_backend_if_needed(store: RunStore, config: Config | None = None):
     - ``pdf.ocr: auto``（默认）→ 可用即启用；
     - ``pdf.ocr: off`` → 禁用；
     - 其他值 → 视为要求强制启用，不可用时明确报错。
-    """
-    import importlib.util
 
+    能力探测归 ``ingest.ocr``（C 组最小重构）；本函数只做路由装配。
+    """
     pub = store.load_publication()
     if not pub.meta.source.lower().endswith(".pdf"):
         return None
@@ -86,15 +87,14 @@ def _ocr_backend_if_needed(store: RunStore, config: Config | None = None):
     ocr_setting = (cfg.pdf.ocr or "auto").lower()
     if ocr_setting == "off":
         return None
-    spec = importlib.util.find_spec("rapidocr_onnxruntime")
-    if spec is None:
+    from .ingest.ocr import RapidOcrBackend, rapidocr_available
+
+    if not rapidocr_available():
         if ocr_setting == "auto":
             return None
         raise OrchestrationError(
             "pdf.ocr 要求启用 OCR，但未安装 rapidocr-onnxruntime（uv sync --extra ocr）"
         )
-    from .ingest.ocr import RapidOcrBackend
-
     return RapidOcrBackend()
 
 
@@ -180,11 +180,11 @@ def ensure_structure(store: RunStore) -> list[dict[str, Any]]:
 
 
 def _source_language(store: RunStore, pub: Any, entries: list[dict[str, Any]]) -> str:
-    """EPUB 源语言标注：优先元数据；缺省用确定性脚本启发式采样源文判定。
+    """EPUB 源语言标注：优先元数据；缺省采样首个非空单元，交 detect 域判定。
 
-    convert/build 不跑 analyze，语言元数据可能缺失（此前一律 und）。此处以
-    detect_language（纯函数启发式）采样首个非空单元判定：拉丁/未知脚本默认 en，
-    若样本完全不含拉丁字母（无法判定脚本）则诚实返回 und。
+    convert/build 不跑 analyze，语言元数据可能缺失（此前一律 und）。采样与截断
+    （IO）留在这里；判定规则（含「en 但无拉丁字母 → und」）归
+    ``detect_source_language``（C 组：决策规则迁出编排层）。
     """
     lang = pub.meta.language or ""
     if lang:
@@ -202,15 +202,9 @@ def _source_language(store: RunStore, pub: Any, entries: list[dict[str, Any]]) -
                 continue
         if sample.strip():
             break
-    sample = sample[:4000]
-    if not sample.strip():
-        return "und"
-    from auto_translator.analysis.detect import detect_language
+    from auto_translator.analysis.detect import detect_source_language
 
-    detected = detect_language(sample)
-    if detected == "en" and not re.search("[A-Za-z]", sample):
-        return "und"
-    return detected
+    return detect_source_language(sample[:4000])
 
 
 def convert(
@@ -1269,86 +1263,6 @@ def _toc_missing_from_facts(store: RunStore, entries: list[dict[str, Any]]) -> l
     return missing
 
 
-def read_repairs(store: RunStore) -> list[dict[str, Any]] | None:
-    """读取语义整备留痕（preprocessing/repairs.jsonl；S2 契约）。
-
-    文件不存在 → None（全部检查跳过，零破坏）。每行一个修复动作：
-    ``unit`` 必填且必须存在于 publication.units；``kind``（见下）/``status``
-    （done|unresolved）枚举；``summary`` 必填非空；``evidence`` 为工作区相对
-    路径且必须存在（防杜撰）；``pages``/``count`` 非法类型报错。
-    违反 → OrchestrationError（中文提示，带行号）。
-    """
-    import json
-
-    path = store.preprocessing_dir / "repairs.jsonl"
-    if not path.is_file():
-        return None
-    kinds = {
-        "line_join",
-        "hyphen",
-        "ocr_char",
-        "mojibake",
-        "punct",
-        "header_footer",
-        "footnote",
-        "order",
-        "heading",
-        "boundary",
-        "classification",
-        "garbage",
-        "media",
-        "metadata",
-        "other",
-    }
-    statuses = {"done", "unresolved"}
-    unit_ids = {u.id for u in store.load_publication().units}
-    rows: list[dict[str, Any]] = []
-    for lineno, raw in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
-        line = raw.strip()
-        if not line:
-            continue
-        try:
-            row = json.loads(line)
-        except json.JSONDecodeError as e:
-            raise OrchestrationError(f"repairs.jsonl 第 {lineno} 行不是合法 JSON：{e}") from None
-        if not isinstance(row, dict):
-            raise OrchestrationError(f"repairs.jsonl 第 {lineno} 行必须是 JSON 对象")
-        unit = str(row.get("unit") or "")
-        kind = str(row.get("kind") or "")
-        status = str(row.get("status") or "")
-        summary = str(row.get("summary") or "").strip()
-        if not unit:
-            raise OrchestrationError(f"repairs.jsonl 第 {lineno} 行 unit 必填")
-        # 结构重建可能删除单元（issue #23）：引用了已消失单元的历史行**不阻断 qa**，
-        # 标记 unit_missing 交由 qa 出 warning（done 是已完成的历史动作，unresolved 也
-        # 只降级提示，避免整条流水线中断）。
-        unit_missing = unit not in unit_ids
-        if kind not in kinds:
-            raise OrchestrationError(f"repairs.jsonl 第 {lineno} 行 kind 非法：{kind!r}")
-        if status not in statuses:
-            raise OrchestrationError(f"repairs.jsonl 第 {lineno} 行 status 非法：{status!r}")
-        if not summary:
-            raise OrchestrationError(f"repairs.jsonl 第 {lineno} 行 summary 必填")
-        evidence = row.get("evidence")
-        if evidence:
-            ev = Path(str(evidence))
-            if ev.is_absolute() or ".." in ev.parts or not (store.dir / ev).is_file():
-                raise OrchestrationError(
-                    f"repairs.jsonl 第 {lineno} 行 evidence 不存在或非法：{evidence!r}"
-                )
-        pages = row.get("pages")
-        if pages is not None and (
-            not isinstance(pages, list) or not all(isinstance(p, int) for p in pages)
-        ):
-            raise OrchestrationError(f"repairs.jsonl 第 {lineno} 行 pages 必须是整数数组")
-        count = row.get("count")
-        if count is not None and not isinstance(count, int):
-            raise OrchestrationError(f"repairs.jsonl 第 {lineno} 行 count 必须是整数")
-        row = {**row, "unit_missing": True} if unit_missing else row
-        rows.append(row)
-    return rows
-
-
 def restructure(store: RunStore) -> dict[str, Any]:
     """登记 agent 重建的单元结构（preprocessing/structure.csv → publication.json）。
 
@@ -1620,46 +1534,6 @@ def qa(
     report.artifacts_epub = str(epub)
     store.save_qa(report.to_dict())
     return report.to_dict()
-
-
-def read_catalog(store: RunStore) -> list[dict[str, Any]] | None:
-    """读取源内容盘点（preprocessing/catalog.csv；S4.4 SourceCatalog 最小形态）。
-
-    文件不存在 → None（全部检查跳过，零破坏）。列契约：
-    ``item,kind,status,locator,unit_id,note``——kind ∈ toc|figure|table|footnote|
-    section|physical；status ∈ included|physical|excluded|unresolved|absent；
-    included 行 unit_id 必填；excluded/absent 行 note 必填理由。
-    ``absent`` = 源件本身不含该内容（如题注所指插图不在源包里）——既非「有意排除」，
-    也非「未决」，因此不阻断放行（现场报告 #8：缺图只能记 unresolved 或谎称 excluded）。
-    取值非法/列缺失 → OrchestrationError（带行号）。
-    """
-    import csv
-
-    path = store.preprocessing_dir / "catalog.csv"
-    if not path.is_file():
-        return None
-    kinds = {"toc", "figure", "table", "footnote", "section", "physical"}
-    statuses = {"included", "physical", "excluded", "unresolved", "absent"}
-    required = ["item", "kind", "status", "locator", "unit_id", "note"]
-    rows: list[dict[str, Any]] = []
-    with open(path, encoding="utf-8-sig", newline="") as f:
-        reader = csv.DictReader(f)
-        if reader.fieldnames is None or not set(required).issubset(reader.fieldnames):
-            raise OrchestrationError(f"catalog.csv 列契约不符（要求 {','.join(required)}）：{path}")
-        for i, row in enumerate(reader, start=2):
-            if not (row.get("item") or "").strip():
-                raise OrchestrationError(f"catalog.csv 第 {i} 行：item 为空")
-            if (row.get("kind") or "") not in kinds:
-                raise OrchestrationError(f"catalog.csv 第 {i} 行：kind 非法（{row.get('kind')}）")
-            status_val = row.get("status") or ""
-            if status_val not in statuses:
-                raise OrchestrationError(f"catalog.csv 第 {i} 行：status 非法（{status_val}）")
-            if status_val == "included" and not (row.get("unit_id") or "").strip():
-                raise OrchestrationError(f"catalog.csv 第 {i} 行：included 项缺 unit_id")
-            if status_val in ("excluded", "absent") and not (row.get("note") or "").strip():
-                raise OrchestrationError(f"catalog.csv 第 {i} 行：{status_val} 项 note 必填理由")
-            rows.append({k: (row.get(k) or "").strip() for k in required})
-    return rows
 
 
 def _task(

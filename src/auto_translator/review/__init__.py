@@ -16,7 +16,6 @@ from .convergence import ConvergenceResult, ConvergenceState, advance, summarize
 from .fidelity import all_lines, content_blocks, fidelity_flags, norm_text
 from .g0 import (
     MIN_SRC_CHARS,
-    G0Flag,
     annotate_correction_notes,
     apply_corrections,
     check_alignment,
@@ -38,7 +37,7 @@ from .g0 import (
     strip_copyright_boilerplate,
     table_shape_flags,
 )
-from .models import Issue, Patch
+from .models import G0Flag, Issue, Patch
 
 __all__ = [
     "ConvergenceResult",

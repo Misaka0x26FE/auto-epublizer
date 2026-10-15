@@ -9,6 +9,7 @@
 
 from __future__ import annotations
 
+import importlib.util
 from typing import Protocol
 
 
@@ -41,6 +42,15 @@ class RapidOcrBackend:
         if not result:
             return ""
         return "\n".join(item[1] for item in result)
+
+
+def rapidocr_available() -> bool:
+    """rapidocr-onnxruntime 是否可导入（能力探测，属 OCR 域；路由由编排层决定）。
+
+    C 组最小重构：原 orchestrator 内联 ``importlib.util.find_spec`` 探测，现归
+    ``ingest.ocr``（与 doctor 的探测同口径），编排层只读取该结果做装配。
+    """
+    return importlib.util.find_spec("rapidocr_onnxruntime") is not None
 
 
 def create_ocr_backend(backend: str = "rapidocr") -> OcrBackend:

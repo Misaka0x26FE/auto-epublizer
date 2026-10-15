@@ -27,10 +27,10 @@ heading（标题层级守恒，structured 与 translation 逐层计数对账）�
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass, field
 from typing import Any
 
 from ..glossary import Glossary, terminology_hits
+from .models import G0Flag  # 数据模型归 models（C 组：消除 g0↔fidelity 双向依赖）
 
 # 插入元素标记，如 {fig:NNN}、{table:NNN}
 _MARKER_RE = re.compile(r"\{\w+:\d+\}")
@@ -158,22 +158,6 @@ _COPYRIGHT_MARKERS = (
     "Library of Congress Cataloging",
     "British Library Cataloguing",
 )
-
-
-@dataclass(frozen=True)
-class G0Flag:
-    """一条确定性告警。
-
-    ``blocking``：是否属于**放行硬门**（默认 True）。advisory 类告警显式置 False
-    （如 fidelity 前向缺块、footnote_suspect、length）——import / qa 汇总 / CLI 渲染
-    统一读该字段，避免「同一告警在 import 是 advisory、在放行汇总是硬门」的口径分叉
-    （B 组真值表核对发现：forward fidelity 曾被 g0_structure_open 计为硬门）。
-    """
-
-    check: str
-    message: str
-    data: dict[str, Any] = field(default_factory=dict)
-    blocking: bool = True
 
 
 def count_markers(text: str, pattern: re.Pattern[str] = _MARKER_RE) -> int:
