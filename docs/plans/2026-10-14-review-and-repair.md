@@ -799,16 +799,16 @@ METADATA 为 `License-Expression: AGPL-3.0-only`（Metadata 2.5）。
 
 ### 8.1 审查回流（未修复）
 
-| 级别 | 位置 | 已观察行为／影响 | 最小处置方向 |
-|---|---|---|---|
-| P1 | `orchestrator.py:1038–1040` | 合成源文导出的 2 个候选均判为 note，仍可登记 inventory=none，构建零语义注文且注释门 ok | 已核证候选必须与 note/ref 图对账，拒绝 note 候选与 none 矛盾及 present 的部分遗漏 |
-| P1 | `orchestrator.py:964–967` | 修改源注文并重新登记后，译注 source_notes_sha256 不符仍可 build，成品注释门也 ok | 共享加载/构建/审计入口验证译注源版本绑定，并按实际源/译模式检查需要的译注 |
-| P1 | `qa/notes_audit.py:48–56` | 注文图片不存在时 collect_media 删除引用，仅记 drop 事件，注释文本对账仍 ok | 单独核对注文媒体期待和实际 aside/包内资源，不能由去图片的文本规范化掩盖缺失 |
-| P1 | `qa/artifacts.py:35–57` | 已放行后新增 catalog unresolved，status 报告不 stale、台账仍 released；重跑 QA 才变为 catalog_open | 摘要覆盖所有放行输入及有序 publication 发布描述、实际源身份，不能排序抹去单元顺序 |
-| P2 | `orchestrator.py:1691–1700` | 旧报告过期被路由为 import --unit report，执行后同一任务持续返回 | 按 stale 类型分派 build/qa，不把 report 当真实单元 |
-| P2 | `qa/artifacts.py:92–93` / `orchestrator.py:1538` | QA 保存相对 EPUB 路径，切换 cwd 后未变的产物被误判 stale | 工作区内路径相对 store.dir 保存/解析，外部产物用规范化绝对路径 |
-| P2 | `qa/provenance.py:425–430` / `qa/audit.py` | 已登记 orphan_ok 无引用注文通过新注释门，却被旧门报 E_FN_EPUB_LOST / E_FN_BACKLINK | 根据已登记图移交旧计数/回链门，不通过伪造引用或删除合法注文解决 |
-| P2 | `AGENTS.zh.md:89–110` 及英文对应流程 | 标准流程先翻译/import，再到 5.7 注释登记，与前置绑定要求相反；workflow reference/机器指针则已前置 | 把中英文入口的核证/登记步骤移到翻译前，统一入口契约 |
+| 级别 | 位置 | 已观察行为／影响 | 最小处置方向 | 状态 |
+|---|---|---|---|---|
+| P1 | `orchestrator.py:1038–1040` | 合成源文导出的 2 个候选均判为 note，仍可登记 inventory=none，构建零语义注文且注释门 ok | 已核证候选必须与 note/ref 图对账，拒绝 note 候选与 none 矛盾及 present 的部分遗漏 | **已修**（`6cb79f0`）：`validate_candidates_vs_graph` + register 接线；回归 2 项（HEAD 上失败） |
+| P1 | `orchestrator.py:964–967` | 修改源注文并重新登记后，译注 source_notes_sha256 不符仍可 build，成品注释门也 ok | 共享加载/构建/审计入口验证译注源版本绑定，并按实际源/译模式检查需要的译注 | **已修**（`6cb79f0`）：共享加载入口校验译注绑定 + 按模式 `require_target`；回归 2 项 |
+| P1 | `qa/notes_audit.py:48–56` | 注文图片不存在时 collect_media 删除引用，仅记 drop 事件，注释文本对账仍 ok | 单独核对注文媒体期待和实际 aside/包内资源，不能由去图片的文本规范化掩盖缺失 | **已修**（`6cb79f0`）：注文媒体单独核对（期待引用 ⊆ aside 实渲染 + 包内资源）；回归 1 项 |
+| P1 | `qa/artifacts.py:35–57` | 已放行后新增 catalog unresolved，status 报告不 stale、台账仍 released；重跑 QA 才变为 catalog_open | 摘要覆盖所有放行输入及有序 publication 发布描述、实际源身份，不能排序抹去单元顺序 | **已修**（`6cb79f0`）：发布顺序单元描述 + catalog/repairs/facts + 实际源件字节；回归 1 项 |
+| P2 | `orchestrator.py:1691–1700` | 旧报告过期被路由为 import --unit report，执行后同一任务持续返回 | 按 stale 类型分派 build/qa，不把 report 当真实单元 | **已修**（`6cb79f0`）：伪 stale 项按类型分派（report→build→qa 等）；回归 1 项 |
+| P2 | `qa/artifacts.py:92–93` / `orchestrator.py:1538` | QA 保存相对 EPUB 路径，切换 cwd 后未变的产物被误判 stale | 工作区内路径相对 store.dir 保存/解析，外部产物用规范化绝对路径 | **已修**（`6cb79f0`）：工作区内成品相对 `store.dir` 保存/解析 |
+| P2 | `qa/provenance.py:425–430` / `qa/audit.py` | 已登记 orphan_ok 无引用注文通过新注释门，却被旧门报 E_FN_EPUB_LOST / E_FN_BACKLINK | 根据已登记图移交旧计数/回链门，不通过伪造引用或删除合法注文解决 | **未修**：设计见 `2026-10-15-review-backflow.md` §2（按书级登记状态移交旧计数/回链门，不伪造引用） |
+| P2 | `AGENTS.zh.md:89–110` 及英文对应流程 | 标准流程先翻译/import，再到 5.7 注释登记，与前置绑定要求相反；workflow reference/机器指针则已前置 | 把中英文入口的核证/登记步骤移到翻译前，统一入口契约 | **未修**：设计见 `2026-10-15-review-backflow.md` §2（注释核证/登记前移至翻译前 + 文档闸） |
 
 前 7 项均以临时合成工作区运行观察；报告/cwd 两项使用真实 EPUBCheck 的已放行产物，
 没有伪造检查器成功。最后一项为文档直接核对。脚本/书稿样本未加入永久仓库；
