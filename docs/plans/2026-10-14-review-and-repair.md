@@ -543,5 +543,40 @@ H 逐本记录重建/阅读器验收/副本同步，缺源证据的具体书保�
   不在本批；#34 的 auschwitz 真实书私有验收仍待办；`structured/raw/media` 内注文媒体的
   「源件抽取」环节由既有 ingest 负责，本批只验证了收集与渲染链路。
 
+### 批次 A（状态、恢复与跨文件一致性）
+
+**审查（先复现、后修复；未复现的候选不立项）**：
+
+- `atomic_write_json` 原用**固定** `<target>.tmp`：并发写同一目标时两个写入者共享临时文件——
+  写者 B 以 `"w"` 截断 A 正持有的临时文件；A 继续写后再 `os.replace`，会因临时文件已被 B
+  移走而抛 `FileNotFoundError`，或把 B 的半成品 replace 成正式文件（目标被就地交错写）。
+  已用确定性线程交错复现（`tests/test_state_safety.py`）。
+- 写到一半失败会**残留**半成品临时文件（旧值安全，但垃圾留在工作区）。
+- 写入后未 `fsync`：断电/崩溃后新值可能仍在页缓存，「旧或新二选一」无法保证。
+- `save_qa`（`report.json`）不在任何锁内，属上述竞态面之一；唯一临时名落地后为安全 last-wins。
+- `RunStore.run_lock` 定义但**无调用方**：文档承诺的「同一工作区一次只跑一条长流程命令」是
+  用户约定而非强制。state/event 级写均有锁且写入原子；未复现长流程并发导致的数据损坏，
+  按计划「只在复现后调整事务边界」保留现状，记为 **P2（保留理由）**：引入 run_lock 会改变
+  CLI 阻塞行为并存在同进程二次 flock 死锁风险，收益未经证实。
+
+**修复（根因级单点）**：`atomic_write_json` 改唯一临时名
+（`.<name>.<pid>.<随机>.tmp`）+ 失败/中断清理自己的临时文件 + `fsync` 后再 `os.replace`；
+并发语义明确为 last-wins，任何时刻读到的目标都是完整的旧值或新值。
+
+**验证（前后证据）**：
+
+- 回退 `src/auto_common/workspace/store.py` 单文件：并发用例失败（共享临时文件 →
+  `FileNotFoundError`/交错）、失败清理用例失败（残留 `state.json.tmp`）→ 修复后 2 passed。
+- 新增 `tests/test_state_safety.py` **7 项**：① 写到一半失败保旧值且不留临时文件；
+  ② 并发写不共享临时文件（确定性交错）；③ init 在提交 publication.json 前中断 → 无半成功
+  状态、重跑 init 成功；④ 结构未写完（publication 有、units 空）→ `rebuild` 恢复且状态重置
+  `split`；⑤ 全链路（init→preprocess→import→build→qa）源文件与 `source/` 副本字节不变；
+  ⑥ preprocess/import/qa 重跑不累加（单元/词数/G0/句数一致）；⑦ 同名不同内容被
+  `ensure_source_identity` 拒绝。
+- `import --reviewed/--force` 的跳过/回退语义由既有 `tests/test_import.py` 覆盖（幂等、
+  reviewed/built 跳过、force 失败回退 aligned）。
+- 全量 **516 passed**、`ruff check` / `ruff format --check` 全绿。
+
+
 
 

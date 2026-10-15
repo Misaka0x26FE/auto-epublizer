@@ -13,8 +13,9 @@ import hashlib
 import json
 import os
 import re
+import uuid
 from collections.abc import Iterator
-from contextlib import contextmanager
+from contextlib import contextmanager, suppress
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -45,14 +46,29 @@ def source_sha256(path: str | Path) -> str:
 
 
 def atomic_write_json(path: str | Path, data: Any) -> None:
-    """通过同目录临时文件原子写入格式化 JSON。"""
+    """通过同目录临时文件原子写入格式化 JSON。
+
+    临时文件名**每次唯一**（``.<name>.<pid>.<随机>.tmp``）：同一目标的并发写入者
+    不共享临时文件，因此不会出现「一个写入者把另一个人的半成品 replace 成正式文件」
+    或 replace 时临时文件已被对方移走（FileNotFoundError）的竞态（A 组故障注入复现）。
+    竞态语义为 last-wins，任何时刻读到的目标都是完整的旧值或完整的新值。
+    写入后 ``fsync`` 再 ``os.replace``：崩溃/断电后目标要么旧内容要么新内容；
+    失败/中断时清理自己的临时文件（不吞掉异常）。
+    """
     target = Path(path)
     target.parent.mkdir(parents=True, exist_ok=True)
-    tmp = target.with_suffix(target.suffix + ".tmp")
-    with open(tmp, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
-        f.write("\n")
-    os.replace(tmp, target)
+    tmp = target.with_name(f".{target.name}.{os.getpid()}.{uuid.uuid4().hex}.tmp")
+    try:
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+            f.write("\n")
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp, target)
+    finally:
+        if tmp.exists():
+            with suppress(OSError):  # 清理失败不影响主流程
+                tmp.unlink()
 
 
 def read_json(path: str | Path) -> Any:
