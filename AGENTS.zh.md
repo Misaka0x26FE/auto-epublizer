@@ -86,6 +86,20 @@ auto-epublizer meta [--translator OpenCode] [--publisher ...] [--date ...] [--ri
 auto-epublizer knowledge export --workspace .   # → preprocessing/terms.csv（agent 审阅增删后 import --terms）
 auto-epublizer knowledge status                 # 统计 + git 状态（--json 供机器判定）
 
+# 4.6 语义整备（agent 任务，条件触发）：facts 有可疑信号、或 OCR/扫描件路径时，
+#     按 references/repair.md 对照 raw 证据修复 structured/ 并写 preprocessing/repairs.jsonl；
+#     单元边界重切/合并另写 preprocessing/structure.csv 后登记（S3）
+auto-epublizer restructure [--workspace <dir>]   # 登记重建的单元结构（同 id 未变保留状态）
+auto-epublizer evidence breaks   # 导出页边界证据 → preprocessing/breaks.jsonl（判读跨页/断行碎片；只定位证据，不做语义合并）
+
+# 4.7 源注核证、抽离与登记（有注书必做；详见 references/notes.md）：notes candidates 导出候选 →
+#     agent 回看源件逐条核证（disposition=note|not_note）→ 写 structured/notes.json 与正文
+#     原位标记 [^ref-000123] → notes register（分离登记门：契约 + 标记双向对账 + 摘要写
+#     publication.json.notes）；翻译时保留同一 ref_id 并写 translation/notes.json，import 校验
+auto-epublizer notes candidates  # → preprocessing/note_candidates.jsonl（零 token；重跑保留处置）
+auto-epublizer notes register    # 登记 structured/notes.json（分离登记门）
+auto-epublizer notes status      # 摘要 / stale / 候选处置进度（--json 供机器读）
+
 # 5. 翻译（agent 任务）：agent 读 structured/ 自己翻译，写 translation/ + align/，
 #    然后「import」登记：G0 校验 + 状态推进 + 术语冲突外置（terms.csv 可经 --terms 导入）
 auto-epublizer import [--unit <id>] [--terms preprocessing/terms.csv] [--reviewed] [--force]
@@ -95,19 +109,6 @@ auto-epublizer import [--unit <id>] [--terms preprocessing/terms.csv] [--reviewe
                                  # 通过保持原状态，失败回退 aligned）
 auto-epublizer g0                # 翻译/导入后立即静态校验（术语命中为真实缺陷须逐条核验；长度比才是 advisory）
 
-# 5.5 语义整备（agent 任务，条件触发）：facts 有可疑信号、或 OCR/扫描件路径时，
-#     按 references/repair.md 对照 raw 证据修复 structured/ 并写 preprocessing/repairs.jsonl；
-#     单元边界重切/合并另写 preprocessing/structure.csv 后登记（S3）
-auto-epublizer restructure [--workspace <dir>]   # 登记重建的单元结构（同 id 未变保留状态）
-auto-epublizer evidence breaks   # 导出页边界证据 → preprocessing/breaks.jsonl（判读跨页/断行碎片；只定位证据，不做语义合并）
-
-# 5.7 注释结构化与绑定（有注书必做；详见 references/notes.md）：notes candidates 导出候选 →
-#     agent 回看源件逐条核证（disposition=note|not_note）→ 写 structured/notes.json 与正文
-#     原位标记 [^ref-000123] → notes register（分离登记门：契约 + 标记双向对账 + 摘要写
-#     publication.json.notes）；翻译时保留同一 ref_id 并写 translation/notes.json，import 校验
-auto-epublizer notes candidates  # → preprocessing/note_candidates.jsonl（零 token；重跑保留处置）
-auto-epublizer notes register    # 登记 structured/notes.json（分离登记门）
-auto-epublizer notes status      # 摘要 / stale / 候选处置进度（--json 供机器读）
 
 # 6. 审校（agent 任务）：agent 按 G1–G3 语义自行审校，写 reviews/review-<ts>/
 #    （issues/patches/summary/result.json；qa 从 result.json 读 g1/g2/g3 计数）
@@ -117,7 +118,7 @@ auto-epublizer notes status      # 摘要 / stale / 候选处置进度（--json 
 auto-epublizer knowledge import --workspace .   # 跨书同键异译外置到统一库 conflicts.jsonl 待 agent 裁决
 
 # 7. 封装输出
-auto-epublizer build          # 纯译文 / 双语 EPUB → output/（--theme 选排版主题）
+auto-epublizer build          # 译文 EPUB → output/（--theme 选排版主题）
 
 # 8. 质检（G0 静态校验 + G4 审计 + G5 汇总放行 → report.json）
 auto-epublizer qa             # 结构审计 + epubcheck（有注书另跑独立成品注释门；notes_open 阻断放行）
@@ -201,7 +202,7 @@ skills/auto-epublizer/
 ```text
 <book-slug>/
 ├── source/           ① 待处理文件（原样，绝不改动）
-├── output/           ② 成品 EPUB（<slug>.epub / <slug>-bi.epub）
+├── output/           ② 成品 EPUB（<slug>.epub）
 ├── structured/       ③ 按出版物四层结构拆分的源文（frontmatter/body/backmatter/media）
 │                     + raw/（处理源文件的中间产物：OCR 页图、PDF→HTML、
 │                     pages/（扫描页渲染图）、mineru/（MinerU 解析产物），持久化供审查）
@@ -263,7 +264,7 @@ skills/auto-epublizer/
 {"seq": 1, "src": "原句", "tgt": "译句", "note": null}
 ```
 
-`seq` 是双语排版、QA 定位、断点续跑的锚点；`note` 记录拆句/并句/漏译/存疑，
+`seq` 是对照审校、QA 定位、断点续跑的锚点；`note` 记录拆句/并句/漏译/存疑，
 `corr:wrong→right` 前缀 = 源文勘误先例留痕（translate/import 两路径自动写入）。
 
 ## 架构边界

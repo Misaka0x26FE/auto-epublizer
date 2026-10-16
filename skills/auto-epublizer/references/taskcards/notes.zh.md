@@ -13,6 +13,12 @@
 `structured/notes.json`（注文内容 + 源引用位置/证据），并在正文**原引用位置**保留
 `[^ref-…]` 原位标记（ref_id → note_id 由源 JSON 记录）。
 
+引用候选显式绑定同单元且唯一的 `ref_id`；注文候选显式绑定 `note_id`，并在该
+注文 `source_locations` 中逐条写对应 `candidate_id`（可保留 PDF page/bbox；
+另列 unit/line 时须匹配候选）。跨页多候选可合并同一注，混合附录尾注可由正文引用；
+合法孤儿注用 `orphan_ok`/`orphan_reason`，不得伪造引用或删除续文。
+完整绑定示例见阶段文档；不得按同号/文本前缀猜配。重跑候选导出保留身份绑定。
+
 **动作（`notes_register`）**：运行 `auto-epublizer notes register` 登记
 `structured/notes.json`——分离登记门做契约校验 + 正文标记双向对账 + 摘要写入
 `publication.json`。

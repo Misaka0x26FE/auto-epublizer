@@ -1,4 +1,4 @@
-<!-- i18n: source=notes.zh.md sha256=407a83abd27e28d4bd0e03d942841d012bae87c770a0256d25d349c630901034 -->
+<!-- i18n: source=notes.zh.md sha256=e97fa4d5e02738c20e39a5e22071f4060181c2f1c7834dbba09a4a3fc0a7568d -->
 > **English** | [中文](notes.zh.md)
 
 # Task card: notes (verify / register)
@@ -16,6 +16,14 @@ evidence) and verify the candidates one by one, writing `disposition=note|not_no
 `structured/notes.json` (note content + source reference position/evidence) and keep the
 `[^ref-…]` in-place marker at the **original reference position** in the body (the source JSON
 maps ref_id → note_id).
+
+Reference candidates explicitly bind a unique same-unit `ref_id`; note candidates explicitly
+bind `note_id`, with each `candidate_id` recorded in that note's `source_locations`.
+Keep PDF page/bbox evidence; any additional unit/line fields must match the candidate.
+Cross-page candidates may merge into one note; mixed-appendix endnotes may be referenced
+from the body. Legitimate orphans use `orphan_ok`/`orphan_reason`, never fabricated references
+or deleted continuations. See the stage document for a complete binding example; never
+guess by shared number/text prefix. Re-exporting candidates preserves identity bindings.
 
 **Action (`notes_register`)**: run `auto-epublizer notes register` to register
 `structured/notes.json` — the separation-registration gate performs contract validation,

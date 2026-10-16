@@ -95,7 +95,7 @@ qa 不放行」）；S3.2 invariants.md 一并收录。
 1-3 位数字，PDF 文字层注码表示）；但 `g0_unit_flags`（g0.py:194）只跑
 align/length/terminology 三类。脚注在 structured md 里还有第二种表示：pandoc 语法
 `[^label]` 引用 / `[^label]: 文本` 定义（build/html.py:30-31 的 `_FN_REF`/`_FN_DEF`，
-渲染为 EPUB 弹窗脚注）——两种表示都要守恒。
+渲染为标准 EPUB 注释语义，保留可读注释区与往返跳转）——两种表示都要守恒。
 
 **技术设计**：
 
@@ -269,7 +269,7 @@ publication.json 只经 CLI 命令推进（红线：agent 不手编）——所�
        m.append('    <meta refines="#creator-trl" property="role" scheme="marc:relators">trl</meta>')
    ```
    （原作者标 `aut`、译者标 `trl`；两 id 全包唯一；convert 路径 translator 为空则
-   整段不输出，单语转换书不受影响；双语/纯译 EPUB 均生效——渲染层不区分。）
+   整段不输出，转换书不受影响。）
 4. audit 不加新码（translator 可选，不进 W_META_INCOMPLETE）。
 
 **测试设计**：
@@ -331,8 +331,7 @@ facts.py 的 `agent_todo` 列表（facts.py:142-）是 facts.md 待办清单的�
    - **README 署名记录**：模板含原书题录（书名/作者/版次/ISBN/来源语言）、权属
      声明、译者署名（= publication.json 的 translator，默认 agent 框架名）；
      不虚报 builder 未实际输出的元数据、不虚列贡献者。
-   - **成品验证**：从发布渠道下载已传资产、核对校验和（sha256）、至少一个阅读器
-     打开验证渲染。
+   - **成品验证**：从发布渠道下载已传资产并核对校验和（sha256）；强制独立内容与标准注释离线核证、epubcheck 和分发字节同步。阅读器 GUI 仅作有条件兼容抽查，无桌面记「阅读器未实测」，不阻塞标准交付、不承诺所有阅读器弹窗。
 3. **发布操作**：tag 规范 `<slug>-v<N>`；纠错发新版本、**不强推已发布 tag**；
      **禁止在有源文件的目录 `git add -A`**（防 source/ 工作区误提交）；发布记录
      （版本/日期/变更）追加到仓库。
@@ -362,7 +361,7 @@ facts.py 的 `agent_todo` 列表（facts.py:142-）是 facts.md 待办清单的�
    （实现时从代码逐条提取，qa.md 现有表为底稿。）
 5. **工作区契约压缩版**：状态机七态+推进命令、目录树（AGENTS.md 工作区契约的
    精简引用）、`import` 阻断（结构性错误）vs 告警（硬缺陷类 advisory）边界。
-6. **构建约束**：三主题枚举、冻结时间戳（确定性构建）、双语成对、无样式模板红线。
+6. **构建约束**：三主题枚举、冻结时间戳（确定性构建）、无样式模板红线。
 
 **配套**：manifest.json references 加 `"invariants"`；SKILL.md 路由加行「校验失败
 排障 / 放行条件 / 错误码速查 → invariants.md」；qa.md/review.md 头部加「速查见

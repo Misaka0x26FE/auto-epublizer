@@ -1,4 +1,4 @@
-<!-- i18n: source=translation-flow.zh.md sha256=998ec3f500bef3fb48b9de1a940dc9310a131fd972fe4523c7404d485d4a49eb -->
+<!-- i18n: source=translation-flow.zh.md sha256=7f048230268b5dff837c89d5a17e7278206cb8c6a99aef66d9d00d998856f5db -->
 > **English** | [中文](translation-flow.zh.md)
 
 # Translation Flow Design
@@ -103,7 +103,7 @@ state advance translated → aligned
 Key guarantees:
 
 1. **Paragraph-level equal length**: input N paragraphs, output must have N items (each item is that paragraph's array of translated sentences); mismatch is retried, with per-paragraph fallback — structurally eliminating whole-paragraph omissions.
-2. **Sentence-level alignment**: each paragraph's translation is split by sentence and mapped one-to-one with the source sentences, written into `align/<id>.jsonl` as `{seq, src, tgt, note}`; sentence splits/merges are declared in `note`. This is the sole source for QC G0 (alignment completeness) and bilingual layout.
+2. **Sentence-level alignment**: split each paragraph's translation into sentences and map them to source sentences in `align/<id>.jsonl` as `{seq, src, tgt, note}`; declare splits/merges in `note`. This supports QC G0 (alignment completeness), comparative review and provenance, not layout input.
 3. **Continuation merge-back**: the translation of a continuation segment with `cont=True` is merged back into the previous paragraph and does not start a new paragraph.
 
 ## 6. Glossary assistance (three-state closed loop)
@@ -154,5 +154,5 @@ record ── knowledge import: merge the workspace's confirmed terms into the u
 | `split/NNNN.md` plain-text chunks | `structured/` chapter TOC structure + stable unit IDs |
 | `_analysis.md` / `_understanding.md` single file | `analysis/` layers: overview/global/units/keypoints |
 | `GLOSSARY.csv` manually maintained | glossary three states + conflict externalization + injection filtering |
-| No sentence-level alignment after translation | `align/<id>.jsonl` sentence-level alignment (anchor for QC and bilingual) |
+| No sentence-level alignment after translation | `align/<id>.jsonl` sentence-level alignment (anchor for QC and provenance) |
 | No QC closed loop | Translation → G0–G3 review closed loop |

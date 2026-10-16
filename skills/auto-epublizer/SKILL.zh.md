@@ -34,6 +34,8 @@ metadata:
 7. **唯一 LLM 原则**：CLI 零 token；语义判断全由你完成，禁止引入任何 LLM API 调用。
 8. **译者署名默认=你的 agent 框架名**（OpenCode/DouBao…），用户指定名优先
    （经 `meta --translator` 写入）。
+9. **标准 EPUB 验收不依赖桌面**：注释语义/内容/链接/回链/资源/有效登记绑定、独立注释门、epubcheck、独立交付对账与分发字节核对均为强制项。阅读器 GUI 仅作有条件兼容抽查；无桌面/阅读器记「阅读器未实测」，不阻塞标准交付、不保证普遍弹窗。见 `references/delivery.md`、`references/publishing.md`。
+10. **EPUBCheck 必须有真实进程通过证据**：发布要求 `report.epubcheck.ran == true`、实际 `returncode == 0` 且 `errors == 0`；仅 jar 存在、Java 启动或旧 `ran` 字段不证明通过，进程失败/FATAL 不得当作零错误。完整发行包须保留 jar 相邻 `lib`，headless Java 即可运行。未执行的 `returncode` 为 `null`，未知不能猜 0；缺此证据的旧 released 报告由 status 标 stale，须重新 `qa`，不得手改旧 `released`。
 
 ## Route Before Acting
 
@@ -55,7 +57,7 @@ multimodal / search**（能否看图、有无搜索工具，CLI 无法探测）�
 | 四层结构归类、清洗、页眉页脚/页码剔除、溯源 | `references/structure.md` |
 | 分层理解、术语播种、语言/体裁检测 | `references/analysis.md` |
 | 切片翻译、句级对齐、术语三态闭环、agent 手写翻译路径 | `references/translation.md` |
-| 注释结构化与绑定（有注书：候选盘点到成品门） | `references/notes.md` |
+| 注释结构化与绑定（candidate_id → note/ref；跨页、尾注、孤儿的位置证据契约） | `references/notes.md` |
 | 六道关 QC（G0–G5）操作指引 | `references/review.md` |
 | 交付前全量校验（qa 之后、交付之前，强制） | `references/delivery.md` |
 | EPUB 封装、确定性构建、成品软件指纹与独立制作声明（不改变书稿版权） | `references/build.md` |

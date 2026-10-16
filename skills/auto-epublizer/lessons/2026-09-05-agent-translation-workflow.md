@@ -1,4 +1,4 @@
-<!-- i18n: source=2026-09-05-agent-translation-workflow.zh.md sha256=a7c5081b0b1655066412cd4cceb8910cce076a0baac0d4250c3c93f803b27b11 -->
+<!-- i18n: source=2026-09-05-agent-translation-workflow.zh.md sha256=9bb283b9249da9e1ac05b6aa25bd25ecd93f870ce6143adb2316cfad1d287970 -->
 > **English** | [中文](2026-09-05-agent-translation-workflow.zh.md)
 
 # Agent main-process translation workflow: lessons from three rounds of sample-volume-a/sample-volume-b/Sample Technical Volume measurement
@@ -52,9 +52,7 @@ pitfall-hitting on this workflow, directly guiding subsequent GT3 / other books.
 - **Pitfall**: sample-volume-b's 1970 G0 advisory items were all ignored, but real problems were mixed
   in (e.g. the terminology hit `Academy City 译文缺失 学园都市` was missed); the length-ratio
   warnings mixed "omission" with "normal compression".
-- **Handling**: go through the terminology warnings one by one (`g0 --unit <id>` to locate);
-  for abnormal length ratios, pull the align bilingual to check whether there is an
-  omission; produce a `--bilingual` version for manual spot-checking.
+- **Handling**: go through the terminology warnings one by one (`g0 --unit <id>` to locate); for abnormal length ratios, inspect source/translation rows in align against the source context for omissions and semantic completeness.
 
 ### 6. Structural/semantic judgement belongs to the agent; scripts only do deterministic transport
 

@@ -169,7 +169,7 @@ def test_generate_report_catalog_open() -> None:
     result = generate_report(
         "book",
         AuditResult(ok=True),
-        EpubcheckResult(available=True, ran=True, errors=0, warnings=0),
+        EpubcheckResult(available=True, ran=True, errors=0, warnings=0, returncode=0),
         review={
             "g1_candidates": 0,
             "g2_confirmed": 0,

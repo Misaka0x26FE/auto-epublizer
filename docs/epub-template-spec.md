@@ -1,4 +1,4 @@
-<!-- i18n: source=epub-template-spec.zh.md sha256=7a10a142de7c8b2a30af71c3e21e62a42ee843759a8b450615baaf4fcfd3d469 -->
+<!-- i18n: source=epub-template-spec.zh.md sha256=2fb0bd900730da0ff7f92f26e37d464804508077ee77088bcd20214ce115bd97 -->
 > **English** | [中文](epub-template-spec.zh.md)
 
 # EPUB File Spec: Unstyled Standard Template + Limited Themes
@@ -12,6 +12,8 @@ basis for the media/style acceptance criteria in the "post-processing spec"
 ### Product software provenance and manuscript rights
 
 Builds must write `generator` and custom `aep:` OPF metadata (the structured record is `aep:build`), plus an `auto-epublizer-build` JSON comment in each content XHTML head. The record contains `auto-epublizer`, its [project URL](https://github.com/Misaka0x26FE/auto-epublizer), the current build version, and source revision/dirty state when available. Initialization-time `meta.producer` is not the current build identity.
+
+The actual build entry is recorded as OPF `aep:render-mode`: `source` / `translation`. `translation` permits per-unit source fallback. Each note's source/translation choice follows its actual host. QA reconstructs expectations from the declared mode and verifies actual content. Products with registered notes must be rebuilt if the mode is absent or ambiguous; QA must not guess or waive version binding. This field is not a digital signature.
 
 Python/Pydantic describe the build runtime. Other tools come only from records frozen after successful parsing, never from installed-dependency inventories. Unknown versions remain explicit; missing historical records cannot be reconstructed from the current installation. MinerU API is an external service, with no claim about its internal open-source version or license.
 
@@ -31,9 +33,9 @@ Three principles:
    only functional styles that prevent content overflow.
 2. **Limited themes**: personalization is expressed only through "preset minimal themes";
    arbitrary CSS is not opened up, and multi-reader compatibility is not broken.
-3. **Standard notes**: all notes use EPUB 3 standard popup notes
-   (`epub:type="noteref"`/`"footnote"`), with uniform numbering across the book and
-   bidirectional jumping.
+3. **Standard notes**: use EPUB 3 standard note semantics
+   (`epub:type="noteref"`/`"footnote"`), chapter-local numbering and
+   bidirectional links; popup presentation is determined by the reader.
 
 ## 2. Three-Layer Framework
 
@@ -59,9 +61,8 @@ style-independent. Completed ✅ / to be added ⬜:
 | **Footnote semanticization** | ✅ | `noteref`/`footnote` + `[N]` note reference + per-chapter independent numbering + bidirectional jumping (§6) |
 | Cover `cover-image` | ✅ | `properties="cover-image"` + `<meta name="cover">` + spine `linear="no"` |
 | Cover/TOC page `linear="no"` | ✅ | the cover unit content document does not enter the body reading order |
-| TOC anchors | ✅ | unit-level nesting + **in-unit sub-heading anchors** (`file.xhtml#anchor`, stable `{unit_id}-h{n}` ids, since 2026-09-29; bilingual documents are the exception — rendered from align rows with no sub-heading elements) |
+| TOC anchors | ✅ | unit-level nesting + **in-unit sub-heading anchors** (`file.xhtml#anchor`, stable `{unit_id}-h{n}` ids) |
 | Semantic tags | ✅ | quotes `blockquote`, verse blocks `p.verse`, `- ` lists `ul` retain semantics (P2); `<ol>` only for markers consecutive from 1 with `. `/`、` — other `N)`/`N.`/`N、` blocks (critical-apparatus notes) keep their literal numbers (`p.fnlist`), never renumbered |
-| Bilingual src/tgt each with `lang` | ✅ | each paragraph is annotated with source/target language |
 
 ## 4. Presentation Layer (Unstyled Default Template)
 
@@ -129,11 +130,11 @@ name/font size; `E_THEME_COLOR`: color).
 - **Bidirectional jumping**: note reference → note (forward), note backlink (`#ref-N`) →
   note reference (backward); the backlink is the universal fallback (required by Kindle
   KDP; readers that do not support popups rely on it to return).
-- **Degradation**: readers supporting popups display them as popups; those that do not
-  degrade to an end-of-chapter list (`<aside>` is already located at the end of the
-  chapter).
+- **Compatibility**: capable readers may show popups. Popups are not guaranteed in every reader; link navigation and chapter-end content must remain accessible (`<aside>` is at the end of the chapter).
 - Distinguished from `{fig:NNN}`/`{table:NNN}`: the latter are **figure/table placeholder
   markers** (inserts) and do not use footnote semantics.
+- **Mandatory offline acceptance**: CLI independent audits and epubcheck require no desktop. Verify noteref/aside semantics, hrefs, every backlink, registered-graph and version-binding consistency, and each note's content and resources. A registered `none` graph also requires zero-to-zero reconciliation. All five semantic quality gates remain mandatory; no desktop never excuses content or structural defects.
+- **Conditional reader sampling**: where a GUI is available, record reader name/version and popup/navigation/return observations. Without a GUI, explicitly record “reader not tested”; this alone does not block delivery and must not be presented as tested compatibility.
 
 ## 7. Configuration and Implementation Impact
 
@@ -145,8 +146,6 @@ Presentation and structure switches of `config.output`:
 output:
   theme: standard        # standard | compact | spacious
   nav_depth: 3           # maximum TOC nesting depth (1–6, projection: beyond-depth units do not enter the TOC)
-  mono: true
-  bilingual: false
 ```
 
 ### 7.2 Implementation Impact List (✅ All Landed)
@@ -157,7 +156,7 @@ output:
 4. ✅ Cover `cover-image`: first image of the cover unit automatically recognized + `<meta name="cover">` + `linear="no"`.
 5. ✅ Semantic tag retention + page-break/figure-caption styles (TOC is unit-level nesting + in-unit sub-heading anchors, since 2026-09-29).
 6. ✅ `qa/audit.py`: `E_THEME_FONT`/`E_THEME_COLOR`/`E_COVER_META`/`E_HEADING_SKIP`/
-   `E_RESIDUE`/`W_RESIDUE`/`W_META_INCOMPLETE`/`E_ANCHOR`/`E_FN_BACKLINK`/`E_BI_PAIRS`/
+   `E_RESIDUE`/`W_RESIDUE`/`W_META_INCOMPLETE`/`E_ANCHOR`/`E_FN_BACKLINK`/
    `W_EPUB_SIZE`/`W_IMG_UNCOMPRESSED`; provenance audit `W_NO_COVER`/`W_NAMING`.
 7. ✅ TOC depth projection: `nav_toc_entries` (cover excluded + `nav_depth` truncation) → nav/NCX.
    nav.xhtml declares two separate metas: `<meta name="nav-depth" content="A"/>` = the **actual
@@ -176,7 +175,7 @@ output:
 | P1 ✅ | Theme mechanism (three presets + `--theme` + `output.theme` + audit validation) | Theme layer |
 | P1 ✅ | Cover `cover-image` + `linear="no"` + `W_NO_COVER` reconciliation | Structural layer |
 | P2 ✅ | Semantic tag retention (blockquote/verse/ul/ol) | Structural layer |
-| P2 ✅ | Audit hardening (heading skips/residue/anchor backlinks/bilingual pairing/metadata completeness/size) | Structural layer |
+| P2 ✅ | Audit hardening (heading skips/residue/anchor backlinks/metadata completeness/size) | Structural layer |
 | P2 ✅ | TOC depth projection (`output.nav_depth` + cover excluded from TOC + coverage-audit exemption) | Structural layer |
 
 > P0/P1/P2 all landed on 2026-09-04 (see `docs/postprocessing-spec.md` §4);

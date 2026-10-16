@@ -39,6 +39,16 @@ class InsertRecord(BaseModel):
     extra: dict = Field(default_factory=dict)  # 保留扩展位
 
 
+def insert_file_exists(raw_dir: Path, file: str) -> bool:
+    """资源解析后须位于 raw 内，确认包含性后才检查文件存在性。"""
+    try:
+        root = raw_dir.resolve()
+        resolved = (root / file).resolve()
+        return resolved.is_relative_to(root) and resolved.is_file()
+    except (OSError, ValueError, RuntimeError):
+        return False
+
+
 def next_insert_id(records: list[InsertRecord], page: int, type_: str) -> str:
     """生成页内递增的插入内容 id（确定性：已有多少同类即 +1）。"""
     kind = INSERT_KINDS[type_]

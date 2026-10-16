@@ -79,7 +79,7 @@ uv run auto-epublizer convert <input> -o output/book.epub
 uv run auto-epublizer preprocess <input>   # 预处理：init + 事实收集 → preprocessing/facts.*
 uv run auto-epublizer meta --translator OpenCode  # 元数据核对写回 + 译者署名
 uv run auto-epublizer import               # 登记 agent 手写的译文/对照表
-uv run auto-epublizer build                # 封装 EPUB（纯译文 / --bilingual 双语）
+uv run auto-epublizer build                # 封装译文 EPUB
 uv run auto-epublizer qa                   # 结构审计 + epubcheck + 放行报告
 uv run auto-epublizer status [--json]      # 进度 / 状态机 / 产物对账
 ```
@@ -95,7 +95,7 @@ uv run auto-epublizer status [--json]      # 进度 / 状态机 / 产物对账
 |---|---|
 | 输入格式 | TXT/Markdown、HTML、DOCX、EPUB、PDF（文字层）、扫描 PDF（OCR/MinerU） |
 | 扫描件 PDF | **MinerU 外部 API 最优先**（版面/换行/插图识别），无 key 退传统 OCR + agent 逐页阅读兜底 |
-| 输出 | 纯译文 / 双语对照两种；标准 EPUB 3（目录导航、插图、封面、脚注双向跳转） |
+| 输出 | 标准 EPUB 3（目录导航、插图、封面、脚注双向跳转） |
 | 质量控制 | 六道关 G0–G5：静态校验 → 逐批审校 → 取证 → 仲裁/影子修订 → epubcheck+解包审计 → 交付放行 |
 | 术语管理 | 三态术语表（种子→候选→冲突→确认）+ 冲突外置裁决；**跨书统一库**（`knowledge export/import`，默认 `~/Documents/auto-epublizer`，私有 git 仓库）复用术语与知识 |
 | 可复现 | 同一输入必得同一产物；断点续跑按单元状态跳过已完成单元 |
@@ -116,7 +116,7 @@ PDF 解析难点与方案见 [docs/pdf-parsing.md](docs/pdf-parsing.zh.md)。
 ├── preprocessing/   CLI 事实（facts.*）+ agent 撰写的理解/计划/术语/风险
 ├── translation/     译文 + align/ 句级对照表
 ├── reviews/         审校运行记录
-├── output/          成品 EPUB（<slug>.epub / <slug>-bi.epub）
+├── output/          成品 EPUB（<slug>.epub）
 ├── references/      用户上传 + agent 检索的参考材料
 ├── publication.json 权威索引（元数据 + 内容树 + 状态机 + 配置快照）
 └── events.jsonl     行为账本
@@ -134,6 +134,7 @@ PDF 解析难点与方案见 [docs/pdf-parsing.md](docs/pdf-parsing.zh.md)。
 
 | 文档 | 内容 |
 |---|---|
+| [docs/architecture.md](docs/architecture.zh.md) | 当前组件架构、agent/CLI 数据流、权威存储与实现边界 |
 | [docs/configuration.md](docs/configuration.zh.md) | 配置完整 schema（config.yaml） |
 | [docs/development-plan.md](docs/development-plan.zh.md) | 开发任务与里程碑 |
 | [docs/translation-flow.md](docs/translation-flow.zh.md) | 翻译流程设计 |

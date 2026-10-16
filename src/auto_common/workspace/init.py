@@ -89,7 +89,6 @@ def init_workspace(
             producer=producer or "",
         ),
         config=ConfigSnapshot(
-            bilingual=cfg.pipeline.bilingual,
             target_language=lang,
         ),
         units=[],

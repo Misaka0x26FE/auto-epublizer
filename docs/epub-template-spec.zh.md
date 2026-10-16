@@ -10,6 +10,8 @@
 
 构建必须在 OPF 写 `generator` 和自定义 `aep:` 元数据（结构化记录为 `aep:build`），并在内容 XHTML head 内写 `auto-epublizer-build` JSON 注释。记录包含项目名 `auto-epublizer`、[项目 URL](https://github.com/Misaka0x26FE/auto-epublizer)、当前构建版本及可取得的源码 revision/dirty；初始化 `meta.producer` 不是当前构建身份。
 
+实际构建入口另记为 OPF `aep:render-mode`：`source` / `translation`。`translation` 允许逐单元源文回退。注文的源/译选择服从其实际宿主；QA 使用成品声明的模式重建期望并验证实际内容。已登记注释的成品缺失或存在歧义模式时须重建，不猜测、不豁免版本绑定；此字段不是数字签名。
+
 Python/Pydantic 描述构建运行时；其他工具仅使用成功解析时冻结的记录，不将已安装依赖冒充实际使用。未知版本明确未知，历史工作区缺记录不从当前安装环境倒推；MinerU API 是外部服务，不宣称其内部开源版本或许可。
 
 有 copyright 单元时，在原内容尾部追加独立软件声明，不替换作者/译者版权；没有时生成独立制作信息页，采用非线性 spine（`linear="no"`）和 `copyright-page` 地标入口，不新增书稿单元、不进入正文 nav/NCX 目录。软件许可不授予或改变书稿、译文、图像的权利。旧 `output.about_page` 仍是保留配置，不是强制指纹的开关，也不代表旧关于页功能已接线。
@@ -24,8 +26,8 @@ Python/Pydantic 描述构建运行时；其他工具仅使用成功解析时冻�
 
 1. **几乎无样式**：默认模板不设字体、颜色、字号，只保留防止内容溢出的功能性样式。
 2. **有限主题**：个性化只通过「预置的极简主题」表达，不开放任意 CSS，不破坏多阅读器兼容。
-3. **标准注释**：注释一律采用 EPUB 3 标准弹窗注释（`epub:type="noteref"`/`"footnote"`），
-   全书统一数字序号，支持双向跳转。
+3. **标准注释**：注释一律采用 EPUB 3 标准注释语义（`epub:type="noteref"`/`"footnote"`），
+   章内数字序号，支持双向跳转；弹窗呈现由阅读器决定。
 
 ## 2. 三层框架
 
@@ -50,9 +52,8 @@ Python/Pydantic 描述构建运行时；其他工具仅使用成功解析时冻�
 | **脚注语义化** | ✅ | `noteref`/`footnote` + `[N]` 注码 + 章内独立编号 + 双向跳转（§6） |
 | 封面 `cover-image` | ✅ | `properties="cover-image"` + `<meta name="cover">` + spine `linear="no"` |
 | 封面/目录页 `linear="no"` | ✅ | cover 单元内容文档不进正文阅读顺序 |
-| 目录锚点 | ✅ | 单元级嵌套 + **单元内子标题锚点**（`file.xhtml#anchor`，`{unit_id}-h{n}` 稳定 id，2026-09-29 起；双语文档例外——由 align 行渲染、无子标题元素） |
+| 目录锚点 | ✅ | 单元级嵌套 + **单元内子标题锚点**（`file.xhtml#anchor`，`{unit_id}-h{n}` 稳定 id） |
 | 语义标签 | ✅ | 引用 `blockquote`、诗行块 `p.verse`、`- ` 列表 `ul` 保留语义（P2）；`<ol>` 仅用于**编号从 1 起连续且用 `. `/`、` 分隔**的块——其余 `N)`/`N.`/`N、` 起首块（如校异注）保留原文数字（`p.fnlist`），不得被自动编号改写 |
-| 双语版 src/tgt 各自 `lang` | ✅ | 每段标注源/目标语言 |
 
 ## 4. 呈现层（无样式默认模板）
 
@@ -113,8 +114,10 @@ audit 拦截违规（`E_THEME_FONT`：具体字体名/字号；`E_THEME_COLOR`�
   id 在各自 XHTML 文档内作用域唯一。
 - **双向跳转**：注码 → 注释（前进），注释回链（`#ref-N`）→ 注码（后退）；
   回链是通用兜底（Kindle KDP 要求，不支持弹窗的阅读器靠它返回）。
-- **降级**：支持弹窗的阅读器弹窗显示，不支持的退化为章末列表（`<aside>` 本就位于章节末尾）。
+- **兼容性**：支持弹窗的阅读器可弹窗显示；不保证所有阅读器弹窗，注码跳转与章末内容仍须可访问（`<aside>` 位于章节末尾）。
 - 与 `{fig:NNN}`/`{table:NNN}` 区分：后者是**图/表占位标记**（插入元素），不走脚注语义。
+- **必需离线验收**：CLI 独立审计和 epubcheck 不依赖桌面；必须核验 noteref/aside 语义、href、全部回链、登记图及版本绑定一致性，并逐项核证注文内容与资源，登记图为 none 时也须零对零对账。五项语义质量门保持强制，不因无桌面豁免内容或结构缺陷。
+- **条件性阅读器抽查**：有 GUI 时记录阅读器名称、版本及弹窗/跳转/返回观察；无 GUI 明示「阅读器未实测」，不因此阻塞交付，也不冒称兼容实测通过。
 
 ## 7. 配置与实现影响
 
@@ -126,8 +129,6 @@ audit 拦截违规（`E_THEME_FONT`：具体字体名/字号；`E_THEME_COLOR`�
 output:
   theme: standard        # standard | compact | spacious
   nav_depth: 3           # 目录最大嵌套深度（1–6，投影：超深单元不进目录）
-  mono: true
-  bilingual: false
 ```
 
 ### 7.2 实现影响清单（✅ 全部落地）
@@ -138,7 +139,7 @@ output:
 4. ✅ 封面 `cover-image`：cover 单元首个图片自动识别 + `<meta name="cover">` + `linear="no"`。
 5. ✅ 语义标签保留 + 断页/图注样式（目录为单元级嵌套 + 单元内子标题锚点，2026-09-29 起）。
 6. ✅ `qa/audit.py`：`E_THEME_FONT`/`E_THEME_COLOR`/`E_COVER_META`/`E_HEADING_SKIP`/
-   `E_RESIDUE`/`W_RESIDUE`/`W_META_INCOMPLETE`/`E_ANCHOR`/`E_FN_BACKLINK`/`E_BI_PAIRS`/
+   `E_RESIDUE`/`W_RESIDUE`/`W_META_INCOMPLETE`/`E_ANCHOR`/`E_FN_BACKLINK`/
    `W_EPUB_SIZE`/`W_IMG_UNCOMPRESSED`；溯源审计 `W_NO_COVER`/`W_NAMING`。
 7. ✅ 目录深度投影：`nav_toc_entries`（封面排除 + `nav_depth` 截断）→ nav/NCX。
    nav.xhtml 声明两个语义分开的 meta：`<meta name="nav-depth" content="A"/>` = **渲染后实际
@@ -156,7 +157,7 @@ output:
 | P1 ✅ | 主题机制（预置三套 + `--theme` + `output.theme` + audit 校验） | 主题层 |
 | P1 ✅ | 封面 `cover-image` + `linear="no"` + `W_NO_COVER` 对账 | 结构层 |
 | P2 ✅ | 语义标签保留（blockquote/verse/ul/ol） | 结构层 |
-| P2 ✅ | audit 补强（标题跳级/残留/锚点回链/双语成对/元数据完备/体积） | 结构层 |
+| P2 ✅ | audit 补强（标题跳级/残留/锚点回链/元数据完备/体积） | 结构层 |
 | P2 ✅ | 目录深度投影（`output.nav_depth` + 封面不进目录 + 覆盖审计豁免） | 结构层 |
 
 > P0/P1/P2 已于 2026-09-04 全部落地（详见 `docs/postprocessing-spec.md` §4）；

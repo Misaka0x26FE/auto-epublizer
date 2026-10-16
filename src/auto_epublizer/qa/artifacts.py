@@ -4,7 +4,7 @@
 
 ``report.json`` 记录生成时刻的 ``artifacts_digest``（源哈希 + 每单元
 structured/translation/align 内容 + 注释文件 + 最新审校 result.json + 成品 EPUB 字节）
-与 ``artifacts_epub``（实际被审计的成品路径，兼容 ``-bi.epub``）。
+与 ``artifacts_epub``（实际被审计的成品路径）。
 
 任何一处产物变化 → 摘要不再匹配 → ``status``/``status_all``/``ledger`` 把旧报告的
 放行结论视为**过期**（降级为 ``built_not_released``，附 ``report_stale``），须重跑
@@ -17,6 +17,8 @@ import hashlib
 import json
 from pathlib import Path
 from typing import Any
+
+from ..ingest.inserts import insert_file_exists, read_inserts
 
 
 def _file_sha256(path: Path) -> str:
@@ -53,7 +55,8 @@ def artifacts_digest(store: Any, *, epub_path: str | Path | None = None) -> str:
     覆盖**全部放行输入**（P1 漏门修复）：按 publication **发布顺序**（不再按 id 排序，
     排序会抹去单元顺序）编码单元发布描述 + structured/translation/align 内容 + 注释
     文件 + 放行输入的预处理产物（`catalog.csv`/`repairs.jsonl`）+ 最新审校 result.json
-    + 实际源件字节 + 成品字节。
+    + 实际源件字节 + 成品字节。插入资源与溯源审计共用「解析后仍在 raw 内且为文件」
+    判据；仅换 symlink 目标造成资源越界也会使报告过期，且不探测越界文件存在性。
     """
     pub = store.load_publication()
     h = hashlib.sha256()
@@ -102,22 +105,19 @@ def artifacts_digest(store: Any, *, epub_path: str | Path | None = None) -> str:
     h.update(b"notes_summary:")
     h.update(json.dumps(getattr(pub, "notes", None), ensure_ascii=False, sort_keys=True).encode())
     h.update(b"\n")
-    # inserts：单文件内容 + 引用资源存在性（E_INSERT_MISSING_FILE 的真实输入，F2）
-    inserts_dir = store.structured_dir / "raw" / "inserts"
+    # inserts：坏记录仍计入字节摘要；资源判据复用生产模型及溯源审计规则。
+    raw_dir = store.structured_dir / "raw"
+    inserts_dir = raw_dir / "inserts"
     if inserts_dir.is_dir():
-        raw_dir = store.structured_dir / "raw"
         for ins in sorted(inserts_dir.glob("*.json")):
             h.update(f"insert:{ins.name}:".encode())
             h.update(_file_sha256(ins).encode())
-            try:
-                record = json.loads(ins.read_text(encoding="utf-8"))
-                ref = str((record or {}).get("file") or "")
-            except (OSError, json.JSONDecodeError):
-                ref = ""
-            if ref:
-                exists = (raw_dir / ref).is_file()
-                h.update(b":file:" + (b"1" if exists else b"0"))
             h.update(b"\n")
+        for record in read_inserts(raw_dir):
+            if record.file:
+                exists = insert_file_exists(raw_dir, record.file)
+                h.update(f"insertfile:{record.id}:".encode())
+                h.update(b"1\n" if exists else b"0\n")
     review_path = latest_review_result_path(store)
     h.update(b"review:")
     if review_path is not None:
@@ -152,6 +152,19 @@ def report_state(store: Any) -> dict[str, Any]:
     if not recorded:
         # 旧格式报告（无摘要）：无法证明仍对应当前产物 → 视为过期（保守）
         return {"exists": True, "released": released, "stale": True, "reason": "digest_missing"}
+    checker = report.get("epubcheck")
+    if not (
+        isinstance(checker, dict)
+        and checker.get("ran") is True
+        and checker.get("returncode") == 0
+        and checker.get("errors") == 0
+    ):
+        return {
+            "exists": True,
+            "released": released,
+            "stale": True,
+            "reason": "epubcheck_unverified",
+        }
     epub = report.get("artifacts_epub") or None
     current = artifacts_digest(store, epub_path=epub)
     if current != recorded:

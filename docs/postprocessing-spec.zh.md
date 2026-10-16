@@ -54,7 +54,7 @@
 
 | 验收项 | 现状 | 缺口 / 动作 |
 |---|---|---|
-| epubcheck 0 error | ✅ | — |
+| epubcheck 实际 returncode == 0 且 errors == 0 | ✅ | 必须实际执行，不能仅看 jar 或旧 ran |
 | G4 解包审计 | ✅ mimetype/container/OPF/nav/NCX/landmarks/img 悬空/URL/lang/h1 | — |
 | **目录层级** | ✅ | 单元级嵌套 + 单元内子标题锚点（`file.xhtml#anchor`，2026-09-29）；层级经 PDF level≥2 书签 / 标题段原层级全链路保真，g0 `heading` 守恒门兜底译文侧 |
 | **TOC 对账** | ⬜ | preprocess 抽的源 TOC vs nav 条目对照，漏条目告警 |
@@ -163,7 +163,6 @@
 - ✅ 残留检查：HTML 注释（`E_RESIDUE`，仅有效 `auto-epublizer-build` 结构化 JSON 指纹注释豁免，普通注释/伪造前缀/坏 JSON 仍报错）/ markdown·pandoc 标记（`W_RESIDUE`：`![` `**` `:::` `{.` `[^`）；
   源语言字符残留属语义判断，归 G1 审校（agent 任务），不做确定性检查。独立制作信息页须由 OPF 指纹声明、页内制作标记及一致有效指纹共同识别，才不作为书稿单元参与正文/目录对账；仅文件名或 `linear="no"` 不足以豁免。软件指纹与书稿版权边界见 `docs/epub-template-spec.md`。
 - ✅ 元数据完备：creator/date/publisher/rights 缺失 → `W_META_INCOMPLETE`（告警，供 agent 补全）
-- ✅ 双语溯源：`build --bilingual` src/tgt 段落数成对（`E_BI_PAIRS`）
 - ✅ 内部链接：内部锚点可解析（`E_ANCHOR`，含 noteref→footnote）+ 脚注回链（`E_FN_BACKLINK`）
 - ✅ 体积审计：EPUB 总体积（`W_EPUB_SIZE`，50MB）+ 单图未压缩（`W_IMG_UNCOMPRESSED`，2MB）
 - ✅ 命名规范：成品文件名以 slug 为前缀（`W_NAMING`，qa 接线）；spine 顺序 = 源顺序（P0 provenance 已覆盖）
@@ -176,7 +175,7 @@
 ## 5. 放行条件扩展
 
 现有 G5 放行条件（`g2_confirmed==0 或全部修订` + `g0_terminology_open==0` +
-`epubcheck 0 error（且实际运行）` + `audit pass`）基础上新增：
+`epubcheck 实际运行、returncode == 0 且 errors == 0` + `audit pass`）基础上新增：
 
 - `provenance_coverage ≈ 1.0`（≥0.9999，每段可溯；无翻译产物为 null，convert 路径不适用）
 - 三边对账零 error、媒体溯源零 error、溯源 findings 无 error 级
@@ -196,6 +195,8 @@
 > 实现见 `qa/report.py::generate_report`（`prov_ok` 聚合判定 + `released_reason` 细分）。
 - 插入内容文件零缺失（`inserts_missing_files == 0`，pdf-content-spec §9：
   每个插图/表格/公式可回溯原始地址 `{page,bbox,xref,method}` 且媒体文件在盘）
+
+EPUBCheck 证据契约：`report.epubcheck.returncode` 保存实际进程退出值，未执行为 `null`，未知不得猜 0。jar 存在、Java 进程启动或旧 `ran` 字段不能证明通过，进程失败/FATAL 不得当作零错误。完整发行包须保留 jar 相邻的 `lib`，headless Java 足够，无需 GUI；这不豁免注释图、内容、资源或链接硬门。缺字段或无可靠成功证据的旧 released 报告须重新 `qa`，`status`/`ledger` 标 stale（`epubcheck_unverified`，已有 `digest_missing` 优先）；不得手改旧 `released`，也不由缺证据推断历史成品通过或失败。
 
 ## 6. 测试计划
 

@@ -26,7 +26,6 @@
     ]
   },
   "config": {
-    "bilingual": false,
     "target_language": "zh-CN"
   },
   "units": [

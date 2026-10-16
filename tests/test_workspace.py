@@ -189,7 +189,7 @@ def test_init_references_import(tmp_path: Path) -> None:
     assert (store.references_dir / "user" / "terms.csv").is_file()
 
 
-def test_config_snapshot_from_target(tmp_path: Path) -> None:
+def test_target_language_argument_overrides_config(tmp_path: Path) -> None:
     src = tmp_path / "a.md"
     src.write_text("x")
     cfg = Config()

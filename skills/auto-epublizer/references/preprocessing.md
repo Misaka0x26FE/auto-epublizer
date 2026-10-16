@@ -1,4 +1,4 @@
-<!-- i18n: source=preprocessing.zh.md sha256=b24e1b5a1d1ed149d9aa92f127be568c5d486cf36bea022e319d3f0afe492b7f -->
+<!-- i18n: source=preprocessing.zh.md sha256=1ae68b2a21af2374d1a4031871e3c95c317e23eef80471b318e2e80bbaa65fcb -->
 > **English** | [中文](preprocessing.zh.md)
 
 # Preprocessing (fact collection + agent-authored understanding)
@@ -121,7 +121,7 @@ Template (add or remove items on this basis according to the book, e.g. group by
 ## 3. Review (G1–G3)
 - [ ] Review batch by batch, write reviews/review-<ts>/{issues,patches,summary,result.json}
 - [ ] Externalize terminology conflicts to glossary_conflicts.jsonl, arbitrate item by item and write back to glossary.csv
-- [ ] Spot-check the bilingual build (--bilingual), focusing on ellipsis-ending paragraphs
+- [ ] Spot-check source/translation rows in align for fidelity, focusing on ellipsis-ending paragraphs
 
 ## 4. Build and QA (G4–G5)
 - [ ] build the full EPUB

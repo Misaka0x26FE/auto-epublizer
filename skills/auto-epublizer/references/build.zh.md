@@ -7,11 +7,10 @@
 ## 命令
 
 ```bash
-auto-epublizer build [--bilingual] [-o <out.epub>] [--theme standard|compact|spacious] [--workspace <dir>]
+auto-epublizer build [-o <out.epub>] [--theme standard|compact|spacious] [--workspace <dir>]
 ```
 
-- 单语：从 `translation/<rel_path>` 读译文（缺省回退 `structured/`）。
-- 双语：`--bilingual` 按 `align/` 对照表渲染源/译交错，输出 `<slug>-bi.epub`。
+- 从 `translation/<rel_path>` 读译文（缺省回退 `structured/`）。
 
 ## EPUB 3 组件
 
@@ -36,6 +35,8 @@ DC 元数据来自 `publication.json.meta`：`dc:title`、`dc:creator`、`dc:lan
 `target_language`，纯转换用源语言）、`dc:identifier`（isbn/uri/slug）、`dc:date`、
 `dc:publisher`、`dc:rights`。
 
+OPF 的 `aep:render-mode` 记录本次实际构建入口：`source`（纯源文）或 `translation`（译文优先，逐单元允许回退源文）。QA 按这个模式与当前输入重建逐注文宿主计划：首个 spine 引用确定宿主；无引用注文使用 scope 对应单元或首个实际渲染单元。只有宿主实际使用译文的注文才读取并校验译注摘要和完整文本，其他注文独立核对源文；完全未用到的旧或损坏译注不阻断源文输出。已登记注释的旧成品缺少有效模式时，须重新构建，不能猜测。
+
 ## 成品软件指纹
 
 - OPF 写入 `generator` 与自定义 `aep:` 元数据（`aep:build` 保存结构化构建记录）；内容 XHTML 的 head 内写入 `auto-epublizer-build` 前缀的 JSON 注释，供离线识别。
@@ -48,28 +49,28 @@ DC 元数据来自 `publication.json.meta`：`dc:title`、`dc:creator`、`dc:lan
 
 ## 命名
 
-- 纯译文：`output/<slug>.epub`
-- 双语：`output/<slug>-bi.epub`
+- 默认：`output/<slug>.epub`
 - `-o` 可覆盖输出路径。
 
 ## 说明
 
 - **媒体引用边界**（2026-10 D 组修复）：构建只收集 `structured/raw/media/` **之内**（解析符号链接后仍在目录内）的媒体；`../…`、绝对路径、指向工作区外的符号链接一律**拒绝读取**并记入 `events.jsonl` 的 `media_dropped`，随后由 provenance 以 `E_MEDIA_EPUB_LOST` 阻断放行（不静默丢图）。
+- **资源身份**：Markdown/pandoc 源文件路径中的 `%` 是字面字符；HTML 图片 URL 只解码一次；ZIP 成员名不解码。裸文件名、子目录及既有 `media/`、`raw/media/` 路由按实际源文件定位包内路径；注文门、普通正文 provenance 和通用 G4 使用相同的完整路径身份规则，不以 basename 集合豁免错目录图片。图片由媒体门核对，不把 HTML 图片标签当成正文；周围文字仍须逐段保全。
+- **Manifest 标识**：媒体使用稳定顺序分配的合法唯一 XML ID，与资源文件名/URI 分离，避免特殊字符非法和目录路径碰撞；封面元数据关联实际 manifest 项，不从 ID 猜文件名。
 - **构建日志署名**（issue #40；不出网）：`EPUB 已生成` 行固定带工具名 + 版本 + 许可证 + 源码地址，工作区 `meta.producer` 与 `run_initialized` 事件给出同一标识，来源可机器判定。
 - **主题**（`--theme` / `config.output.theme`）：`standard`（serif+1.7 行距+缩进+两端对齐+标题居中，
   默认）/ `compact`（sans-serif+1.4+无缩进）/ `spacious`（serif+2.0）。只控排版微调，
   无具体字体名/颜色/字号（audit 会拦：`E_THEME_FONT`/`E_THEME_COLOR`）。
 - **封面**：cover 单元的首个图片自动成为 `cover-image`（`<meta name="cover">` +
   spine `linear="no"`）；无封面源图时 audit 提示 `W_NO_COVER`（provenance）。
-- **脚注**：`[^label]` → 标准弹窗注释（noteref/footnote），注码 `[N]`、**每章从 1 起**
-  独立编号 + 双向回链（不支持弹窗的阅读器退化为章末注释区）。
+- **注释**：标准 EPUB `noteref` + `footnote`/`endnote` 语义、完整内容、可解析链接与回链、资源身份和有效登记绑定均为强制离线核证项（见 `references/notes.md`）。是否弹窗由阅读器实现和用户设置决定；始终保留可读注释区及往返跳转 fallback。
 - **目录层级**：源文标题层级（`level`）→ nav 嵌套 `<ol>` + NCX 嵌套 navPoint；
   **单元内子标题锚点**（2026-09-29 起）：单元内 h2+ 标题自动获得稳定 id
   （`{unit_id}-h{n}`；显式 `{#id}` 优先），以 `file.xhtml#anchor` 作为单元条目的
   子级进 nav/NCX——译文中应保留这些子标题（g0 `heading` 守恒门校验）；
   **目录深度投影**（`--nav-depth` / `config.output.nav_depth`，默认 3，1–6）：超出
   深度的单元/锚点不进 nav/NCX（仍在 spine 阅读顺序、锚点保留），封面单元不进目录，
-  双语文档无锚点条目；`dtb:depth` 为投影后实际深度（含锚点）。
+  `dtb:depth` 为投影后实际深度（含锚点）。
 - **图片**：只缩不放大居中 + 断页（`page-break-inside: avoid`）；独立图段（alt 非空）→
   `figure+figcaption` 图注。
 - **语义标签**：引用 `>` → `blockquote`；诗行块 `|` → `p.verse`；`- ` → `ul`；

@@ -31,7 +31,7 @@
 |---|---|---|
 | D1 | #3 排除集 = 中文 + `%` + `％` | 真注码是句子最后 token，后不可能紧跟百分号；零误伤风险 |
 | D2 | #5 顺序逐批解析（非单 batch 多文件） | 复用 100% 已验证的单文件 API 契约，风险最低；代价 = 轮询时间 ×批数（可接受） |
-| D3 | #6 验证后回帖关闭；content_desc 维持 W 级 + 交付审计强制项 | 与 delivery-audit D6 一致；语义补全属 agent 工作（唯一 LLM 原则） |
+| D3 | #6 验证后回帖关闭；content_desc 维持 W 级 + 交付审计强制项 | 与 delivery-audit D5 一致；语义补全属 agent 工作（唯一 LLM 原则） |
 
 ## S1 #4：术语命中 NFKC 归一化（小）
 
@@ -129,7 +129,7 @@ MinerU 节注明「>200 页自动分批（`pdf.mineru_batch_pages`），页序/�
    确认 `references/delivery.md` 存在且含 inserts 描述处置项。
 2. `gh issue comment 6`：指向 4 个修复提交（`7041126` md↔align drift / `ece1790`
    EPUB 呈现对账 / `c9ae1ba` delivery.md + `W_DELIVERY_AUDIT_MISSING` / `fb71fb3`
-   收尾与 lesson `2026-09-13-delivery-integrity.md`），说明 content_desc 按 D6：
+   收尾与 lesson `2026-09-13-delivery-integrity.md`），说明 content_desc 按 delivery-audit D5：
    `W_INSERT_NO_DESC` 保持 W 级 + 交付清单强制「逐项补全或显式接受并记理由」；
    自动补全属 agent 语义工作（唯一 LLM 原则）。
 3. `gh issue close 6`。

@@ -39,5 +39,5 @@
 | [2026-10-04-backlog-three-items.md](2026-10-04-backlog-three-items.md) | 规划中 | 三项待办梳理：#16 导航层级（GitHub Issue，部分完成）+ skills 化（未立项）+ 工作原子化（规划中）——来源、真实状态核实与修改思路；已完成可行性审查（S-A 风险解除 / S-B 约束澄清 / 依赖修正） |
 | [2026-10-05-skills-standardization.md](2026-10-05-skills-standardization.md) | 已完成 | 仓库 skills 标准化（skills.sh / Agent Skills）：P0 合规 + P1 发布 + P2 SKILL.md 减重 + P3 原子任务卡（9 张双语）完成；P4 多 skill 拆分经真书实测判定「暂不拆分」（证据不支持）；含「全部事项」总表与实测记录 |
 | [2026-10-05-remaining-fixes.md](2026-10-05-remaining-fixes.md) | 已完成（R0–R4） | 现场核对（代码现状 + 本机真实工作区：布局嵌套/schema 异构）与剩余修复计划：R0 `status --all` 嵌套布局（新缺陷）→ R1 #14 页边界证据 → R2 #31 PDF 标题识别 → R3 #30 §4.1/4.4 → R4 模板固化 |
-| [2026-10-14-review-and-repair.md](2026-10-14-review-and-repair.md) | 实施中（增量审查未通过） | §9 补入首次 V/H 独立审查，§10 回写新增修复复核；源材料阻塞已解除，但候选身份/放行失效链/构建模式/媒体仍有 P1/P2，真实书 N 迁移与阅读器交互未完成；历史批次与指纹验证记录保留 |
-| [2026-10-15-review-backflow.md](2026-10-15-review-backflow.md) | 审查未通过；§8 已附二轮修复记录 | 保留实施方修复报告，新增 4 项 P1 与 3 项 P2 的残留/回归证据及真实工作区 smoke：候选重号/前缀、术语冲突失效、源文回退、媒体身份/编码、附件二图例归属与随包脚本复现；未修改业务代码或历史成品 |
+| [2026-10-14-review-and-repair.md](2026-10-14-review-and-repair.md) | 实施中（§12 当前代码已验证，未提交） | 单一成品路径、旧注释门移交与入口前移；新增 checker fail-open、旧报告失效及完整媒体身份修复；真实书 N 和术语核证仍未完成，GUI 非通用阻塞 |
+| [2026-10-15-review-backflow.md](2026-10-15-review-backflow.md) | 当前代码已验证（§10，未提交） | 更正旧 checker 伪通过证据，记录实际退出码/旧报告 stale、真实无桌面注释及媒体正负验收；643 passed、1 skipped，不冒充原书完整验收 |

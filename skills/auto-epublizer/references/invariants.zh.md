@@ -31,8 +31,8 @@
 | `catalog_unresolved_open == 0`（源盘点未决项；catalog.csv 存在时才检查） | `catalog_open` |
 | `audit.ok`（G4 解包审计零 error） | `audit_failed` |
 | `prov_ok`（coverage≈1.0 或 null、units_missing/media_lost/inserts_missing_files/toc_flat、findings 无 error 级） | `provenance_incomplete` |
-| `epubcheck.ran`（jar 缺失=未验证不放行） | `epubcheck_not_run` |
-| `epubcheck.errors == 0` | `epubcheck_errors` |
+| `epubcheck.ran == true`（jar 缺失或未执行=未验证不放行） | `epubcheck_not_run` |
+| `epubcheck.returncode == 0` 且 `epubcheck.errors == 0`（真实进程成功，无错误） | `epubcheck_errors` |
 
 reason 判定优先级 = 上表自上而下（先 g0 硬缺陷 → 冲突 → 结构 → 注释 → 审校 → 审计 → 溯源 → epubcheck）。
 
@@ -42,6 +42,8 @@ structured/translation/align + 注释文件 + 最新审校 result.json + 成品�
 （`report_stale`，进度降为 `built_not_released`）；重跑 `qa` 时旧成品与新译文不一致
 （coverage/drift/注释内容核对）也会被拒绝，不得把旧报告当新证据。旧的「审查后不再改
 文件」口头约定不再是唯一保障。
+
+**EPUBCheck 进程证据**：`report.epubcheck.returncode` 是实际进程退出值；未执行为 `null`，未知不能猜 0。jar 存在、Java 启动和旧 `ran` 字段均不足以证明通过；进程失败/FATAL 不得当作零错误。完整发行包须保留 jar 相邻的 `lib`，headless Java 足够。旧 released 报告缺字段或没有可靠 `returncode == 0` 证据时，`status`/`status_all`/`ledger` 将其视为 stale，原因 `epubcheck_unverified`（已有 `digest_missing` 优先）；必须重新 `qa`，不得手改旧 `released`，也不能由缺证据推断历史成品必然通过或失败。
 
 ## 3. G0 检查项（`auto_translator/review/g0.py::g0_unit_flags`）
 
@@ -83,7 +85,6 @@ structured/translation/align + 注释文件 + 最新审校 result.json + 成品�
 | E_HEADING_SKIP | E | 标题跳级（h1→h3）→ 补中间层级 |
 | E_COVER_META | E | 封面 properties 与 meta 互证失败 → 重 build |
 | E_ANCHOR / E_FN_BACKLINK | E | 内部锚点/脚注回链悬空 → 查 noteref/footnote |
-| E_BI_PAIRS | E | 双语 src/tgt 段落数不等 → 查 align |
 | W_META_INCOMPLETE | W | DC 项缺失**或空白** → 预处理期应已用 `meta` 补 |
 | W_NO_LANG / W_H1_COUNT | W | 缺 lang / h1 数≠1 |
 | W_RESIDUE | W | markdown/pandoc 标记残留（`![` `**` `[^` 等） |
@@ -129,6 +130,5 @@ structured/translation/align + 注释文件 + 最新审校 result.json + 成品�
 
 - 三主题：`standard`（默认）/`compact`/`spacious`；只排版微调，禁具体字体名/字号/颜色。
 - 确定性构建：`dcterms:modified` 冻结为常量，同一输入必得同一 EPUB。
-- EPUB 3：nav+NCX、每章恰一个 h1、脚注 noteref/footnote 全局序号+双向跳转、
-  封面 cover-image+`linear="no"`、双语成对。
+- EPUB 3：nav+NCX、每章恰一个 h1、标准注释语义与双向跳转、封面 cover-image+`linear="no"`。注文内容/资源/有效登记绑定必须通过独立离线验收；阅读器 GUI 兼容抽查有条件，不保证普遍弹窗（见 `references/delivery.md`）。
 - 译者署名：`dc:creator(creator-trl)` + `role=trl`（`meta --translator` 写入）。

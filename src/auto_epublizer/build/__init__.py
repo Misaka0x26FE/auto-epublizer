@@ -14,10 +14,10 @@ from __future__ import annotations
 import re
 import zipfile
 from datetime import datetime
-from html import escape
+from html import escape, unescape
 from pathlib import Path
 from typing import Any
-from urllib.parse import quote
+from urllib.parse import quote, unquote, urlsplit
 
 from auto_common.workspace import Publication
 
@@ -28,6 +28,7 @@ from ..fingerprint import (
     software_page,
     stamp_document,
 )
+from ..media_paths import resolve_media_path
 from .html import slug_file, subheading_anchors
 
 __all__ = [
@@ -55,6 +56,18 @@ _HTML_FIG_IMG = re.compile(
     re.DOTALL,
 )
 _HTML_IMG = re.compile(r"<img\b[^>]*?src=\"([^\"]+)\"[^>]*?/?>", re.DOTALL)
+_MEDIA_REF = re.compile(
+    "|".join(
+        f"(?P<{kind}>{pattern.pattern})"
+        for kind, pattern in (
+            ("figure", _HTML_FIG_IMG),
+            ("html", _HTML_IMG),
+            ("placeholder", _PANDOC_PLACEHOLDER),
+            ("markdown", _IMG_REF),
+        )
+    ),
+    re.DOTALL,
+)
 
 # 内置基础样式：仅功能性规则（epub-template-spec §4 呈现层）——
 # 字体/颜色/字号一律不设，交由阅读器决定；行距/缩进/对齐等排版微调由主题层提供。
@@ -176,6 +189,7 @@ def _render_opf(
     cover_item_id: str | None = None,
     cover_docs: set[str] | None = None,
     fingerprint: dict[str, Any],
+    render_mode: str | None,
 ) -> str:
     """渲染 content.opf：manifest / spine / DC 元数据 / dcterms:modified / 封面 meta。
 
@@ -220,6 +234,8 @@ def _render_opf(
         if project.get(key) is not None:
             m.append(f'    <meta property="aep:{key}">{escape(str(project[key]))}</meta>')
     m.append(f'    <meta property="aep:build">{escape(fingerprint_json(fingerprint))}</meta>')
+    if render_mode is not None:
+        m.append(f'    <meta property="aep:render-mode">{render_mode}</meta>')
     if cover_item_id:
         m.append(f'    <meta name="cover" content="{escape(cover_item_id)}"/>')
     m.append("  </metadata>")
@@ -543,48 +559,29 @@ def collect_media(
     其次按 basename 兜底；找不到的文件对应引用被移除，避免悬空图片引用——
     被移除的引用清单一并返回（交付审计：构建期静默丢弃留痕，主对账由
     provenance 的 ``E_MEDIA_EPUB_LOST`` 兜底）。文件名含括号等特殊字符时
-    URL 引用按需百分号编码。
+    URL 引用按需百分号编码。Markdown/pandoc 源路径的百分号保持字面语义，
+    HTML src 按 URL 解码一次；改写后的引用不再进入源资源收集。
     """
     media_root = Path(media_root).resolve()
     seen: dict[str, bytes] = {}
     dropped: list[str] = []
 
     def _resolve(rel: str) -> tuple[str, bytes] | None:
-        """按候选顺序解析媒体文件，返回 (media_root 相对路径, 字节)。
-
-        候选：原相对路径 → 去掉与 media_root 尾部重复的前缀（raw/media/x.png
-        当 media_root 为 …/raw/media 时 → x.png）→ basename 兜底。
-
-        **包含性校验（D 组修复）**：候选解析（含符号链接）后必须落在 ``media_root``
-        之内，否则拒绝——此前 ``../`` 链可读取工作区之外（乃至 ``/etc/*``）的文件并作为
-        `media/../../…` 写进成品（越界读 → 成品外泄 + 非法成员名）。越界引用只记入
-        ``dropped``（构建期留痕 + provenance E_MEDIA_EPUB_LOST 阻断放行）。
-        """
-        candidates = [rel]
-        parts = Path(rel).parts
-        root_parts = media_root.parts
-        # 去掉与 media_root 尾部重复的前缀段
-        for k in range(1, len(parts)):
-            if list(parts[:k]) == list(root_parts[-k:]):
-                candidates.append(str(Path(*parts[k:])))
-                break
-        candidates.append(Path(rel).name)
-        for cand in candidates:
-            p = media_root / cand
-            try:
-                resolved = p.resolve()
-                if not resolved.is_relative_to(media_root) or not resolved.is_file():
-                    continue
-                data = resolved.read_bytes()
-                if resolved.suffix.lower() == ".svg":
-                    decoded = data.decode("utf-8", errors="surrogateescape")
-                    data = dedupe_svg_ids(decoded).encode("utf-8", errors="surrogateescape")
-                return resolved.relative_to(media_root).as_posix(), data
-            except OSError:
-                continue
-        return None
+        """读取共享解析器定位的根内媒体；SVG 保持既有去重行为。"""
+        resolved = resolve_media_path(rel, media_root)
+        if resolved is None:
+            return None
+        try:
+            data = resolved.read_bytes()
+        except OSError:
+            return None
+        if resolved.suffix.lower() == ".svg":
+            decoded = data.decode("utf-8", errors="surrogateescape")
+            data = dedupe_svg_ids(decoded).encode("utf-8", errors="surrogateescape")
+        return resolved.relative_to(media_root).as_posix(), data
 
     def _collect(alt: str, src: str) -> str:
+        """收集源文件并输出一次编码的包内 URL。"""
         rel = src.strip().lstrip("/")
         resolved = _resolve(rel)
         if resolved is None:
@@ -597,22 +594,28 @@ def collect_media(
         return f"![{alt}](media/{href})"
 
     def _sub(m: re.Match[str]) -> str:
-        return _collect(m.group(1), m.group(2))
+        """每个源引用只收集一次，避免将新 URL 当作字面源路径重读。"""
+        kind = m.lastgroup
+        assert kind is not None
+        pattern = {
+            "figure": _HTML_FIG_IMG,
+            "html": _HTML_IMG,
+            "placeholder": _PANDOC_PLACEHOLDER,
+            "markdown": _IMG_REF,
+        }[kind]
+        source = pattern.fullmatch(m.group(0))
+        assert source is not None
+        if kind in {"figure", "html"}:
+            # HTML 的 src 是 URL；Markdown 和 pandoc 源路径的百分号则是字面文件名。
+            url = urlsplit(unescape(source.group(1)))
+            if url.scheme or url.netloc:
+                dropped.append(source.group(1))
+                return ""
+            return _collect("", unquote(url.path))
+        return _collect(source.group(1), source.group(2))
 
-    def _html_img(m: re.Match[str]) -> str:
-        # HTML <img>（含 <figure>/<a> 包裹）→ 标准 markdown 图片引用
-        return _collect("", m.group(1))
-
-    rewritten = _PANDOC_PLACEHOLDER.sub(_placeholder, md_text)
-    rewritten = _HTML_FIG_IMG.sub(_html_img, rewritten)
-    rewritten = _HTML_IMG.sub(_html_img, rewritten)
-    rewritten = _IMG_REF.sub(_sub, rewritten)
+    rewritten = _MEDIA_REF.sub(_sub, md_text)
     return rewritten, list(seen.items()), dropped
-
-
-def _placeholder(m: re.Match[str]) -> str:
-    """pandoc 孤立图片占位 → 标准 markdown 图片引用，交给 _IMG_REF 统一处理。"""
-    return f"![{m.group(1)}]({m.group(2).strip()})"
 
 
 def build_epub(
@@ -627,6 +630,7 @@ def build_epub(
     theme: str = "standard",
     cover_media: str | None = None,
     nav_depth: int = 3,
+    render_mode: str | None = None,
 ) -> Path:
     """把内容文档 + 媒体资源封装为确定性标准 EPUB 3，返回输出路径。
 
@@ -639,7 +643,10 @@ def build_epub(
     spine 标 ``linear="no"``（不进正文阅读顺序）。
     ``nav_depth``：目录最大嵌套深度（epub-template-spec §3 投影），超深单元
     保留在 spine 但不出现在 nav/NCX。
+    ``render_mode``：已知的实际输入模式；直接封装未知来源 XHTML 时不作推断。
     """
+    if render_mode not in (None, "source", "translation"):
+        raise ValueError(f"未知构建模式：{render_mode}")
     out_path = Path(out_path)
     out_path.parent.mkdir(parents=True, exist_ok=True)
     ts = _parse_modified(modified)
@@ -699,12 +706,12 @@ def build_epub(
         items.append((fn, fn, "application/xhtml+xml", None))
     cover_item_id: str | None = None
     if media_files:
-        for epub_path, _data in media_files:
+        for index, (epub_path, _data) in enumerate(media_files):
             ext = Path(epub_path).suffix.lower()
             media_type = _MEDIA_TYPES.get(ext, "application/octet-stream")
             # href 与 XHTML 内引用一致（URL 编码特殊字符）
             href = quote(epub_path)
-            item_id = epub_path.replace("/", "_")  # manifest id 必须为合法 XML name（不含 /）
+            item_id = f"media-{index}"  # 与文件名字符解耦；稳定顺序保证 ID 合法且唯一。
             props = "cover-image" if cover_media and epub_path == cover_media else None
             if props:
                 cover_item_id = item_id
@@ -719,6 +726,7 @@ def build_epub(
         cover_item_id=cover_item_id,
         cover_docs=cover_docs,
         fingerprint=fingerprint,
+        render_mode=render_mode,
     )
     nav = _render_nav(pub, content_entries, lang, nav_depth=nav_depth)
     ncx = _render_ncx(pub, content_entries, nav_depth=nav_depth)

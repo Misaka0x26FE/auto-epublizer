@@ -92,7 +92,7 @@ def test_generate_report_pass() -> None:
     result = generate_report(
         "book",
         audit,
-        EpubcheckResult(available=True, ran=True, errors=0, warnings=0),
+        EpubcheckResult(available=True, ran=True, errors=0, warnings=0, returncode=0),
         epub_path="book.epub",
     )
     assert result.g4_audit == "pass"
@@ -106,7 +106,7 @@ def test_generate_report_epubcheck_missing_not_pass() -> None:
     result = generate_report(
         "book",
         audit,
-        EpubcheckResult(available=False, ran=False, errors=-1, warnings=-1),
+        EpubcheckResult(available=False, ran=False, errors=-1, warnings=-1, returncode=None),
         epub_path="book.epub",
     )
     assert result.g4_audit == "pass"
@@ -121,7 +121,7 @@ def test_generate_report_fail_on_audit_error() -> None:
     result = generate_report(
         "book",
         audit,
-        EpubcheckResult(available=False, ran=False, errors=-1, warnings=-1),
+        EpubcheckResult(available=False, ran=False, errors=-1, warnings=-1, returncode=None),
     )
     assert result.g4_audit == "fail"
     assert result.passed is False
@@ -134,7 +134,7 @@ def test_generate_report_epubcheck_error() -> None:
     result = generate_report(
         "book",
         audit,
-        EpubcheckResult(available=True, ran=True, errors=2, warnings=0),
+        EpubcheckResult(available=True, ran=True, errors=2, warnings=0, returncode=1),
     )
     assert result.passed is False
     assert result.g4_epubcheck_errors == 2
@@ -156,7 +156,7 @@ def test_generate_report_g5_release_fields() -> None:
     result = generate_report(
         "book",
         audit,
-        EpubcheckResult(available=True, ran=True, errors=0, warnings=0),
+        EpubcheckResult(available=True, ran=True, errors=0, warnings=0, returncode=0),
         review=review,
         g0_flags=[{"unit": "ch01", "check": "length", "message": "译文为空", "data": {}}],
         total_sentences=100,
@@ -185,7 +185,7 @@ def test_generate_report_released_when_clean() -> None:
     result = generate_report(
         "book",
         audit,
-        EpubcheckResult(available=True, ran=True, errors=0, warnings=0),
+        EpubcheckResult(available=True, ran=True, errors=0, warnings=0, returncode=0),
         review=review,
         g0_flags=[],
         total_sentences=50,
@@ -208,7 +208,7 @@ def test_generate_report_unconfirmed_blocks_release() -> None:
     result = generate_report(
         "book",
         audit,
-        EpubcheckResult(available=True, ran=True, errors=0, warnings=0),
+        EpubcheckResult(available=True, ran=True, errors=0, warnings=0, returncode=0),
         review=review,
         g0_flags=[],
         total_sentences=50,
@@ -231,7 +231,7 @@ def test_generate_report_glossary_conflict_blocks_release() -> None:
     result = generate_report(
         "book",
         audit,
-        EpubcheckResult(available=True, ran=True, errors=0, warnings=0),
+        EpubcheckResult(available=True, ran=True, errors=0, warnings=0, returncode=0),
         review=review,
         g0_flags=[],
         total_sentences=50,
@@ -257,7 +257,7 @@ def test_generate_report_structure_blocks_release() -> None:
     result = generate_report(
         "book",
         audit,
-        EpubcheckResult(available=True, ran=True, errors=0, warnings=0),
+        EpubcheckResult(available=True, ran=True, errors=0, warnings=0, returncode=0),
         review=review,
         g0_flags=[
             {"unit": "ch01", "check": "marker", "message": "插入标记数量不守恒", "data": {}},
@@ -284,7 +284,7 @@ def test_generate_report_heading_blocks_release() -> None:
     result = generate_report(
         "book",
         audit,
-        EpubcheckResult(available=True, ran=True, errors=0, warnings=0),
+        EpubcheckResult(available=True, ran=True, errors=0, warnings=0, returncode=0),
         review=review,
         g0_flags=[
             {"unit": "ch01", "check": "heading", "message": "标题层级数量不守恒", "data": {}},
@@ -327,7 +327,7 @@ def test_generate_report_provenance_error_finding_blocks_release() -> None:
     result = generate_report(
         "book",
         audit,
-        EpubcheckResult(available=True, ran=True, errors=0, warnings=0),
+        EpubcheckResult(available=True, ran=True, errors=0, warnings=0, returncode=0),
         review=review,
         g0_flags=[],
         total_sentences=50,
@@ -352,7 +352,7 @@ def test_generate_report_terminology_blocks_release() -> None:
     result = generate_report(
         "book",
         audit,
-        EpubcheckResult(available=True, ran=True, errors=0, warnings=0),
+        EpubcheckResult(available=True, ran=True, errors=0, warnings=0, returncode=0),
         review=review,
         g0_flags=[
             {"unit": "ch01", "check": "length", "message": "长度比过低（疑漏译）", "data": {}},
@@ -583,14 +583,11 @@ def test_audit_theme_violations(tmp_path: Path) -> None:
     assert not result.ok
 
 
-def test_audit_heading_skip_residue_anchor_pairs(tmp_path: Path) -> None:
-    """P2 audit：标题跳级 / 残留 / 内部锚点 / 双语成对（zip 注入模拟）。"""
+def test_audit_heading_skip_residue_anchor(tmp_path: Path) -> None:
+    """P2 audit：标题跳级 / 残留 / 内部锚点（zip 注入模拟）。"""
     out = _make_epub(tmp_path)
-    # 注入：h1→h3 跳级、HTML 注释、不可解析锚点、双语不成对
-    bad = (
-        '<h1>标题</h1><h3>跳级</h3><!-- 注释 --><p class="tgt">只有译文</p>'
-        '<p><a href="#missing">断锚</a></p>'
-    )
+    # 注入：h1→h3 跳级、HTML 注释、不可解析锚点
+    bad = '<h1>标题</h1><h3>跳级</h3><!-- 注释 --><p><a href="#missing">断锚</a></p>'
     out2 = out.with_name("bad2.epub")
     with zipfile.ZipFile(out) as zin, zipfile.ZipFile(out2, "w") as zout:
         for item in zin.infolist():
@@ -605,7 +602,6 @@ def test_audit_heading_skip_residue_anchor_pairs(tmp_path: Path) -> None:
     assert "E_HEADING_SKIP" in codes
     assert "E_RESIDUE" in codes  # HTML 注释
     assert "E_ANCHOR" in codes
-    assert "E_BI_PAIRS" in codes
     assert not result.ok
 
 
@@ -753,7 +749,7 @@ def test_generate_report_delivery_audit_fields() -> None:
     result = generate_report(
         "book",
         audit,
-        EpubcheckResult(available=True, ran=True, errors=0, warnings=0),
+        EpubcheckResult(available=True, ran=True, errors=0, warnings=0, returncode=0),
         provenance=provenance,
     )
     assert result.align_md_drift == 1

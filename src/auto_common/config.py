@@ -26,10 +26,6 @@ class LanguageConfig(BaseModel):
     genre: str = "auto"
 
 
-class PipelineConfig(BaseModel):
-    bilingual: bool = False
-
-
 class EpubcheckConfig(BaseModel):
     # pydantic v2 默认值不走 field_validator，必须显式 validate_default 展开 `~`
     jar: str = Field(default="~/.cache/epubcheck.jar", validate_default=True)
@@ -78,8 +74,6 @@ class PathsConfig(BaseModel):
 
 
 class OutputConfig(BaseModel):
-    mono: bool = True
-    bilingual: bool = False
     about_page: bool = True
     theme: str = "standard"  # standard | compact | spacious（epub-template-spec §5）
     nav_depth: int = Field(3, ge=1, le=6)  # 目录最大嵌套深度（epub-template-spec §3 投影）
@@ -87,7 +81,6 @@ class OutputConfig(BaseModel):
 
 class Config(BaseModel):
     language: LanguageConfig = Field(default_factory=LanguageConfig)
-    pipeline: PipelineConfig = Field(default_factory=PipelineConfig)
     qc: QCConfig = Field(default_factory=QCConfig)
     pdf: PDFConfig = Field(default_factory=PDFConfig)
     glossary: GlossaryConfig = Field(default_factory=GlossaryConfig)

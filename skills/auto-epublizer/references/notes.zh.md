@@ -105,6 +105,40 @@
 - 未引用注文（原书确实存在）必须 `orphan_ok=true` + `orphan_reason`，构建仍渲染保留。
 - 源文回退构建用 `source_markdown`；译文构建要求相应译注齐全（缺则阻断）。
 
+### 候选身份与注文位置（登记必需）
+
+引用候选（`marker/pandoc_ref`）显式绑定 `ref_id`；该引用必须存在、同单元、
+双方注号存在时一致，每次实际引用只由一个候选绑定。注文候选
+（`definition/numbered_paragraph`）显式绑定 `note_id`，且该注文的
+`source_locations` 必须逐条包含对应 `candidate_id`，不能按同号或文本前缀猜配：
+
+```json
+{
+  "candidates": [
+    {"candidate_id": "c-ref", "kind": "marker", "unit": "ch01", "line": 3, "label": "23", "disposition": "note", "ref_id": "ref-000001"},
+    {"candidate_id": "c-start", "kind": "numbered_paragraph", "unit": "appendix", "line": 8, "disposition": "note", "note_id": "n-000001"},
+    {"candidate_id": "c-cont", "kind": "numbered_paragraph", "unit": "appendix", "line": 12, "disposition": "note", "note_id": "n-000001"}
+  ],
+  "note": {
+    "note_id": "n-000001", "scope_id": "ch01", "source_label": "23",
+    "note_type": "endnote", "source_markdown": "注文首段。\n\n跨页续文（完整保留）。",
+    "status": "verified",
+    "source_locations": [
+      {"kind": "page", "page": 40, "bbox": [10, 20, 300, 400], "candidate_id": "c-start", "unit": "appendix", "line": 8},
+      {"kind": "page", "page": 41, "candidate_id": "c-cont"}
+    ]
+  },
+  "reference": {"ref_id": "ref-000001", "note_id": "n-000001", "unit": "ch01", "scope_id": "ch01", "label_text": "23", "status": "verified"}
+}
+```
+
+以上分别放入候选 JSONL、`notes` 和 `references`，不是额外文件格式。
+多个物理位置可合并到同一注文；保留 PDF page/bbox 并附候选身份即可，
+如另列 `unit/line`，必须与候选对应字段一致。混合附录无需改为 `notes` 类，
+尾注位置无需等于正文引用位置。无引用的真实注文使用 `orphan_ok=true` 和
+`orphan_reason`，保留相同的位置证据，不伪造引用、不删除真实续文。
+候选导出重跑保留处置及 `note_id/ref_id`；核证后仍须检查位置证据与更新的行号一致。
+
 ## 门与失效
 
 | 门 | 检查 | 触发点 |

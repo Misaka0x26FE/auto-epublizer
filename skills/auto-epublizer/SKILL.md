@@ -7,7 +7,7 @@ metadata:
   suite: auto-epublizer
   workspace_model: publication.json
 ---
-<!-- i18n: source=SKILL.zh.md sha256=cac4d29045a0062de470bb22c83e32f5bd90cdf98daf69818d98bae61f3599a3 -->
+<!-- i18n: source=SKILL.zh.md sha256=71a60fd9e612e93765e93c8fa39441988f2e333977504733338ffc3e4c1d84be -->
 > **English** | [中文](SKILL.zh.md)
 
 # auto-epublizer
@@ -44,6 +44,8 @@ MCP/sub-agents.
    and introducing any LLM API call is forbidden.
 8. **Translator credit defaults to your agent framework name** (OpenCode/DouBao…); a
    user-specified name takes priority (written via `meta --translator`).
+9. **Standard EPUB acceptance is desktop-independent**: note semantics/content/links/backlinks/resources/current registration binding, independent notes gate, epubcheck, independent delivery reconciliation and distribution byte checks are mandatory. Reader GUI testing is conditional compatibility sampling; without a desktop/reader record "reader not tested", do not block standard delivery or promise universal popups. See `references/delivery.md` and `references/publishing.md`.
+10. **EPUBCheck requires real process success evidence**: release requires `report.epubcheck.ran == true`, the actual `returncode == 0`, and `errors == 0`. A jar's presence, Java startup, or a legacy `ran` field does not prove success; process failures/FATAL must not count as zero errors. Keep the complete distribution's `lib` beside the jar; headless Java is sufficient. An unexecuted check has `returncode: null`; never guess 0 for an unknown result. Status marks legacy released reports without this evidence stale: rerun `qa`, never hand-edit their old `released` value.
 
 ## Route Before Acting
 
@@ -67,7 +69,7 @@ the reference needed for the current stage.
 | Four-layer structure classification, cleaning, running head/footer and page-number removal, provenance | `references/structure.md` |
 | Layered understanding, terminology seeding, language/genre detection | `references/analysis.md` |
 | Chunk translation, sentence-level alignment, three-state terminology loop, agent handwritten-translation path | `references/translation.md` |
-| Note structuring and binding (books with notes: candidates → registration → product gate) | `references/notes.md` |
+| Note structuring and binding (candidate_id → note/ref; cross-page, endnote and orphan location-evidence contract) | `references/notes.md` |
 | Six-gate QC (G0–G5) operational guide | `references/review.md` |
 | Pre-delivery full validation (after qa, before delivery; mandatory) | `references/delivery.md` |
 | EPUB build, deterministic packaging, product software fingerprint and separate production statement (no change to manuscript rights) | `references/build.md` |

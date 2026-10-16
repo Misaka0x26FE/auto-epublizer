@@ -51,9 +51,8 @@
 | D1 | 新对账检查（md↔align 一致性、EPUB 媒体/脚注/段落呈现）全部 **error 级** | 三者任一失配 = build 输入或成品缺内容，是真实缺陷；经现有 `prov_error_findings → released=False` 路径阻断，无需新增 released_reason |
 | D2 | 正文段落探针**全量**（非抽样） | md→XHTML 是我们自己的确定性渲染器，变换可控（脚注替换/figure/verse/表格均可归一化匹配）；跳过规则显式列出并用测试锁定 |
 | D3 | 交付审计记录 = `reviews/delivery-<ts>.md`（agent 手写清单，不进状态机）；qa 以 `W_DELIVERY_AUDIT_MISSING` 提示（W 级不阻断） | 与 review-<ts> 同风格；agent 门靠 skills 强制，机器只提醒不代管 |
-| D4 | 双语 EPUB（`-bi` 或 XHTML 含 `class="src"/"tgt"`）跳过媒体对账，段落探针改「tgt 文本包含」 | 现状双语渲染不含图（后续扩展点）；探针仍可对 tgt 段落生效 |
-| D5 | 交付审计第一步强制重跑 `preprocess`（幂等刷新 facts） | 教训 4：对账以当前产物为准，不用旧快照 |
-| D6 | inserts `content_desc` 空值维持 W 级，但交付清单要求**逐项补全或显式接受**并记入交付记录 | 直接升 E 会阻断大量合理场景（无 alt 的装饰图）；显式接受留痕即可审计 |
+| D4 | 交付审计第一步强制重跑 `preprocess`（幂等刷新 facts） | 教训 4：对账以当前产物为准，不用旧快照 |
+| D5 | inserts `content_desc` 空值维持 W 级，但交付清单要求**逐项补全或显式接受**并记入交付记录 | 直接升 E 会阻断大量合理场景（无 alt 的装饰图）；显式接受留痕即可审计 |
 
 ## S1 CLI 对账增强（qa / provenance / import）
 
@@ -80,12 +79,11 @@
 - `_doc_text(zf, path) -> str`：读 XHTML、剥全部标签得纯文本；
 - `_doc_imgs(zf, path) -> list[str]`：`<img src>` 的 basename 列表；
 - `_doc_footnotes(zf, path) -> int`：`<aside epub:type="footnote"` 计数；
-- `_is_bilingual(text) -> bool`：含 `class="src"` 判定（D4）。
 
 三个对账（对 `expected` 每单元，构建用 md = 译文优先回退源文，与 build 一致）：
 
 1. **`E_MEDIA_EPUB_LOST`**：md `_img_refs` Counter vs XHTML `<img>` basename Counter；
-   md 有而 XHTML 无 → error（条目 `unit:名称`）。双语文档跳过 img 对账。
+   md 有而 XHTML 无 → error（条目 `unit:名称`）。
    ——直接封堵「collect_media 静默丢弃」与「渲染丢图」两类成品缺口。
 2. **`E_FN_EPUB_LOST`**：md 脚注定义数（`^\[\^…\]:` 行数）vs XHTML aside 数；
    不等 → error（附两侧数量）。
@@ -96,7 +94,6 @@
    守恒；标题行——build 单独渲染；脚注定义行——由检查 2 专责）归一化后必须为
    XHTML 剥标签归一化全文的子串；缺失 → error + `epub_coverage_missing` 清单
    （`unit:段序`，截断展示）；`epub_coverage = covered / total`。
-   双语文档：段落探针改查 tgt 段落文本包含（src/tgt 均在 XHTML 中）。
 
 `ProvenanceResult` 新字段：`epub_media_missing: list[str]`、
 `epub_footnotes_missing: list[str]`、`epub_coverage: float | None`、
@@ -139,7 +136,7 @@ refs=[…])`。主对账由 S1.2-1 兜底，事件用于排查定位（events.js
    封面/元数据 vs 版权页；landmarks 指向。
 4. **inserts content_desc 空值**：逐项补全或显式接受并记录（影响 EPUB alt；本案
    80 空的先例）。
-5. **阅读器实测**（可选）：Foliate/Apple Books 翻首中尾（目录跳转/脚注弹窗/图片渲染）。
+5. **阅读器兼容抽查**（有条件）：有桌面/阅读器时记录 Foliate/Apple Books 的目录落点、注释往返、图片与实际弹窗行为；无桌面记「阅读器未实测」，不阻塞标准交付、不承诺普遍弹窗。标准注释语义/内容/链接/回链/资源/有效登记绑定及独立注释门仍须离线核证。
 6. **修复循环**：发现缺陷 → 修复（structured/translation 修改走语义整备
    `repairs.jsonl` 留痕，见 `2026-09-13-semantic-repair.md`）→ `import` → `g0` →
    `build` → `qa` → **重新执行本清单**。
@@ -191,7 +188,6 @@ refs=[…])`。主对账由 S1.2-1 兜底，事件用于排查定位（events.js
 
 - `tests/test_provenance.py`（扩展）：
   - `E_MEDIA_EPUB_LOST`：正常书全绿；重写 zip 删某章 `<img>` → 报错含 `unit:名称`；
-    双语文档（构造 class=src/tgt）跳过；
   - `E_FN_EPUB_LOST`：删一个 aside → 报错（附两侧数量）；
   - `E_EPUB_PARA_LOST` / `epub_coverage`：删一段 `<p>` → 报错 + coverage < 1.0；
     干净书 coverage == 1.0；脚注/图片/表格段跳过规则锁定（构造含三类的单元不误报）；
@@ -254,10 +250,8 @@ Conventional Commits。
 
 ## 已知边界与后续扩展点
 
-- 双语版媒体渲染缺失是 build 现状（`render_bilingual_document` 无图路径）；本计划
-  先跳过对账并提示（D4），双语补图作为后续扩展点单独评估。
 - 段落探针的归一化跳过规则靠测试锁定；若实战出现渲染变换导致的假阳性，按 lessons
   修正规则（而非降级为 W）——漏检代价（本案 38 图）远大于假阳性代价。
-- 阅读器实测（S2.1 §5）无法 CLI 化，属 agent 能力（multimodal/本地环境）。
+- 阅读器兼容抽查（S2.1 §5）取决于本地桌面与阅读器；缺少环境时记录未实测，不代替强制离线验收，也不阻塞标准交付。
 - 案例中「从 align 重建 body」的修复手法可在 repair.md 补一节「成品缺内容的标准
   修复路径」（align 是经 import 校验的权威对照）——随语义整备计划 S2 一并落。

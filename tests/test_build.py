@@ -13,7 +13,6 @@ from auto_epublizer.build import build_epub, theme_css
 from auto_epublizer.build.html import (
     FootnoteState,
     markdown_to_xhtml,
-    render_bilingual_document,
     render_document,
     slug_file,
 )
@@ -74,25 +73,6 @@ def test_render_document_empty_alt_falls_back_to_filename() -> None:
 def test_slug_file() -> None:
     assert slug_file("ch01") == "ch01"
     assert slug_file("front-titlepage") == "front-titlepage"
-
-
-def test_render_bilingual_document() -> None:
-    rows = [
-        {"seq": 1, "src": "Hello.", "tgt": "你好。"},
-        {"seq": 2, "src": "World.", "tgt": "世界。"},
-    ]
-    html = render_bilingual_document(
-        "T", rows, lang_src="en", lang_tgt="zh-CN", order="target_first"
-    )
-    assert 'xml:lang="zh-CN"' in html
-    assert 'class="src"' in html
-    assert 'class="tgt"' in html
-    assert html.index("你好。") < html.index("Hello.")
-    # source_first 顺序相反
-    html2 = render_bilingual_document(
-        "T", rows, lang_src="en", lang_tgt="zh-CN", order="source_first"
-    )
-    assert html2.index("Hello.") < html2.index("你好。")
 
 
 def _pub() -> Publication:
@@ -449,10 +429,38 @@ def test_build_epub_embeds_media_files(tmp_path: Path) -> None:
         opf = zf.read("OEBPS/content.opf").decode("utf-8")
         assert "media/x.png" in opf
         assert "image/png" in opf
-        # 豆包 sample-volume-b 实测回归：manifest media id 不得含 /（XML name 非法 → epubcheck RSC-005）
-        assert '<item id="media_x.png" href="media/x.png"' in opf
         # NCX 存在时 spine 必须指定 toc（epubcheck RSC-005）
         assert '<spine toc="ncx">' in opf
+
+
+def test_media_manifest_ids_are_valid_unique_and_keep_cover_binding(tmp_path: Path) -> None:
+    """特殊文件名与不同目录不能产生非法/冲突 ID，也不能错指封面。"""
+    from urllib.parse import unquote
+    from xml.etree import ElementTree
+
+    paths = ["media/literal%41.png", "media/a/b.png", "media/a_b.png"]
+    out = build_epub(
+        _pub(),
+        [{"id": "ch01", "region": "body", "title": "第一章"}],
+        [("ch01.xhtml", render_document("第一章", "正文。", lang="zh-CN"))],
+        lang="zh-CN",
+        modified="2026-01-01T00:00:00Z",
+        out_path=tmp_path / "media-ids.epub",
+        media_files=[(path, b"PNG") for path in paths],
+        cover_media=paths[1],
+    )
+    with zipfile.ZipFile(out) as archive:
+        package = ElementTree.fromstring(archive.read("OEBPS/content.opf"))
+    ns = {"opf": "http://www.idpf.org/2007/opf"}
+    media = package.findall("opf:manifest/opf:item[@media-type='image/png']", ns)
+    ids = [item.attrib["id"] for item in media]
+    assert len(ids) == len(set(ids))
+    for item_id in ids:
+        # XML 元素名与无前缀 ID 共用 NCName 词法规则；不锁死 ID 生成形式。
+        assert ElementTree.fromstring(f"<{item_id}/>").tag == item_id
+    cover = package.find("opf:metadata/opf:meta[@name='cover']", ns)
+    item = next(item for item in media if item.attrib["id"] == cover.attrib["content"])
+    assert unquote(item.attrib["href"]) == paths[1]
 
 
 def test_build_epub_embeds_stylesheet(tmp_path: Path) -> None:
@@ -534,8 +542,6 @@ def test_cover_image_and_linear_no(tmp_path: Path) -> None:
     with zipfile.ZipFile(out) as zf:
         opf = zf.read("OEBPS/content.opf").decode("utf-8")
     assert 'properties="cover-image"' in opf
-    # cover meta 指向 manifest id（无斜杠版：item id 由路径去斜杠生成）
-    assert '<meta name="cover" content="media_cover.png"/>' in opf
     assert '<itemref idref="cover.xhtml" linear="no"/>' in opf
     assert '<itemref idref="ch01.xhtml"/>' in opf
 

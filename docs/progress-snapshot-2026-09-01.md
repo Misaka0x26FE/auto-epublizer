@@ -1,4 +1,4 @@
-<!-- i18n: source=progress-snapshot-2026-09-01.zh.md sha256=5aa14da2307f9d072e2f64aa30941bb7abbc2853fcdb8c5dd12778b3d170b685 -->
+<!-- i18n: source=progress-snapshot-2026-09-01.zh.md sha256=fd79e36842f7b3301acb95dbeb0c93e89d71363febf4cabd510568969298af4b -->
 > **English** | [中文](progress-snapshot-2026-09-01.zh.md)
 
 # Progress snapshot (auto-generated, for resume reference)
@@ -43,15 +43,13 @@
 1. **CLI end-to-end real integration**: the `analyze`/`translate`/`review`/`build`/`qa` commands have not yet run a real
    smoke test beyond FakeClient (currently only `convert` has been run end-to-end). Suggest adding a `test_cli.py` or
    manually smoke-testing the command chain.
-2. **Bilingual EPUB**: the `--bilingual` parameter is already wired to `build` (produces `-bi.epub`), but the body renders only one language;
-   bilingual layout (source/translation side by side) is not implemented.
-3. **review G2/G3 evidence tools**: the evidence-gathering agent currently has `context=""`, and the read tools (glossary_term/
+2. **review G2/G3 evidence tools**: the evidence-gathering agent currently has `context=""`, and the read tools (glossary_term/
    term_occurrences/segment_context/book_context) are not wired in.
-4. **usage.json merge idempotency**: `merge_usage` has no dedup yet (retries/resumes must not double-charge is not enforced).
-5. **PDF complex scenarios**: OCR (RapidOCR optional extra), scanned-document vision LLM fallback, multi-column/table/footnote special handling
+3. **usage.json merge idempotency**: `merge_usage` has no dedup yet (retries/resumes must not double-charge is not enforced).
+4. **PDF complex scenarios**: OCR (RapidOCR optional extra), scanned-document vision LLM fallback, multi-column/table/footnote special handling
    are still placeholders (`ingest/ocr.py`, `pdf_reader.py` only handle the text layer).
-6. **skills/ documentation (S1–S10)** and `THIRD_PARTY_LICENSES.md` are not written.
-7. **Packaging and release**: `uv build` is not yet verified; shipping the finished EPUB via Release is not wired.
+5. **skills/ documentation (S1–S10)** and `THIRD_PARTY_LICENSES.md` are not written.
+6. **Packaging and release**: `uv build` is not yet verified; shipping the finished EPUB via Release is not wired.
 
 ## Resume notes
 

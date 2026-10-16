@@ -397,26 +397,11 @@ _NOTE_KINDS = ("definition", "numbered_paragraph")
 def validate_candidates_vs_graph(
     candidates: list[dict[str, Any]],
     source_notes: dict[str, Any],
-    *,
-    unit_kinds: dict[str, str] | None = None,
 ) -> list[str]:
-    """F1 漏门修复：已核证候选必须**绑定稳定身份**并与注文/引用图确定性对账。
+    """按稳定身份及注文位置证据对账，不按同号或文本前缀猜配。
 
-    增量审查复现：跨章重号时，用「全局注号集合」或「前 60 字前缀」判定会让缺注/缺引用
-    蒙混通过；真实两章各含注号 1、登记图只有第一章一注一引时，登记仍成功。本函数改为：
-
-    - ``inventory=none`` 与任何 ``disposition=note`` 候选矛盾 → 拒绝（保留首轮修复）；
-    - ``inventory=present`` 时，每条 note 候选必须按种类绑定稳定 id：
-      引用型（``marker``/``pandoc_ref``）→ ``ref_id``；注文型（``definition``/
-      ``numbered_paragraph``）→ ``note_id``；
-    - 对账规则（全部确定性，不做全局同号/短前缀猜配）：
-      引用型：引用必须存在、与候选同单元、注号一致（双方都有时）、且不得与其它候选重复绑定；
-      注文型：注文必须存在、不得重复绑定；并且要么**同单元存在指向它的引用**，
-      要么该单元是 ``notes`` 类单元且（双方都有数字注号时）注号一致；
-    - 每条违规逐条给出候选 id/单元/注号与原因，便于一次修复。
-
-    ``unit_kinds``：``publication.json`` 的 单元 id → kind（缺省时不做 notes 类单元判定，
-    此时注文型候选必须有同单元引用）。
+    引用候选必须绑定同单元的独立引用；注文候选必须在绑定注文的位置表中
+    留有 candidate_id 证据。跨页多位置、跨单元尾注及合法孤儿注均可绑定。
     """
     note_cands = [c for c in candidates if str(c.get("disposition") or "") == "note"]
     if not note_cands:
@@ -439,10 +424,6 @@ def validate_candidates_vs_graph(
         for r in (source_notes.get("references") or [])
         if isinstance(r, dict) and r.get("ref_id")
     }
-    refs_by_unit: dict[str, list[dict[str, Any]]] = {}
-    for ref in refs_by_id.values():
-        refs_by_unit.setdefault(str(ref.get("unit") or ""), []).append(ref)
-    kinds = unit_kinds or {}
     errors: list[str] = []
     used: dict[str, str] = {}
     for c in note_cands:
@@ -474,6 +455,9 @@ def validate_candidates_vs_graph(
                 continue
             used[bind_id] = cid
         elif kind in _NOTE_KINDS:
+            if not str(c.get("candidate_id") or "").strip():
+                errors.append(f"{where} 缺少 candidate_id：注文位置证据必须绑定真实候选身份")
+                continue
             if bind_kind != "note":
                 errors.append(f"{where} 缺少 note_id 绑定：须写明候选对应的稳定注文 id")
                 continue
@@ -481,24 +465,20 @@ def validate_candidates_vs_graph(
             if note is None:
                 errors.append(f"{where} 绑定的 note_id 不在登记图中：{bind_id}")
                 continue
-            if bind_id in used:
-                errors.append(f"{where} 与 {used[bind_id]} 重复绑定同一注文 {bind_id}")
+            locations = [
+                loc
+                for loc in (note.get("source_locations") or [])
+                if isinstance(loc, dict) and loc.get("candidate_id") == cid
+            ]
+            if not locations:
+                errors.append(f"{where} 绑定注文缺少 candidate_id 位置证据：{bind_id}")
                 continue
-            same_unit_ref = any(
-                str(r.get("note_id") or "") == bind_id for r in refs_by_unit.get(unit, [])
-            )
-            if not same_unit_ref:
-                if kinds.get(unit) != "notes":
-                    errors.append(
-                        f"{where} 绑定的注文在正文单元缺少同单元引用："
-                        "正文注文候选必须由本单元的引用支撑（跨章重号不得互相冒充）"
-                    )
-                    continue
-                note_label = str(note.get("source_label") or "").strip()
-                if label.isdigit() and note_label.isdigit() and label != note_label:
-                    errors.append(f"{where} 与绑定注文注号不一致（注文为 {note_label}）")
-                    continue
-            used[bind_id] = cid
+            if any(
+                field in loc and loc[field] != c.get(field)
+                for loc in locations
+                for field in ("unit", "line")
+            ):
+                errors.append(f"{where} 绑定注文的位置证据与候选 unit/line 不一致：{bind_id}")
         else:
             errors.append(f"{where} 未知候选种类：{kind!r}")
     return errors

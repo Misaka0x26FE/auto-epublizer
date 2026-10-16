@@ -7,7 +7,7 @@
 - **作者**：Sample Author
 - **源语言 / 目标语言**：en → zh-CN
 - **源文件**：`source/sample-volume.epub`（SHA-256 见 `publication.json`）
-- **成品**：`output/sample-volume-example.epub`（纯译文）/ `-bi.epub`（双语）
+- **成品**：`output/sample-volume-example.epub`
 
 ## 目录说明
 
@@ -25,11 +25,13 @@
 
 ```bash
 auto-epublizer preprocess source/sample-volume.epub --target zh-CN  # init + 零 token 事实
-# agent 依 preprocessing/facts.md 写理解产物与 analysis/，再逐单元翻译并写 align/
+# agent 依 preprocessing/facts.md 写理解产物与 analysis/，先完成必要语义整备
+# 有注书在翻译前：notes candidates → 逐条核证并写源注 JSON/原位标记 → notes register
+# 随后逐单元翻译并写 align；无注书不要捏造注释
 auto-epublizer import                 # 登记 agent 手写的 translation/ + align/（G0 结构校验）
 auto-epublizer g0                     # 静态校验（术语命中/守恒类）
 auto-epublizer import --reviewed      # 审校通过后登记
-auto-epublizer build                  # 封装 EPUB（-bi 双语）
+auto-epublizer build                  # 封装标准 EPUB
 auto-epublizer qa                     # epubcheck + 解包审计 + 放行报告
 ```
 

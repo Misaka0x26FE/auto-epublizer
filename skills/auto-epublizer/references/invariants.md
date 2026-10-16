@@ -1,4 +1,4 @@
-<!-- i18n: source=invariants.zh.md sha256=0e98c116c0346da8317dab7acf0eed6d643bd450795dc07ae0f1bacf747ea242 -->
+<!-- i18n: source=invariants.zh.md sha256=a3f7cd0ded72b1dca88488e286a2bf6d9cd66a4615da2c7baeeb8ce7ea89e7db -->
 > **English** | [中文](invariants.zh.md)
 
 # Invariants quick-reference card (invariants)
@@ -34,8 +34,8 @@
 | `catalog_unresolved_open == 0` (unresolved source-inventory items; only checked when catalog.csv exists) | `catalog_open` |
 | `audit.ok` (G4 unpack audit zero error) | `audit_failed` |
 | `prov_ok` (coverage≈1.0 or null, units_missing/media_lost/inserts_missing_files/toc_flat, no error-level findings) | `provenance_incomplete` |
-| `epubcheck.ran` (missing jar = unverified, no release) | `epubcheck_not_run` |
-| `epubcheck.errors == 0` | `epubcheck_errors` |
+| `epubcheck.ran == true` (missing jar or no execution = unverified, no release) | `epubcheck_not_run` |
+| `epubcheck.returncode == 0` and `epubcheck.errors == 0` (actual process success, no errors) | `epubcheck_errors` |
 
 reason determination priority = top to bottom of the table above (first g0 hard defects →
 conflict → structure → notes → review → audit → provenance → epubcheck).
@@ -47,6 +47,8 @@ result + product bytes) and the audited `artifacts_epub`. After any artifact cha
 downgraded to `built_not_released`); re-running `qa` also rejects the old product against
 the new artifacts (coverage/drift/note-content reconciliation). The old "don't touch files
 after review" verbal convention is no longer the only safeguard.
+
+**EPUBCheck process evidence**: `report.epubcheck.returncode` is the actual process exit value, or `null` when not executed; never guess 0 for an unknown result. Jar presence, Java startup, and a legacy `ran` field do not prove success; process failure/FATAL must not count as zero errors. Keep the complete distribution's `lib` beside the jar; headless Java is sufficient. For legacy released reports missing the field or reliable `returncode == 0` evidence, `status`/`status_all`/`ledger` treat them as stale with reason `epubcheck_unverified` (existing `digest_missing` takes priority). Rerun `qa`, never hand-edit the old `released` value or infer that missing evidence means the historical product necessarily passed or failed.
 
 ## 3. G0 checks (`auto_translator/review/g0.py::g0_unit_flags`)
 
@@ -90,7 +92,6 @@ marker moves to an adjacent line does not false-report; loss always reports.
 | E_HEADING_SKIP | E | heading level skip (h1→h3) → add the intermediate level |
 | E_COVER_META | E | cover properties and meta fail mutual verification → re-build |
 | E_ANCHOR / E_FN_BACKLINK | E | internal anchor/footnote backlink dangling → check noteref/footnote |
-| E_BI_PAIRS | E | bilingual src/tgt paragraph counts unequal → check align |
 | W_META_INCOMPLETE | W | DC item missing **or blank** → should already have been filled by `meta` during preprocessing |
 | W_NO_LANG / W_H1_COUNT | W | missing lang / h1 count ≠ 1 |
 | W_RESIDUE | W | markdown/pandoc marker leftover (`![` `**` `[^` etc.) |
@@ -142,7 +143,6 @@ marker moves to an adjacent line does not false-report; loss always reports.
   concrete font names/font sizes/colors forbidden.
 - Deterministic build: `dcterms:modified` frozen as a constant; the same input always
   yields the same EPUB.
-- EPUB 3: nav+NCX, exactly one h1 per chapter, footnote noteref/footnote global numbering +
-  bidirectional jumps, cover cover-image + `linear="no"`, bilingual paired.
+- EPUB 3: nav+NCX, exactly one h1 per chapter, standard note semantics and bidirectional jumps, cover cover-image + `linear="no"`. Note content/resources/current registration binding must pass independent offline acceptance; GUI reader compatibility is conditional and never a universal popup guarantee (see `references/delivery.md`).
 - Translator credit: `dc:creator(creator-trl)` + `role=trl` (written by
   `meta --translator`).

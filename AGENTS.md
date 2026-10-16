@@ -1,4 +1,4 @@
-<!-- i18n: source=AGENTS.zh.md sha256=b7e24e259a557f95e844b0ddc94601f75714f1811d9070a10e672b1fc40d5090 -->
+<!-- i18n: source=AGENTS.zh.md sha256=c1859c169484cac80e0334aa04fec38e4331378d95f4d2d3015dae9dd0233b44 -->
 > **English** | [中文](AGENTS.zh.md)
 
 # auto-epublizer repository guide (for coding agents developing/maintaining this project)
@@ -120,6 +120,23 @@ auto-epublizer meta [--translator OpenCode] [--publisher ...] [--date ...] [--ri
 auto-epublizer knowledge export --workspace .   # → preprocessing/terms.csv (agent reviews, then import --terms)
 auto-epublizer knowledge status                 # statistics + git state (--json for machine decisions)
 
+# 4.6 Semantic repair (agent task, conditionally triggered): when facts carry suspicious
+#     signals, or the OCR/scanned path was used, follow references/repair.md to repair
+#     structured/ against raw evidence and write preprocessing/repairs.jsonl; for unit
+#     boundary re-splits/merges also write preprocessing/structure.csv and register it (S3)
+auto-epublizer restructure [--workspace <dir>]   # register rebuilt unit structure (unchanged ids keep state)
+auto-epublizer evidence breaks   # export page-boundary evidence → preprocessing/breaks.jsonl (for judging page/line-split fragments; locates evidence only, no semantic merge)
+
+# 4.7 Source-note verification, separation and registration (mandatory for books with notes; see references/notes.md):
+#     notes candidates exports candidates → the agent reviews the source item by item
+#     (disposition=note|not_note) → write structured/notes.json plus in-place body markers
+#     [^ref-000123] → notes register (separation-registration gate: contract + two-way marker
+#     reconciliation + summary into publication.json.notes); during translation keep the same
+#     ref_id and write translation/notes.json, which import validates
+auto-epublizer notes candidates  # → preprocessing/note_candidates.jsonl (zero-token; re-runs keep dispositions)
+auto-epublizer notes register    # register structured/notes.json (separation-registration gate)
+auto-epublizer notes status      # summary / stale / candidate disposition progress (--json for machines)
+
 # 5. Translation (agent task): the agent reads structured/ and translates, writing
 #    translation/ + align/, then "import" registers it: G0 validation + state advance +
 #    terminology-conflict externalization (terms.csv may be imported via --terms)
@@ -131,22 +148,6 @@ auto-epublizer import [--unit <id>] [--terms preprocessing/terms.csv] [--reviewe
                                  # revision re-registration; pass keeps state, failure rolls back to aligned)
 auto-epublizer g0                # run static validation right after translating/importing (terminology hits are real defects to verify one by one; length ratio is only advisory)
 
-# 5.5 Semantic repair (agent task, conditionally triggered): when facts carry suspicious
-#     signals, or the OCR/scanned path was used, follow references/repair.md to repair
-#     structured/ against raw evidence and write preprocessing/repairs.jsonl; for unit
-#     boundary re-splits/merges also write preprocessing/structure.csv and register it (S3)
-auto-epublizer restructure [--workspace <dir>]   # register rebuilt unit structure (unchanged ids keep state)
-auto-epublizer evidence breaks   # export page-boundary evidence → preprocessing/breaks.jsonl (for judging page/line-split fragments; locates evidence only, no semantic merge)
-
-# 5.7 Note structuring and binding (mandatory for books with notes; see references/notes.md):
-#     notes candidates exports candidates → the agent reviews the source item by item
-#     (disposition=note|not_note) → write structured/notes.json plus in-place body markers
-#     [^ref-000123] → notes register (separation-registration gate: contract + two-way marker
-#     reconciliation + summary into publication.json.notes); during translation keep the same
-#     ref_id and write translation/notes.json, which import validates
-auto-epublizer notes candidates  # → preprocessing/note_candidates.jsonl (zero-token; re-runs keep dispositions)
-auto-epublizer notes register    # register structured/notes.json (separation-registration gate)
-auto-epublizer notes status      # summary / stale / candidate disposition progress (--json for machines)
 
 # 6. Review (agent task): the agent performs G1–G3 semantic review itself and writes
 #    reviews/review-<ts>/ (issues/patches/summary/result.json; qa reads g1/g2/g3 counts
@@ -158,7 +159,7 @@ auto-epublizer notes status      # summary / stale / candidate disposition progr
 auto-epublizer knowledge import --workspace .   # cross-book same-key different-target is externalized to the store's conflicts.jsonl pending agent arbitration
 
 # 7. Package output
-auto-epublizer build          # translation-only / bilingual EPUB → output/ (--theme selects the layout theme)
+auto-epublizer build          # translated EPUB → output/ (--theme selects the layout theme)
 
 # 8. QA (G0 static validation + G4 audit + G5 release summary → report.json)
 auto-epublizer qa             # structure audit + epubcheck
@@ -253,7 +254,7 @@ stay Chinese-only.
 ```text
 <book-slug>/
 ├── source/           ① file to process (untouched, never modified)
-├── output/           ② finished EPUB (<slug>.epub / <slug>-bi.epub)
+├── output/           ② finished EPUB (<slug>.epub)
 ├── structured/       ③ source split by the four-layer publication structure (frontmatter/body/backmatter/media)
 │                     + raw/ (intermediates from processing the source: OCR page images, PDF→HTML,
 │                     pages/ (rendered scanned pages), mineru/ (MinerU artifacts), persisted for review)
@@ -330,7 +331,7 @@ Sentence-level alignment `translation/align/<unit-id>.jsonl`, one sentence per l
 {"seq": 1, "src": "source sentence", "tgt": "translated sentence", "note": null}
 ```
 
-`seq` anchors bilingual layout, QA location and resume; `note` records splits/merges/
+`seq` anchors comparative review, QA location and resume; `note` records splits/merges/
 omissions/doubts, and the `corr:wrong→right` prefix records source-erratum precedents
 (written automatically by both the translate and import paths).
 

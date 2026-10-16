@@ -132,8 +132,8 @@ auto-epublizer notes candidates [-o <jsonl>] [--workspace <dir>]  # 导出候选
 auto-epublizer notes register [--workspace <dir>]                 # 分离登记门：校验并写 publication.json.notes
 auto-epublizer notes status [--json] [--workspace <dir>]          # 摘要 / stale / 候选处置进度
 
-# 封装（译文缺省回退源文；--bilingual 产出 -bi.epub；--theme 选排版主题）
-auto-epublizer build [--bilingual] [--theme standard|compact|spacious] [-o <out.epub>] [--workspace <dir>]
+# 封装（译文缺省回退源文；--theme 选排版主题）
+auto-epublizer build [--theme standard|compact|spacious] [-o <out.epub>] [--workspace <dir>]
 
 # 质检（epubcheck 零 error + 解包审计 + 溯源审计 + G5 放行判定）
 auto-epublizer qa [--epub <path>] [--workspace <dir>]

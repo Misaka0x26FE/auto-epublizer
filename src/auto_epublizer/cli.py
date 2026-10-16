@@ -325,7 +325,6 @@ def notes_status_cmd(
 def build(
     workspace: str | None = typer.Option(None, "--workspace", help="工作区目录"),
     output: str | None = typer.Option(None, "-o", "--output", help="输出 EPUB 路径"),
-    bilingual: bool = typer.Option(False, "--bilingual", help="产出双语 EPUB"),
     theme: str | None = typer.Option(None, "--theme", help="排版主题（standard/compact/spacious）"),
     nav_depth: int | None = typer.Option(
         None, "--nav-depth", help="目录最大嵌套深度（1–6，默认取配置 output.nav_depth）"
@@ -338,7 +337,6 @@ def build(
     try:
         out = orch.build(
             store,
-            bilingual=bilingual,
             output=output,
             theme=theme or cfg.output.theme,
             nav_depth=nav_depth,
@@ -346,7 +344,7 @@ def build(
     except (ValueError, OSError, orch.OrchestrationError) as e:
         raise typer.Exit(f"封装失败：{e}") from None
     # 源文回退提示（现场报告 #8）：build 对缺译单元回退源文，且不再推进其状态——
-    # 这里显式告知，避免「成品已是双语混排」而 operator 不知情。
+    # 这里显式告知源文回退，避免 operator 误以为所有单元都已有译文。
     st = orch.status(store)
     missing = [u["id"] for u in st["units"] if not u["has_translation"]]
     if missing:
