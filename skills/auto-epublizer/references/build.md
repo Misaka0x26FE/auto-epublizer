@@ -1,4 +1,4 @@
-<!-- i18n: source=build.zh.md sha256=a8e5893d349627a1a3e04d67c247e89eefe88b2a001b71a04eba771ede5156cc -->
+<!-- i18n: source=build.zh.md sha256=7d210aea551beba0a384f0e6bdea04de91b3cc9139c8c79ecd85c95c1b0cb914 -->
 > **English** | [中文](build.zh.md)
 
 # Build (EPUB packaging)
@@ -8,11 +8,10 @@ The `build` command packages the translation (falls back to the source text by d
 ## Command
 
 ```bash
-auto-epublizer build [--bilingual] [-o <out.epub>] [--theme standard|compact|spacious] [--workspace <dir>]
+auto-epublizer build [-o <out.epub>] [--theme standard|compact|spacious] [--workspace <dir>]
 ```
 
-- Monolingual: reads the translation from `translation/<rel_path>` (falls back to `structured/` by default).
-- Bilingual: `--bilingual` renders source/translation interleaved per the `align/` alignment table, outputting `<slug>-bi.epub`.
+- Reads the translation from `translation/<rel_path>` (falls back to `structured/` by default).
 
 ## EPUB 3 components
 
@@ -35,6 +34,8 @@ auto-epublizer build [--bilingual] [-o <out.epub>] [--theme standard|compact|spa
 
 DC metadata comes from `publication.json.meta`: `dc:title`, `dc:creator`, `dc:language` (the translation uses `target_language`, pure conversion uses the source language), `dc:identifier` (isbn/uri/slug), `dc:date`, `dc:publisher`, `dc:rights`.
 
+OPF `aep:render-mode` records the actual build entry: `source` (source only) or `translation` (translation preferred, with per-unit source fallback). QA reconstructs each note's host plan from this mode and the current inputs: the first spine reference determines the host; an unreferenced note uses its scope unit or the first actually rendered unit. Only notes whose hosts actually use translation load and validate translated-note binding and complete text; other notes are reconciled against source text independently. Entirely unused stale or malformed translated notes do not block source output. Products with registered notes but no valid mode must be rebuilt, not guessed.
+
 ## Product software fingerprint
 
 - OPF includes `generator` and custom `aep:` metadata (`aep:build` stores the structured build record); content XHTML carries a JSON comment prefixed with `auto-epublizer-build` in its head for offline identification.
@@ -47,8 +48,7 @@ DC metadata comes from `publication.json.meta`: `dc:title`, `dc:creator`, `dc:la
 
 ## Naming
 
-- Pure translation: `output/<slug>.epub`
-- Bilingual: `output/<slug>-bi.epub`
+- Default: `output/<slug>.epub`
 - `-o` can override the output path.
 
 ## Notes
@@ -58,6 +58,8 @@ DC metadata comes from `publication.json.meta`: `dc:title`, `dc:creator`, `dc:la
   paths and symlinks pointing outside the workspace are **refused** and recorded in the
   `media_dropped` event of `events.jsonl`, then blocked from release by provenance
   `E_MEDIA_EPUB_LOST` (media are never dropped silently).
+- **Resource identity**: `%` is literal in Markdown/pandoc source file paths; HTML image URLs are decoded once; ZIP member names are never decoded. Bare names, subdirectories, and existing `media/` / `raw/media/` routes resolve through the actual source file. The note gate, ordinary-body provenance and general G4 use the same full-path identity rule; basename sets cannot exempt wrong-directory images. Media gates check images rather than treating HTML image tags as prose; surrounding text must still survive paragraph reconciliation.
+- **Manifest identifiers**: media use legal, unique XML IDs assigned in stable order, independently of filenames/URIs. This avoids invalid characters and directory-path collisions; cover metadata references the actual manifest item rather than inferring a filename from its ID.
 - **Build-log attribution** (issue #40; no outbound calls): the `EPUB 已生成` line always
   carries the tool name + version + license + source URL, and the workspace
   `meta.producer` plus the `run_initialized` event expose the same identifier so origin is
@@ -67,8 +69,7 @@ DC metadata comes from `publication.json.meta`: `dc:title`, `dc:creator`, `dc:la
   no specific font names/colors/font sizes (audit blocks them: `E_THEME_FONT`/`E_THEME_COLOR`).
 - **Cover**: the first image of the cover unit automatically becomes `cover-image` (`<meta name="cover">` +
   spine `linear="no"`); when there is no cover source image, audit warns `W_NO_COVER` (provenance).
-- **Footnotes**: `[^label]` → standard popup notes (noteref/footnote), note reference `[N]`, **restarting from 1 per chapter**
-  with independent numbering + bidirectional backlink (readers that do not support popups degrade to an end-of-chapter note area).
+- **Notes**: standard EPUB `noteref` + `footnote`/`endnote` semantics, complete content, resolvable links and backlinks, resource identity, and current registration binding are mandatory offline checks (see `references/notes.md`). Reader implementation and user settings determine whether a popup appears; readable note areas and round-trip navigation remain the fallback.
 - **TOC hierarchy**: source heading levels (`level`) → nested nav `<ol>` + nested NCX navPoint;
   **in-unit sub-heading anchors** (since 2026-09-29): in-unit h2+ headings automatically get stable ids
   (`{unit_id}-h{n}`; explicit `{#id}` takes precedence) and enter nav/NCX as children of the unit entry
@@ -76,7 +77,6 @@ DC metadata comes from `publication.json.meta`: `dc:title`, `dc:creator`, `dc:la
   conservation gate);
   **nav depth projection** (`--nav-depth` / `config.output.nav_depth`, default 3, 1–6): units/anchors beyond the
   depth do not enter nav/NCX (they remain in spine reading order, anchors preserved), the cover unit does not enter the TOC,
-  bilingual documents have no anchor entries;
   `dtb:depth` is the actual depth after projection (anchors included).
 - **Images**: only shrink, never enlarge, centered + page-break (`page-break-inside: avoid`); standalone image paragraphs (non-empty alt) →
   `figure+figcaption` captions.

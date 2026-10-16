@@ -105,7 +105,7 @@ translation + align → import → g0）、每 3–5 单元一项 build 校验�
 ## 3. 审校（G1–G3）
 - [ ] 逐批审校，写 reviews/review-<ts>/{issues,patches,summary,result.json}
 - [ ] 术语冲突外置 glossary_conflicts.jsonl 逐条裁决写回 glossary.csv
-- [ ] 双语版 build（--bilingual）抽查，重点核省略号收尾段落
+- [ ] 抽查 align 源译句对保真，重点核省略号收尾段落
 
 ## 4. 封装与质检（G4–G5）
 - [ ] build 全量 EPUB

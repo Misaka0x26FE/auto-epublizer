@@ -1,4 +1,4 @@
-<!-- i18n: source=postprocessing-spec.zh.md sha256=dd8e8e7a462cc91d9d69551540f8a0b50ae21b0076c153eb681b7f28f8e12060 -->
+<!-- i18n: source=postprocessing-spec.zh.md sha256=e5a961be5c5d21223f0ec31ba6a38f884e6eaa7682d052cb897cfca5426f09e7 -->
 > **English** | [中文](postprocessing-spec.zh.md)
 
 # Post-Processing Spec: Acceptance and Implementation of Content Integrity / Media / EPUB Structure
@@ -63,7 +63,7 @@ into G0/G5, media into build+G4, structure into G4.
 
 | Acceptance item | Current state | Gap / action |
 |---|---|---|
-| epubcheck 0 error | ✅ | — |
+| epubcheck actual returncode == 0 and errors == 0 | ✅ | Must actually execute; jar presence or legacy ran is insufficient |
 | G4 unpack audit | ✅ mimetype/container/OPF/nav/NCX/landmarks/img dangling/URL/lang/h1 | — |
 | **TOC hierarchy** | ✅ | unit-level nesting + in-unit sub-heading anchors (`file.xhtml#anchor`, 2026-09-29); hierarchy is preserved end-to-end via PDF level≥2 bookmarks / heading-segment original levels, backstopped on the translation side by the g0 `heading` gate |
 | **TOC reconciliation** | ⬜ | source TOC extracted by preprocess vs nav entries, missing entries warning |
@@ -172,7 +172,6 @@ into report.json):
 - ✅ Residue check: HTML comments (`E_RESIDUE`; only valid `auto-epublizer-build` structured JSON fingerprint comments are exempt—ordinary comments, forged prefixes, and malformed JSON remain errors) / markdown·pandoc markers (`W_RESIDUE`: `![` `**` `:::` `{.` `[^`);
   source-language character residue is a semantic judgement for G1 review (agent task), not a deterministic check. A separate production-information page requires an OPF fingerprint declaration, a page marker, and a matching valid fingerprint before being excluded as non-manuscript material from body/TOC reconciliation; its filename or `linear="no"` alone is insufficient. See `docs/epub-template-spec.md` for software provenance and manuscript-rights boundaries.
 - ✅ Metadata completeness: missing creator/date/publisher/rights → `W_META_INCOMPLETE` (warning, for the agent to complete)
-- ✅ Bilingual provenance: `build --bilingual` src/tgt paragraph counts paired (`E_BI_PAIRS`)
 - ✅ Internal links: internal anchors resolvable (`E_ANCHOR`, including noteref→footnote) + footnote backlinks (`E_FN_BACKLINK`)
 - ✅ Size audit: total EPUB size (`W_EPUB_SIZE`, 50MB) + single image uncompressed (`W_IMG_UNCOMPRESSED`, 2MB)
 - ✅ Naming convention: product file name prefixed with slug (`W_NAMING`, qa wiring); spine order = source order (P0 provenance already covers)
@@ -185,7 +184,7 @@ into report.json):
 ## 5. Release Condition Extension
 
 On top of the existing G5 release conditions (`g2_confirmed==0 or all revised` + `g0_terminology_open==0` +
-`epubcheck 0 error (and actually run)` + `audit pass`), add:
+`epubcheck actual execution, returncode == 0 and errors == 0` + `audit pass`), add:
 
 - `provenance_coverage ≈ 1.0` (≥0.9999, every paragraph traceable; null when there is no translation artifact, not applicable to the convert path)
 - zero tri-lateral reconciliation errors, zero media provenance errors, no error-level provenance findings
@@ -206,6 +205,8 @@ On top of the existing G5 release conditions (`g2_confirmed==0 or all revised` +
 > Implementation see `qa/report.py::generate_report` (`prov_ok` aggregate determination + `released_reason` breakdown).
 - Insert content files zero missing (`inserts_missing_files == 0`, pdf-content-spec §9:
   every illustration/table/formula can be traced back to its original address `{page,bbox,xref,method}` and the media file is on disk)
+
+EPUBCheck evidence contract: `report.epubcheck.returncode` records the actual process exit value, or `null` when not executed; never guess 0 for an unknown result. Jar presence, Java process startup, or a legacy `ran` field cannot prove success; process failure/FATAL must not count as zero errors. Keep the complete distribution's `lib` beside the jar; headless Java is sufficient, with no GUI required. This does not exempt the note-graph, content, resource, or link hard gates. Legacy released reports missing the field or reliable success evidence require fresh `qa`; `status`/`ledger` mark them stale (`epubcheck_unverified`, with existing `digest_missing` taking priority). Never hand-edit the old `released` value or infer historical success or failure from missing evidence.
 
 ## 6. Test Plan
 

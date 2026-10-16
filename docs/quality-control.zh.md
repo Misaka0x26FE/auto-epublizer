@@ -112,7 +112,7 @@ Autofix（可选）：先写可恢复索引 `reviews/<ts>/autofix/index.json`，
 
 ### G4 EPUB 结构 QA（build 后，本地）
 
-- `epubcheck` 零 error（jar 缓存于 `~/.cache`）。
+- `epubcheck` 实际执行且 `returncode == 0`、`errors == 0`。jar 缓存于 `~/.cache` 时须保留完整发行包相邻的 `lib`；headless Java 足够，无需 GUI。仅 jar 存在、Java 启动或旧 `ran` 字段不证明通过；进程失败/FATAL 不得当作零错误。
 - 解包逐项审计（`qa/audit.py`，已实现）：
   - `mimetype` 首位、未压缩、内容恰为 `application/epub+zip`；
   - `META-INF/container.xml` 良构、指向 OPF；
@@ -124,7 +124,6 @@ Autofix（可选）：先写可恢复索引 `reviews/<ts>/autofix/index.json`，
   - 每个内容文档 `xml:lang` 正确、恰好一个 `h1`、无跳级（`E_HEADING_SKIP`）；
   - 残留：HTML 注释（`E_RESIDUE`）、markdown/pandoc 标记（`W_RESIDUE`）；
   - 内部锚点可解析（`E_ANCHOR`，含脚注 noteref→footnote）+ 脚注回链（`E_FN_BACKLINK`）；
-  - 双语 src/tgt 段落数成对（`E_BI_PAIRS`）；
   - 媒体：alt 空值（`W_IMG_NO_ALT`）、格式兼容（`W_IMG_FORMAT`）、超大/超宽超高/未压缩
     （`W_IMG_LARGE`/`W_IMG_RATIO`/`W_IMG_UNCOMPRESSED`）、EPUB 总体积（`W_EPUB_SIZE`）；
   - DC 元数据缺失提示（`W_META_INCOMPLETE`）。
@@ -147,14 +146,14 @@ Autofix（可选）：先写可恢复索引 `reviews/<ts>/autofix/index.json`，
     "total_sentences": 0, "error_rate": 0.0,
     "g4_epubcheck_errors": 0, "g4_audit": "pass", "passed": true,
     "audit": {"ok": true, "errors": 0, "findings": []},
-    "epubcheck": {"available": true, "ran": true, "errors": 0, "warnings": 0, "messages": []},
+    "epubcheck": {"available": true, "ran": true, "errors": 0, "warnings": 0, "returncode": 0, "messages": []},
     "provenance_coverage": 1.0, "units_missing": 0, "units_order_ok": true,
     "media_lost": 0, "toc_missing": [], "toc_flat": false,
     "inserts_missing_files": 0, "provenance_findings": [],
     "released": true, "released_reason": "ok"
   }
   ```
-- 发布清单核对：成品命名（`<slug>.epub` / `<slug>-bi.epub`，`W_NAMING`）、元数据（DC 项齐全）、
+- 发布清单核对：成品命名（`<slug>.epub`，`W_NAMING`）、元数据（DC 项齐全）、
   封面、版权署名、许可。
 - **放行条件**（对齐 docs/postprocessing-spec.md §5 与 `qa/report.py::generate_report`）：
   `g2_confirmed == 0` 或全部已修订（`g3_patched`）；
@@ -165,16 +164,17 @@ Autofix（可选）：先写可恢复索引 `reviews/<ts>/autofix/index.json`，
   裁决写回 glossary.csv 前不放行）；
   **`catalog_unresolved_open == 0`**（`catalog.csv` 存在时的源盘点未决项；
   `catalog_unresolved_open`——先决内容不得带病放行）；
-  `g4_epubcheck_errors == 0`；`g4_audit == "pass"`；溯源完整
+  `epubcheck.ran == true`、实际 `epubcheck.returncode == 0` 且 `g4_epubcheck_errors == 0`；`g4_audit == "pass"`；溯源完整
   （`provenance_coverage ≈ 1.0`（无翻译产物为 null）、三边对账/媒体溯源零缺失、
   `toc_flat == false`、溯源 findings 无 error 级）；
   成品呈现对账清零（**`align_md_drift == 0`、`epub_media_missing == 0`、
   `epub_footnotes_missing == 0`、`epub_coverage ≈ 1.0`**，交付审计 S1）；
-  **有注书另加成品注门**（`notes_findings` 空、`notes_missing` 零：noteref/footnote/
-  回链/编号违例零，否则 `released_reason=notes_open` 阻断放行；见
-  `qa/notes_audit.py` 与 `references/notes.md`）。
+  **登记注释图必须另过独立成品注门**（含 none 的零对零对账；`notes_findings` 空、
+  `notes_missing` 零：noteref/aside、href、回链、编号、内容/资源及版本绑定违例零，
+  否则 `released_reason=notes_open` 阻断放行；见 `qa/notes_audit.py` 与 `references/notes.md`）。
+  仅在登记图未过期且独立门通过后移交旧计数/回链检查；未登记或过期不得豁免旧门。
   G0 **长度比**告警是 advisory，不阻断（英→中长度比天然偏低，实测大量误报）；
-  epubcheck 未运行（jar 缺失）视为未验证，不放行。
+  epubcheck 未运行视为未验证，不放行。`report.epubcheck.returncode` 保存实际进程退出值，未执行为 `null`，未知不得猜 0。旧 released 报告缺字段或没有可靠成功进程证据，不构成当前合规证据：`status`/`ledger` 标 stale（`epubcheck_unverified`，已有 `digest_missing` 优先），必须重新 `qa`，不得手改旧 `released`，也不由缺证据断言历史成品通过或失败。
 
 ### 交付审计（agent 门，qa released 后强制）
 
@@ -184,6 +184,11 @@ Autofix（可选）：先写可恢复索引 `reviews/<ts>/autofix/index.json`，
 探针/看图/脚注内容）→ 目录/封面/元数据人肉核对 → inserts 描述与未决项处置 →
 产物同步字节核对。发现缺陷走修复循环（修 → import → build → qa → 重新审计）。
 全部单元 built 后 qa 以 `W_DELIVERY_AUDIT_MISSING` 提示缺记录（warning 不阻断）。
+
+标准注释语义/链接/回链/图一致性、内容与资源核证及 epubcheck 是不依赖桌面的强制验收，
+五项语义质量门不降级。阅读器 GUI 仅作有条件兼容抽查：可用时记录阅读器名称、版本和
+弹窗/跳转/返回观察；不可用明示「阅读器未实测」，不因此阻塞、不保证所有阅读器弹窗。
+跳转与章末内容仍须可访问；无桌面不豁免任何内容或结构缺陷。
 
 > 依据：真实交付案例——《俄国铁路史》工具 QA 全过，成品 72 张引用图仅收录 34 张
 > （译文正文丢图片段，工具守恒只查对照表）。成品校验必须独立做「源引用 ↔ 成品
@@ -209,7 +214,7 @@ Autofix（可选）：先写可恢复索引 `reviews/<ts>/autofix/index.json`，
 }
 ```
 
-`seq` 定位到 `align/<id>.jsonl` 的具体句，是双语定位、修回、统计差错率的锚点。
+`seq` 定位到 `align/<id>.jsonl` 的具体句，是对照定位、修回、统计差错率的锚点。
 
 ### Patch（G3 影子修订）
 
@@ -245,7 +250,7 @@ reviews/review-<ts>/     # agent 手写的审校记录（G1–G3 由 agent 自�
 | 空译文 | 禁止 | import 阻断该单元 |
 | 术语命中 | `g0_terminology_open == 0`（放行硬门） | 全书一致性；真实缺陷须清零 |
 | 差错率 | `confirmed / total_sentences ≤ 1e-4`（agent 自查参考，非 CLI 硬门） | 对齐出版差错率惯例 |
-| epubcheck | 0 error（且须实际运行） | 结构合法性 |
+| epubcheck | 实际执行、returncode == 0 且 errors == 0 | 结构合法性 |
 
 ## 5. 收敛状态机（G3）
 

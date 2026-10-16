@@ -1,4 +1,4 @@
-<!-- i18n: source=qa.zh.md sha256=63305096668680d3bd061f710b1a9a46ed27e2d9d8c0de13bc87f3b6018a0f84 -->
+<!-- i18n: source=qa.zh.md sha256=8b12fb3c26487022845a2246dcec83970e22c31a8309d9ca23fa1c66752f2ee1 -->
 > **English** | [中文](qa.zh.md)
 
 # QA (epubcheck + unpack audit)
@@ -17,11 +17,15 @@ auto-epublizer qa [--epub <path>] [--workspace <dir>]
 
 ## epubcheck
 
-- Validate with `~/.cache/epubcheck.jar` (`java -jar`); zero error releases.
+- Validate using the configured complete distribution JAR (default `~/.cache/epubcheck.jar`), retaining its adjacent `lib/` dependencies; never copy the JAR alone. A headless Java runtime is sufficient.
+  Release requires a successful process exit and no ERROR/FATAL diagnostics. English diagnostics are selected for stable counts; startup failures and unrecognized nonzero exits still block, preserving the exit status and diagnostics.
 - When the jar is missing, `available=False`, `ran=False`, `errors=-1`, `passed=False`
   (not verified ≠ qualified).
+- Report `epubcheck.returncode` records the actual exit status, or null when no process ran; unknown never means zero. Old released reports without this evidence become stale and no longer count as released progress; rerun QA rather than editing historical release fields.
 
 ## Item-by-item unpack audit (offline, zero token)
+
+Standard EPUB note acceptance is mandatory offline: independently verify current registration binding, complete content, note/reference semantics, targets, backlinks and resource identity, including zero-to-zero reconciliation for `inventory=none`. Only a current validated registration graph with the independent product-note gate executed in this run permits handing off legacy counts/mandatory-backlink checks; every finding from the new gate still blocks. Non-empty registration fields or visible `[^ref]` text alone are not evidence, and absent/stale registration keeps the legacy checks. No desktop is required. Reader GUI checks are conditional compatibility sampling; record "reader not tested" when unavailable and never infer universal popups (see `references/delivery.md`).
 
 | Check | Failure code |
 |---|---|
@@ -42,7 +46,6 @@ auto-epublizer qa [--epub <path>] [--workspace <dir>]
 | DC metadata missing (creator/date/publisher/rights) | `W_META_INCOMPLETE` (warning) |
 | internal anchor unresolvable (including footnote noteref→footnote) | `E_ANCHOR` |
 | footnote aside missing backlink or backlink unresolvable | `E_FN_BACKLINK` |
-| bilingual src/tgt paragraph counts inconsistent | `E_BI_PAIRS` |
 | theme contains a concrete font name/size / color | `E_THEME_FONT` / `E_THEME_COLOR` |
 | cover properties and meta cross-verification fails | `E_COVER_META` |
 | img alt empty or missing / poor format compatibility (.webp/.avif) | `W_IMG_NO_ALT` / `W_IMG_FORMAT` (warning) |
@@ -129,8 +132,8 @@ the provenance result object and are not persisted — when a count is needed, t
 
 ## Troubleshooting
 
-- `epubcheck errors: -1` → jar not installed; download it per the `doctor` hint, place it
-  at `~/.cache/epubcheck.jar`, and rerun.
+- `epubcheck errors: -1` → validation did not run; inspect messages for a missing JAR, Java or timeout. Extract the complete distribution, retain `lib/`, and point `qc.epubcheck.jar` at its JAR before retrying.
+- A reported process exit status / `NoClassDefFoundError` → startup or validation failed, not zero errors. Check distribution dependencies and the original diagnostics; reinstalling the JRE or merely finding a JAR does not establish usability.
 - `product does not exist` → `build` or `convert` first.
 - Audit finds `W_H1_COUNT` → content-document heading hierarchy problem (each chapter
   should have exactly one h1).
@@ -162,8 +165,7 @@ the provenance result object and are not persisted — when a count is needed, t
 - `W_REPAIR_STALE_UNIT` → `repairs.jsonl` has rows whose unit was removed by a structure
   rebuild: historical `done` rows can be ignored; re-attach `unresolved` rows to a surviving
   unit. A warning only — it never aborts qa (issue #23).
-- `W_NAMING` → product filename does not match the slug prefix; rename with `-o` or output
-  as `<slug>.epub`/`<slug>-bi.epub`.
+- `W_NAMING` → product filename does not match the slug prefix; rename with `-o` or output as `<slug>.epub`.
 - `W_STRUCT_MISSING` → structured/ source file missing (accidentally deleted); rerun that
   unit's ingest from the source file.
 - `provenance_incomplete` →
@@ -175,5 +177,4 @@ the provenance result object and are not persisted — when a count is needed, t
     to locate omitted paragraphs;
   - `E_TOC_FLAT`: the source text has hierarchy (unit level chain or in-body sub-headings)
     but the TOC is flat — confirm the source unit `level` is registered (rerun init/preprocess);
-    since 2026-09-29 in-unit sub-heading anchors participate in the expected-sequence
-    reconciliation; bilingual documents are exempted automatically.
+    since 2026-09-29 in-unit sub-heading anchors participate in the expected-sequence reconciliation.

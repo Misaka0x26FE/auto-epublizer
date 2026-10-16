@@ -89,7 +89,6 @@ class PublicationMeta(BaseModel):
 class ConfigSnapshot(BaseModel):
     """init 时固化的关键运行配置，续跑时优先使用，避免配置漂移。"""
 
-    bilingual: bool = False
     target_language: str = "zh-CN"
 
 

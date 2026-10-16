@@ -1,4 +1,4 @@
-<!-- i18n: source=configuration.zh.md sha256=ea34e9e8eb136cb37f7a6d5405b47c27d77109432b38a4646d335fe0ffbc19fb -->
+<!-- i18n: source=configuration.zh.md sha256=f0d74cacf38b2eb8b0c641ffe934d3940961e32a93583c55fa05c5f57b7bd1c0 -->
 > **English** | [中文](configuration.zh.md)
 
 # Configuration reference (target `config.yaml` schema)
@@ -8,7 +8,7 @@ This document collects the configuration items of each stage as the unified shap
 The implementation contract is `src/auto_common/config.py`; newly added configuration items
 must be synced to this document, the root example, and the tests.
 At `init` time, only key items are snapshotted into `publication.json.config` (a top-level
-field, containing only `bilingual` / `target_language`, see `workspace/models.py::ConfigSnapshot`),
+field, containing only `target_language`, see `workspace/models.py::ConfigSnapshot`),
 not a full mirror of this table.
 
 **Single-LLM principle**: the CLI does not call any LLM, and the configuration has no
@@ -21,10 +21,6 @@ language:
   source: auto          # auto=deterministic script heuristic detection; or hard-code ISO 639-1 (en/ja/ru/ko/fr/de/es…)
   target: zh-CN         # target language, any configurable value
   genre: auto           # auto=heuristic determination; or explicit novel/academic/paper/poetry/newspaper
-
-# ── pipeline switches ────────────────────────────────────────
-pipeline:
-  bilingual: false
 
 # ── quality control ──────────────────────────────────────────
 qc:
@@ -60,8 +56,6 @@ paths:
 
 # ── output ───────────────────────────────────────────────────
 output:
-  mono: true              # not wired (reserved; mono/bilingual is decided by build --bilingual)
-  bilingual: false        # not wired (same as above)
   about_page: true        # not wired (reserved; the "about this translation" page is not implemented)
   theme: standard         # layout theme: standard | compact | spacious (docs/epub-template-spec.md §5)
                           # only layout micro-adjustments (generic font family/line spacing/indent/alignment), no concrete font name/color/size
@@ -108,8 +102,8 @@ unified store stays isolated per language pair.
 
 ## Configuration snapshot and resume
 
-After `init` succeeds, the key configuration of this run (`language.target`,
-`pipeline.bilingual`, etc.) is snapshotted into `publication.json.config`; on resume the
+After `init` succeeds, this run's target-language configuration (`language.target`)
+is snapshotted into `publication.json.config`; on resume the
 snapshot is preferred, avoiding inconsistent results caused by configuration drift.
 
 ## Secrets

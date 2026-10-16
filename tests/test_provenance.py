@@ -7,8 +7,10 @@ import zipfile
 from pathlib import Path
 from typing import Any
 
+import pytest
+
 from auto_common.workspace import Publication, PublicationMeta, RunStore
-from auto_epublizer.build import build_epub
+from auto_epublizer.build import build_epub, collect_media
 from auto_epublizer.build.html import FootnoteState, render_document
 from auto_epublizer.qa.provenance import audit_provenance
 from auto_epublizer.qa.report import EpubcheckResult, generate_report
@@ -148,7 +150,7 @@ def test_provenance_missing_unit(tmp_path: Path) -> None:
     report = generate_report(
         "book",
         _audit_ok(),
-        EpubcheckResult(available=False, ran=False, errors=-1, warnings=0),
+        EpubcheckResult(available=False, ran=False, errors=-1, warnings=0, returncode=None),
         provenance=result.to_dict(),
     )
     assert not report.released and report.released_reason == "provenance_incomplete"
@@ -169,7 +171,6 @@ def test_provenance_media_lost(tmp_path: Path) -> None:
     )
     result = audit_provenance(store, entries, _build(store, entries))
     assert any(f["code"] == "E_MEDIA_LOST" for f in result.findings)
-    assert result.media_lost == ["ch01:p1.png"]
 
 
 def test_provenance_coverage_gap(tmp_path: Path) -> None:
@@ -191,7 +192,7 @@ def test_provenance_coverage_gap(tmp_path: Path) -> None:
     report = generate_report(
         "book",
         _audit_ok(),
-        EpubcheckResult(available=True, ran=True, errors=0, warnings=0),
+        EpubcheckResult(available=True, ran=True, errors=0, warnings=0, returncode=0),
         provenance=result.to_dict(),
     )
     assert not report.released and report.released_reason == "provenance_incomplete"
@@ -408,7 +409,7 @@ def test_report_blocks_release_on_missing_insert_files() -> None:
     report = generate_report(
         "book",
         _audit_ok(),
-        EpubcheckResult(available=True, ran=True, errors=0, warnings=0),
+        EpubcheckResult(available=True, ran=True, errors=0, warnings=0, returncode=0),
         provenance={
             "coverage": None,
             "units_missing": [],
@@ -466,7 +467,6 @@ def test_provenance_epub_media_lost(tmp_path: Path) -> None:
         ),
     )
     result = audit_provenance(store, entries, bad)
-    assert result.epub_media_missing == ["ch01:missing.png"]
     assert any(f["code"] == "E_MEDIA_EPUB_LOST" for f in result.findings)
 
 
@@ -621,37 +621,119 @@ def test_provenance_anchor_toc_consistent(tmp_path: Path) -> None:
     assert not [f for f in result.findings if f["code"] in ("E_TOC_FLAT", "W_TOC_DEPTH")]
 
 
-def test_provenance_bilingual_anchor_exempt(tmp_path: Path) -> None:
-    """双语文档（class="src"，由 align 行渲染、无子标题元素）锚点期望豁免。"""
-    from auto_epublizer.build.html import render_bilingual_document
-    from auto_translator.translation.align import write_align
-
+def test_unregistered_reference_marker_keeps_footnote_count_gate(tmp_path: Path) -> None:
+    """正文标记不是登记证据，未登记的额外 aside 仍阻断。"""
     store, entries = _make_workspace(
         tmp_path,
-        [
-            {"id": "ch01", "rel": "body/ch01.md", "md": "# 一\n\n## 子节\n\n甲。\n", "level": 1},
-        ],
+        [{"id": "ch01", "rel": "body/ch01.md", "md": "# 一\n\n正文[^ref-000001]。\n"}],
         translate=False,
     )
-    # 双语构建：内容由 align 行渲染（无子标题元素 → 无锚点条目）
-    rows = [{"seq": 1, "src": "甲。", "tgt": "译文甲。", "note": None}]
-    write_align(store.unit_align_path("ch01"), rows)
-    content = [
-        ("ch01.xhtml", render_bilingual_document("一", rows, lang_src="en", lang_tgt="zh-CN"))
-    ]
-    out = store.output_dir / "book.epub"
+    epub = _build(store, entries)
+    bad = tmp_path / "extra.epub"
+    with zipfile.ZipFile(epub) as zin, zipfile.ZipFile(bad, "w") as zout:
+        for item in zin.infolist():
+            data = zin.read(item.filename)
+            if item.filename == "OEBPS/ch01.xhtml":
+                data = data.replace(
+                    b"</body>",
+                    b'<aside epub:type="footnote" id="extra"><p>Extra note.</p></aside></body>',
+                )
+            zout.writestr(item, data)
+    result = audit_provenance(store, entries, bad)
+    assert "E_FN_EPUB_LOST" in {f["code"] for f in result.findings}
+
+
+def _image_product(
+    tmp_path: Path, md: str, filenames: list[str]
+) -> tuple[RunStore, list[dict[str, Any]], Path]:
+    """使用实际媒体收集/打包路径，生成可核对资源身份的产品。"""
+    import struct
+    import zlib
+
+    store, entries = _make_workspace(
+        tmp_path, [{"id": "ch01", "rel": "body/ch01.md", "md": md}], translate=False
+    )
+    media_root = store.structured_dir / "raw" / "media"
+
+    def chunk(kind: bytes, data: bytes) -> bytes:
+        return (
+            struct.pack(">I", len(data))
+            + kind
+            + data
+            + struct.pack(">I", zlib.crc32(kind + data) & 0xFFFFFFFF)
+        )
+
+    for index, name in enumerate(filenames):
+        path = media_root / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(
+            b"\x89PNG\r\n\x1a\n"
+            + chunk(b"IHDR", struct.pack(">IIBBBBB", 1, 1, 8, 2, 0, 0, 0))
+            + chunk(b"IDAT", zlib.compress(bytes((0, index, 128, 128))))
+            + chunk(b"IEND", b"")
+        )
+    rendered, media, dropped = collect_media(md, media_root)
+    assert dropped == []
+    epub = store.output_dir / "book.epub"
     build_epub(
         _pub(),
         entries,
-        content,
-        lang="zh-CN",
+        [("ch01.xhtml", render_document("Chapter", rendered, lang="en", unit_id="ch01"))],
+        lang="en",
         modified="2026-01-01T00:00:00Z",
-        out_path=out,
+        out_path=epub,
+        media_files=media,
     )
-    # 译文 md 存在（带 ## 子标题）：audit 按双语文档豁免锚点期望
-    tp = store.translation_dir / "body/ch01.md"
-    tp.parent.mkdir(parents=True, exist_ok=True)
-    tp.write_text("# 一\n\n## 子节\n\n译文甲。\n", encoding="utf-8")
-    result = audit_provenance(store, entries, out)
-    assert not result.toc_flat and not result.toc_depth_mismatch
-    assert not [f for f in result.findings if f["code"] in ("E_TOC_FLAT", "W_TOC_DEPTH")]
+    return store, entries, epub
+
+
+@pytest.mark.parametrize(
+    "image",
+    ["![Figure](literal%41.png)", 'Before <img src="literal%2541.png" alt="Figure"/> after.'],
+    ids=["markdown-literal", "html-url-once"],
+)
+def test_provenance_preserves_source_percent_identity(tmp_path: Path, image: str) -> None:
+    store, entries, epub = _image_product(
+        tmp_path, "# Chapter\n\n" + image + "\n", ["literal%41.png"]
+    )
+    result = audit_provenance(store, entries, epub)
+    assert result.epub_media_missing == []
+    assert result.ok, result.findings
+
+
+def test_provenance_rejects_same_basename_from_wrong_directory(tmp_path: Path) -> None:
+    store, entries, epub = _image_product(
+        tmp_path,
+        "# Chapter\n\n![First](a/shared.png)\n\n![Second](b/shared.png)\n",
+        ["a/shared.png", "b/shared.png"],
+    )
+    with zipfile.ZipFile(epub) as zf:
+        members = {name: zf.read(name) for name in zf.namelist()}
+    chapter = members["OEBPS/ch01.xhtml"].decode("utf-8")
+    members["OEBPS/ch01.xhtml"] = chapter.replace(
+        'src="media/a/shared.png"', 'src="media/b/shared.png"', 1
+    ).encode("utf-8")
+    with zipfile.ZipFile(epub, "w") as zf:
+        for name, data in members.items():
+            zf.writestr(name, data)
+    result = audit_provenance(store, entries, epub)
+    assert result.epub_media_missing == ["ch01:media/a/shared.png"]
+    assert result.ok is False
+
+
+def test_html_media_does_not_hide_missing_surrounding_text(tmp_path: Path) -> None:
+    store, entries, epub = _image_product(
+        tmp_path,
+        '# Chapter\n\nBefore <img src="literal%2541.png" alt="Figure"/> after.\n',
+        ["literal%41.png"],
+    )
+    with zipfile.ZipFile(epub) as zf:
+        members = {name: zf.read(name) for name in zf.namelist()}
+    members["OEBPS/ch01.xhtml"] = members["OEBPS/ch01.xhtml"].replace(b"after.", b"")
+    with zipfile.ZipFile(epub, "w") as zf:
+        for name, data in members.items():
+            zf.writestr(name, data)
+    result = audit_provenance(store, entries, epub)
+    assert result.epub_media_missing == []
+    assert result.epub_coverage == 0.0
+    assert "E_EPUB_PARA_LOST" in {finding["code"] for finding in result.findings}

@@ -15,10 +15,14 @@ auto-epublizer qa [--epub <path>] [--workspace <dir>]
 
 ## epubcheck
 
-- 用 `~/.cache/epubcheck.jar`（`java -jar`）校验，零 error 放行。
+- 用配置中的完整发行包 JAR（默认 `~/.cache/epubcheck.jar`）校验；必须保留相邻 `lib/` 依赖目录，不能只复制 JAR。Java headless 运行时足够，无需桌面。
+  进程必须成功退出且无 ERROR/FATAL 才可放行；固定英文诊断便于稳定计数，启动异常与未识别的非零退出仍阻断，并保留退出码与诊断。
 - jar 缺失时 `available=False`、`ran=False`、`errors=-1`，`passed=False`（未验证 ≠ 合格）。
+- 报告 `epubcheck.returncode` 保存实际退出值，未执行为 null，未知不得补成 0。缺此证据的旧 released 报告会标记 stale、进度降为未放行，须重新 QA，不手改历史 released。
 
 ## 解包逐项审计（离线，零 token）
+
+标准 EPUB 注释必须离线独立验收：核证有效登记绑定、完整内容、注释/引用语义、目标、回链及资源身份，`inventory=none` 也须零对零。仅有效、未过期的登记图且本次已执行独立成品注释门时，才移交旧计数/必须有回链判据；新门任一缺陷仍阻断。登记字段非空或出现 `[^ref]` 文本本身不构成证据，未登记/过期仍保留旧门。无需桌面；阅读器 GUI 只作有条件兼容抽查，不可用时记「阅读器未实测」，不推断所有阅读器均弹窗（见 `references/delivery.md`）。
 
 | 检查 | 失败码 |
 |---|---|
@@ -39,7 +43,6 @@ auto-epublizer qa [--epub <path>] [--workspace <dir>]
 | DC 元数据缺失（creator/date/publisher/rights） | `W_META_INCOMPLETE`（告警） |
 | 内部锚点无法解析（含脚注 noteref→footnote） | `E_ANCHOR` |
 | 脚注 aside 缺回链或回链不可解析 | `E_FN_BACKLINK` |
-| 双语 src/tgt 段落数不一致 | `E_BI_PAIRS` |
 | 主题含具体字体名/字号 / 颜色 | `E_THEME_FONT` / `E_THEME_COLOR` |
 | 封面 properties 与 meta 互证失败 | `E_COVER_META` |
 | img alt 空值或缺失 / 格式兼容性差（.webp/.avif） | `W_IMG_NO_ALT` / `W_IMG_FORMAT`（告警） |
@@ -112,7 +115,8 @@ report.json 落盘的计数字段只有 `inserts_missing_files`（进放行门�
 
 ## 排查
 
-- `epubcheck errors: -1` → 未装 jar；按 `doctor` 提示下载放到 `~/.cache/epubcheck.jar` 后重跑。
+- `epubcheck errors: -1` → 校验未执行；根据 messages 检查 JAR、Java 或超时。解压完整发行包、保留 `lib/`，让 `qc.epubcheck.jar` 指向包内 JAR 后重跑。
+- `epubcheck 进程退出码` / `NoClassDefFoundError` → 启动或校验失败，不是零错误；检查分发包依赖和报告里的原始诊断，不能靠重装 JRE 或只看 JAR 存在来认定可用。
 - `成品不存在` → 先 `build` 或 `convert`。
 - 审计发现 `W_H1_COUNT` → 内容文档标题层级问题（每章应恰一个 h1）。
 - `E_ZIP_DUPLICATE` → zip 条目名重复（手改包/损坏）；从译文重新 build，不修成品。
@@ -135,12 +139,11 @@ report.json 落盘的计数字段只有 `inserts_missing_files`（进放行门�
   中 status=unresolved）：能修则修后复跑 qa；确属存疑的在交付记录中说明。
 - `W_REPAIR_STALE_UNIT` → `repairs.jsonl` 有行引用的单元已被结构重建删除：历史 `done` 行可
   忽略；`unresolved` 行请重挂现存单元。仅为 warning，不会中断 qa（issue #23）。
-- `W_NAMING` → 成品文件名与 slug 前缀不符；`-o` 重命名或按 `<slug>.epub`/`<slug>-bi.epub` 输出。
+- `W_NAMING` → 成品文件名与 slug 前缀不符；`-o` 重命名或按 `<slug>.epub` 输出。
 - `W_STRUCT_MISSING` → structured/ 源文文件缺失（被误删）；从源文件重跑该单元 ingest。
 - `provenance_incomplete` →
   - `E_UNIT_MISSING`：spine 缺单元——检查该单元译文/源文是否存在、是否为空壳被跳过；
   - `E_MEDIA_LOST`/`E_MEDIA_ORDER`：译文丢图或图片顺序变了——对照 `structured/` 原文补齐；
   - 覆盖率 < 1.0：`report.json` 无逐段清单，跑 `g0` 看告警定位漏译段落；
   - `E_TOC_FLAT`：源文有层级（单元 level 链或正文子标题）但目录扁平——确认源单元 `level`
-    已登记（重跑 init/preprocess）；单元内子标题锚点自 2026-09-29 起参与期望序列对账，
-    双语文档自动豁免。
+    已登记（重跑 init/preprocess）；单元内子标题锚点自 2026-09-29 起参与期望序列对账。

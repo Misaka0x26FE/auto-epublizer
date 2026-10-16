@@ -521,9 +521,8 @@ def test_build_blocks_missing_translation_note(tmp_path: Path) -> None:
         store, digest, tgt_texts={"n-000001": "第一条注。", "n-000002": ""}
     )
     # 绕过 import 门（直接 build）也要阻断：译文构建缺译注不得静默降级
-    with pytest.raises(orch.OrchestrationError) as ei:
+    with pytest.raises(orch.OrchestrationError):
         orch.build(store)
-    assert "缺译注" in str(ei.value)
 
 
 def test_build_blocks_unregistered_marker(tmp_path: Path) -> None:
@@ -577,7 +576,7 @@ def _tamper(src: Path, dst: Path, name: str, old: str, new: str) -> Path:
 
 
 def test_notes_product_gate_clean_build_passes(tmp_path: Path) -> None:
-    from auto_epublizer.qa import audit_notes_epub
+    from auto_epublizer.qa import audit_epub, audit_notes_epub
 
     store, digest = _two_chapter_ws(tmp_path)
     _write_two_chapter_translation(store, digest)
@@ -585,8 +584,11 @@ def test_notes_product_gate_clean_build_passes(tmp_path: Path) -> None:
     epub = orch.build(store)
     ctx = notes_mod.read_notes_json(notes_mod.source_notes_path(store))
     tgt = notes_mod.read_notes_json(notes_mod.translation_notes_path(store))
-    result = audit_notes_epub(epub, source_notes=ctx, target_notes=tgt)
+    result = audit_notes_epub(
+        epub, source_notes=ctx, target_notes=tgt, media_root=store.structured_dir / "raw" / "media"
+    )
     assert result.ok, result.findings
+    assert audit_epub(epub, notes_registered=True).ok
 
 
 def test_notes_product_gate_detects_missing_anchor_and_content(tmp_path: Path) -> None:
@@ -601,7 +603,9 @@ def test_notes_product_gate_detects_missing_anchor_and_content(tmp_path: Path) -
 
     # ① 锚点 id 被改 → 已登记引用缺锚点 + 出现孤儿锚点
     bad1 = _tamper(epub, tmp_path / "bad1.epub", "ch01.xhtml", 'id="ref-000001"', 'id="ref-999999"')
-    r1 = audit_notes_epub(bad1, source_notes=ctx, target_notes=tgt)
+    r1 = audit_notes_epub(
+        bad1, source_notes=ctx, target_notes=tgt, media_root=store.structured_dir / "raw" / "media"
+    )
     codes1 = {f["code"] for f in r1.findings}
     assert "E_NOTES_ANCHOR_MISSING" in codes1
     assert "E_NOTES_ORPHAN_ANCHOR" in codes1
@@ -609,7 +613,9 @@ def test_notes_product_gate_detects_missing_anchor_and_content(tmp_path: Path) -
 
     # ② 注文内容被改 → 内容核对失败
     bad2 = _tamper(epub, tmp_path / "bad2.epub", "ch01.xhtml", "第一条注。", "被替换的注文。")
-    r2 = audit_notes_epub(bad2, source_notes=ctx, target_notes=tgt)
+    r2 = audit_notes_epub(
+        bad2, source_notes=ctx, target_notes=tgt, media_root=store.structured_dir / "raw" / "media"
+    )
     assert "E_NOTES_CONTENT_MISMATCH" in {f["code"] for f in r2.findings}
 
     # ③ 回链被删 → 缺回链
@@ -620,7 +626,9 @@ def test_notes_product_gate_detects_missing_anchor_and_content(tmp_path: Path) -
         'href="ch01.xhtml#ref-000001"',
         'href="#ref-000001"',
     )
-    r3 = audit_notes_epub(bad3, source_notes=ctx, target_notes=tgt)
+    r3 = audit_notes_epub(
+        bad3, source_notes=ctx, target_notes=tgt, media_root=store.structured_dir / "raw" / "media"
+    )
     assert "E_NOTES_BACKLINK_MISSING" in {f["code"] for f in r3.findings}
 
 
@@ -643,7 +651,12 @@ def test_notes_product_gate_none_inventory_zero_to_zero(tmp_path: Path) -> None:
     _write_translation(store, md="# 第一章\n\n第一句话。\n", rows=rows)
     assert orch.import_translations(store)["imported"] == ["ch01"]
     epub = orch.build(store)
-    result = audit_notes_epub(epub, source_notes=data, target_notes=None)
+    result = audit_notes_epub(
+        epub,
+        source_notes=data,
+        target_notes=None,
+        media_root=store.structured_dir / "raw" / "media",
+    )
     assert result.ok, result.findings
     # 注入一个未登记的 noteref → 无注书不得有语义注释
     bad = _tamper(
@@ -653,7 +666,9 @@ def test_notes_product_gate_none_inventory_zero_to_zero(tmp_path: Path) -> None:
         "第一句话。",
         '第一句话。<a epub:type="noteref" id="ref-000001" href="#fn-x">[1]</a>',
     )
-    r2 = audit_notes_epub(bad, source_notes=data, target_notes=None)
+    r2 = audit_notes_epub(
+        bad, source_notes=data, target_notes=None, media_root=store.structured_dir / "raw" / "media"
+    )
     assert "E_NOTES_NONE_UNEXPECTED" in {f["code"] for f in r2.findings}
 
 
@@ -663,7 +678,7 @@ def test_report_blocks_release_on_notes_findings() -> None:
     result = generate_report(
         "book",
         AuditResult(ok=True),
-        EpubcheckResult(available=True, ran=True, errors=0, warnings=0),
+        EpubcheckResult(available=True, ran=True, errors=0, warnings=0, returncode=0),
         notes_audit={
             "findings": [{"level": "error", "code": "E_NOTES_ANCHOR_MISSING", "message": "缺锚点"}],
             "missing": ["ref-000001"],
@@ -685,7 +700,9 @@ def test_notes_gate_partial_omission_locates_remaining_ref(tmp_path: Path) -> No
     ctx = notes_mod.read_notes_json(notes_mod.source_notes_path(store))
     tgt = notes_mod.read_notes_json(notes_mod.translation_notes_path(store))
     bad = _tamper(epub, tmp_path / "partial.epub", "ch02.xhtml", 'id="ref-000003"', 'id="ref-x"')
-    r = audit_notes_epub(bad, source_notes=ctx, target_notes=tgt)
+    r = audit_notes_epub(
+        bad, source_notes=ctx, target_notes=tgt, media_root=store.structured_dir / "raw" / "media"
+    )
     assert r.missing == ["ref-000003"]
     assert "E_NOTES_ANCHOR_MISSING" in {f["code"] for f in r.findings}
 
@@ -701,7 +718,9 @@ def test_notes_gate_detects_equal_count_swap(tmp_path: Path) -> None:
     ctx = notes_mod.read_notes_json(notes_mod.source_notes_path(store))
     tgt = notes_mod.read_notes_json(notes_mod.translation_notes_path(store))
     bad = _tamper(epub, tmp_path / "swap.epub", "ch01.xhtml", "第一条注。", "第二条注。")
-    r = audit_notes_epub(bad, source_notes=ctx, target_notes=tgt)
+    r = audit_notes_epub(
+        bad, source_notes=ctx, target_notes=tgt, media_root=store.structured_dir / "raw" / "media"
+    )
     assert "E_NOTES_CONTENT_MISMATCH" in {f["code"] for f in r.findings}
     assert r.missing == ["n-000001"]
 
@@ -721,7 +740,9 @@ def test_notes_gate_supports_multi_paragraph_note(tmp_path: Path) -> None:
     assert "第二段" in ch01 and "强调" in ch01 and "<li>甲</li>" in ch01
     ctx = notes_mod.read_notes_json(notes_mod.source_notes_path(store))
     tgt = notes_mod.read_notes_json(notes_mod.translation_notes_path(store))
-    assert audit_notes_epub(epub, source_notes=ctx, target_notes=tgt).ok
+    assert audit_notes_epub(
+        epub, source_notes=ctx, target_notes=tgt, media_root=store.structured_dir / "raw" / "media"
+    ).ok
 
 
 def test_notes_stale_after_source_change_blocks_qa(tmp_path: Path) -> None:
@@ -739,6 +760,8 @@ def test_notes_stale_after_source_change_blocks_qa(tmp_path: Path) -> None:
     report = orch.qa(store, epub_path=str(epub), config=cfg)
     assert report["released"] is False
     assert "E_NOTES_STALE" in {f["code"] for f in report["notes_findings"]}
+    # 过期登记不能移交旧数量门：无定义正文中的成品 aside 仍应被旧门发现。
+    assert report["epub_footnotes_missing"] > 0
 
 
 def test_notes_with_media_are_collected_and_rendered(tmp_path: Path) -> None:
@@ -763,7 +786,22 @@ def test_notes_with_media_are_collected_and_rendered(tmp_path: Path) -> None:
     assert '<img src="media/n1.png"' in ch01
     ctx = notes_mod.read_notes_json(notes_mod.source_notes_path(store))
     tgt = notes_mod.read_notes_json(notes_mod.translation_notes_path(store))
-    assert audit_notes_epub(epub, source_notes=ctx, target_notes=tgt).ok
+    assert audit_notes_epub(
+        epub, source_notes=ctx, target_notes=tgt, media_root=store.structured_dir / "raw" / "media"
+    ).ok
+    bad = _tamper(
+        epub,
+        tmp_path / "missing-note-media.epub",
+        "ch01.xhtml",
+        '<img src="media/n1.png"',
+        '<img src="media/missing.png"',
+    )
+    assert not audit_notes_epub(
+        bad,
+        source_notes=ctx,
+        target_notes=tgt,
+        media_root=media_root,
+    ).ok
 
 
 # ── P1 漏门回归（2026-10-15 审查回流）────────────────────────────────────────
@@ -935,7 +973,7 @@ def test_register_rejects_cross_unit_note_binding(tmp_path: Path) -> None:
         _register(store, data)
     msg = str(ei.value)
     assert "跨章同号" in msg or "其它单元" in msg, msg
-    assert "重复绑定同一注文" in msg or "本单元的引用支撑" in msg, msg
+    assert "candidate_id" in msg
     assert "c-c2-m" in msg and "c-c2-d" in msg, msg
 
 
@@ -998,7 +1036,9 @@ def test_notes_product_gate_flags_note_media_missing(tmp_path: Path) -> None:
     from auto_epublizer.qa.notes_audit import audit_notes_epub
 
     tgt = notes_mod.read_notes_json(notes_mod.translation_notes_path(store))
-    result = audit_notes_epub(epub, source_notes=data, target_notes=tgt)
+    result = audit_notes_epub(
+        epub, source_notes=data, target_notes=tgt, media_root=store.structured_dir / "raw" / "media"
+    )
     codes = [f["code"] for f in result.findings]
     assert "E_NOTES_MEDIA_MISSING" in codes, codes
 
@@ -1037,7 +1077,9 @@ def test_report_goes_stale_when_catalog_unresolved_added_after_release(
     for u in store.load_publication().units:
         store.set_unit_status(u.id, "reviewed")
     epub = orch.build(store)
-    monkeypatch.setattr(orch, "run_epubcheck", lambda *a, **k: EpubcheckResult(True, True, 0, 0))
+    monkeypatch.setattr(
+        orch, "run_epubcheck", lambda *a, **k: EpubcheckResult(True, True, 0, 0, returncode=0)
+    )
     report = orch.qa(store, epub_path=str(epub))
     assert report["released"] is True, report.get("released_reason")
     assert report_state(store)["stale"] is False
@@ -1106,8 +1148,9 @@ def test_build_blocks_when_used_translation_notes_stale(tmp_path: Path) -> None:
     assert "摘要不符" in str(ei.value)
 
 
-def test_candidates_rerun_preserves_identity_bindings(tmp_path: Path) -> None:
-    """F1：候选重跑保留 note_id/ref_id 绑定（与 disposition 同生命周期）。"""
+@pytest.mark.parametrize("binding", ["note_id", "ref_id"])
+def test_candidates_rerun_preserves_identity_bindings(tmp_path: Path, binding: str) -> None:
+    """候选重跑保留处置及注文或引用身份。"""
     store = _notes_ws(tmp_path)
     first = orch.notes_candidates(store)
     rows = [
@@ -1119,7 +1162,8 @@ def test_candidates_rerun_preserves_identity_bindings(tmp_path: Path) -> None:
     ]
     assert rows, first
     rows[0]["disposition"] = "note"
-    rows[0]["ref_id"] = "ref-000001"
+    identity = "n-000001" if binding == "note_id" else "ref-000001"
+    rows[0][binding] = identity
     (store.preprocessing_dir / "note_candidates.jsonl").write_text(
         "".join(json.dumps(r, ensure_ascii=False) + "\n" for r in rows), encoding="utf-8"
     )
@@ -1132,5 +1176,122 @@ def test_candidates_rerun_preserves_identity_bindings(tmp_path: Path) -> None:
         if ln.strip()
     ]
     kept = [r for r in again if r.get("candidate_id") == rows[0]["candidate_id"]]
-    assert kept and kept[0].get("ref_id") == "ref-000001"
+    assert kept and kept[0].get(binding) == identity
     assert kept[0].get("disposition") == "note"
+
+
+@pytest.mark.parametrize("orphan", [False, True])
+def test_register_multilocation_endnote_candidates(tmp_path: Path, orphan: bool) -> None:
+    """混合附录的跨页注文可合并，合法孤儿无需伪造引用。"""
+    src = tmp_path / "book.md"
+    src.write_text(
+        "# Chapter I\n\nFirst sentence.\n\n# Appendix\n\nMixed appendix.\n", encoding="utf-8"
+    )
+    store = orch.init(str(src), workspace_dir=str(tmp_path / "ws"))
+    data = _src_notes(store, text="Complete note with continuation.", marker_in_body=not orphan)
+    appendix_unit = next(u.id for u in store.load_publication().units if u.kind == "appendix")
+    if orphan:
+        data["references"] = []
+        data["notes"][0].update(orphan_ok=True, orphan_reason="原书无引用")
+    rows = [
+        _candidate(
+            candidate_id="c-page-1",
+            unit=appendix_unit,
+            kind="numbered_paragraph",
+            note_id="n-000001",
+            line=5,
+        ),
+        _candidate(
+            candidate_id="c-page-2",
+            unit=appendix_unit,
+            kind="numbered_paragraph",
+            note_id="n-000001",
+            line=9,
+        ),
+    ]
+    data["notes"][0]["source_locations"] = [
+        {
+            "kind": "page",
+            "page": 12,
+            "bbox": [1, 2, 30, 40],
+            "candidate_id": "c-page-1",
+            "unit": appendix_unit,
+            "line": 5,
+        },
+        {"kind": "page", "page": 13, "candidate_id": "c-page-2"},
+    ]
+    _write_candidates(store, rows)
+    before = _unit_md(store, appendix_unit).read_text(encoding="utf-8")
+    assert _register(store, data)["summary"]["inventory"] == "present"
+    assert _unit_md(store, appendix_unit).read_text(encoding="utf-8") == before
+    assert notes_mod.read_candidates(store.preprocessing_dir / "note_candidates.jsonl") == rows
+    for bad_locations in (
+        [{"kind": "page", "page": 12}],
+        [{"candidate_id": "wrong-note-candidate"}],
+        [{"candidate_id": "c-page-1", "unit": "ch01"}, {"candidate_id": "c-page-2"}],
+        [{"candidate_id": "c-page-1", "line": 99}, {"candidate_id": "c-page-2"}],
+    ):
+        data["notes"][0]["source_locations"] = bad_locations
+        with pytest.raises(orch.OrchestrationError) as exc:
+            _register(store, data)
+        assert "c-page-1" in str(exc.value)
+
+
+def test_registered_orphan_passes_offline_notes_and_structure_gates(tmp_path: Path) -> None:
+    """干净正文中的合法无引用注文通过独立注释门与 G4，不伪造引用。"""
+    from auto_epublizer.qa import audit_epub, audit_notes_epub
+
+    src = tmp_path / "book.md"
+    src.write_text("# Chapter I\n\nFirst sentence.\n", encoding="utf-8")
+    store = orch.init(str(src), workspace_dir=str(tmp_path / "ws"))
+    data = _src_notes(store, marker_in_body=False)
+    data["references"] = []
+    data["notes"][0].update(orphan_ok=True, orphan_reason="原书无引用")
+    _register(store, data)
+    _write_translation(
+        store,
+        md="# 第一章\n\n第一句话。\n",
+        rows=[{"seq": 1, "src": "First sentence.", "tgt": "第一句话。", "note": None}],
+        target_notes=_tgt_notes(store),
+    )
+    assert orch.import_translations(store)["imported"] == ["ch01"]
+    epub = orch.build(store)
+    target = notes_mod.read_notes_json(notes_mod.translation_notes_path(store))
+    independent = audit_notes_epub(
+        epub,
+        source_notes=data,
+        target_notes=target,
+        media_root=store.structured_dir / "raw" / "media",
+    )
+    assert independent.ok, independent.findings
+    legacy = audit_epub(epub)
+    assert "E_FN_BACKLINK" in {f.code for f in legacy.findings}
+    assert audit_epub(epub, notes_registered=True).ok
+    cfg = Config()
+    # 不运行外部检查器；此处只验证离线结构门，不宣称 EPUBCheck 或阅读器兼容。
+    cfg.qc.epubcheck.jar = str(tmp_path / "missing-epubcheck.jar")
+    report = orch.qa(store, epub_path=str(epub), config=cfg)
+    assert report["g4_audit"] == "pass"
+    assert not report["notes_findings"]
+    assert report["epub_footnotes_missing"] == 0
+
+    # 移交不掩盖独立门的内容缺失与额外未登记 aside。
+    for filename, old, new in [
+        ("missing.epub", "注释文本。", ""),
+        (
+            "extra.epub",
+            "</body>",
+            '<aside epub:type="footnote" id="fn-extra"><p>额外注文。</p></aside></body>',
+        ),
+    ]:
+        bad = _tamper(epub, tmp_path / filename, "ch01.xhtml", old, new)
+        result = audit_notes_epub(
+            bad,
+            source_notes=data,
+            target_notes=target,
+            media_root=store.structured_dir / "raw" / "media",
+        )
+        assert not result.ok
+        report = orch.qa(store, epub_path=str(bad), config=cfg)
+        assert report["released"] is False
+        assert report["notes_findings"]

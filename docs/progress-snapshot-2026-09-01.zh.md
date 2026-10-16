@@ -41,15 +41,13 @@
 1. **CLI 端到端真实联调**：`analyze`/`translate`/`review`/`build`/`qa` 命令尚未跑真实
    FakeClient 之外的冒烟（当前只用 `convert` 跑过端到端）。建议补一个 `test_cli.py` 或
    手动冒烟验证命令链路。
-2. **双语 EPUB**：`--bilingual` 参数已接线到 `build`（产出 `-bi.epub`），但正文只渲染单语，
-   双语排版（源/译对照）未实现。
-3. **review G2/G3 的证据工具**：取证 Agent 目前 `context=""`，只读工具（glossary_term/
+2. **review G2/G3 的证据工具**：取证 Agent 目前 `context=""`，只读工具（glossary_term/
    term_occurrences/segment_context/book_context）未接入。
-4. **usage.json 合并幂等**：`merge_usage` 尚无防重（重试/续跑不得重复计费未强制）。
-5. **PDF 复杂场景**：OCR（RapidOCR 可选 extra）、扫描件视觉 LLM 兜底、多栏/表格/脚注专项
+3. **usage.json 合并幂等**：`merge_usage` 尚无防重（重试/续跑不得重复计费未强制）。
+4. **PDF 复杂场景**：OCR（RapidOCR 可选 extra）、扫描件视觉 LLM 兜底、多栏/表格/脚注专项
    仍为占位（`ingest/ocr.py`、`pdf_reader.py` 只做文字层）。
-6. **skills/ 文档（S1–S10）** 与 `THIRD_PARTY_LICENSES.md` 未写。
-7. **打包发布**：`uv build` 尚未验证；EPUB 成品走 Release 未接线。
+5. **skills/ 文档（S1–S10）** 与 `THIRD_PARTY_LICENSES.md` 未写。
+6. **打包发布**：`uv build` 尚未验证；EPUB 成品走 Release 未接线。
 
 ## 续跑注意事项
 

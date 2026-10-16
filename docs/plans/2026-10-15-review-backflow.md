@@ -1,7 +1,7 @@
 # 2026-10-15 审查回流修复报告与增量独立审查
 
-状态：**增量独立审查未通过**。§1–6 保留实施方当时的修复、验证与交付报告，不视为独立验收；
-§7 给出 `eda3edb` 上的复核结果。“四项 P1 全部已修”不能据此关闭，书籍 V/H 亦未整体验收。
+状态：**当前代码与操作收尾见 §10，未提交；整体书籍交付仍未验收**。
+§1–9 保留既有实施与独立审查记录；源件内容核证不由测试替代，GUI 兼容抽查不作为通用阻塞。
 
 来源：
 
@@ -28,21 +28,14 @@
 隐私核对：改动仅含公开项目链接与「禁止记录机器路径/密钥」类条款文字；`fingerprint.py` 的
 `_revision()` 只对本包源码仓库执行 git 查询，写入内容为 commit 与 dirty 布尔，不含路径。
 
-## 2. 未修两项 P2 的设计（待审）
+## 2. 旧门与入口设计（现已实施，当前验证见 §10）
 
-- **P2-c（旧门移交）**：判别口径由「单元素材（`[^ref-…]` 标记）」提升为**已验证、未过期的登记图**
-  （仅 `pub.notes` 非空不足以跳过：登记摘要须与当前 `structured/notes.json` 一致）——
-  `orchestrator.qa` 已加载 `notes_ctx`，将其作为 `notes_registered` 传给 `audit_provenance`
-  （登记后跳过旧「md 定义数 ↔ 成品 aside 数」计数）与 `audit_epub`
-  （新增 `unreferenced_notes`，回链门只对**被引用的** aside 生效；`orphan_ok` 注文由 notes 门
-  的 `kept_notes` 负责）。红线：不伪造引用、不删除合法注文、未登记的多余 aside 与内容/媒体缺失
-  仍按 `E_NOTES_*` 阻断；legacy（无登记图）行为不变。回归：① 带 `orphan_ok` 注文的工作区
-  build→qa 不再报 `E_FN_EPUB_LOST`/`E_FN_BACKLINK`；② 删孤儿注内容/媒体后 notes 门仍阻断；③ legacy 对照。
-- **P2-d（入口顺序）**：`AGENTS.{zh,md}` 工作流段把「注释结构化与绑定」整块前移到翻译之前并重编号
-  （注释核证/登记 → 语义整备 → 翻译（含 `translation/notes.json`）→ import/g0 → 审校）；
-  `SKILL.{zh,md}` 管线摘要补注释步骤；建议加轻量文档闸：在 AGENTS/SKILL 的流程代码块中断言
-  「注释登记命令首次出现位置 < 翻译登记命令首次出现位置」（命令名锚定，避免自然语言脆弱匹配）。
-  `references/workflow.{zh,md}` 与 `status --json` 机器指针已为注释在前（无需改）。
+- **P2-c（旧门移交）**：`orchestrator.qa` 先校验已登记源图的摘要并执行独立产品注释门，
+  再向 `audit_provenance` / `audit_epub` 传 `notes_registered`。仅移交旧定义计数及必须有回链判据；
+  现有锚点与已给回链的目标解析仍保留。`orphan_ok` 不伪造引用，未登记的多余 aside、
+  注文/媒体缺失与 none 非零仍由 `E_NOTES_*` 阻断。无登记或过期上下文不移交。
+- **P2-d（入口顺序）**：必要语义整备 → 源注核证/抽离/登记 → 翻译（含译注）→ import/g0 → 审校。
+  AGENTS 中英文、SKILL 和实际路由同步；以真实流程核证，不使用源码命令字符串位置断言。
 
 ## 3. 书籍侧 V 返修（`forced-labour-and-extermination`）
 
@@ -77,12 +70,12 @@ epubcheck 0 error、`provenance_coverage/epub_coverage = 1.0`、`align_md_drift 
 
 ## 5. 未完成/未验证（审查关注点）
 
-- P2-c / P2-d（设计见 §2，未实现）；
+- 旧门与入口两项当前已实施，验证见 §10；
 - 书籍 **N 迁移**（前置：恢复注文真实边界/跨页续文/编号作用域/引用位置 → `notes.json` +
   原位标记 + 三道硬门；legacy 弹窗/回链语义目前为 0）；
 - 245 条术语命中的**逐项证据映射**（不照抄旧豁免 CSV；旧清单绑定旧单元、style.md §40–49
   不支持「著录一律不译」）；
-- 阅读器**交互**验收（跳转/弹窗/落点；审查侧已取目录截图）；
+- 可选阅读器兼容抽查尚未执行完整往返；此项不构成通用交付阻塞；
 - 主仓库侧 `terminology_exempt` 机制是否移植的产品决策。
 
 ## 6. 实施方原复现命令（历史记录，当前限制见 §7.4）
@@ -220,7 +213,7 @@ cd forced-labour-and-extermination && uv run --offline --project <repo> auto-epu
   但 F6 表明该次边界修复未完整验收。
 - v2 H 已撤回“注文完整”，补 A/B 版本关系与包内报告，明确 N 迁移和阅读器交互未完成；
   接受这些收窄说明，不代为确认所有历史版本均已回收。
-- 未实现的 P2-c（orphan 旧门移交）与 P2-d（操作入口前移）继续保留，不列为新增回归。
+- 当时未实现的旧门与入口两项不列为新增回归；当前实现与验证见 §10。
 - 分片另观察到 HTML 图片的既有 `E_NOTES_CONTENT_MISMATCH`；它不是本补丁新增，
   后续统一媒体/内容规范化时应处理，不能把当前 ASCII Markdown 单例当成全部媒体形态已验。
 
@@ -263,7 +256,7 @@ suite/formatters；没有把新 smoke 当成新增永久测试。未重跑已报
 ## 8. 二轮修复记录（回应 §7，commit `60b3553`）
 
 状态：§7 的 7 项 Finding 按建议顺序（F1/F2/F3/F4 → F5/F6/F7）处理完毕；
-P2-c/P2-d 仍保留（按其设计与 §7.4 审查意见）。前置失败基线按 §7.4 钉住：
+当时旧门/入口仍保留，当前实现与验证见 §10。前置失败基线按 §7.4 钉住：
 F1/F2/F4 对齐 `c0e89c2`，F3/F5（上一轮引入的回归）对齐 `6cb79f0`。
 
 | Finding | 修复 | 回归（前置失败基线） |
@@ -279,7 +272,119 @@ F1/F2/F4 对齐 `c0e89c2`，F3/F5（上一轮引入的回归）对齐 `6cb79f0`�
 
 **验证**：HEAD 全量 **594 passed, 1 skipped**、`ruff check`/`format --check` 全绿（离线）。
 
-**未做（保留）**：P2-c（旧门移交以**已验证、未过期**的登记图为准；orphan 合法保留、
-未登记 aside、内容/媒体缺失仍需独立硬门）、P2-d（注释核证/登记前移 + 同步操作文档与
-机器路由 + 一次真实流程 smoke；不采用源码文本位置断言类文档闸）。本册 N 迁移
-（注文真实边界/跨页续文/编号/原位引用）与阅读器交互验收未完成。
+**当时未做**：旧门移交和操作入口前移；当前实现见 §10。本册 N 迁移
+（注文真实边界/跨页续文/编号/原位引用）未完成；阅读器兼容抽查属于可选记录，不作为通用阻塞。
+
+## 9. 本轮七项边界修复（`80b0694` 后，未提交）
+
+本节对应用户最近一次审查后的修复授权；七项按新的边界问题分组，不覆盖或重编号 §7 的历史 F1–F7。
+起点主仓库工作树干净，基线 `80b0694`。本轮修改源码、消费者回归与实际操作文档；
+未提交/推送，不修改线上 issue，不改原始书籍正文、权威状态或交付 EPUB。
+
+### 9.1 修复与契约
+
+| 项 | 修复 | 保留的阻断 |
+|---|---|---|
+| 1. P1 资源有效性失效链 | `ingest.inserts.insert_file_exists` 先解析并确认 raw 包含性，再判断真实文件；`artifacts_digest` 与 provenance 共用。摘要读取生产 inserts schema，坏 JSON 不再造成 status 属性异常；冲突回归只改单个冲突账本 | 越界文件不作存在性探测；缺失/越界仍报 `E_INSERT_MISSING_FILE`，不伪造可用资源 |
+| 2. P1 逐注文实际来源 | `_render_inputs` 一次选择实际源/译 Markdown；首个 spine 引用或孤儿规则确定宿主，同一计划用于目标摘要绑定、文本渲染与 QA。只校验/传递实际译注子集；完全未用到的坏 JSON 不读，混合成品未用空译注不阻断。OPF 写 `aep:render-mode`，QA 从成品读模式 | 实际译注缺失、过期、内容不完整仍拒绝；已登记注释但模式缺失/非法/歧义时要求重建，不猜配 |
+| 3. P2 候选多位置 | 取消注文 note_id 在候选间唯一及物理位置必须有同单元引用/notes 类的限制；每个注文候选在所绑 note 的 `source_locations` 中须有 candidate_id，附带 unit/line 时逐项核对。删除已无意义的 `unit_kinds` 参数并迁移调用 | 图内 note/ref 稳定身份唯一；引用候选仍核对同单元、注号及独立引用，缺/错位置证据拒绝；不靠同号/文本前缀猜配 |
+| 4. P2 媒体根与裸路径 | `media_paths.resolve_media_path` 共用现有源文件安全解析，期待侧由真实源文件得出包内身份。`audit_notes_epub` 必需 `media_root`，调用全部迁移；不从审计调用渲染器重建期望 | 源资源缺失、越界、错目录及成品漏资源仍阻断，不恢复 basename 集合豁免 |
+| 5. P2 URI/字面身份 | Markdown/pandoc 路径百分号保持字面语义；HTML URL 解码一次，ZIP 名不解码。收集器单次改写避免把新 URL 再当源路径读取；注文门与通用 G4 共用 `epub_member_path` | `%41.png` 与 `A.png` 不能互冒，URL 编码外观的 ZIP 错名不能代替一次解码后的成员；外链/包外成员不能充当本地资源 |
+| 6. P2 操作规范 | 同步 `SKILL`、notes reference、notes taskcard、build reference 和 EPUB template spec 五对中英文件；给出完整 note/ref 映射、candidate_id 位置证据、多位置/孤儿与构建模式规则 | 不让 agent 只写 disposition 后误入登记；不把新规则仅留在 Python 错误消息里 |
+| 7. P2 脚本写入契约 | 恢复的 `v_structure_csv.py` 默认输出预览，无文件写入；只有显式 `--apply` 写 CSV。README 明确每一步预览/写入及输入快照边界，另交付脚本修订包 | 不重跑原书迁移、不覆盖 EPUB/归档、不声称脚本修订等于整书复现 |
+
+### 9.2 实际验证
+
+> **验收更正（当前 §10）**：本节此前把旧包装器的 `ran=true / errors=0` 当成真实 EPUBCheck 通过，结论撤销。后续实测发现默认单 JAR 缺相邻依赖，Java 非零退出仍可被旧包装器误记零错误。保留 CLI/子门/字节等观察和测试统计；本节旧报数不再作为外部校验成功证据。当前完整检查器与新判定后的真实重验见 §10。其他批次的历史记录不据此凭空判定通过或失败。
+
+- 最终完整回归：`uv run --offline pytest -q` → **637 passed, 1 skipped**。
+- 主仓库 `ruff check .` → `All checks passed!`，`ruff format --check .` → **304 files already formatted**；
+  随包 CSV 修订脚本单独 check/format-check 亦通过。
+- 集成期间修正了附录 fixture 对生成单元 ID 的错误假设，并删除固定错误文案断言；
+  未通过重钉文案或降低产品门槛来取得绿色结果。
+- 五对中英操作/模板文档已同步并 finalize；收尾 `i18n.py --check` / `--links` 均 **OK**，
+  历史计划按约定保持中文。
+
+以下保留当时 CLI/公开入口及旧报告的观察；其外部通过结论已撤销：
+
+| 场景 | 当时调用/旧报告观察（不作为外部通过证据） |
+|---|---|
+| init → 候选核证/位置绑定 → notes register → import --reviewed → build → qa，完整译文 | EPUBCheck `ran=true`、0 error/0 warning，G4 pass、notes_findings 空、released=true |
+| 第一注源文宿主、第二注译文宿主，target JSON 同时含第一注未用译文 | 源注/实际译注各归正确宿主；同上零错误并 released=true，不误比第一注的未用译文 |
+| 上一混合产品只把第一条未用译注清为空占位，再 build → qa | 成品逐字节不变，notes_findings 空；旧报告声称 released=true |
+| 无任何译文 Markdown，存在损坏但未用到的 target JSON | 源文回退构建和 QA 调用完成；旧报告声称 released=true |
+| 工作区已有译文 Markdown，但通过公开 convert 入口构建源文 | QA 按 OPF source 模式核对源注，不误读坏译注；旧报告声称 released=true |
+| 旧报告声称放行后，仅将 inserts 的 symlink 从 raw 内改指向存在的 raw 外文件 | 摘要变化、report_state.stale=true；status --all 为 built_not_released；重跑 QA 后 released=false、provenance_incomplete、E_INSERT_MISSING_FILE；旧 checker 零错误报数不作外部证据 |
+| 合法孤儿译注宿主先渲染新鲜译注，再改过期摘要 | 过期后 build 拒绝且原成品字节不变，QA 注释门报 E_NOTES_STALE；负场景禁用外部检查器，只验证版本绑定 |
+| CSV 脚本在无关 cwd 指向合成 51 文件工作区，原 CSV 为哨兵 | 默认调用保持所有文件和哨兵不变；--apply 仅改变目标 CSV，51 行顺序正确；归档中两文件与修订文件逐字节核对 |
+
+真实 smoke 曾暴露通用 G4 仍按编码 href 直接查 ZIP 的误报（中文和字面百分号）；
+已修复并增加合法链路与编码外观错成员的正/负回归，再完成上表整条 build→qa，不只报告子门通过。
+`report_state.released` 保留**旧报告声明**，过期时可仍为 true；真正有效性须同时看 stale。
+本轮验证了聚合 progress 退回与重跑 QA 拒绝，未擅自改写历史 report 的 released 字段。
+
+### 9.3 脚本交付与未关闭事项
+
+本轮在 `read` 和实际 `stat` 均无法取得原 `/tmp/opencode/` V 工作区/完整修订归档；
+Downloads 原始书籍目录和归档仍在。仅从会话原文恢复 CSV 脚本与说明并修订，
+不拿原始 36 单元归档冒充新 51 单元 V 交付。
+
+- 修订包：`/home/misaka0x26fe/Downloads/forced-labour-and-extermination-script-fix.tar.gz`；
+  仅含 `reviews/tools/v_structure_csv.py` 和 `reviews/tools/README.md`，不含书稿/EPUB/迁移前快照或 v_restructure.py。
+- SHA-256：`ce6bb6c56168e598246adcbc4ef5db42d4ba04add266266bc6509c4bcdd6c9f9`。
+- 恢复的原 CSV 脚本与会话原文 snapshot `1B3B` 一致后再修订；不声称完成原完整归档的替换或 153 文件复现。
+- 剩余真实书工作：N 迁移、续文/编号/原位绑定和 245 个术语命中逐项核证；
+  阅读器兼容抽查为可选，未实测不阻塞标准交付。代码与入口收尾见 §10。
+- 临时 smoke 工作区自动清理。源文/译文回退合成场景的成功不代表历史真实书已放行或完成交付审计。
+
+
+## 10. 单一输出与标准注释收尾（代码修复已验证，未提交）
+
+用户明确只保留源文转换和译文优先构建，相关额外模式的实现、参数、配置、后缀、
+审计旁路、测试与旧说明均删除，不保留别名或兼容开关。句级 align 继续服务源译核对、
+保真、修订定位和恢复，不承担成品排版。
+
+官方 QA 先得到有效登记上下文并执行独立成品注释门，再移交旧数量与必须有回链判据；
+合法无引用注文不再被旧门误拦，未登记/过期及缺内容、缺媒体、额外 aside 仍阻断。
+AGENTS 语义整备和注释核证/登记步骤已前移，保持 CLI 机器指针一致。
+
+交付基线不要求桌面：agent 核证内容与来源，CLI 校验标准 noteref/footnote、引用/回链、
+资源、目录图和 EPUBCheck。弹窗呈现由阅读器决定；可选 GUI 抽查有则记录环境与观察，
+无桌面记未实测，不因此阻塞，也不声称任意阅读器兼容。
+
+### 10.1 实测发现并修复的额外硬缺陷
+
+- **校验器 fail-open**：非零退出（包括缺依赖的 `NoClassDefFoundError`）和 FATAL 不能按零错误放行；固定英文诊断，保留退出码及错误输出。`EpubcheckResult` 必需声明实际 `returncode`，无执行为 null；报告只有 `ran=true && returncode=0 && errors=0` 才可通过。
+- **旧放行证据失效**：已有摘要但缺退出证据的旧 released 报告在 `report_state` 标为 `epubcheck_unverified`，聚合进度退回 `built_not_released`；保留原 released 声明，不手改历史。原 `digest_missing` 优先级保留。
+- **媒体 manifest ID**：路径替换生成 ID 会令字面 `%` 非法，并令 `a/b.png` 与 `a_b.png` 碰撞。改为稳定顺序分配合法唯一 ID，封面仍引用实际项；不把 ID 格式当公共文件名约定。
+- **普通正文媒体身份**：真实产品已通过 EPUBCheck，却因 provenance 把 Markdown `%41` 误解成 `A` 而阻断。现与既有源文件解析和 URL→ZIP 规则一致，按完整路径及数量核对，不以 basename 放过错目录图片。HTML 图片不作正文标签字面探针，但邻接文字仍必须保全。
+
+环境修复不需要再装 Java：用户已安装 JRE 21。缓存中完整 5.2.1 发行包与默认 JAR 的 SHA-256 一致，仅恢复默认 JAR 相邻 `lib` 的链接，未替换 JAR、未下载、未 sudo。实际 `--version` 为 EPUBCheck 5.2.1。
+
+### 10.2 当前真实无桌面验证
+
+所有 smoke 使用临时合成工作区并移除 DISPLAY/WAYLAND/会话总线环境，不调用 LLM 或网络，不用外部检查器替身。
+
+| 场景 | 实测 |
+|---|---|
+| 真实 CLI 源文转换 → QA | released=true，保存 checker returncode=0、0 error/0 warning |
+| 仅删除报告 checker.returncode，其余产物保持原样 | 原 released=true 保留，stale=true、epubcheck_unverified，status_all 进度 built_not_released |
+| 临时复制同一 JAR 但不带 lib，实际 CLI QA | JVM NoClassDefFoundError，returncode=1、errors≥1，released=false、epubcheck_errors；诊断保留 |
+| `%41`、嵌套目录与路径替换碰撞名共存 | 真正 checker returncode=0、0 error/0 warning，完整 QA released=true；重复构建逐字节相同 |
+| 当前标准 noteref 与合法无引用注文分别完整构建 → CLI QA | 均 released=true、checker returncode=0、notes_findings 空；引用数分别为 1 和 0，无伪造引用 |
+| 分别删除上述两个成品的注文内容 | 均 released=false、notes_open、E_NOTES_CONTENT_MISMATCH |
+| 合法产品的 left/same.png 被换成已有 right/same.png | 真正 checker 仍 returncode=0，provenance 精确查出 1 个缺失身份并拒绝放行 |
+| HTML 图片周围正文被删 | 真正 checker 仍 returncode=0，E_EPUB_PARA_LOST、覆盖率下降且拒绝放行；未用删除整个图片段落来掩盖误报 |
+
+恢复完整检查器并修复退出判定后，还实际重跑完整译文、逐注源/译宿主混合、清空未用译注、源文回退、显式源文转换，以及合法无引用注文；正例均 0 error/0 warning 并放行。独立删除注内容/aside/媒体、添加额外 aside、登记过期、未登记和 inventory=none 残注均保持阻断。具体旧报数的撤销见 §9.2，不把这些合成样例称为原书完成验收。
+
+真实阅读器兼容未实测，按用户边界为可选。原书 N 迁移、245 条术语核证和缺失 V 工作区前置条件不变；未覆盖原书、未提交或推送代码。
+
+### 10.3 最终回归与文档同步
+
+- `uv run --offline pytest -q`：**643 passed, 1 skipped**。
+- `uv run --offline ruff check .`：**All checks passed!**；`ruff format --check .`：**305 files already formatted**。
+- `i18n.py --check` / `--links`：均 **OK**；当前补充的 8 对检查器/媒体契约文档已同步并 finalize，之前的单一输出与无桌面文档同步保留。
+- 初次完整回归发现 4 个测试检查器替身未显式迁移退出值，以及旧封面测试锁定路径派生 ID；已迁移替身、删除无意义 ID 文案/格式断言，不重钉新格式。新的合法唯一 ID / 封面绑定测试检查真实 OPF 关系。
+- 新增过程失败/FATAL、旧报告缺退出证据、特殊媒体 ID、字面百分号/单次 URL 解码、错目录同名图及 HTML 图片邻接正文缺失的行为回归；百分号误拦和错图漏检均观察到修复前失败。
+

@@ -162,7 +162,9 @@ def test_next_tasks_report_stale_not_routed_as_unit(
     for u in store.load_publication().units:
         store.set_unit_status(u.id, "reviewed")
     epub = orch.build(store)
-    monkeypatch.setattr(orch, "run_epubcheck", lambda *a, **k: EpubcheckResult(True, True, 0, 0))
+    monkeypatch.setattr(
+        orch, "run_epubcheck", lambda *a, **k: EpubcheckResult(True, True, 0, 0, returncode=0)
+    )
     report = orch.qa(store, epub_path=str(epub))
     assert report["released"] is True, report.get("released_reason")
     assert report_state(store)["stale"] is False

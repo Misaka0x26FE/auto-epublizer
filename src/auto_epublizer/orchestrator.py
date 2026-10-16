@@ -19,7 +19,7 @@ from auto_translator.translation.align import read_align
 
 from . import __version__
 from .build import build_epub, collect_media, subheading_anchors
-from .build.html import render_bilingual_document, render_document, slug_file
+from .build.html import render_document, slug_file
 from .ingest import load_document
 from .preprocess.artifacts import read_catalog, read_repairs
 from .qa import artifacts_digest, audit_epub, audit_notes_epub, generate_report, run_epubcheck
@@ -231,8 +231,6 @@ def convert(
         entries,
         lang=lang,
         output=output,
-        suffix="",
-        bilingual=False,
         event="convert_built",
         prefer_translation=False,
         theme=theme or Config().output.theme,
@@ -240,12 +238,37 @@ def convert(
     )
 
 
+def _render_inputs(
+    store: RunStore, entries: list[dict[str, Any]], *, mode: str
+) -> dict[str, dict[str, Any]]:
+    """一次选择实际渲染输入；注文计划和渲染循环共享宿主及来源。"""
+    inputs: dict[str, dict[str, Any]] = {}
+    for entry in entries:
+        uid = str(entry["id"])
+        rel = entry.get("rel_path")
+        if not rel:
+            continue
+        translated = store.translation_dir / rel
+        use_translation = mode == "translation" and translated.is_file()
+        path = translated if use_translation else store.structured_dir / rel
+        if not path.is_file():
+            continue
+        text = path.read_text(encoding="utf-8")
+        if not skip_empty_unit(text, entry.get("title") or ""):
+            inputs[uid] = {
+                "source": "translation" if use_translation else "source",
+                "markdown": text,
+            }
+    return inputs
+
+
 def _note_plan(
     store: RunStore,
     pub: Any,
     entries: list[dict[str, Any]],
     source_data: dict[str, Any],
-    target_data: dict[str, Any] | None,
+    *,
+    unit_sources: dict[str, str],
 ) -> dict[str, Any]:
     """构造全书注释计划（N4，确定性）：作用域显示号 + 宿主单元 + 回链 + 文本。
 
@@ -255,8 +278,7 @@ def _note_plan(
     - 宿主：注文渲染在 spine 序中**第一个引用它的单元**；跨文件引用 href 指回宿主；
     - 未引用注文（``orphan_ok``）：挂在 ``scope_id`` 对应单元（存在时）或首个单元，
       保留显示号并渲染（不得为凑对账删除）；
-    - 文本：译文单元用 ``target_markdown``（缺则构建报错），源文回退单元用
-      ``source_markdown``；由渲染循环按单元实际来源选择。
+    - 文本来源：由实际渲染输入决定；同一宿主选择同时供绑定校验、构建和成品审计使用。
     """
 
     order_index = {str(e["id"]): i for i, e in enumerate(entries)}
@@ -266,11 +288,6 @@ def _note_plan(
         str(n.get("note_id")): n
         for n in (source_data.get("notes") or [])
         if isinstance(n, dict) and n.get("note_id")
-    }
-    targets: dict[str, dict[str, Any]] = {
-        str(t.get("note_id")): t
-        for t in ((target_data or {}).get("notes") or [])
-        if isinstance(t, dict) and t.get("note_id")
     }
     by_unit: dict[str, list[dict[str, Any]]] = {}
     for r in source_data.get("references") or []:
@@ -336,7 +353,10 @@ def _note_plan(
         "backlinks": backlinks,
         "number_by_note": number_by_note,
         "notes_by_id": notes_by_id,
-        "targets": targets,
+        "targets": {},
+        "translated_note_ids": {
+            nid for nid, unit in host.items() if unit_sources.get(unit) == "translation"
+        },
         "file_by_unit": file_by_unit,
         # 渲染层需要 note_id → 宿主文件（跨文件 href 用；与宿主单元一致）
         "href_by_note": {nid: file_by_unit.get(u, "") for nid, u in host.items()},
@@ -351,8 +371,6 @@ def _render_and_pack(
     *,
     lang: str,
     output: str | None,
-    suffix: str,
-    bilingual: bool,
     event: str,
     prefer_translation: bool,
     theme: str = "standard",
@@ -361,7 +379,7 @@ def _render_and_pack(
     """构建内核（convert/build 共用）：渲染内容文档 + 收集媒体 + 打包 EPUB。
 
     脚注语义化（epub-template-spec §6）：每单元一份 FootnoteState（章内独立编号，
-    注码 ``[N]``），``[^label]`` 引用与定义渲染为标准弹窗注释（noteref/footnote）。
+    注码 ``[N]``），``[^label]`` 引用与定义渲染为标准注释语义（noteref/footnote）。
     主题层（epub-template-spec §5）：``theme`` 选择预置排版主题。
     目录投影（epub-template-spec §3）：``nav_depth`` 限制 nav/NCX 嵌套深度。
     封面：cover 单元的首个图片 → ``cover-image`` 属性 + spine ``linear="no"``。
@@ -370,8 +388,7 @@ def _render_and_pack(
     from .build.html import FootnoteState, NoteItem, NoteRef
 
     nav_depth = nav_depth if nav_depth is not None else Config().output.nav_depth
-    out_path = Path(output) if output else store.output_dir / f"{pub.slug}{suffix}.epub"
-    src_lang = _source_language(store, pub, entries)
+    out_path = Path(output) if output else store.output_dir / f"{pub.slug}.epub"
     media_root = store.structured_dir / "raw" / "media"
     content = []
     media: dict[str, bytes] = {}
@@ -379,21 +396,13 @@ def _render_and_pack(
     cover_media: str | None = None
     built_ids: list[str] = []
     fallback_ids: list[str] = []
-    # N 阶段：结构化注释计划（已登记且 inventory=present 时启用；否则旧路径不变）
-    # F3：按**实际渲染来源**判定译注要求（注文宿主单元是否真的用译文渲染）
-    notes_ctx = _load_notes_context(store, pub, prefer_translation=prefer_translation)
-    note_plan: dict[str, Any] | None = None
-    if notes_ctx is not None and str(notes_ctx["data"].get("inventory") or "") == "present":
-        note_plan = _note_plan(store, pub, entries, notes_ctx["data"], notes_ctx.get("target"))
-        if note_plan["units_missing"]:
-            raise OrchestrationError(
-                "注释引用的单元未参与构建："
-                + "、".join(note_plan["units_missing"][:8])
-                + "（不得静默丢弃引用）"
-            )
+    render_mode = "translation" if prefer_translation else "source"
+    render_inputs = _render_inputs(store, entries, mode=render_mode)
+    notes_ctx = _load_notes_context(store, pub, entries=entries, render_inputs=render_inputs)
+    note_plan = notes_ctx.get("plan") if notes_ctx is not None else None
 
-    def _note_items_for(unit_id: str, *, from_translation: bool) -> list[NoteItem]:
-        """该单元要渲染的注文（宿主为它）；译文单元缺译注 → 阻断构建（不静默降级）。"""
+    def _note_items_for(unit_id: str) -> list[NoteItem]:
+        """按同一计划渲染该宿主的注文，不再另行推断文本来源。"""
         items: list[NoteItem] = []
         if note_plan is None:
             return items
@@ -401,7 +410,7 @@ def _render_and_pack(
             if host_unit != unit_id:
                 continue
             number = int(note_plan["number_by_note"].get(nid) or 0)
-            if from_translation:
+            if nid in note_plan["translated_note_ids"]:
                 t = note_plan["targets"].get(nid)
                 if t is None or not str(t.get("target_markdown") or "").strip():
                     raise OrchestrationError(
@@ -427,8 +436,8 @@ def _render_and_pack(
         return items
 
     for e in entries:
-        rel = e.get("rel_path")
-        if not rel:
+        render_input = render_inputs.get(str(e["id"]))
+        if render_input is None:
             continue
         unit_refs: dict[str, NoteRef] = {}
         unit_items: list[NoteItem] = []
@@ -437,43 +446,9 @@ def _render_and_pack(
                 if info["unit"] != e["id"] or rid.startswith("__orphan__"):
                     continue
                 unit_refs[rid] = NoteRef(ref_id=rid, note_id=info["note_id"], number=info["number"])
-        if bilingual:
-            rows = read_align(store.unit_align_path(e["id"]))
-            if not rows:
-                continue
-            heading = unit_heading("\n".join(r.get("tgt", "") for r in rows))
-            if heading:
-                e["title"] = heading
-            unit_items = _note_items_for(e["id"], from_translation=True)
-            content.append(
-                (
-                    f"{slug_file(e['id'])}.xhtml",
-                    render_bilingual_document(
-                        e["title"],
-                        rows,
-                        lang_src=src_lang,
-                        lang_tgt=lang,
-                        note_refs=unit_refs or None,
-                        note_items=unit_items or None,
-                        href_by_note=note_plan["href_by_note"] if note_plan else None,
-                    ),
-                )
-            )
-            built_ids.append(e["id"])
-            continue
-        structured = store.structured_dir / rel
-        translation = store.translation_dir / rel
-        if prefer_translation:
-            md_path = translation if translation.is_file() else structured
-            if md_path is structured:
-                fallback_ids.append(e["id"])
-        else:
-            md_path = structured
-        if not md_path.is_file():
-            continue
-        md_text = md_path.read_text(encoding="utf-8")
-        if skip_empty_unit(md_text, e["title"]):
-            continue
+        if prefer_translation and render_input["source"] == "source":
+            fallback_ids.append(e["id"])
+        md_text = render_input["markdown"]
         # 未配对引用不得静默：正文标记必须都在登记计划内（登记门/导入门之外的构建兜底）
         if note_plan is not None:
             unknown = [m for m in notes_mod.extract_markers(md_text) if m not in unit_refs]
@@ -487,7 +462,6 @@ def _render_and_pack(
             e["title"] = heading
         # 锚点级目录（epub-template-spec §3）：与渲染源同一 md 提取子标题锚点
         # （id 与 markdown_to_xhtml 自动 id 规则一致，nav 链接不悬空）。
-        # 双语文档不挂锚点（由 align 行渲染，无子标题元素）。
         e["anchors"] = subheading_anchors(md_text, e["id"])
         md_text, unit_media, dropped = collect_media(md_text, media_root)
         if dropped:
@@ -497,9 +471,7 @@ def _render_and_pack(
         if e.get("kind") == "cover" and unit_media and cover_media is None:
             cover_media = unit_media[0][0]
         if note_plan is not None:
-            unit_items = _note_items_for(
-                e["id"], from_translation=prefer_translation and md_path is translation
-            )
+            unit_items = _note_items_for(e["id"])
         built_ids.append(e["id"])
         content.append(
             (
@@ -537,6 +509,7 @@ def _render_and_pack(
         theme=theme,
         cover_media=cover_media,
         nav_depth=nav_depth,
+        render_mode=render_mode,
     )
     # 状态推进：只把**确实打包了译文**的单元推进为 built。
     # 源文回退（无译文）的单元保持原状态——否则 import 会把 built 当「已完成」永久
@@ -615,12 +588,11 @@ def rebuild(
 def build(
     store: RunStore,
     *,
-    bilingual: bool = False,
     output: str | None = None,
     theme: str | None = None,
     nav_depth: int | None = None,
 ) -> Path:
-    """从译文（缺省回退源文）构建 EPUB；双语时输出 -bi.epub。"""
+    """从译文（缺省回退源文）构建 EPUB。"""
     pub = store.load_publication()
     entries = structure_entries(store)
     if not entries:
@@ -632,8 +604,6 @@ def build(
         entries,
         lang=lang,
         output=output,
-        suffix="-bi" if bilingual else "",
-        bilingual=bilingual,
         event="built",
         prefer_translation=True,
         theme=theme or Config().output.theme,
@@ -756,9 +726,7 @@ def import_translations(
         }
 
     glossary = Glossary(load_glossary_csv(glossary_path))
-    # N 阶段：注释绑定上下文（已登记时启用翻译导入门；未登记则历史路径不变）。
-    # 导入的译注要求由逐单元门（validate_translation_notes + required_note_ids）承担，
-    # 共享加载入口不重复要求/校验（F3：避免与「实际渲染来源」判定分叉）。
+    # 导入门按实际待导入单元的引用需求惰性读取译注；源登记校验不读取无关译注。
     notes_ctx = _load_notes_context(store, pub)
     from . import notes as notes_mod
 
@@ -840,6 +808,19 @@ def import_translations(
                             f"注释标记：[^{rid}] 在译文中出现 {found.count(rid)} 次（应恰好 1 次）"
                         )
                 need = {str(r.get("note_id")) for r in unit_refs}
+                if "target_loaded" not in notes_ctx:
+                    target_path = notes_mod.translation_notes_path(store)
+                    try:
+                        notes_ctx["target"] = (
+                            notes_mod.read_notes_json(target_path)
+                            if target_path.is_file()
+                            else None
+                        )
+                    except notes_mod.NotesError as error:
+                        notes_ctx["target_error"] = str(error)
+                    notes_ctx["target_loaded"] = True
+                if notes_ctx.get("target_error"):
+                    errors.append(f"译注：{notes_ctx['target_error']}")
                 target = notes_ctx.get("target")
                 if target is None:
                     errors.append(
@@ -944,43 +925,14 @@ def import_translations(
     }
 
 
-def _notes_target_in_use(
-    store: RunStore, pub: Any, data: dict[str, Any], *, prefer_translation: bool
-) -> bool:
-    """译注是否**实际参与**本次渲染：注文宿主单元中任意一个以译文渲染才需要译注。
-
-    F3（增量审查）：`build()` 允许缺译文回退源文，因此「偏好译文」不等于「实际使用译文」；
-    全源文回退的构建不应被缺失/过期的译注阻断，而实际使用译注的路径仍必须绑定校验。
-    """
-    if not prefer_translation:
-        return False
-    hosts = {
-        str(r.get("unit") or "")
-        for r in (data.get("references") or [])
-        if isinstance(r, dict) and r.get("unit")
-    }
-    if not hosts:
-        return False
-    for unit in pub.units:
-        if unit.id not in hosts:
-            continue
-        rel = (unit.meta or {}).get("rel_path")
-        if rel and (store.translation_dir / rel).is_file():
-            return True
-    return False
-
-
 def _load_notes_context(
-    store: RunStore, pub: Any, *, prefer_translation: bool = False
+    store: RunStore,
+    pub: Any,
+    *,
+    entries: list[dict[str, Any]] | None = None,
+    render_inputs: dict[str, dict[str, Any]] | None = None,
 ) -> dict[str, Any] | None:
-    """加载已登记注释上下文（源注文 + 译注）；登记摘要与文件摘要不一致时报错（失效链）。
-
-    未登记（``pub.notes`` 为空）返回 None：历史工作区继续走旧 ``[^label]`` 路径。
-
-    P1 漏门修复（评审复现：源注文变更并重登记后，译注 ``source_notes_sha256`` 不符仍可
-    build，成品注释门也 ok）：**共享加载入口**（import / build / qa 都经此）统一校验
-    译注与源注文的版本绑定；``require_target=True`` 时（按实际源/译模式）译注缺失即报错。
-    """
+    """校验源登记；给定实际输入时，按逐注宿主计划加载并绑定真正使用的译注。"""
     from . import notes as notes_mod
 
     if not pub.notes:
@@ -996,24 +948,60 @@ def _load_notes_context(
             "structured/notes.json 与登记摘要不一致（源注文已变更）：须重跑 notes register"
             "（必要时重译受影响注文）"
         )
-    data = notes_mod.read_notes_json(npath)
-    tpath = notes_mod.translation_notes_path(store)
-    target = notes_mod.read_notes_json(tpath) if tpath.is_file() else None
-    # 译注要求只对 inventory=present 且**实际使用译注**的路径生效（F3）
-    if str(data.get("inventory") or "") == "present" and _notes_target_in_use(
-        store, pub, data, prefer_translation=prefer_translation
-    ):
-        if target is None:
+    try:
+        data = notes_mod.read_notes_json(npath)
+        context: dict[str, Any] = {"data": data, "digest": digest, "target": None}
+        if render_inputs is None or data.get("inventory") != "present":
+            return context
+        active = [e for e in (entries or []) if str(e["id"]) in render_inputs]
+        if not active:
+            raise OrchestrationError("没有可承载已登记注文的内容单元")
+        plan = _note_plan(
+            store,
+            pub,
+            active,
+            data,
+            unit_sources={uid: item["source"] for uid, item in render_inputs.items()},
+        )
+        if plan["units_missing"]:
             raise OrchestrationError(
-                "已登记注释且本单元以译文渲染，但 translation/notes.json 缺失："
-                "译文将无注文内容（须写译注并重跑 import 登记）"
+                "注释引用的单元未参与构建："
+                + "、".join(plan["units_missing"][:8])
+                + "（不得静默丢弃引用）"
             )
-        bound = str(target.get("source_notes_sha256") or "")
-        if bound != digest:
-            raise OrchestrationError(
-                "译注绑定的源注文摘要不符（structured/notes.json 已变更，须重译受影响注文）"
+        required = plan["translated_note_ids"]
+        if required:
+            tpath = notes_mod.translation_notes_path(store)
+            if not tpath.is_file():
+                raise OrchestrationError(
+                    "译文注文宿主缺 translation/notes.json（须补齐译注并重跑 import）"
+                )
+            target = notes_mod.read_notes_json(tpath)
+            if str(target.get("source_notes_sha256") or "") != digest:
+                raise OrchestrationError(
+                    "译注绑定的源注文摘要不符（structured/notes.json 已变更，须重译受影响注文）"
+                )
+            rows = target.get("notes")
+            if isinstance(rows, list):
+                target = {
+                    **target,
+                    "notes": [
+                        note
+                        for note in rows
+                        if isinstance(note, dict) and str(note.get("note_id") or "") in required
+                    ],
+                }
+            errors = notes_mod.validate_translation_notes(
+                data, target, source_notes_digest=digest, required_note_ids=required
             )
-    return {"data": data, "digest": digest, "target": target}
+            if errors:
+                raise OrchestrationError("实际使用的译注无效：" + "；".join(errors[:8]))
+            context["target"] = target
+            plan["targets"] = {note["note_id"]: note for note in target["notes"]}
+        context["plan"] = plan
+        return context
+    except notes_mod.NotesError as error:
+        raise OrchestrationError(str(error)) from error
 
 
 def notes_candidates(store: RunStore, *, output: str | None = None) -> dict[str, Any]:
@@ -1092,11 +1080,7 @@ def register_notes(store: RunStore) -> dict[str, Any]:
     if cands:
         errors.extend(notes_mod.validate_candidates(cands))
         # P1/F1：核证结论必须绑定稳定身份并与注文/引用图确定性对账
-        errors.extend(
-            notes_mod.validate_candidates_vs_graph(
-                cands, data, unit_kinds={u.id: u.kind for u in pub.units}
-            )
-        )
+        errors.extend(notes_mod.validate_candidates_vs_graph(cands, data))
     if errors:
         raise OrchestrationError("注释登记失败：\n- " + "\n- ".join(errors))
     summary = notes_mod.registration_summary(data, notes_mod.file_digest(path))
@@ -1478,6 +1462,8 @@ def qa(
 ) -> dict[str, Any]:
     from auto_translator.glossary import read_conflicts_jsonl
 
+    from .qa.notes_audit import epub_render_mode
+
     pub = store.load_publication()
     epub = Path(epub_path) if epub_path else store.output_dir / f"{pub.slug}.epub"
     if not epub.is_file():
@@ -1486,15 +1472,21 @@ def qa(
     epubcheck = run_epubcheck(epub, jar_path=jar)
     nav_depth = config.output.nav_depth if config is not None else Config().output.nav_depth
     entries = structure_entries(store)
-    # 先跑溯源审计拿到目录投影豁免集（与 build 同一 nav_depth），再解包结构审计
-    provenance = audit_provenance(store, entries, epub, nav_depth=nav_depth)
-    audit = audit_epub(epub, nav_exempt=set(provenance.nav_exempt))
+    mode = epub_render_mode(epub)
     # N 阶段成品注释门（N5）：独立解析成品 XHTML 对账已登记注释；未登记则跳过
-    # P1：按实际源/译模式要求译注（有译文参与成品 → 译注必须齐备，否则成品注文为空）
-    # F3：qa 与 build 使用同一「实际来源」证据（注文宿主单元是否以译文渲染）
+    # 构建模式取自成品 OPF；逐注文的实际宿主计划同时约束译注绑定与期望文本。
     notes_audit_dict: dict[str, Any] | None = None
     try:
-        notes_ctx = _load_notes_context(store, pub, prefer_translation=True)
+        if pub.notes and mode is None:
+            raise OrchestrationError("成品缺少有效 aep:render-mode，须重新 build/convert")
+        notes_ctx = _load_notes_context(
+            store,
+            pub,
+            entries=entries,
+            render_inputs=(
+                _render_inputs(store, entries, mode=mode or "translation") if pub.notes else None
+            ),
+        )
     except OrchestrationError as e:
         notes_audit_dict = {
             "findings": [{"level": "error", "code": "E_NOTES_STALE", "message": str(e)}],
@@ -1504,13 +1496,29 @@ def qa(
         notes_ctx = None
     if notes_ctx is not None:
         notes_result = audit_notes_epub(
-            epub, source_notes=notes_ctx["data"], target_notes=notes_ctx.get("target")
+            epub,
+            source_notes=notes_ctx["data"],
+            target_notes=notes_ctx.get("target"),
+            media_root=store.structured_dir / "raw" / "media",
         )
         notes_audit_dict = {
             "findings": [dict(f) for f in notes_result.findings],
             "missing": list(notes_result.missing),
             "orphan": list(notes_result.orphan),
         }
+    # 已核证且未过期的登记图将旧注释计数/必须有回链判据移交独立产品门。
+    notes_registered = notes_ctx is not None
+    provenance = audit_provenance(
+        store,
+        entries,
+        epub,
+        nav_depth=nav_depth,
+        prefer_translation=mode != "source",
+        notes_registered=notes_registered,
+    )
+    audit = audit_epub(
+        epub, nav_exempt=set(provenance.nav_exempt), notes_registered=notes_registered
+    )
     review_result = _latest_review_result(store)
     g0_flags = _collect_g0_flags(store, config)
     toc_missing = _toc_missing_from_facts(store, entries)
@@ -1767,7 +1775,9 @@ def _derive_next_tasks(
         if s["id"] not in _unit_ids:
             if reason == "report_stale":
                 return [
-                    _task("build", "产物已变更：重建 EPUB（build）", done_when={"cmd": "build"}),
+                    _task(
+                        "build", "报告证据已过期：重建 EPUB（build）", done_when={"cmd": "build"}
+                    ),
                     _task(
                         "qa",
                         "重建后重跑 qa（放行结论须对应当前产物）",

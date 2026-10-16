@@ -14,16 +14,16 @@ postprocessing-spec §2/§3 的实现，四类检查全部只出信号不出裁�
 
 from __future__ import annotations
 
-import contextlib
 import math
 import posixpath
 import re
 import zipfile
 from collections import Counter
 from dataclasses import asdict, dataclass, field
+from html import unescape
 from pathlib import Path
 from typing import Any
-from urllib.parse import unquote
+from urllib.parse import unquote, urlsplit
 
 from auto_translator.review.fidelity import content_blocks as _paragraphs
 from auto_translator.review.fidelity import norm_text as _norm
@@ -32,12 +32,13 @@ from auto_translator.translation.align import read_align
 
 from ..build import nav_depth_sequence, nav_toc_entries, slug_file, subheading_anchors
 from ..fingerprint import generated_pages
-from ..ingest.inserts import read_inserts
+from ..ingest.inserts import insert_file_exists, read_inserts
+from ..media_paths import epub_member_path, resolve_media_path
 from ..structure import skip_empty_unit
 
 # 图片引用三种形态：pandoc 占位（original-image-src）、HTML <img>、标准 markdown
 _PLACEHOLDER_IMG = re.compile(r'original-image-src="([^"]+)"')
-_HTML_IMG = re.compile(r'<img\b[^>]*?src="([^"]+)"', re.IGNORECASE)
+_HTML_IMG = re.compile(r'<img\b[^>]*?src="([^"]+)"[^>]*>', re.IGNORECASE)
 _MD_IMG = re.compile(r"!\[[^\]]*\]\(([^()]+)\)")
 _EXTERNAL = re.compile(r"^(https?:|data:)", re.IGNORECASE)
 
@@ -87,15 +88,25 @@ class ProvenanceResult:
         return asdict(self)
 
 
-def _img_refs(md_text: str) -> list[str]:
-    """提取 md 全部图片引用的 basename（unquote 后；外链跳过）。"""
+def _img_refs(md_text: str, media_root: Path) -> list[str]:
+    """按真实文件定位完整媒体身份；仅 HTML URL 解码，保留源路径字面百分号。"""
     refs: list[str] = []
-    for pattern in (_PLACEHOLDER_IMG, _HTML_IMG, _MD_IMG):
-        for m in pattern.finditer(md_text or ""):
-            src = m.group(1).strip().replace("\\", "/")
+    for pattern, is_url in (
+        (_PLACEHOLDER_IMG, False),
+        (_HTML_IMG, True),
+        (_MD_IMG, False),
+    ):
+        for match in pattern.finditer(md_text or ""):
+            src = match.group(1).strip().replace("\\", "/")
             if not src or _EXTERNAL.match(src):
                 continue
-            refs.append(unquote(Path(src).name))
+            if is_url:
+                url = urlsplit(unescape(src))
+                if url.scheme or url.netloc:
+                    continue
+                src = unquote(url.path)
+            resolved = resolve_media_path(src, media_root)
+            refs.append(f"media/{resolved.relative_to(media_root).as_posix()}" if resolved else src)
     return refs
 
 
@@ -154,7 +165,8 @@ def _probe_missing(md_text: str, doc_text_norm: str) -> tuple[list[str], int]:
         stripped = block.strip()
         if not stripped or stripped.startswith("#") or stripped.startswith("[^"):
             continue
-        rendered = _strip_tags(markdown_to_xhtml(block))
+        # 构建将 HTML img 作为媒体而非正文；资源另门核对，周围正文仍须完整命中。
+        rendered = _strip_tags(markdown_to_xhtml(_HTML_IMG.sub("", block)))
         rendered = re.sub(r"\[\^[^\]]+\]", "", rendered)  # build 会替换为 [N] 上标
         probe = re.sub(r"\s+", "", rendered)
         if not probe:
@@ -233,16 +245,10 @@ def _audit_inserts(result: ProvenanceResult, structured_dir: Path) -> None:
     if not records:
         return
     result.inserts_total = len(records)
-    raw_dir = (structured_dir / "raw").resolve()
+    raw_dir = structured_dir / "raw"
     for r in records:
-        # 包含性校验（D 组）：source.file 解析后必须落在 structured/raw 内——
-        # 越界路径不泄露主机文件存在性，直接计为缺失（与 collect_media 同口径）。
-        inside = False
-        if r.file:
-            with contextlib.suppress(OSError, ValueError):
-                resolved = (raw_dir / r.file).resolve()
-                inside = resolved.is_relative_to(raw_dir) and resolved.is_file()
-        if r.file and not inside:
+        # 顶层 file 须解析后仍位于 raw 内，越界不探测存在性；与报告摘要同口径。
+        if r.file and not insert_file_exists(raw_dir, r.file):
             result.inserts_missing_files += 1
             result.add("error", "E_INSERT_MISSING_FILE", f"插入内容文件缺失：{r.id}（{r.file}）")
         page = r.source.page
@@ -270,6 +276,7 @@ def audit_provenance(
     *,
     prefer_translation: bool = True,
     nav_depth: int = 3,
+    notes_registered: bool = False,
 ) -> ProvenanceResult:
     """对成品 EPUB 执行溯源审计（构建期跳过逻辑与本函数期望集保持一致）。
 
@@ -277,10 +284,12 @@ def audit_provenance(
     构建/审计基准（媒体对账才有意义），否则源↔源恒等跳过媒体检查。
     ``nav_depth`` 与 build 的目录投影一致：目录层级对账按投影后的序列进行，
     被投影剔除的文档记录到 ``nav_exempt``。
+    ``notes_registered``：调用方已验证有效登记并执行独立注释门时，移交脚注数量对账。
     """
     result = ProvenanceResult()
     structured_dir = store.structured_dir
     translation_dir = store.translation_dir
+    media_root = (structured_dir / "raw" / "media").resolve()
 
     # 期望内容集：与 _render_and_pack 的跳过逻辑镜像（译文优先 → 空壳跳过）
     # 同步提取子标题锚点（与 build 同一 md 输入、同一 subheading_anchors 实现）
@@ -325,7 +334,6 @@ def audit_provenance(
         doc_text: dict[str, str] = {}
         doc_imgs: dict[str, Counter[str]] = {}
         doc_fn: dict[str, int] = {}
-        doc_bilingual: dict[str, bool] = {}
         for name in expected_names:
             zpath = doc_path.get(name)
             if not zpath or zpath not in zip_names:
@@ -333,11 +341,11 @@ def audit_provenance(
             html = zf.read(zpath).decode("utf-8")
             doc_text[name] = re.sub(r"\s+", "", _strip_tags(html))
             doc_imgs[name] = Counter(
-                Path(unquote(src)).name
+                member
                 for src in re.findall(r'<img\b[^>]*?src="([^"]+)"', html, re.IGNORECASE)
+                if (member := epub_member_path(zpath, src)) is not None
             )
             doc_fn[name] = len(re.findall(r"<aside[^>]*epub:type=\"footnote\"", html))
-            doc_bilingual[name] = 'class="src"' in html
 
     spine_docs = [Path(unquote(h)).name for h in spine]
     spine_set = set(spine_docs)
@@ -377,8 +385,8 @@ def audit_provenance(
         tgt_path = translation_dir / rel
         if not (prefer_translation and tgt_path.is_file()):
             continue  # 无译文：源↔源恒等
-        src_refs = _img_refs((structured_dir / rel).read_text(encoding="utf-8"))
-        tgt_refs = _img_refs(tgt_path.read_text(encoding="utf-8"))
+        src_refs = _img_refs((structured_dir / rel).read_text(encoding="utf-8"), media_root)
+        tgt_refs = _img_refs(tgt_path.read_text(encoding="utf-8"), media_root)
         src_count, tgt_count = Counter(src_refs), Counter(tgt_refs)
         for name, cnt in src_count.items():
             if tgt_count.get(name, 0) < cnt:
@@ -412,23 +420,18 @@ def audit_provenance(
         if not md_path.is_file():
             continue
         md_text = md_path.read_text(encoding="utf-8")
-        bilingual = doc_bilingual.get(name, False)
-        if not bilingual:
-            # 媒体呈现：md 图片引用 ↔ 成品 <img>（双语文档不渲染图，跳过）
-            for ref, cnt in Counter(_img_refs(md_text)).items():
-                if doc_imgs.get(name, Counter()).get(ref, 0) < cnt:
-                    result.epub_media_missing.append(f"{e['id']}:{ref}")
-            # 脚注呈现：md 定义数 ↔ 成品 aside 数（双语不渲染脚注，跳过）
-            # N 阶段：使用原位标记（[^ref-…]）的文档由**独立成品注释门**
-            # （qa/notes_audit.py）逐条对账（跨文件/一注多引/内容核对），
-            # 这里跳过旧口径——否则会把「md 无 [^label]: 定义」误判为脚注丢失。
-            if not re.search(r"\[\^ref-\d{6,}\]", md_text):
-                md_defs = len(re.findall(r"(?m)^\s*\[\^[^\]]+\]:", md_text))
-                epub_defs = doc_fn.get(name, 0)
-                if md_defs != epub_defs:
-                    result.epub_footnotes_missing.append(
-                        f"{e['id']}（md {md_defs} / EPUB {epub_defs}）"
-                    )
+        # 媒体呈现：md 图片引用 ↔ 成品 <img>。
+        for ref, cnt in Counter(_img_refs(md_text, media_root)).items():
+            if doc_imgs.get(name, Counter()).get(posixpath.join(opf_dir, ref), 0) < cnt:
+                result.epub_media_missing.append(f"{e['id']}:{ref}")
+        # 仅有效登记上下文可将脚注数量移交独立成品注释门。
+        if not notes_registered:
+            md_defs = len(re.findall(r"(?m)^\s*\[\^[^\]]+\]:", md_text))
+            epub_defs = doc_fn.get(name, 0)
+            if md_defs != epub_defs:
+                result.epub_footnotes_missing.append(
+                    f"{e['id']}（md {md_defs} / EPUB {epub_defs}）"
+                )
         # 正文段落探针：md 每段（build 同款渲染）应出现在成品文档中
         missing, n = _probe_missing(md_text, text)
         probe_total += n
@@ -493,7 +496,6 @@ def audit_provenance(
 
     # ── 目录层级：nav 嵌套深度 vs 期望深度序列（单元 + 锚点；按 nav_depth 投影）──
     # 投影深度以产物声明为准（构建期写入 nav.xhtml），配置/参数仅兜底旧产物。
-    # 双语文档由 align 行渲染、无子标题元素——锚点期望豁免（与 build 挂接策略镜像）。
     effective_depth = declared_depth if declared_depth is not None else nav_depth
     name2entry = dict(zip(expected_names, expected, strict=False))
     spine_entries = []
@@ -501,8 +503,6 @@ def audit_provenance(
         e = name2entry.get(n)
         if e is None:
             continue
-        if doc_bilingual.get(n):
-            e = {**e, "anchors": []}
         spine_entries.append(e)
     nav_candidates = nav_toc_entries(spine_entries, effective_depth)
     nav_names = {f"{slug_file(e['id'])}.xhtml" for e in nav_candidates}

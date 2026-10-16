@@ -8,10 +8,6 @@ language:
   target: zh-CN         # 目标语言，任意可配
   genre: auto           # auto=启发式判定；或显式 novel/academic/paper/poetry/newspaper
 
-# ── 管线开关 ────────────────────────────────────────────────
-pipeline:
-  bilingual: false
-
 # ── 质检 ────────────────────────────────────────────────────
 qc:
   length_ratio:
@@ -49,7 +45,5 @@ paths:
 
 # ── 输出 ─────────────────────────────────────────────────────
 output:
-  mono: true              # 未接线（预留；mono/bilingual 由 build --bilingual 决定）
-  bilingual: false        # 未接线（同上）
   about_page: true        # 未接线（预留）
   theme: standard         # standard | compact | spacious

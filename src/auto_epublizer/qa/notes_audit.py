@@ -2,8 +2,8 @@
 # Copyright (C) 2026 Misaka0x26FE
 """成品注释门（N5）：独立解析最终 EPUB 的 XHTML，与已登记注释逐条对账。
 
-**独立性**：本模块不使用构建渲染函数重建期望，也不读构建中间态——只读成品 XML +
-已登记数据（``structured/notes.json`` / ``translation/notes.json``），逐项核验：
+**独立性**：本模块不使用构建渲染函数重建期望，也不读构建中间态——只读成品 XML、
+源媒体路径和已登记数据（``structured/notes.json`` / ``translation/notes.json``），逐项核验：
 
 - 每个已登记 ``ref_id`` 在成品中**恰好一个** noteref 锚点，且 href 指向真实存在的
   ``<file>#fn-<note_id>``；
@@ -20,9 +20,13 @@ from __future__ import annotations
 import re
 import zipfile
 from dataclasses import dataclass, field
+from html import unescape
 from pathlib import Path
 from typing import Any
-from urllib.parse import unquote
+from urllib.parse import unquote, urlsplit
+from xml.etree import ElementTree
+
+from ..media_paths import epub_member_path, resolve_media_path
 
 _TAG_RE = re.compile(r"<[^>]+>")
 _ANCHOR_RE = re.compile(r"<a\b[^>]*>", re.IGNORECASE)
@@ -52,7 +56,7 @@ def _norm_md(md: str) -> str:
     text = re.sub(r"(?m)^\s{0,3}(?:[-*+]|\d+[.)])\s+", "", text)  # 列表标记
     text = re.sub(r"(?m)^#{1,6}\s+", "", text)  # 标题标记
     text = re.sub(r"[*_`]+", "", text)
-    text = re.sub(r"!\[[^\]]*\]\([^)]*\)", "", text)  # 图片留空
+    text = _MD_IMG_RE.sub("", text)  # 图片留空（包含源文件名中的括号）
     text = _IMG_RE.sub("", text)  # HTML 图片同样留空（媒体由专用核对负责）
     text = re.sub(r"\[([^\]]*)\]\([^)]*\)", r"\1", text)  # 链接留标签
     return re.sub(r"\s+", "", text)
@@ -65,40 +69,72 @@ def _norm_href(href: str) -> str:
 
 
 _IMG_RE = re.compile(r"<img\b[^>]*>", re.IGNORECASE)
-_MD_IMG_RE = re.compile(r"!\[[^\]]*\]\(\s*<?([^)>\s]+)>?[^)]*\)")
+_MD_IMG_RE = re.compile(r"!\[[^\]]*\]\(([^()]*(?:\([^()]*\)[^()]*)*)\)")
+_PLACEHOLDER_IMG_RE = re.compile(r'original-image-src="([^"]+)"')
 
 
-def _norm_media_ref(ref: str) -> str:
-    """媒体引用规范形：URI 解码 + 去查询/片段 + 去 `./`/`OEBPS/`/`raw/` 前缀。
+def _source_media_refs(md: str, media_root: Path) -> tuple[set[str], set[str]]:
+    """按真实源文件定位期望成员；源路径百分号不解码，HTML URL 只解码一次。"""
+    refs = [m.group(1) for m in _MD_IMG_RE.finditer(md or "")]
+    refs.extend(m.group(1) for m in _PLACEHOLDER_IMG_RE.finditer(md or ""))
+    missing: set[str] = set()
+    for image in _IMG_RE.finditer(md or ""):
+        src = _attrs(image.group(0)).get("src") or ""
+        if not src:
+            continue
+        url = urlsplit(unescape(src))
+        if url.scheme or url.netloc:
+            missing.add(src)
+        else:
+            refs.append(unquote(url.path))
+    members: set[str] = set()
+    for ref in refs:
+        resolved = resolve_media_path(ref, media_root)
+        if resolved is None:
+            missing.add(ref)
+        else:
+            members.add(f"OEBPS/media/{resolved.relative_to(media_root).as_posix()}")
+    return members, missing
 
-    源引用（markdown）、渲染 URL（HTML ``src``，可能 URI 转义）与包内成员名属于
-    不同表示域；此处统一到**成员身份域**（F5），并保留完整目录身份——不以 basename
-    补偿路径差异（F4：同名不同目录是两张图）。
-    """
-    r = unquote((ref or "").strip().split("?", 1)[0].split("#", 1)[0])
-    r = r.lstrip("./")
-    if r.startswith("OEBPS/"):
-        r = r[len("OEBPS/") :]
-    if r.startswith("raw/media/"):
-        r = "media/" + r[len("raw/media/") :]
-    elif r.startswith("raw/"):
-        r = r[len("raw/") :]
-    return r
+
+def _aside_media_refs(html: str, document: str) -> set[str]:
+    """将 HTML 图片 URL 解码一次并按文档目录解析为字面 ZIP 成员名。"""
+    members: set[str] = set()
+    for image in _IMG_RE.finditer(html or ""):
+        src = _attrs(image.group(0)).get("src") or ""
+        if not src:
+            continue
+        members.add(epub_member_path(document, src) or src)
+    return members
 
 
-def _md_media_refs(md: str) -> set[str]:
-    out = {_norm_media_ref(m.group(1)) for m in _MD_IMG_RE.finditer(md or "")}
-    out |= {r for r in _aside_media_refs(md or "") if r}  # markdown 内嵌 HTML <img>
-    return {r for r in out if r}
-
-
-def _aside_media_refs(html: str) -> set[str]:
-    out: set[str] = set()
-    for m in _IMG_RE.finditer(html or ""):
-        src = _attrs(m.group(0)).get("src") or ""
-        if src:
-            out.add(_norm_media_ref(src))
-    return out
+def epub_render_mode(epub_path: str | Path) -> str | None:
+    """经 container 定位 OPF，读取唯一合法的实际打包模式。"""
+    try:
+        with zipfile.ZipFile(epub_path) as archive:
+            container = ElementTree.fromstring(archive.read("META-INF/container.xml"))
+            rootfile = container.find(
+                "{urn:oasis:names:tc:opendocument:xmlns:container}rootfiles/"
+                "{urn:oasis:names:tc:opendocument:xmlns:container}rootfile"
+            )
+            if rootfile is None:
+                return None
+            opf_path = rootfile.get("full-path")
+            if not opf_path:
+                return None
+            package = ElementTree.fromstring(archive.read(opf_path))
+        modes = [
+            (meta.text or "").strip()
+            for meta in package.findall(
+                "{http://www.idpf.org/2007/opf}metadata/{http://www.idpf.org/2007/opf}meta"
+            )
+            if meta.get("property") == "aep:render-mode"
+        ]
+        if len(modes) != 1 or modes[0] not in {"source", "translation"}:
+            return None
+        return modes[0]
+    except (OSError, KeyError, ValueError, zipfile.BadZipFile, ElementTree.ParseError):
+        return None
 
 
 @dataclass
@@ -122,9 +158,11 @@ def audit_notes_epub(
     *,
     source_notes: dict[str, Any],
     target_notes: dict[str, Any] | None,
+    media_root: Path,
 ) -> NotesAuditResult:
     """成品注释门（N5）。返回 result；``ok=False`` 表示必须阻断放行。"""
     result = NotesAuditResult()
+    media_root = media_root.resolve()
     inventory = str(source_notes.get("inventory") or "")
     refs = [r for r in (source_notes.get("references") or []) if isinstance(r, dict)]
     note_by_id = {
@@ -266,8 +304,14 @@ def audit_notes_epub(
             )
         # P1 漏门修复：`_norm_md` 会把图片引用整段去掉，缺图不能被文本对账掩盖——
         # 注文媒体必须单独核对（期待引用 ⊆ aside 实渲染），且实渲染资源必须在包内。
-        want_media = _md_media_refs(expected_md)
-        have_media = _aside_media_refs(aside[1])
+        want_media, missing_sources = _source_media_refs(expected_md, media_root)
+        have_media = _aside_media_refs(aside[1], aside[2])
+        if missing_sources:
+            result.add(
+                "E_NOTES_MEDIA_MISSING",
+                f"注文 {nid} 的源图片不存在或越界：{'、'.join(sorted(missing_sources)[:4])}",
+                missing=nid,
+            )
         if want_media and not want_media <= have_media:
             # F4：完整资源身份；同名不同目录不得互相冒充
             result.add(
@@ -276,7 +320,7 @@ def audit_notes_epub(
                 missing=nid,
             )
         for ref in sorted(have_media):
-            if f"OEBPS/{ref}" not in all_names:
+            if ref not in all_names:
                 result.add(
                     "E_NOTES_MEDIA_ABSENT",
                     f"注文 {nid} 的图片资源不在包内：{ref}",

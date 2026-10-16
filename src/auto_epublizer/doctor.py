@@ -66,8 +66,8 @@ def probe_epubcheck(config: Config) -> Capability:
             name="epubcheck",
             available=False,
             impact="G4 无法跑 epubcheck，released 恒 False",
-            hint="下载 https://github.com/w3c/epubcheck/releases 放到 "
-            f"{config.qc.epubcheck.jar}（需 java）",
+            hint="解压 https://github.com/w3c/epubcheck/releases 的完整发行包并保留 lib/，"
+            f"将 jar 配置为包内 epubcheck.jar；默认路径 {config.qc.epubcheck.jar}（需 java）",
         )
     return Capability(
         name="epubcheck",

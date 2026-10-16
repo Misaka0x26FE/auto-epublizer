@@ -1,4 +1,4 @@
-<!-- i18n: source=publishing.zh.md sha256=5faf477865057c4d6545adf5368e8a1ba01fc7c8b5bd957f7e55f51704e3bb46 -->
+<!-- i18n: source=publishing.zh.md sha256=239785807b5001970b39fd144227d8ac3aab3753c118207ce374eec70798e7f4 -->
 > **English** | [中文](publishing.zh.md)
 
 # Publishing and distribution (publishing gate)
@@ -59,7 +59,8 @@ The publishing README must contain (missing = do not publish):
 ### 1.4 Finished-product verification
 
 - **Re-download** the uploaded assets from the publishing channel and check the sha256 matches the local one;
-- Open and verify rendering (TOC/illustrations/footnote popups) in at least one reader (e.g. Foliate/Apple Books).
+- Complete the mandatory offline delivery audit in `references/delivery.md`: independent content reconciliation, standard EPUB note semantics/content/links/backlinks/resources/current registration binding, notes gate, and epubcheck. Byte identity binds these results to the downloaded asset.
+- Reader GUI checks are conditional compatibility sampling only. With a desktop and reader, record reader/version and actual TOC/image/note navigation, return position and popup observations; without them record **reader not tested** and the reason, without blocking standard delivery. Popup behavior depends on reader implementation and user settings, not a universal product guarantee.
 
 ## 2. Cover gate
 

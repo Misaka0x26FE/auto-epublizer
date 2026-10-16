@@ -11,6 +11,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from ..fingerprint import strip_fingerprint_comments
+from ..media_paths import epub_member_path
 
 _XHTML = "application/xhtml+xml"
 _HTTPS = re.compile(r"^(https?|javascript|data):", re.IGNORECASE)
@@ -150,12 +151,15 @@ def _image_size(data: bytes, ext: str) -> tuple[int, int] | None:
         return None
 
 
-def audit_epub(path: str | Path, *, nav_exempt: set[str] | None = None) -> AuditResult:
+def audit_epub(
+    path: str | Path, *, nav_exempt: set[str] | None = None, notes_registered: bool = False
+) -> AuditResult:
     """解包 EPUB 并逐项审计结构。
 
     ``nav_exempt``：目录深度投影（``output.nav_depth``）剔除而不进 nav 的 spine
     文档 basename 集合（orchestrator 由 provenance 的同一投影算得）——这些文档仍在
     spine 阅读顺序中，豁免 E_TOC_COVERAGE；集合中出现非 spine 文档名则报错。
+    ``notes_registered``：调用方已验证有效登记并执行独立注释门时，移交必需回链判定。
     """
     result = AuditResult(ok=True)
     try:
@@ -208,7 +212,7 @@ def audit_epub(path: str | Path, *, nav_exempt: set[str] | None = None) -> Audit
 
         opf_dir = Path(opf_path).parent
         for href in manifest_hrefs:
-            full = (opf_dir / href).as_posix()
+            full = epub_member_path(opf_path, href)
             if full not in names:
                 result.add("error", "E_MANIFEST_HREF", f"manifest href 无法解析：{href}")
 
@@ -284,7 +288,7 @@ def audit_epub(path: str | Path, *, nav_exempt: set[str] | None = None) -> Audit
                         f"img src 为外部链接（媒体必须打包进 EPUB）：{name} -> {src}",
                     )
                     continue
-                full = (Path(name).parent / src).as_posix()
+                full = epub_member_path(name, src)
                 if full not in names:
                     result.add("error", "E_IMG_SRC", f"img src 无法解析：{name} -> {src}")
 
@@ -328,10 +332,10 @@ def audit_epub(path: str | Path, *, nav_exempt: set[str] | None = None) -> Audit
                 src = msrc.group(1)
                 if _HTTPS.match(src):
                     continue
-                full = (Path(name).parent / src).as_posix()
+                full = epub_member_path(name, src)
                 if full not in names:
                     continue  # 悬空已由 E_IMG_SRC 覆盖
-                ext = Path(src).suffix.lower()
+                ext = Path(full).suffix.lower()
                 if ext in (".avif", ".webp"):
                     result.add("warning", "W_IMG_FORMAT", f"图片格式阅读器兼容性差（{ext}）：{src}")
                 size = _image_size(zf.read(full), ext)
@@ -428,7 +432,7 @@ def audit_epub(path: str | Path, *, nav_exempt: set[str] | None = None) -> Audit
             ):
                 fn_id, body = m.group(1), m.group(2)
                 backs = re.findall(r'<a\b[^>]*epub:type="backlink"[^>]*href="([^"]+)"', body)
-                if not backs:
+                if not backs and not notes_registered:
                     result.add("error", "E_FN_BACKLINK", f"脚注 {fn_id} 缺回链：{name}")
                     continue
                 for href in backs:
@@ -446,18 +450,6 @@ def audit_epub(path: str | Path, *, nav_exempt: set[str] | None = None) -> Audit
                             f"脚注 {fn_id} 回链不可解析：{name}（{href}）",
                         )
                         break
-
-        # 12. 双语成对（postprocessing-spec P2）：class=src/tgt 段落数一致
-        for name in names:
-            if not name.endswith(".xhtml") or name.endswith(("nav.xhtml", "landmarks.xhtml")):
-                continue
-            content = zf.read(name).decode("utf-8")
-            n_src = len(re.findall(r'<p class="src"', content))
-            n_tgt = len(re.findall(r'<p class="tgt"', content))
-            if (n_src or n_tgt) and n_src != n_tgt:
-                result.add(
-                    "error", "E_BI_PAIRS", f"双语 src/tgt 段落数不一致（{n_src}/{n_tgt}）：{name}"
-                )
 
         # 13. 体积审计（postprocessing-spec P2）：告警不阻断
         total = sum(i.file_size for i in zf.infolist())

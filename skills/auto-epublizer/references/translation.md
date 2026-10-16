@@ -1,4 +1,4 @@
-<!-- i18n: source=translation.zh.md sha256=881bff3359b97588c248dab67de04791beb6a3a21907744a094e16e836500301 -->
+<!-- i18n: source=translation.zh.md sha256=7377f5e7ecddf3b9f6d3a7dbcb235f9d88d6ac085d8460bd969ad356d61ecefe -->
 > **English** | [中文](translation.zh.md)
 
 # Translation (chunk translation + sentence alignment + terminology loop)
@@ -43,8 +43,7 @@ When both exist, `analysis/` takes priority; the pure-agent preprocessing path u
 {"seq": 1, "src": "source sentence", "tgt": "translated sentence", "note": null}
 ```
 
-- `seq` is the anchor for bilingual layout, QA location and resume, starting from 1 and
-  consecutive.
+- `seq` is the anchor for translation validation, fidelity review, QA location and resume, starting from 1 and consecutive.
 - Paragraph-level equal length: one source paragraph usually corresponds to one sentence
   (or several); splits/merges are declared in `note`; `note` records splits/merges/
   omissions/doubts (the prefix `corr:wrong→right` records source-erratum precedents).
@@ -140,7 +139,3 @@ completed unit to `aligned`; repeated import is harmless (idempotent). After rev
 `import --reviewed` advances it to `reviewed` (idempotent); import skips re-importing
 `reviewed`/`built` units (re-importing a revised draft must first go through review again).
 
-## Bilingual
-
-`--bilingual` produces a bilingual edition: `build --bilingual` renders source/translation
-interleaved according to the `align/` alignment table, outputting `<slug>-bi.epub`.

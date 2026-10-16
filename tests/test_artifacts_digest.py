@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# Copyright (C) 2026 Misaka0x26FE
 """报告摘要覆盖全部放行硬门输入（增量审查 F2）：逐类状态转换/失效证据。
 
 每类输入变化都必须让已放行报告 `stale=True`（否则 status/ledger 会把违反硬门的
@@ -13,12 +15,15 @@ from pathlib import Path
 import pytest
 
 from auto_common.config import Config
+from auto_common.workspace import RunStore
 from auto_epublizer import orchestrator as orch
-from auto_epublizer.qa.artifacts import report_state
+from auto_epublizer.ingest.inserts import InsertRecord, InsertSource, read_inserts, write_inserts
+from auto_epublizer.qa.artifacts import artifacts_digest, report_state
 from auto_epublizer.qa.epubcheck import EpubcheckResult
 
 
-def _released_ws(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+def _released_ws(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> RunStore:
+    """构造已放行工作区；仅外部 epubcheck 边界替身，不代表真实检查器验证。"""
     src = tmp_path / "book.md"
     src.write_text("# Chapter I\n\nFirst sentence.\n", encoding="utf-8")
     store = orch.init(str(src), workspace_dir=str(tmp_path / "root"))
@@ -48,7 +53,9 @@ def _released_ws(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     for unit in store.load_publication().units:
         store.set_unit_status(unit.id, "reviewed")
     epub = orch.build(store)
-    monkeypatch.setattr(orch, "run_epubcheck", lambda *a, **k: EpubcheckResult(True, True, 0, 0))
+    monkeypatch.setattr(
+        orch, "run_epubcheck", lambda *a, **k: EpubcheckResult(True, True, 0, 0, returncode=0)
+    )
     report = orch.qa(store, epub_path=str(epub))
     assert report["released"] is True, report.get("released_reason")
     assert report_state(store)["stale"] is False
@@ -61,9 +68,6 @@ def test_open_glossary_conflict_invalidates_report(
     """F2 复现：放行后新增 open 术语冲突 → 摘要必须变化（否则假有效放行）。"""
     store = _released_ws(tmp_path, monkeypatch)
     store.analysis_dir.mkdir(parents=True, exist_ok=True)
-    (store.analysis_dir / "glossary.csv").write_text(
-        "source,target,type,status\nSS,党卫队,term,confirmed\n", encoding="utf-8"
-    )
     (store.analysis_dir / "glossary_conflicts.jsonl").write_text(
         json.dumps(
             {
@@ -149,5 +153,89 @@ def test_insert_change_and_missing_referenced_file_invalidate_report(
     report = orch.qa(store, epub_path=str(epub))
     assert report["released"] is True, report.get("released_reason")
     assert report_state(store)["stale"] is False
+    before_digest = artifacts_digest(store)
     (raw / "media" / "fig1.png").unlink()
     assert report_state(store)["stale"] is True
+    assert artifacts_digest(store) != before_digest
+    failed_report = orch.qa(store, epub_path=str(epub))
+    assert failed_report["released"] is False
+    assert any(
+        finding["code"] == "E_INSERT_MISSING_FILE"
+        for finding in failed_report["provenance_findings"]
+    )
+
+
+@pytest.mark.parametrize("outside_exists", [True, False], ids=["outside-file", "outside-missing"])
+def test_insert_symlink_escape_invalidates_report(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, outside_exists: bool
+) -> None:
+    """仅改资源 symlink 目标：摘要过期且 QA 报缺失，不探测越界文件存在性。"""
+    store = _released_ws(tmp_path, monkeypatch)
+    raw = store.structured_dir / "raw"
+    media = raw / "media"
+    media.mkdir(parents=True, exist_ok=True)
+    inside = media / "fig.png"
+    inside.write_bytes(b"PNG")
+    link = media / "linked.png"
+    link.symlink_to(inside)
+    record = InsertRecord(
+        id="p001-img01",
+        type="image",
+        source=InsertSource(page=1, method="embedded"),
+        file="media/linked.png",
+        content_desc="插图",
+    )
+    write_inserts(raw, [record])
+    epub = orch.build(store)
+    report = orch.qa(store, epub_path=str(epub))
+    assert report["released"] is True, report.get("released_reason")
+    before_state = report_state(store)
+    assert before_state["stale"] is False
+    before_digest = artifacts_digest(store)
+    assert before_digest == report["artifacts_digest"]
+
+    outside = tmp_path / "outside.png"
+    if outside_exists:
+        outside.write_bytes(b"PNG")
+    # 外部文件准备不应改变摘要；唯一被测产物变化是 symlink 的目标。
+    assert artifacts_digest(store) == before_digest
+    link.unlink()
+    link.symlink_to(outside)
+    original_is_file = Path.is_file
+
+    def guarded_is_file(path: Path) -> bool:
+        """越界目标不可进入文件存在性检查。"""
+        assert path != outside
+        return original_is_file(path)
+
+    monkeypatch.setattr(Path, "is_file", guarded_is_file)
+    assert artifacts_digest(store) != before_digest
+    after_state = report_state(store)
+    assert after_state != before_state
+    assert after_state["stale"] is True
+    assert after_state["reason"] == "artifacts_changed"
+    failed_report = orch.qa(store, epub_path=str(epub))
+    assert failed_report["released"] is False
+    assert any(
+        finding["code"] == "E_INSERT_MISSING_FILE"
+        for finding in failed_report["provenance_findings"]
+    )
+
+
+def test_malformed_insert_json_uses_production_tolerance_in_status(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """坏 inserts 保留字节失效证据，并按生产 schema 跳过，不令 status 崩溃。"""
+    store = _released_ws(tmp_path, monkeypatch)
+    raw = store.structured_dir / "raw"
+    inserts = raw / "inserts"
+    inserts.mkdir(parents=True, exist_ok=True)
+    path = inserts / "bad.json"
+    before_digest = artifacts_digest(store)
+    for invalid in ("{broken", "null", "[]", '["not a record"]', '"text"', "7", '{"file": []}'):
+        path.write_text(invalid, encoding="utf-8")
+        assert read_inserts(raw) == []
+        assert artifacts_digest(store) != before_digest
+        assert report_state(store)["stale"] is True
+        status = orch.status(store)
+        assert any(item["reason"] == "report_stale" for item in status["stale"])

@@ -91,8 +91,8 @@ def generate_report(
     """
     errors = [f for f in audit.findings if f.level == "error"]
     g4_audit = "pass" if audit.ok else "fail"
-    # 未实际运行 epubcheck（jar 缺失）不算通过，只能算「未验证」。
-    passed = audit.ok and epubcheck.ran and epubcheck.errors == 0
+    # 进程已运行不等于校验成功：必须有实际零退出证据，且无 error/fatal。
+    passed = audit.ok and epubcheck.ran and epubcheck.returncode == 0 and epubcheck.errors == 0
 
     rev = review or {}
     g1_candidates = int(rev.get("g1_candidates", 0) or 0)
@@ -161,9 +161,7 @@ def generate_report(
         and g0_structure_open == 0
         and glossary_conflicts_open == 0
         and catalog_unresolved_open == 0
-        and epubcheck.ran
-        and epubcheck.errors == 0
-        and audit.ok
+        and passed
         and prov_ok
         and notes_ok
     )
@@ -203,6 +201,7 @@ def generate_report(
         epubcheck={
             "available": epubcheck.available,
             "ran": epubcheck.ran,
+            "returncode": epubcheck.returncode,
             "errors": epubcheck.errors,
             "warnings": epubcheck.warnings,
             "messages": epubcheck.messages or [],

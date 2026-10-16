@@ -1,4 +1,4 @@
-<!-- i18n: source=notes.zh.md sha256=2d4378ac6d5b3e3dd3c41762c692c6347e439faf57e1bba5aa1ff824ad2760d4 -->
+<!-- i18n: source=notes.zh.md sha256=7f395cdd6cdaee5b4d7465156b382e448f581168d9af2a0179492d9094160986 -->
 > **English** | [中文](notes.zh.md)
 
 # Note Structuring and Binding (phase N)
@@ -157,3 +157,41 @@ Common blocks and fixes:
   notes;
 - notes without references: add `orphan_ok=true` + `orphan_reason` (never delete a genuine
   unreferenced source note).
+
+## Candidate identity and note locations (required for registration)
+
+Reference candidates (`marker/pandoc_ref`) explicitly bind `ref_id`: the reference must
+exist in the same unit, agree on the label when both have one, and be bound by only one
+candidate per actual reference. Note candidates (`definition/numbered_paragraph`) explicitly
+bind `note_id`; that note's `source_locations` must contain each corresponding
+`candidate_id`. Never infer bindings from shared numbers or text prefixes.
+
+```json
+{
+  "candidates": [
+    {"candidate_id": "c-ref", "kind": "marker", "unit": "ch01", "line": 3, "label": "23", "disposition": "note", "ref_id": "ref-000001"},
+    {"candidate_id": "c-start", "kind": "numbered_paragraph", "unit": "appendix", "line": 8, "disposition": "note", "note_id": "n-000001"},
+    {"candidate_id": "c-cont", "kind": "numbered_paragraph", "unit": "appendix", "line": 12, "disposition": "note", "note_id": "n-000001"}
+  ],
+  "note": {
+    "note_id": "n-000001", "scope_id": "ch01", "source_label": "23",
+    "note_type": "endnote", "source_markdown": "Opening paragraph.\n\nComplete cross-page continuation.",
+    "status": "verified",
+    "source_locations": [
+      {"kind": "page", "page": 40, "bbox": [10, 20, 300, 400], "candidate_id": "c-start", "unit": "appendix", "line": 8},
+      {"kind": "page", "page": 41, "candidate_id": "c-cont"}
+    ]
+  },
+  "reference": {"ref_id": "ref-000001", "note_id": "n-000001", "unit": "ch01", "scope_id": "ch01", "label_text": "23", "status": "verified"}
+}
+```
+
+Place these entries in the candidate JSONL, `notes`, and `references` respectively;
+this is not an additional file format. Multiple physical locations may bind one note.
+Keep original PDF page/bbox evidence and add candidate identity. If `unit/line` are also
+specified, they must agree with the candidate's corresponding fields. A mixed appendix
+need not be a `notes` unit, and an endnote's physical location need not match its reference.
+Real unreferenced notes use `orphan_ok=true` plus `orphan_reason` and the same location
+evidence: never invent references or delete genuine continuations. Re-exporting candidates
+preserves dispositions and `note_id/ref_id`; after review, check evidence against updated
+line numbers.

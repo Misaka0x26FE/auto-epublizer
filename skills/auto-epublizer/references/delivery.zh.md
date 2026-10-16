@@ -24,6 +24,7 @@ auto-epublizer qa                  # 确认 released=True；released_reason=ok
 | 字段 | 要求 |
 |---|---|
 | `released` / `released_reason` | True / ok |
+| `epubcheck.ran` / `epubcheck.returncode` / `epubcheck.errors` | true / 实际进程值 0 / 0 |
 | `epub_coverage` | ≈ 1.0（成品段落探针；无探针为 null） |
 | `epub_media_missing` / `epub_footnotes_missing` | 0 |
 | `align_md_drift` | 0（译文正文与对照表一致） |
@@ -32,6 +33,10 @@ auto-epublizer qa                  # 确认 released=True；released_reason=ok
 | `W_INSERT_NO_DESC` / `W_REPAIR_UNRESOLVED` / `W_REPAIR_STALE_UNIT` / `W_DELIVERY_AUDIT_MISSING` | 逐条过目处置（见 §4） |
 
 error 级溯源发现（`provenance_findings`）必须清零；warning 逐条判读。
+
+仅 jar 存在、Java 进程启动或旧 `ran` 字段不能证明 EPUBCheck 通过。保留完整发行包中 jar 相邻的 `lib`；headless Java 足够，无需 GUI。`report.epubcheck.returncode` 必须记录实际进程退出值，未执行为 `null`，未知不得猜 0；进程失败或 FATAL 不能按零错误放行。旧 released 报告缺字段或无可靠成功证据不代表当前合规：`status` 标为 stale，重新运行 `qa`，不得手改旧 `released`。已有 `digest_missing` 原因优先保留，否则此类旧报告过期原因为 `epubcheck_unverified`。
+
+标准 EPUB 注释验收独立于桌面且为强制项：通过独立注释门和离线 ZIP/XML 对账，核证有效登记绑定、`noteref`/`footnote`/`endnote` 语义、完整注文、每个引用目标与回链、包内资源身份。不能用旧记号计数或阅读器截图替代；登记图为空也须零对零核证。
 
 ## 2. 解包抽查（首/中/尾 + 高风险章：图表/脚注/多语密集）
 
@@ -45,8 +50,7 @@ mkdir -p /tmp/epub-check && cd /tmp/epub-check && unzip -o <slug>.epub
   （工具已全量对账，这一步是防工具自身错位的**第二道保险**）；
 - **图片**：确认 `OEBPS/media/` 文件数 = 引用数（工具已查）；再**看 2–3 张图**
   （multimodal）确认图的内容与上下文位置吻合——防「图在但放错位置/张冠李戴」；
-- **脚注**：抽 3 条注码，确认注文**内容**正确（不是只回链存在）；支持弹窗的阅读器
-  应弹窗显示，不支持者跳章末列表；
+- **注释**：抽至多 3 条现有引用（不足则全查），对照源文/译文证据确认包内注文**完整且正确**，不是只看回链存在；离线核对可解析往返链接及可读注释区；
 - **目录**：nav 条目数 = 单元数、层级与原书目录一致（对照 facts 的源 TOC）。
 
 ## 3. 人肉核对
@@ -65,10 +69,11 @@ mkdir -p /tmp/epub-check && cd /tmp/epub-check && unzip -o <slug>.epub
 - `W_REPAIR_STALE_UNIT`（`repairs.jsonl` 引用了被结构重建删除的单元）：历史 `done` 行无害；
   `unresolved` 行请重挂现存单元。
 
-## 5. 阅读器实测（可选，推荐）
+## 5. 阅读器兼容抽查（有条件，不阻塞）
 
-用 Foliate / Apple Books / 手机阅读器翻首/中/尾：目录跳转、脚注弹窗、图片渲染、
-双语版抽查（如产出 `-bi.epub`）。
+有桌面和目标阅读器时，用 Foliate / Apple Books / 手机阅读器翻首/中/尾：目录落点、注释跳转与返回位置、图片渲染及实际弹窗行为。记录阅读器/版本和真实观察。是否弹窗由阅读器实现和用户设置决定，标准 EPUB 语义不保证所有阅读器均弹窗。
+
+无桌面/阅读器时，明确记「阅读器未实测」及原因，不阻塞标准交付、不声称 GUI 兼容已验；内容、链接/回链、资源、登记绑定、独立注释门、epubcheck 和独立对账仍必须通过。
 
 ## 6. 修复循环（发现缺陷时）
 
@@ -94,9 +99,11 @@ mkdir -p /tmp/epub-check && cd /tmp/epub-check && unzip -o <slug>.epub
 - 抽查章节：<首/中/尾/高风险章清单>
 - [ ] 正文探针 N/N 命中
 - [ ] 图片语义抽查 M 张正确（列出）
-- [ ] 脚注内容抽查 3 条正确
+- [ ] 注文内容抽查：至多 3 条现有引用正确（或无注释，已核证零对零）
 - [ ] 目录/封面/元数据核对（结论）
 - [ ] inserts desc 空值处置：补全 X / 显式接受 Y（理由）
+- 强制离线注释门：登记/语义/内容/链接/回链/资源（结果）
+- 阅读器兼容：<阅读器/版本及实际观察，或「阅读器未实测：无桌面/阅读器」>
 - 发现与处置：（缺陷 → 根因 → 修复 → 复验；或「无」）
 - 修复循环轮次：0（或 N）
 - 产物清单与同步：本地/备份/云盘/仓库（字节核对结果）

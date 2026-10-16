@@ -1,4 +1,4 @@
-<!-- i18n: source=workflow.zh.md sha256=24ee6fc717a5d848c1d5fe3f5e11c22e621e124c8a49c562a15a87ee085f8c57 -->
+<!-- i18n: source=workflow.zh.md sha256=2f30afd503396fb52dd1bcb89896b502409f53b7fb054e459007116676119ee0 -->
 > **English** | [中文](workflow.zh.md)
 
 # Workflow (stage routing + command overview)
@@ -152,8 +152,8 @@ auto-epublizer notes candidates [-o <jsonl>] [--workspace <dir>]  # export candi
 auto-epublizer notes register [--workspace <dir>]                 # separation-registration gate: validate and write publication.json.notes
 auto-epublizer notes status [--json] [--workspace <dir>]          # summary / stale / candidate disposition progress
 
-# build (translation missing falls back to source; --bilingual produces -bi.epub; --theme selects the layout theme)
-auto-epublizer build [--bilingual] [--theme standard|compact|spacious] [-o <out.epub>] [--workspace <dir>]
+# build (translation missing falls back to source; --theme selects the layout theme)
+auto-epublizer build [--theme standard|compact|spacious] [-o <out.epub>] [--workspace <dir>]
 
 # QA (epubcheck zero errors + unpack audit + provenance audit + G5 release decision)
 auto-epublizer qa [--epub <path>] [--workspace <dir>]

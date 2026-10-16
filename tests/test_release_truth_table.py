@@ -49,7 +49,7 @@ def _clean_audit() -> AuditResult:
 
 
 def _epubcheck_ok() -> EpubcheckResult:
-    return EpubcheckResult(available=True, ran=True, errors=0, warnings=0)
+    return EpubcheckResult(available=True, ran=True, errors=0, warnings=0, returncode=0)
 
 
 def _report(g0_flags=None, **kw):
@@ -141,7 +141,7 @@ def test_epubcheck_not_run_never_releases() -> None:
     r = generate_report(
         "book",
         _clean_audit(),
-        EpubcheckResult(available=False, ran=False, errors=-1, warnings=0),
+        EpubcheckResult(available=False, ran=False, errors=-1, warnings=0, returncode=None),
     )
     assert r.passed is False and r.released is False
     assert r.released_reason == "epubcheck_not_run"

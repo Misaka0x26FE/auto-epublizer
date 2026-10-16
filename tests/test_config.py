@@ -13,7 +13,6 @@ def test_defaults() -> None:
     assert cfg.language.target == "zh-CN"
     # min_src_chars：短源保护（issue #39）——不足该字符数的源行不做长度比判定
     assert cfg.qc.length_ratio == {"too_short": 0.30, "too_long": 3.0, "min_src_chars": 20}
-    assert cfg.pipeline.bilingual is False
     # 唯一 LLM 原则：配置模型没有任何 LLM provider 段
     assert "llm" not in Config.model_fields
     assert "segment" not in Config.model_fields
@@ -22,12 +21,12 @@ def test_defaults() -> None:
 def test_load_config_from_yaml(tmp_path) -> None:
     yaml_path = tmp_path / "config.yaml"
     yaml_path.write_text(
-        "language:\n  target: ja\npipeline:\n  bilingual: true\n",
+        "language:\n  target: ja\noutput:\n  theme: compact\n",
         encoding="utf-8",
     )
     cfg = load_config(yaml_path)
     assert cfg.language.target == "ja"
-    assert cfg.pipeline.bilingual is True
+    assert cfg.output.theme == "compact"
 
 
 def test_load_config_ignores_removed_llm_section(tmp_path) -> None:

@@ -1,8 +1,8 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 # Copyright (C) 2026 Misaka0x26FE
-"""XHTML 渲染：markdown → XHTML 正文、单页文档、双语文档、文件名 slug。
+"""XHTML 渲染：markdown → XHTML 正文、单页文档、文件名 slug。
 
-本模块只做**确定性纯函数**渲染：给定 markdown / 对照行，产出完整 XHTML 字符串，
+本模块只做**确定性纯函数**渲染：给定 markdown，产出完整 XHTML 字符串，
 不做任何网络或文件 IO。图片引用（``![](media/…)``）按传入路径原样保留为
 ``<img src>``，由上层（orchestrator）负责把媒体字节收集进 EPUB。
 
@@ -628,39 +628,6 @@ def render_document(
         href_by_note=href_by_note,
     )
     return _page(title, body, lang=lang)
-
-
-def render_bilingual_document(
-    title: str,
-    rows: list[dict],
-    *,
-    lang_src: str,
-    lang_tgt: str,
-    order: str = "target_first",
-    note_refs: dict[str, NoteRef] | None = None,
-    note_items: list[NoteItem] | None = None,
-    href_by_note: dict[str, str] | None = None,
-) -> str:
-    """渲染一页双语对照文档：每句源/译段落上下交错，class=src/tgt。
-
-    源/译引用锚点独立（``ref_id`` 在译文侧），注文按宿主渲染（N 阶段），
-    跨文件 href 由 ``href_by_note`` 给出。
-    """
-    pairs: list[str] = []
-    for r in rows:
-        src, tgt = r.get("src", ""), r.get("tgt", "")
-        if order == "target_first":
-            pairs.append(f'<p class="tgt" lang="{escape(lang_tgt, quote=True)}">{escape(tgt)}</p>')
-            pairs.append(f'<p class="src" lang="{escape(lang_src, quote=True)}">{escape(src)}</p>')
-        else:
-            pairs.append(f'<p class="src" lang="{escape(lang_src, quote=True)}">{escape(src)}</p>')
-            pairs.append(f'<p class="tgt" lang="{escape(lang_tgt, quote=True)}">{escape(tgt)}</p>')
-    body = "\n".join(pairs)
-    if note_refs:
-        body = _substitute_note_markers(body, note_refs, href_by_note or {})
-    if note_items:
-        body += "\n" + _render_notes_section(note_items)
-    return _page(title, body, lang=lang_tgt)
 
 
 def slug_file(unit_id: str) -> str:

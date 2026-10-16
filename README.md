@@ -1,4 +1,4 @@
-<!-- i18n: source=README.zh.md sha256=fa73ee1f0fb694c5eead92b30bde3d8364256785cb31706395e1cbb1fbbed5c6 -->
+<!-- i18n: source=README.zh.md sha256=4175a8404ba31967d7463212d9dfe0a74a8883c3fcf180a26c499da850127008 -->
 > **English** | [中文](README.zh.md)
 
 # auto-epublizer
@@ -96,7 +96,7 @@ uv run auto-epublizer convert <input> -o output/book.epub
 uv run auto-epublizer preprocess <input>   # preprocessing: init + fact collection → preprocessing/facts.*
 uv run auto-epublizer meta --translator OpenCode  # metadata verification write-back + translator credit
 uv run auto-epublizer import               # register agent-written translation/alignment
-uv run auto-epublizer build                # package EPUB (translation-only / --bilingual)
+uv run auto-epublizer build                # package translated EPUB
 uv run auto-epublizer qa                   # structure audit + epubcheck + release report
 uv run auto-epublizer status [--json]      # progress / state machine / artifact reconciliation
 ```
@@ -113,7 +113,7 @@ read from the environment only).
 |---|---|
 | Input formats | TXT/Markdown, HTML, DOCX, EPUB, PDF (text layer), scanned PDF (OCR/MinerU) |
 | Scanned PDF | **MinerU external API preferred** (layout/line-break/illustration recognition); without a key, traditional OCR + agent page-by-page reading as fallback |
-| Output | Translation-only or bilingual; standard EPUB 3 (navigation, illustrations, cover, bidirectional footnote links) |
+| Output | Standard EPUB 3 (navigation, illustrations, cover, bidirectional footnote links) |
 | Quality control | Six gates G0–G5: static validation → batch review → evidence gathering → arbitration / shadow revision → epubcheck + unpack audit → delivery release |
 | Terminology | Three-state glossary (seed → candidate → conflict → confirmed) with externalized conflict arbitration; a **cross-book unified store** (`knowledge export/import`, default `~/Documents/auto-epublizer`, a private git repository) reuses terminology and knowledge |
 | Reproducibility | The same input always yields the same output; resume skips completed units by unit state |
@@ -135,7 +135,7 @@ per-genre tuning (novel / academic / paper / poetry / newspaper):
 ├── preprocessing/   CLI facts (facts.*) + agent-written analysis/plan/terms/risks
 ├── translation/     translation + align/ sentence-level alignment
 ├── reviews/         review-run records
-├── output/          finished EPUB (<slug>.epub / <slug>-bi.epub)
+├── output/          finished EPUB (<slug>.epub)
 ├── references/      user uploads + agent-retrieved reference material
 ├── publication.json authoritative index (metadata + content tree + state machine + config snapshot)
 └── events.jsonl     append-only behavior ledger
@@ -154,6 +154,7 @@ Unit state machine: `pending → split → analyzed → translated → aligned �
 
 | Document | Content |
 |---|---|
+| [docs/architecture.md](docs/architecture.md) | Current components, agent/CLI data flow, authoritative storage and implementation boundaries |
 | [docs/configuration.md](docs/configuration.md) | Full configuration schema (config.yaml) |
 | [docs/development-plan.md](docs/development-plan.md) | Development tasks and milestones |
 | [docs/translation-flow.md](docs/translation-flow.md) | Translation-flow design |

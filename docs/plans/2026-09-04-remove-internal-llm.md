@@ -14,14 +14,14 @@
   `render_style_md`（确定性）；删 analyze 的 LLM 分支。
 - OCR 视觉兜底 = **agent 自身**（`multimodal` 自报槽位；agent 无多模态即标记无此能力）；
   删 `llm_vision_model` 配置与探测。MinerU 保留（外部解析 API，非 LLM）。
-- `SegmentConfig`（仅 LLM 切片用）删；`PipelineConfig` 仅留 `bilingual`。
+- `SegmentConfig`（仅 LLM 切片用）删。
 
 ## 阶段 1：删除核心 LLM 层
 
 删 `auto_common/llm/` 全包、`auto_translator/agents/` 全包、`_parallel.py`、
 `translation/service.py`、`translation/slice.py`、`review/service.py`；
 `analysis/service.py` 只留 `render_style_md`；config 删 LLMConfig/TierConfig/
-SegmentConfig、PipelineConfig 只留 bilingual；workspace 删 engine_profile/usage 账本；
+SegmentConfig；workspace 删 engine_profile/usage 账本；
 pyproject 删 `json-repair`。
 
 ## 阶段 2：编排/CLI/doctor/facts 去 LLM 化

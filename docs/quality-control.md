@@ -1,4 +1,4 @@
-<!-- i18n: source=quality-control.zh.md sha256=3f748e36e8275375f7896d2f1cdf30bc6da7b0ac5323902413b7d5100c18267d -->
+<!-- i18n: source=quality-control.zh.md sha256=6986962b9869bf28a7135e07dc71bcd6fd716f0b5629be38e6162dc6337d89f8 -->
 > **English** | [中文](quality-control.zh.md)
 
 # Quality-Control Process Design (auto-epublizer)
@@ -118,7 +118,7 @@ Autofix (optional): first write a recoverable index `reviews/<ts>/autofix/index.
 
 ### G4 EPUB Structural QA (after build, local)
 
-- `epubcheck` zero errors (jar cached in `~/.cache`).
+- `epubcheck` actually executes with `returncode == 0` and `errors == 0`. When caching the jar in `~/.cache`, retain the complete distribution's adjacent `lib`; headless Java is sufficient, with no GUI required. Jar presence, Java startup, or a legacy `ran` field does not prove success; process failure/FATAL must not count as zero errors.
 - Item-by-item unpack audit (`qa/audit.py`, already implemented):
   - `mimetype` first, uncompressed, content exactly `application/epub+zip`;
   - `META-INF/container.xml` well-formed, pointing to the OPF;
@@ -130,7 +130,6 @@ Autofix (optional): first write a recoverable index `reviews/<ts>/autofix/index.
   - each content document has a correct `xml:lang`, exactly one `h1`, no skipped levels (`E_HEADING_SKIP`);
   - residue: HTML comments (`E_RESIDUE`), markdown/pandoc markers (`W_RESIDUE`);
   - internal anchors resolvable (`E_ANCHOR`, including footnote noteref→footnote) + footnote backlinks (`E_FN_BACKLINK`);
-  - bilingual src/tgt paragraph counts paired (`E_BI_PAIRS`);
   - media: empty alt (`W_IMG_NO_ALT`), format compatibility (`W_IMG_FORMAT`), oversized/overwide/overtall/uncompressed (`W_IMG_LARGE`/`W_IMG_RATIO`/`W_IMG_UNCOMPRESSED`), total EPUB size (`W_EPUB_SIZE`);
   - DC metadata missing hints (`W_META_INCOMPLETE`).
 - Provenance audit (`qa/provenance.py`, postprocessing-spec §2): tri-lateral reconciliation, media provenance, per-segment coverage, TOC hierarchy — see G5.
@@ -147,34 +146,35 @@ Autofix (optional): first write a recoverable index `reviews/<ts>/autofix/index.
     "total_sentences": 0, "error_rate": 0.0,
     "g4_epubcheck_errors": 0, "g4_audit": "pass", "passed": true,
     "audit": {"ok": true, "errors": 0, "findings": []},
-    "epubcheck": {"available": true, "ran": true, "errors": 0, "warnings": 0, "messages": []},
+    "epubcheck": {"available": true, "ran": true, "errors": 0, "warnings": 0, "returncode": 0, "messages": []},
     "provenance_coverage": 1.0, "units_missing": 0, "units_order_ok": true,
     "media_lost": 0, "toc_missing": [], "toc_flat": false,
     "inserts_missing_files": 0, "provenance_findings": [],
     "released": true, "released_reason": "ok"
   }
   ```
-- Release checklist verification: product naming (`<slug>.epub` / `<slug>-bi.epub`, `W_NAMING`), metadata (all DC items present), cover, copyright attribution, license.
+- Release checklist verification: product naming (`<slug>.epub`, `W_NAMING`), metadata (all DC items present), cover, copyright attribution, license.
 - **Release conditions** (aligned with docs/postprocessing-spec.md §5 and `qa/report.py::generate_report`):
   `g2_confirmed == 0` or all revised (`g3_patched`);
   **`g0_terminology_open == 0`** (a G0 terminology hit is a real defect — the translation is missing a glossary source term and must be verified and cleared one by one, otherwise `released_reason=terminology_open`);
   **`g0_structure_open == 0`** (marker/footnote conservation violations; `structure_open`);
   **`glossary_conflicts_open == 0`** (undecided terminology conflicts; `glossary_conflict_open` — no release before the arbitration is written back to glossary.csv);
   **`catalog_unresolved_open == 0`** (open items of the source inventory when `catalog.csv` exists; `catalog_unresolved_open` — unresolved content must not be released);
-  `g4_epubcheck_errors == 0`; `g4_audit == "pass"`; complete provenance
+  `epubcheck.ran == true`, actual `epubcheck.returncode == 0`, and `g4_epubcheck_errors == 0`; `g4_audit == "pass"`; complete provenance
   (`provenance_coverage ≈ 1.0` (null when there is no translation artifact), zero missing
   in tri-lateral reconciliation/media provenance, `toc_flat == false`, no error-level
   provenance findings);
   finished-product presentation reconciliation cleared (**`align_md_drift == 0`,
   `epub_media_missing == 0`, `epub_footnotes_missing == 0`, `epub_coverage ≈ 1.0`**,
   delivery audit S1);
-  **books with notes add the product note gate** (empty `notes_findings` and zero
-  `notes_missing`: zero violations of noteref/footnote/backlink/numbering, otherwise
-  `released_reason=notes_open` blocks release; see `qa/notes_audit.py` and
-  `references/notes.md`).
+  **registered note graphs require the independent product note gate**, including zero-to-zero
+  reconciliation for `none`: empty `notes_findings`, zero `notes_missing`, and no violations
+  of noteref/aside, href, backlinks, numbering, content/resources or version binding;
+  otherwise `released_reason=notes_open` blocks release (see `qa/notes_audit.py` and `references/notes.md`).
+  Legacy count/backlink checks are handed over only after a fresh registered graph passes
+  the independent gate; unregistered or stale graphs do not bypass legacy checks.
   The G0 **length-ratio** warning is advisory and does not block (English→Chinese length
-  ratios are naturally low, with many observed false positives); epubcheck not run (jar
-  missing) counts as unverified and does not release.
+  ratios are naturally low, with many observed false positives); epubcheck not run is unverified and does not release. `report.epubcheck.returncode` records the actual process exit value, or `null` when not executed; never guess 0 for an unknown result. Legacy released reports missing the field or reliable process success evidence do not establish current compliance: `status`/`ledger` mark them stale (`epubcheck_unverified`, with existing `digest_missing` taking priority). Rerun `qa`, never hand-edit the old `released` value or infer historical success or failure from missing evidence.
 
 ### Delivery Audit (agent gate, mandatory after qa released)
 
@@ -186,6 +186,14 @@ manual check of TOC/cover/metadata → handling of inserts descriptions and open
 byte-level artifact-sync verification. Defects found go through the repair loop
 (fix → import → build → qa → re-audit). Once every unit is built, qa reminds you with
 `W_DELIVERY_AUDIT_MISSING` when the record is missing (warning, non-blocking).
+
+Standard note semantics/links/backlinks/graph consistency, content and resource verification,
+and epubcheck are mandatory desktop-independent acceptance. All five semantic quality gates
+remain mandatory. Reader GUI checks are conditional compatibility sampling: if available,
+record reader name/version and popup/navigation/return observations; otherwise record
+“reader not tested”, without blocking solely for that reason or guaranteeing popups in
+all readers. Link navigation and chapter-end content must remain accessible; absence of
+a desktop never excuses content or structural defects.
 
 > Basis: a real delivery case — *The History of Russian Railways* passed all tool QA, yet
 > the finished product included only 34 of 72 referenced images (the translated body
@@ -213,7 +221,7 @@ byte-level artifact-sync verification. Defects found go through the repair loop
 }
 ```
 
-`seq` locates the exact sentence in `align/<id>.jsonl` and is the anchor for bilingual
+`seq` locates the exact sentence in `align/<id>.jsonl` and anchors comparative
 location, repair write-back and error-rate statistics.
 
 ### Patch (G3 shadow revision)
@@ -250,7 +258,7 @@ reviews/review-<ts>/     # agent hand-written review records (G1–G3 executed b
 | Empty translation | forbidden | import blocks the unit |
 | Terminology hit | `g0_terminology_open == 0` (hard release gate) | whole-book consistency; real defects must be cleared |
 | Error rate | `confirmed / total_sentences ≤ 1e-4` (agent self-check reference, not a CLI hard gate) | aligned with publishing error-rate conventions |
-| epubcheck | 0 error (and must actually run) | structural validity |
+| epubcheck | actual execution, returncode == 0 and errors == 0 | structural validity |
 
 ## 5. Convergence State Machine (G3)
 

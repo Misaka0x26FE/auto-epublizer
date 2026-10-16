@@ -1,4 +1,4 @@
-<!-- i18n: source=testing-doubao.zh.md sha256=e8a546aac43107da999e120887ff4ce7978224b089d05b64a110cd052f52739c -->
+<!-- i18n: source=testing-doubao.zh.md sha256=c5f25f9bb397c9081fbcdbe75f91722fcc2a807e4423c1668eec46973f0d6194 -->
 > **English** | [中文](testing-doubao.zh.md)
 
 # Testing Guide for Real Use in the DouBao Cloud Container
@@ -49,6 +49,7 @@ apt-get update && apt-get install -y pandoc
 
 # epubcheck + java (optional; when missing, qa's epubcheck result is -1 and released is always False)
 # java -jar ~/.cache/epubcheck.jar is the default lookup path
+# Extract the complete distribution and keep lib/ beside its JAR; configure that JAR path, never copy it alone
 ```
 
 ### 2.2 Obtaining the project
@@ -191,13 +192,9 @@ uv run auto-epublizer convert ~/books/some.epub -o /tmp/out.epub
 Verification: consumes no LLM calls (usage unchanged); the `dc:language` of the OPF of an English book is the source language
 rather than zh-CN; the unit status is directly `built`.
 
-### T5 Bilingual EPUB
+### T5 Offline standard-note acceptance and conditional compatibility sampling
 
-```bash
-uv run auto-epublizer build --bilingual    # produces <slug>-bi.epub
-```
-
-Verification: each translated-sentence paragraph `xml:lang="zh-CN"` and source-sentence paragraph `xml:lang="<source language>"` interleave.
+CLI independent audits and epubcheck require no desktop: verify noteref/aside semantics, hrefs/backlinks, registered graph and version binding, note content and resources; all five semantic quality gates remain mandatory. Without a GUI, record “reader not tested”; this alone does not block delivery or excuse content/structural defects. With a GUI, sample and record reader name/version and popup/navigation/return observations. Popups are not guaranteed in every reader; link navigation and chapter-end content must remain accessible.
 
 ### T6 pandoc formats (EPUB / DOCX / HTML)
 

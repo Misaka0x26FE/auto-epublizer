@@ -8,10 +8,6 @@ language:
   target: zh-CN         # 目标语言，任意可配
   genre: auto           # auto=启发式判定；或显式 novel/academic/paper/poetry/newspaper
 
-# ── 管线开关 ────────────────────────────────────────────────
-pipeline:
-  bilingual: false
-
 # ── 质检 ────────────────────────────────────────────────────
 qc:
   length_ratio:

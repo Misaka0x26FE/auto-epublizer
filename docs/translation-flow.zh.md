@@ -95,7 +95,7 @@ translation/<rel>.md + align/<id>.jsonl  ← 每段一句或数句：{seq, src, 
 关键保证：
 
 1. **段级等长**：输入 N 段，输出必须 N 项（每项是该段的译文句数组），数量不符重试、逐段兜底——从结构上杜绝整段漏译。
-2. **句级对齐**：每段译文按句拆开，与原句一一对应，写入 `align/<id>.jsonl` 的 `{seq, src, tgt, note}`；拆句/并句在 `note` 声明。这是 QC G0（对照表完整性）与双语排版的唯一来源。
+2. **句级对齐**：每段译文按句拆开，与原句一一对应，写入 `align/<id>.jsonl` 的 `{seq, src, tgt, note}`；拆句/并句在 `note` 声明。这是 QC G0（对照表完整性）、对照审校与 provenance 溯源的依据，不是排版输入。
 3. **续段回并**：`cont=True` 的续段译文回并到上一段，不另起段落。
 
 ## 6. 术语表辅助（三态闭环）
@@ -144,5 +144,5 @@ translation/<rel>.md + align/<id>.jsonl  ← 每段一句或数句：{seq, src, 
 | `split/NNNN.md` 纯文本切片 | `structured/` 章节目录结构 + 稳定单元 ID |
 | `_analysis.md` / `_understanding.md` 单文件 | `analysis/` 分层：overview/global/units/keypoints |
 | `GLOSSARY.csv` 人工维护 | glossary 三态 + 冲突外置 + 注入过滤 |
-| 译后无句级对齐 | `align/<id>.jsonl` 句级对照表（QC 与双语的锚点） |
+| 译后无句级对齐 | `align/<id>.jsonl` 句级对照表（QC 与 provenance 的锚点） |
 | 无 QC 闭环 | 翻译 → G0–G3 审校闭环 |

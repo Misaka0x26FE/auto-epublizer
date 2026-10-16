@@ -43,6 +43,7 @@ apt-get update && apt-get install -y pandoc
 
 # epubcheck + java（可选；缺失时 qa 的 epubcheck 结果为 -1，released 恒 False）
 # java -jar ~/.cache/epubcheck.jar 为默认查找路径
+# 解压完整发行包并保留 JAR 相邻 lib/；可配置包内 JAR 路径，不要只复制 JAR
 ```
 
 ### 2.2 获取项目
@@ -182,13 +183,9 @@ uv run auto-epublizer convert ~/books/some.epub -o /tmp/out.epub
 验证：不消耗任何 LLM 调用（usage 不变）；英文书 OPF 的 `dc:language` 是源语言
 而非 zh-CN；单元状态直接 `built`。
 
-### T5 双语 EPUB
+### T5 标准注释离线验收与条件性兼容抽查
 
-```bash
-uv run auto-epublizer build --bilingual    # 产 <slug>-bi.epub
-```
-
-验证：每句译文段 `xml:lang="zh-CN"`、源文段 `xml:lang="<源语言>"` 交错。
+CLI 独立审计和 epubcheck 不依赖桌面：必须核证 noteref/aside 语义、href/回链、登记图及版本绑定、注文内容和资源，五项语义质量门不降级。无 GUI 明示「阅读器未实测」，不因此阻塞，也不豁免内容/结构缺陷；有 GUI 时抽查并记录阅读器名称、版本及弹窗/跳转/返回观察。不保证所有阅读器弹窗，跳转及章末内容仍须可访问。
 
 ### T6 pandoc 格式（EPUB / DOCX / HTML）
 

@@ -39,7 +39,7 @@ translation/
 {"seq": 1, "src": "原句", "tgt": "译句", "note": null}
 ```
 
-- `seq` 是双语排版、QA 定位、断点续跑的锚点，从 1 起连续。
+- `seq` 是翻译验证、保真审校、QA 定位及断点续跑的锚点，从 1 起连续。
 - 段级等长：一个源段通常对应一句（或多句）；拆句/并句在 `note` 声明；
   `note` 记录拆/并句/漏译/存疑（前缀 `corr:wrong→right` 记源文勘误先例）。
 
@@ -115,7 +115,3 @@ PDF ingest 会产出三类非纯文本段（来源见 `references/ingest.md`；�
 置为 `aligned`；重复 import 无害（幂等）。审校通过后 `import --reviewed` 推进为
 `reviewed`（幂等）；`reviewed`/`built` 单元 import 跳过重导（重导修订稿须先重走审校）。
 
-## 双语
-
-`--bilingual` 产出双语对照：`build --bilingual` 时按 `align/` 对照表渲染源/译交错排版，
-输出 `<slug>-bi.epub`。
