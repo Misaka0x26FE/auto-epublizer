@@ -591,3 +591,69 @@ def test_g0_heading_conservation() -> None:
     )
     # 只给 structured 不给 translation → 跳过（convert / 未译场景）
     assert not [f for f in g0_unit_flags(rows, g, structured_md=structured) if f.check == "heading"]
+
+
+def test_terminology_exemption_is_advisory_not_silent() -> None:
+    """按单元豁免的术语命中降为 advisory，且**照样出现在报告里**。
+
+    文献著录体例内保留德文（Kurztiitel `Tuchei, Konzentrationslager, S. 243`）
+    时，「源行有术语 → 译文行必须有中文译名」报的是**改译文也放行不了**的
+    假阳性。但豁免不得静默：命中须降为 `terminology_exempt` 并带理由，
+    既不阻断放行、也不从报告里消失。
+    """
+    from auto_translator.glossary import STATUS_SEED, GlossaryEntry
+    from auto_translator.review import g0_unit_flags
+
+    g = Glossary(
+        [
+            GlossaryEntry(
+                source="Konzentrationslager", target="集中营", type="org", status=STATUS_SEED
+            )
+        ]
+    )
+    rows = [
+        {
+            "seq": 0,
+            "src": "vgl. Tuchei, Konzentrationslager, S. 243.",
+            "tgt": "参见 Tuchei，Konzentrationslager，S. 243。",
+        }
+    ]
+
+    hard = g0_unit_flags(rows, g)
+    assert [f for f in hard if f.check == "terminology"], "未豁免时应报硬缺陷"
+
+    flags = g0_unit_flags(rows, g, exempt_sources={"Konzentrationslager": "Kurztiitel 保留德文"})
+    assert not [f for f in flags if f.check == "terminology"], "豁免后不得再报硬缺陷"
+    advisory = [f for f in flags if f.check == "terminology_exempt"]
+    assert len(advisory) == 1
+    assert advisory[0].blocking is False
+    assert advisory[0].data["reason"] == "Kurztiitel 保留德文"
+
+    # 只豁免指定术语：同单元其他术语仍受检
+    flags = g0_unit_flags(rows, g, exempt_sources={"别的术语": "无关"})
+    assert [f for f in flags if f.check == "terminology"]
+
+
+def test_count_footnote_refs_counts_cjk_adjacent_markers() -> None:
+    """回归 #33b：中文译文的句末注码**紧跟下一句首字**是常态，必须计入。
+
+    原判据带 `(?![\\u4e00-\\u9fff])`，立论是「真注码是句末最后一个 token」——
+    只对源文语言成立。中文里 `」。4这是…` / `」。2如果属实…` 是最普通的写法，
+    于是译文侧绝大多数注码数不到，源侧数得到 → 误报「脚注标记数量不守恒」
+    （现场：contentious-alliance back-appendix-14 src=1/tgt=0、ch21 src=3/tgt=2，
+    两处注码在译文里都在，是判据漏数）。
+
+    issue #3 的 4 个统计数字样例必须**保持为 0**（由量词表与 `%` 前瞻覆盖）。
+    """
+    assert count_footnote_refs("…有真正利害关系」。4这是工会与工党") == 1
+    assert count_footnote_refs("…一种渐进式脱钩」。2如果属实") == 1
+    assert count_footnote_refs("…准备坑我们一把」。2°无论哪一种") == 1
+    assert count_footnote_refs("引文『……生产。』33") == 1
+    # issue #3 的统计数字仍然不算注码
+    assert count_footnote_refs("全俄铁路网扩张。82个车站投入运营") == 0
+    assert count_footnote_refs("起义爆发。95年运动失败") == 0
+    assert count_footnote_refs("燃料被取代。46%的机车改用石油") == 0
+    assert count_footnote_refs("占比过半。50％来自顿巴斯") == 0
+    # 回归 #22/#31 的量词类仍为 0
+    assert count_footnote_refs("会议定于三月召开。3 月十五日之前") == 0
+    assert count_footnote_refs("停留至 18 日。 随后返回") == 0

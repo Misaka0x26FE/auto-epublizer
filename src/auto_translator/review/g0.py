@@ -27,9 +27,13 @@ heading（标题层级守恒，structured 与 translation 逐层计数对账）�
 from __future__ import annotations
 
 import re
+from collections.abc import Mapping
 from typing import Any
 
+from auto_common.markdown import inline_code_chunks, markdown_chunks
+
 from ..glossary import Glossary, terminology_hits
+from .fidelity import content_blocks, is_heading_only
 from .models import G0Flag  # 数据模型归 models（C 组：消除 g0↔fidelity 双向依赖）
 
 # 插入元素标记，如 {fig:NNN}、{table:NNN}
@@ -38,17 +42,15 @@ _MARKER_RE = re.compile(r"\{\w+:\d+\}")
 # 近似脚注注码：**句末**标点后紧跟 1~3 位数字（排除小数如 3.14）。
 # 只认句末标点（. ! ? … 。 ！ ？）；引证里的冒号/分号/逗号（如 1992:110、「；1 公顷」）
 # 不是注码，否则会把统计数字误判为脚注标记而触发守恒硬缺陷。
-# 另排除紧跟中文/百分号的数字（回归 issue #3）：「。82个车站」「。46%的机车」是
-# 统计数字而非注码；真注码是句末最后 token，后不会紧跟中文或百分号。
+# 另排除紧跟百分号的数字（回归 issue #3）：「。46%的机车」是统计数字而非注码。
+# 中文译文的注码后可以直接跟下一句；数量短语由 _MEASURE_AFTER_RE 排除。
 # 再排除**枚举号位**（回归 #8）：数字后紧跟 `.`/`)`/`）`/`、`/`]` 时是列表序号
 # （「结婚礼。1. 订婚」「正文。2) 婚礼」），不是注码。
 # 句末标点类还含 **CJK 闭合引号/括号**（回归 issue #29）：中文排版把句末点放在引号内、
 # 闭合引号在句末点之后（『……生产。』33），注号因此紧跟 `』`/`」` 而非 `。`；只认
 # `[.!?…。！？]` 会让译文侧少数十几个注码，在源侧可数偏多的单元上误报脚注不守恒。
 # 这些字符在英文源侧不出现，故只放宽译文侧计数、不影响源侧。
-_FOOTNOTE_REF_RE = re.compile(
-    r"(?<!\d)[.!?…。！？』」】〕](\d{1,3})(?!\d)(?![\u4e00-\u9fff%％])(?![.)）、\]])"
-)
+_FOOTNOTE_REF_RE = re.compile(r"(?<!\d)[.!?…。！？』」】〕](\d{1,3})(?!\d)(?![%％])(?![.)）、\]])")
 
 # 缩写点（回归 #8）：`стр.66` `п.5` `ст.3` `гл.2` `рис.3` `20.Х.77` 这类页码/条款引用，
 # 点号属于缩写词而非句末，后随数字不是注码。
@@ -103,12 +105,7 @@ _CJK_CHARS_RE = re.compile(r"[\u3400-\u4dbf\u4e00-\u9fff\u3040-\u30ff\uac00-\ud7
 
 
 def _is_abbrev_dot(text: str, dot_index: int) -> bool:
-    """判断 ``dot_index`` 处的标点是否为缩写点（而非句末点）。
-
-    缩写启发式只对**非 CJK** 词生效：中文句子以「正文。1」收尾时，点前是 1~2 字的
-    中文词（正文/城/部…），若照搬「≤2 字符即缩写」会把它误判成缩写点而吞掉真注码
-    （回归 #8 修复所引入；这里把 CJK 词排除在外）。
-    """
+    """排除非 CJK 缩写点；引号、连续句末点不能作为 OCR 噪声免计证据。"""
     m = _ABBREV_BEFORE_RE.search(text[:dot_index])
     if not m:
         return False
@@ -141,7 +138,7 @@ _FOOTNOTE_SUPER_RE = re.compile(
 # 括号式注号：〔240〕/ [240]（译文侧现场把注文写成「〔240〕 注文」，方头括号包裹）
 _FOOTNOTE_BRACKET_RE = re.compile(r"[〔\[](\d{1,3})[〕\]]")
 
-_HEADING_RE = re.compile(r"^(#{1,6})\s+", re.MULTILINE)
+_HEADING_RE = re.compile(r"^(#{1,6})[ \t]+", re.MULTILINE)
 
 # 常见排印讹误先例（源文勘误，来自旧真实案例）
 _DEFAULT_CORRECTIONS: dict[str, str] = {
@@ -174,7 +171,7 @@ def markers_conserved(src: str, tgt: str, pattern: re.Pattern[str] = _MARKER_RE)
 # 口径/计量写法（`。3 月` `。10 时` `。50 口径` `。5 年`），不是注码。源英文无此形态，
 # 故只影响译文侧误报。
 _MEASURE_AFTER_RE = re.compile(
-    r"\s*(?:世纪|年代|公里|千米|厘米|毫米|口径|月|日|时|分|秒|年|个|条|名|吨|米|发|位|页|章|节|周|天|号)"
+    r"\s*(?:世纪|年代|公里|千米|厘米|毫米|口径|月|日|时|分|秒|年|个|条|名|吨|米|发|位|页|章|节|周|天|号|十|百|千|万|亿|兆)"
 )
 
 
@@ -249,16 +246,18 @@ def count_footnote_defs(text: str) -> int:
 
 
 def count_footnote_marks(text: str) -> int:
-    """统计 pandoc 脚注标记（[^label] 引用与定义）数量。"""
+    """统计明确的 pandoc 引用和定义；普通上标可能是数学指数，不抵扣注释。"""
     return len(_FN_PANDOC_RE.findall(text or ""))
 
 
 def count_heading_levels(text: str) -> dict[int, int]:
     """统计各标题层级（h1~h6）数量。"""
     levels: dict[int, int] = {}
-    for m in _HEADING_RE.finditer(text or ""):
-        level = len(m.group(1))
-        levels[level] = levels.get(level, 0) + 1
+    for kind, chunk in markdown_chunks(text or ""):
+        if kind == "text":
+            for match in _HEADING_RE.finditer(chunk):
+                level = len(match.group(1))
+                levels[level] = levels.get(level, 0) + 1
     return levels
 
 
@@ -271,34 +270,45 @@ def count_paragraph_blocks(text: str) -> int:
 # ── 交付审计（S1.1）：translation md ↔ align tgt 全文一致性 ────────────────
 
 # 标题行（h1/h2：build 的 h1 来自 publication title，不在 align 行内）
-_HEADING_LINE = re.compile(r"(?m)^\s*#{1,6}\s+.*$")
+_HEADING_LINE = re.compile(r"(?m)^ {0,3}#{1,6}[ \t]+.*$")
 # 脚注定义前缀（[^label]:）
 _FN_DEF_PREFIX = re.compile(r"\[\^[^\]]+\]:")
 
 
 def _drift_norm(text: str) -> str:
-    """漂移比对归一化：去标题行/脚注定义前缀/脚注与插入标记，再去全部空白。"""
-    out = _HEADING_LINE.sub("", text or "")
-    out = _FN_DEF_PREFIX.sub("", out)
-    out = _FN_PANDOC_RE.sub("", out)
-    out = _MARKER_RE.sub("", out)
-    return re.sub(r"\s+", "", out)
+    """仅归一化正文语法；围栏及行内代码中的标题/脚注都是受保护的字面内容。"""
+    parts: list[str] = []
+    for kind, chunk in markdown_chunks(text or ""):
+        if kind != "text":
+            parts.append(chunk)
+            continue
+        for is_code, part in inline_code_chunks(_HEADING_LINE.sub("", chunk)):
+            if not is_code:
+                part = _FN_DEF_PREFIX.sub("", part)
+                part = _FN_PANDOC_RE.sub("", part)
+                part = _MARKER_RE.sub("", part)
+            parts.append(part)
+    return re.sub(r"\s+", "", "".join(parts))
 
 
 def _strip_def_blocks(text: str) -> str:
     """整段剔除脚注定义块（定义行 + 其非空续行）——align 不含定义行时的容错模式。"""
     out: list[str] = []
-    in_def = False
-    for line in (text or "").splitlines():
-        if _FN_DEF_PREFIX.match(line.lstrip()):
-            in_def = True
+    for kind, chunk in markdown_chunks(text or ""):
+        if kind != "text":
+            out.append(chunk)
             continue
-        if in_def:
-            if line.strip():
-                continue  # 定义续行
-            in_def = False
-        out.append(line)
-    return "\n".join(out)
+        in_def = False
+        for line in chunk.splitlines(keepends=True):
+            if _FN_DEF_PREFIX.match(line.lstrip()):
+                in_def = True
+                continue
+            if in_def:
+                if line.strip():
+                    continue
+                in_def = False
+            out.append(line)
+    return "".join(out)
 
 
 def md_align_drift(
@@ -343,11 +353,7 @@ def md_align_drift(
         if _drift_norm(str(r.get("tgt") or ""))
         and _drift_norm(str(r.get("tgt") or "")) not in md_norm
     ]
-    md_blocks = [
-        b.strip()
-        for b in re.split(r"\n\s*\n", (md_input or "").strip("\n"))
-        if b.strip() and not b.strip().startswith("#")
-    ]
+    md_blocks = content_blocks(md_input)
     missing_in_align = [
         b[:40] for b in md_blocks if _drift_norm(b) and _drift_norm(b) not in tgt_norm
     ]
@@ -488,6 +494,7 @@ def g0_unit_flags(
     min_src_chars: int = MIN_SRC_CHARS,
     structured_md: str | None = None,
     translation_md: str | None = None,
+    exempt_sources: Mapping[str, str] | None = None,
 ) -> list[G0Flag]:
     """对一个单元执行全部 G0 检查，返回告警列表。
 
@@ -514,8 +521,16 @@ def g0_unit_flags(
     ``structured_md`` 与 ``translation_md`` 同时给出时执行**标题守恒**（issue #12）：
     逐层（h1~h6）计数对账——丢标题/换级（``##``→``###``）/补标题均报
     ``heading``（真实缺陷：目录节点在成品中丢失或错位）。
+
+    ``exempt_sources`` 是**本单元**的术语门豁免表 ``{术语 source: 理由}``，来自
+    ``preprocessing/terminology_exemptions.csv``（见
+    ``glossary.csv_io.load_terminology_exemptions``）：文献著录体例内按体例保留
+    德文时，命中降为 advisory ``terminology_exempt`` **照样报出**，
+    不阻断放行也不从报告里消失。
     """
-    flags = list(check_alignment(rows))
+    exempt_sources = exempt_sources or {}
+    heading_only = not rows and is_heading_only(structured_md) and is_heading_only(translation_md)
+    flags = [] if heading_only else list(check_alignment(rows))
     sum_marker_src = sum_marker_tgt = 0
     sum_fn_src = sum_fn_tgt = 0
     # 引用与定义分开累计（issue #34）：refs=正文注码（句末式∪上标式），defs=pandoc
@@ -570,6 +585,23 @@ def g0_unit_flags(
                     )
                 )
         for hit in terminology_hits(src, tgt, glossary):
+            if hit.source in exempt_sources:
+                # 按单元豁免（文献著录体例内保留德文，改译文也放行不了）：
+                # 降为 advisory **照样报出**，不阻断放行也不从报告里消失。
+                flags.append(
+                    G0Flag(
+                        "terminology_exempt",
+                        f"术语 {hit.source} 已按体例豁免（{hit.expected}）：{exempt_sources[hit.source]}",
+                        {
+                            "seq": seq,
+                            "source": hit.source,
+                            "expected": hit.expected,
+                            "reason": exempt_sources[hit.source],
+                        },
+                        blocking=False,
+                    )
+                )
+                continue
             flags.append(
                 G0Flag(
                     "terminology",

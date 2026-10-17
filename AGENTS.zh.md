@@ -107,7 +107,7 @@ auto-epublizer import [--unit <id>] [--terms preprocessing/terms.csv] [--reviewe
                                  # reviewed（审校通过的显式登记；reviewed/built 跳过重导）；
                                  # --force 对 reviewed/built 单元重跑阻断校验（交付后修订重登记；
                                  # 通过保持原状态，失败回退 aligned）
-auto-epublizer g0                # 翻译/导入后立即静态校验（术语命中为真实缺陷须逐条核验；长度比才是 advisory）
+auto-epublizer g0                # 翻译/导入后立即静态校验（术语逐条核证；有理由的按单元豁免为 advisory）
 
 
 # 6. 审校（agent 任务）：agent 按 G1–G3 语义自行审校，写 reviews/review-<ts>/
@@ -137,6 +137,19 @@ auto-epublizer work-root <dir>  # 生成标准长期多书工作区（见 refere
 （`import` 登记翻译产物、`restructure` 登记单元边界重建——agent 手写产物进 CLI 的
 两个入口；审校产物 `result.json` 由 agent 手写、状态推进参照其契约），
 agent 不手工编辑；所有产物汇入同一套 G0 校验、状态机、术语闭环、构建与质检。
+
+**G0 / 成品保真契约**：可选 `preprocessing/terminology_exemptions.csv` 必含
+`unit,source,reason`；按单元与规范术语源词精确匹配，理由不得空白。agent 必须核证原题/
+引文保留依据，不得批量豁免误译；`terminology_exempt` 在 import、g0、QA 三链保留
+`blocking=false` 与 `data.reason`。新增/修改/删除该表使旧报告摘要失效，历史 released
+不改写，须重新 QA。仅当 structured 与 translation 两侧均存在、非空且只含规范 ATX
+标题与空行时允许空 align，标题层级仍须守恒；缺源或标题后紧跟正文不属例外。
+代码围栏（含空行、假标题/页码）与行内代码须逐字保留，不能变成导航、媒体读取或残留；
+表格 `# 1` 不是注码。保留 `[^label]` / `[^ref-ID]`，不得用 Unicode 上标抵消缺失引用；
+普通数学上标仍是正文。QA 正文覆盖排除真实语义注释，不以源 label 等同显示编号，也不能
+用注文补足丢失正文。SVG 须为真实命名空间并在所属 manifest 项声明 `svg`；本地
+href/xlink:href 按完整路径身份核对，HTML URL 仅解码一次、ZIP 名字按字面，不得以同名
+异目录文件替代，越界/符号链接逃逸、缺失资源与未绑定 XML 前缀均不得静默放过。
 
 ## skills/ 目录（面向下游 agent 的可安装指引）
 
@@ -219,6 +232,7 @@ skills/auto-epublizer/
 │                       + repairs.jsonl（可选语义整备留痕：done/unresolved）
 │                       + structure.csv（可选结构重建清单，restructure 登记用）
 │                       + note_candidates.jsonl（有注书：notes candidates 导出的注释候选+处置）
+│                       + terminology_exemptions.csv（可选：unit,source,reason，逐单元有据术语豁免）
 ├── publication.json  权威索引（DC 元数据 + 内容树 + 状态机 + 配置快照）
 ├── .progress.json    （预留）批次级断点；当前未落盘，断点=单元级跳过
 ├── glossary.db       术语库内部索引（可选，SQLite）

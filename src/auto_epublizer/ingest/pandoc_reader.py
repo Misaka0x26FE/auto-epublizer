@@ -11,6 +11,8 @@ import shutil
 import subprocess
 from pathlib import Path
 
+from auto_common.markdown import markdown_chunks, paragraph_blocks
+
 from ..fingerprint import used_tool
 from .models import KIND_HEADING, KIND_TEXT, SourceDocument, SourceSegment, SourceUnit
 
@@ -58,20 +60,20 @@ def run_pandoc(
 
 def parse_markdown_units(content: str) -> list[SourceUnit]:
     """把 pandoc 产出的 Markdown 按标题拆成单元。"""
-    lines = content.splitlines()
     raw_units: list[tuple[str, int, list[str]]] = []
     current_title = "正文"
     current_level = 1
     current_body: list[str] = []
-    for line in lines:
-        m = _match_md_heading(line)
-        if m:
-            if current_body:
-                raw_units.append((current_title, current_level, current_body))
-            current_title, current_level = m
-            current_body = []
-        else:
-            current_body.append(line)
+    for kind, chunk in markdown_chunks(content):
+        for line in chunk.splitlines():
+            heading = _match_md_heading(line) if kind == "text" else None
+            if heading:
+                if current_body:
+                    raw_units.append((current_title, current_level, current_body))
+                current_title, current_level = heading
+                current_body = []
+            else:
+                current_body.append(line)
     if current_body:
         raw_units.append((current_title, current_level, current_body))
 
@@ -81,7 +83,7 @@ def parse_markdown_units(content: str) -> list[SourceUnit]:
         idx = 0
         segments.append(SourceSegment(index=idx, source=title, kind=KIND_HEADING))
         idx += 1
-        for para in _split_md_paragraphs("\n".join(body_lines)):
+        for para in paragraph_blocks("\n".join(body_lines)):
             segments.append(SourceSegment(index=idx, source=para, kind=KIND_TEXT))
             idx += 1
         units.append(
@@ -104,13 +106,6 @@ def _match_md_heading(line: str) -> tuple[str, int] | None:
     if not text:
         return None
     return text, len(line) - len(line.lstrip("#"))
-
-
-def _split_md_paragraphs(block: str) -> list[str]:
-    import re
-
-    parts = re.split(r"\n\s*\n", block)
-    return [p.strip("\n") for p in parts if p.strip()]
 
 
 _IMG_ATTR_BLOCK = re.compile(r"(!\[[^\]]*\]\([^)]*\))\{[^}]*\}")

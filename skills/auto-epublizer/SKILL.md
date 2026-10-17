@@ -7,7 +7,7 @@ metadata:
   suite: auto-epublizer
   workspace_model: publication.json
 ---
-<!-- i18n: source=SKILL.zh.md sha256=71a60fd9e612e93765e93c8fa39441988f2e333977504733338ffc3e4c1d84be -->
+<!-- i18n: source=SKILL.zh.md sha256=9fe7b35779a8891198d6963afec81934250f657a951ba9fc58b451c7d773e2bd -->
 > **English** | [中文](SKILL.zh.md)
 
 # auto-epublizer
@@ -33,9 +33,10 @@ MCP/sub-agents.
 3. **Structure (chapter splitting / heading hierarchy) is finalized before translation**;
    mid-course changes require re-running the affected units (re-ingest + re-translate), and
    old translations do not count.
-4. **G0 terminology hits / marker conservation / footnote conservation / source fidelity /
-   table shape are defects, not suggestions**, and must be zeroed before release; only the
-   length ratio is advisory.
+4. **Blocking G0 terminology / marker / footnote / source-fidelity / table-structure violations
+   are defects, not suggestions**, and must be cleared before release. Length ratio, forward
+   missing-block findings and evidence-registered `terminology_exempt` are advisory;
+   see `references/translation.md` and `references/review.md`.
 5. **EPUB is not the source of truth** — when a problem is found in the finished product,
    fix `translation/` + `align/` and rebuild; do not hand-patch the product files.
 6. **`qa` released ≠ ready to publish**: before publishing you must pass the
@@ -68,12 +69,12 @@ the reference needed for the current stage.
 | Semantic repair: parse-defect repair / OCR fixes / structural re-split (signal-triggered; mandatory for OCR) | `references/repair.md` |
 | Four-layer structure classification, cleaning, running head/footer and page-number removal, provenance | `references/structure.md` |
 | Layered understanding, terminology seeding, language/genre detection | `references/analysis.md` |
-| Chunk translation, sentence-level alignment, three-state terminology loop, agent handwritten-translation path | `references/translation.md` |
-| Note structuring and binding (candidate_id → note/ref; cross-page, endnote and orphan location-evidence contract) | `references/notes.md` |
-| Six-gate QC (G0–G5) operational guide | `references/review.md` |
+| Chunk translation, heading-only empty align, `unit,source,reason` exemptions and three-entry advisory visibility | `references/translation.md` |
+| Note structuring/binding, stable refs, superscript/OCR evidence boundaries | `references/notes.md` |
+| Six-gate QC (G0–G5), blocking/advisory handling | `references/review.md` |
 | Pre-delivery full validation (after qa, before delivery; mandatory) | `references/delivery.md` |
-| EPUB build, deterministic packaging, product software fingerprint and separate production statement (no change to manuscript rights) | `references/build.md` |
-| epubcheck + unpack audit, quality report | `references/qa.md` |
+| EPUB packaging, code/raw HTML, SVG namespace/manifest/media identity, software fingerprint | `references/build.md` |
+| epubcheck + unpack audit, independent body/note reconciliation, exemption changes invalidating reports | `references/qa.md` |
 | Genre profile (novel/academic/paper/poetry/newspaper) application | `references/style.md` |
 | Complete release-conditions set / error-code quick reference / troubleshooting interpretation | `references/invariants.md` |
 | Publishing/distributing the product (GitHub release / private distribution), rights and privacy | `references/publishing.md` |
