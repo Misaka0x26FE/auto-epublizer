@@ -151,7 +151,7 @@ def _collected_notes_candidates(
     root: ET.Element,
     context: Mapping[str, str] | None,
 ) -> None:
-    """Only authoritative notes units or explicit collection regions; no filename guess."""
+    """只检查权威注释单元或显式集合，不以文件名猜身份。"""
     parents = {child: parent for parent in root.iter() for child in parent}
 
     def ancestors(element: ET.Element) -> list[ET.Element]:
@@ -176,45 +176,42 @@ def _collected_notes_candidates(
             if semantic(element, _NOTES_COLLECTION, {"doc-endnotes", "doc-footnotes"})
         ]
     )
-    # Outermost collections only, so a nested section cannot duplicate a warning.
-    regions = [
-        region for region in regions if not any(a in regions for a in ancestors(region)[1:])
-    ]
-    paragraph_indices = {
-        element: index
-        for index, element in enumerate(
-            (e for e in root.iter() if e.tag.rsplit("}", 1)[-1] == "p"), 1
-        )
+    # 只取最外层集合，避免嵌套区域重复告警。
+    regions = [region for region in regions if not any(a in regions for a in ancestors(region)[1:])]
+    indices_by_tag = {
+        tag: {
+            element: index
+            for index, element in enumerate(
+                (e for e in root.iter() if e.tag.rsplit("}", 1)[-1] == tag), 1
+            )
+        }
+        for tag in ("p", "li")
     }
     for region in regions:
-        paragraphs: list[tuple[int, str, int]] = []
-        list_items = 0
+        blocks: list[tuple[str, int, str, int]] = []
         for element in region.iter():
             local = element.tag.rsplit("}", 1)[-1]
-            if local not in {"p", "li"}:
+            if local not in indices_by_tag:
                 continue
             chain = ancestors(element)
             if any(a.tag.rsplit("}", 1)[-1] in {"pre", "code"} for a in chain):
                 continue
-            # Canonical individual notes are reconciled by the independent N gate;
-            # their legitimate internal paragraphs/lists are not legacy boundaries.
-            if any(
-                semantic(a, _NOTE_NODE, {"doc-footnote", "doc-endnote"}) for a in chain
+            # 规范单注的合法多段/列表由独立 N 门核对，不猜成 legacy 边界。
+            if any(semantic(a, _NOTE_NODE, {"doc-footnote", "doc-endnote"}) for a in chain):
+                continue
+            # 含 p 或嵌套 li 的列表项是容器，不再把同一份文字计数两次。
+            if local == "li" and any(
+                e is not element and e.tag.rsplit("}", 1)[-1] in {"p", "li"} for e in element.iter()
             ):
                 continue
             text = _prose_text(element).strip()
-            if not text:
-                continue
-            if local == "li":
-                list_items += 1
-            else:
-                paragraphs.append(
-                    (paragraph_indices[element], text, len(_NOTE_NUMBER.findall(text)))
+            if text:
+                blocks.append(
+                    (local, indices_by_tag[local][element], text, len(_NOTE_NUMBER.findall(text)))
                 )
-        if not paragraphs:
+        if not blocks:
             continue
-        rendered_count = sum(count for _, _, count in paragraphs)
-        # Whole-unit Markdown is comparable only for an authoritative whole-unit region.
+        rendered_count = sum(count for _, _, _, count in blocks)
         input_count = (
             _markdown_note_candidates(context["markdown"])
             if authoritative and context is not None and "markdown" in context
@@ -223,12 +220,12 @@ def _collected_notes_candidates(
         imbalanced = (
             input_count is not None
             and input_count >= _NOTES_MIN_CANDIDATES
-            and input_count >= _NOTES_PARAGRAPH_RATIO * (len(paragraphs) + list_items)
-            and any(count >= 2 for _, _, count in paragraphs)
+            and input_count >= _NOTES_PARAGRAPH_RATIO * len(blocks)
+            and any(count >= 2 for _, _, _, count in blocks)
         )
         suspect = [
-            (index, text, count)
-            for index, text, count in paragraphs
+            (tag, index, text, count)
+            for tag, index, text, count in blocks
             if count >= 2 and (len(text) >= _NOTES_LONG_PARAGRAPH or imbalanced)
         ]
         if not suspect:
@@ -239,33 +236,44 @@ def _collected_notes_candidates(
             "input_path": context.get("input_path", "") if context else "",
             "scope": "unit" if authoritative else "semantic_collection",
             "region_id": region.get("id", ""),
-            "paragraph_count": len(paragraphs),
-            "list_item_count": list_items,
+            "paragraph_count": sum(tag == "p" for tag, _, _, _ in blocks),
+            "list_item_count": sum(tag == "li" for tag, _, _, _ in blocks),
             "input_candidate_count": input_count,
             "rendered_candidate_count": rendered_count,
-            "longest_paragraph_chars": max(len(text) for _, text, _ in paragraphs),
-            "paragraph_indices": [index for index, _, _ in suspect],
+            "longest_paragraph_chars": max(
+                (len(text) for tag, _, text, _ in blocks if tag == "p"), default=0
+            ),
+            "longest_list_item_chars": max(
+                (len(text) for tag, _, text, _ in blocks if tag == "li"), default=0
+            ),
+            "longest_block_chars": max(len(text) for _, _, text, _ in blocks),
+            "paragraph_indices": [index for tag, index, _, _ in suspect if tag == "p"],
+            "list_item_indices": [index for tag, index, _, _ in suspect if tag == "li"],
             "paragraphs": [
                 {"index": index, "chars": len(text), "candidate_count": count}
-                for index, text, count in suspect
+                for tag, index, text, count in suspect
+                if tag == "p"
+            ],
+            "list_items": [
+                {"index": index, "chars": len(text), "candidate_count": count}
+                for tag, index, text, count in suspect
+                if tag == "li"
             ],
             "raw_evidence": "structured/raw/",
         }
-        data["reasons"] = (
-            (["candidate_paragraph_imbalance"] if imbalanced else [])
-            + (
-                ["long_paragraph_multiple_candidates"]
-                if any(len(text) >= _NOTES_LONG_PARAGRAPH for _, text, _ in suspect)
-                else []
-            )
+        data["reasons"] = (["candidate_paragraph_imbalance"] if imbalanced else []) + (
+            ["long_paragraph_multiple_candidates"]
+            if any(len(text) >= _NOTES_LONG_PARAGRAPH for _, _, text, _ in suspect)
+            else []
         )
-        indices = ",".join(str(index) for index, _, _ in suspect)
         result.add(
             "warning",
             "W_COLLECTED_NOTES_UNSEGMENTED",
-            f"疑似书末注释未分段（候选非结论）：{name}；段索引={indices}；"
-            f"段数={len(paragraphs)}，MD注号候选={input_count}，"
-            f"成品段内候选={rendered_count}，最长段={data['longest_paragraph_chars']} 字符；"
+            f"疑似书末注释未分段（候选非结论）：{name}；"
+            f"段索引={data['paragraph_indices']}，列表项索引={data['list_item_indices']}；"
+            f"段数={data['paragraph_count']}，独立列表项数={data['list_item_count']}，"
+            f"MD注号候选={input_count}，成品块内候选={rendered_count}，"
+            f"最长文本块={data['longest_block_chars']} 字符；"
             "请对照 structured/raw/ 和原页逐注核证，不自动切段、不据此阻断；独立 N 门不变",
             data=data,
         )

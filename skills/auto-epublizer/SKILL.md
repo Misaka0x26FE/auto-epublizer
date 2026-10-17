@@ -7,7 +7,7 @@ metadata:
   suite: auto-epublizer
   workspace_model: publication.json
 ---
-<!-- i18n: source=SKILL.zh.md sha256=9fe7b35779a8891198d6963afec81934250f657a951ba9fc58b451c7d773e2bd -->
+<!-- i18n: source=SKILL.zh.md sha256=3053904697696fd6cee5cc3a247a0396fcd00e2fbf9f1b088938bd4e2329b07a -->
 > **English** | [中文](SKILL.zh.md)
 
 # auto-epublizer
@@ -63,7 +63,7 @@ the reference needed for the current stage.
 |---|---|
 | Fresh task / state routing / multi-stage request / command overview | `references/workflow.md` |
 | Weak-model path: machine next-task pointer (`status --json`) + atomic task cards | `references/taskcards/` |
-| Long-running multi-book setup: generate a work root + explain its components to the user | `references/work-root.md` |
+| Long-running work root, batch SHA256 delivery, retained ledger manual cells, link/ignore guards | `references/work-root.md` |
 | Preprocessing: read facts → write todo/capabilities/plan/global/units/terms/risks/report | `references/preprocessing.md` |
 | File parsing: PDF / scanned PDF / EPUB / DOCX / HTML / TXT / MD / OCR | `references/ingest.md` |
 | Semantic repair: parse-defect repair / OCR fixes / structural re-split (signal-triggered; mandatory for OCR) | `references/repair.md` |
@@ -74,7 +74,7 @@ the reference needed for the current stage.
 | Six-gate QC (G0–G5), blocking/advisory handling | `references/review.md` |
 | Pre-delivery full validation (after qa, before delivery; mandatory) | `references/delivery.md` |
 | EPUB packaging, code/raw HTML, SVG namespace/manifest/media identity, software fingerprint | `references/build.md` |
-| epubcheck + unpack audit, independent body/note reconciliation, exemption changes invalidating reports | `references/qa.md` |
+| epubcheck + unpack audit, independent body/note reconciliation, segmentation advisory, report invalidation | `references/qa.md` |
 | Genre profile (novel/academic/paper/poetry/newspaper) application | `references/style.md` |
 | Complete release-conditions set / error-code quick reference / troubleshooting interpretation | `references/invariants.md` |
 | Publishing/distributing the product (GitHub release / private distribution), rights and privacy | `references/publishing.md` |

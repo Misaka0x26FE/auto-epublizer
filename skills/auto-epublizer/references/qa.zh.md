@@ -59,17 +59,19 @@ auto-epublizer qa [--epub <path>] [--workspace <dir>]
 `role=doc-endnotes|doc-footnotes` 集合区，不凭文件名、全书数字或标题猜身份。
 
 固定保守判据（无新开关）：注号形态是非单词/点字符之后的 1–3 位 ASCII 数字加 `. `，
-MD 中 `\.` 同样计数。整单元 MD 候选 ≥8，且 ≥4×（非空成品 p 数 + li 数），并有成品 p
-含 ≥2 个候选时提示失衡；或已确认区单段 ≥1000 字符且 ≥2 个候选时提示长段。
-li 计入边界避免把合法有序/无序列表误当摊平；从不要求一注一个 p。
+MD 中 `\.` 同样计数。整单元 MD 候选 ≥8，且 ≥4×（非空 p + 独立 li 数），并有文本块
+含 ≥2 个候选时提示失衡；或已确认区单文本块 ≥1000 字符且 ≥2 个候选时提示长块。
+含 p 或嵌套 li 的 li 只作容器，不重复计数；独立 li 本身也检查，避免单项 ol 藏住摊平注释。
+从不要求一注一个 p。
 围栏/行内代码和真实 code/pre 字面量不计；显式单注 footnote/endnote/rearnote
 （及 doc-footnote/doc-endnote）的合法内部多段/列表交给独立 N 门，不作 legacy 分段猜测。
 
 发现进入原有 `report.json.audit.findings`，非空 `data` 提供 `file`、`unit`、`input_path`、
 `scope`、`region_id`、`paragraph_count`、`list_item_count`、`input_candidate_count`、
-`rendered_candidate_count`、`longest_paragraph_chars`、`paragraph_indices`、
-逐段 `paragraphs[{index,chars,candidate_count}]`、`reasons` 与 `raw_evidence=structured/raw/`。
-段索引是文件内全部 p 的 1-based 序号；集合区无整单元 MD 可比口径时 input 数为 null。
+`rendered_candidate_count`、`longest_paragraph_chars`、`longest_list_item_chars`、
+`longest_block_chars`、`paragraph_indices`、`list_item_indices`、逐段 `paragraphs` 与逐列表项
+`list_items`（均为 `{index,chars,candidate_count}`）、`reasons` 与 `raw_evidence=structured/raw/`。
+两类索引分别是文件内全部 p / li 的 1-based 序号；集合区无整单元 MD 可比口径时 input 数为 null。
 计数均排除代码及上述单注节点，不是已核证注条数。
 
 长书目/引文可能假阳性；短摊平段、非数字/四位数字标号、无权威区语义的旧书可能漏报。

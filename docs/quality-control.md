@@ -1,4 +1,4 @@
-<!-- i18n: source=quality-control.zh.md sha256=3cf9369a3f0454ceb204d6cb52ec67103c92fadb11048911fba6fef332c1f188 -->
+<!-- i18n: source=quality-control.zh.md sha256=f69dac5ca385c54df36cd1ccc6b7e43f01548ca20bb2c1bde7b08b91acb52346 -->
 > **English** | [中文](quality-control.zh.md)
 
 # Quality-Control Process Design (auto-epublizer)
@@ -183,19 +183,22 @@ Without context, explicit endnotes/footnotes/rearnotes collection regions remain
 ordinary body text and code are not scanned as notes.
 
 Constants: 1–3 ASCII digits plus `. ` (not preceded by a word character/dot; MD `\.` also
-counts); MD candidates ≥8 and ≥4× (nonempty p+li count), with a p containing ≥2 candidates,
-or a confirmed-region p ≥1000 characters with ≥2 candidates. Individual semantic notes and code
-are excluded; li protects legitimate lists and multi-paragraph notes need not be one p each.
-Regions without comparable MD use only the long-paragraph criterion. Long bibliographies/quotes
-can false-positive; short text, nonnumeric/four-digit labels and legacy books without authoritative
+counts); MD candidates ≥8 and ≥4× (nonempty p + independent li count), with a text block containing
+≥2 candidates, or a confirmed-region block ≥1000 characters with ≥2 candidates. Container li
+elements with p or nested li are not double-counted; a single-item ol still exposes flattened notes.
+Individual semantic notes and code are excluded, and multi-paragraph notes need not be one p each.
+Regions without comparable MD use only the long-block criterion. Long bibliographies/quotes can
+false-positive; short blocks, nonnumeric/four-digit labels and legacy books without authoritative
 regions can be missed.
 
 Nonempty finding `data` preserves `file/unit/input_path/scope/region_id`, `paragraph_count`,
 `list_item_count`, `input_candidate_count` (null without comparable input),
-`rendered_candidate_count`, `longest_paragraph_chars`, `paragraph_indices`, per-paragraph
-`paragraphs[{index,chars,candidate_count}]`, `reasons` and `raw_evidence=structured/raw/`.
-Indices are 1-based across all file p elements. The agent verifies against raw/original pages;
-candidate counts are not actual note counts. Font size/capitalization/quotes/DP cannot decide
+`rendered_candidate_count`, `longest_paragraph_chars`, `longest_list_item_chars`,
+`longest_block_chars`, `paragraph_indices` / `list_item_indices`, per-paragraph `paragraphs` /
+per-item `list_items` (each `{index,chars,candidate_count}`), `reasons` and
+`raw_evidence=structured/raw/`. The two indices are independently 1-based across all file p / li
+elements. The agent verifies against raw/original pages; candidate counts are not actual note counts.
+Font size/capitalization/quotes/DP cannot decide
 semantics automatically. Final acceptance uses canonical N note/ref identity, content, media,
 href/backlink hard gates, not p count. See `skills/auto-epublizer/references/qa.md` and `notes.md`
 for the workflow and boundaries.

@@ -1,4 +1,4 @@
-<!-- i18n: source=qa.zh.md sha256=d2cbada11c20db55ee2e96c9abe68ba4294543f8b9cb13aeff2ee41c82557d36 -->
+<!-- i18n: source=qa.zh.md sha256=f713b0e281d5e68e868814bf06f59642a0432cf264195a7d751e24ea8b42d625 -->
 > **English** | [中文](qa.zh.md)
 
 # QA (epubcheck + unpack audit)
@@ -65,9 +65,10 @@ and headings never establish notes identity.
 
 Fixed conservative criteria (no new switches): a number shape is 1–3 ASCII digits followed by
 `. `, not preceded by a word character or dot; MD `\.` also counts. Warn for imbalance when
-whole-unit MD candidates ≥8 and ≥4× (nonempty product p count + li count), with at least one p
-containing ≥2 candidates; or for a confirmed-region paragraph ≥1000 characters with ≥2 candidates.
-li boundaries protect legitimate ordered/unordered lists; one p per note is never required.
+whole-unit MD candidates ≥8 and ≥4× (nonempty p + independent li count), with a text block
+containing ≥2 candidates; or for a confirmed-region text block ≥1000 characters with ≥2 candidates.
+An li containing p or nested li is only a container, not double-counted. Independent li blocks
+are checked too, so a one-item ol cannot hide flattened notes. One p per note is never required.
 Fenced/inline code and actual code/pre literals are excluded. Explicit individual
 footnote/endnote/rearnote nodes (and doc-footnote/doc-endnote) retain legitimate internal
 paragraphs/lists under the independent N gate, not legacy segmentation guessing.
@@ -75,10 +76,12 @@ paragraphs/lists under the independent N gate, not legacy segmentation guessing.
 The finding uses existing `report.json.audit.findings`; nonempty `data` contains `file`, `unit`,
 `input_path`, `scope`, `region_id`, `paragraph_count`, `list_item_count`,
 `input_candidate_count`, `rendered_candidate_count`, `longest_paragraph_chars`,
-`paragraph_indices`, per-paragraph `paragraphs[{index,chars,candidate_count}]`, `reasons` and
-`raw_evidence=structured/raw/`. Paragraph indices are 1-based across all p elements in the file;
-input count is null for a semantic region without comparable whole-unit MD. Counts exclude code
-and the individual semantic notes above; they are not verified note counts.
+`longest_list_item_chars`, `longest_block_chars`, `paragraph_indices`, `list_item_indices`,
+per-paragraph `paragraphs` and per-item `list_items` (each `{index,chars,candidate_count}`),
+`reasons` and `raw_evidence=structured/raw/`. The two index types are independently 1-based
+across all p / li elements in the file; input count is null for a semantic region without
+comparable whole-unit MD. Counts exclude code and the individual semantic notes above;
+they are not verified note counts.
 
 Long bibliographies/quotations can false-positive; short flattened text, nonnumeric/four-digit
 labels, and legacy books without authoritative region semantics can be missed. The agent uses

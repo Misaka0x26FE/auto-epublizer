@@ -14,8 +14,8 @@
 ## 流转
 
 - 新书：`inbox/` → `sources/<slug>.<ext>` → `preprocess ... --workspace ./workspaces`；
-- 交付原件（入库前加工过）用 `preprocess --original` 归档到工作区 `references/user/`；
-- 交付或状态变化时更新 `docs/工作台账.md`（骨架由 `auto-epublizer ledger` 生成）。
+- 交付原件（入库前加工过）用 `preprocess --original` 归档到 `workspaces/<slug>/references/user/`；
+- 交付或状态变化时用 `python3 docs/build_ledger.py` 更新 `docs/工作台账.md`，重算机器列并按 slug 保留人工列。
 
 ## 常用命令
 
@@ -23,5 +23,8 @@
 auto-epublizer doctor --json
 auto-epublizer preprocess sources/<slug>.<ext> --workspace ./workspaces
 auto-epublizer status --all --workspace . --json
-auto-epublizer ledger -o docs/工作台账.md
+python3 docs/build_ledger.py
+python3 docs/check_doc_links.py
+python3 docs/check_tracked.py --repo workspaces/<slug>
+python3 docs/pack_outbox.py workspaces/<slug> --batch <batch>
 ```

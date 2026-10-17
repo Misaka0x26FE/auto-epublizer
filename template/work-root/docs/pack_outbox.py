@@ -11,6 +11,7 @@ import json
 import shutil
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 
@@ -22,12 +23,17 @@ def digest(path: Path) -> str:
 def inspect(workspace: Path, cli: str) -> tuple[Path, str, bytes]:
     result = subprocess.run(
         [cli, "status", "--workspace", str(workspace), "--json"],
-        check=True, capture_output=True, text=True,
+        check=True,
+        capture_output=True,
+        text=True,
     )
     status = json.loads(result.stdout)
     current = status["report"]
-    if not (current.get("released") is True and current.get("stale") is False
-            and current.get("reason") == "ok"):
+    if not (
+        current.get("released") is True
+        and current.get("stale") is False
+        and current.get("reason") == "ok"
+    ):
         raise ValueError(f"未获当前放行（含过期报告）：{workspace}：{current}")
     report_bytes = (workspace / "report.json").read_bytes()
     report = json.loads(report_bytes)
@@ -47,18 +53,31 @@ def inspect(workspace: Path, cli: str) -> tuple[Path, str, bytes]:
 
 def main() -> int:
     root = Path(__file__).resolve().parents[1]
-    parser = argparse.ArgumentParser(description="整批预检、复制并校验已放行 EPUB；从不覆盖旧批次。")
-    parser.add_argument("workspaces", nargs="+", type=Path, help="本批全部工作区目录（包含 publication.json）")
+    parser = argparse.ArgumentParser(
+        description="整批预检、复制并校验已放行 EPUB；从不覆盖旧批次。"
+    )
+    parser.add_argument(
+        "workspaces", nargs="+", type=Path, help="本批全部工作区目录（包含 publication.json）"
+    )
     parser.add_argument("--outbox", type=Path, default=root / "outbox", help="交付根目录")
     parser.add_argument("--batch", required=True, help="新批次名（单个目录名）")
     parser.add_argument("--cli", default="auto-epublizer", help="真实 auto-epublizer 可执行路径")
     args = parser.parse_args()
     try:
-        if not args.batch or args.batch in {".", ".."} or Path(args.batch).name != args.batch or "\\" in args.batch:
+        if (
+            not args.batch
+            or args.batch in {".", ".."}
+            or Path(args.batch).name != args.batch
+            or "\\" in args.batch
+        ):
             raise ValueError("批次名必须是单个目录名")
         batch = args.outbox.resolve() / args.batch
         if batch.exists() or batch.is_symlink():
-            state = "完整批次，拒绝覆盖（未复制）" if (batch / "MANIFEST.md").is_file() else "中断/旧批次，拒绝覆盖（未复制）"
+            state = (
+                "完整批次，拒绝覆盖（未复制）"
+                if (batch / "MANIFEST.md").is_file()
+                else "中断/旧批次，拒绝覆盖（未复制）"
+            )
             raise ValueError(f"{state}：{batch}")
         workspaces = [p.resolve(strict=True) for p in args.workspaces]
         if len(set(workspaces)) != len(workspaces):
@@ -81,12 +100,21 @@ def main() -> int:
                 raise ValueError(f"复制期间状态/报告/产物变化：{ws}；批次未完成")
         lines = ["# 交付清单", "", "全部文件经真实 status 当前放行与复制后 SHA256 核对。", ""]
         for ws, source, expected, _ in entries:
-            lines.extend([f"- 文件：{json.dumps('epub/' + source.name, ensure_ascii=False)}",
-                          f"  - 工作区：{json.dumps(str(ws), ensure_ascii=False)}",
-                          f"  - 报告产物：{json.dumps(str(source), ensure_ascii=False)}",
-                          f"  - SHA256：`{expected}`"])
-        with (batch / "MANIFEST.md").open("x", encoding="utf-8") as stream:
+            lines.extend(
+                [
+                    f"- 文件：{json.dumps('epub/' + source.name, ensure_ascii=False)}",
+                    f"  - 工作区：{json.dumps(str(ws), ensure_ascii=False)}",
+                    f"  - 报告产物：{json.dumps(str(source), ensure_ascii=False)}",
+                    f"  - SHA256：`{expected}`",
+                ]
+            )
+        # 清单是完成标记：写失败只留下临时文件，不得产生半份“已完成”清单。
+        with tempfile.NamedTemporaryFile(
+            mode="w", encoding="utf-8", dir=batch, prefix=".MANIFEST-", suffix=".tmp", delete=False
+        ) as stream:
+            temporary = Path(stream.name)
             stream.write("\n".join(lines) + "\n")
+        temporary.replace(batch / "MANIFEST.md")
         print(f"已完整复制并校验 {len(entries)} 件：{batch}")
         return 0
     except (OSError, ValueError, KeyError, TypeError, subprocess.CalledProcessError) as exc:

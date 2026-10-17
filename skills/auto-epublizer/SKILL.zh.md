@@ -49,7 +49,7 @@ multimodal / search**（能否看图、有无搜索工具，CLI 无法探测）�
 |---|---|
 | 全新任务 / 状态路由 / 多阶段请求 / 命令总览 | `references/workflow.md` |
 | 弱模型路径：机器「下一任务」指针（`status --json`）+ 原子任务卡 | `references/taskcards/` |
-| 长期多书：生成工作根 + 向用户解释各组件与用法 | `references/work-root.md` |
+| 长期多书：工作根生成、批次 SHA256 交付、台账人工列保留、断链/忽略对账工具 | `references/work-root.md` |
 | 预处理：读 facts → 撰写 todo/capabilities/plan/global/units/terms/risks/report | `references/preprocessing.md` |
 | 文件解析：PDF / 扫描 PDF / EPUB / DOCX / HTML / TXT / MD / OCR | `references/ingest.md` |
 | 语义整备：解析缺陷修复 / OCR 修正 / 结构重切（信号触发；OCR 必做） | `references/repair.md` |
@@ -60,7 +60,7 @@ multimodal / search**（能否看图、有无搜索工具，CLI 无法探测）�
 | 六道关 QC（G0–G5）、blocking/advisory 处理 | `references/review.md` |
 | 交付前全量校验（qa 之后、交付之前，强制） | `references/delivery.md` |
 | EPUB 封装、代码/raw HTML、SVG 命名空间/manifest/媒体身份、软件指纹 | `references/build.md` |
-| epubcheck + 解包审计、正文/注文独立对账、豁免变更使报告失效 | `references/qa.md` |
+| epubcheck + 解包审计、正文/注文独立对账、注释分段疑点 advisory、报告失效 | `references/qa.md` |
 | 文体档案（novel/academic/paper/poetry/newspaper）应用 | `references/style.md` |
 | 放行条件全集 / 错误码速查 / 排障判读 | `references/invariants.md` |
 | 发布/分发成品（GitHub release / 私有分发）、权属与隐私 | `references/publishing.md` |
