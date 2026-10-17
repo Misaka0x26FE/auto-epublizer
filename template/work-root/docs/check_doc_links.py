@@ -17,17 +17,22 @@ def visible_lines(text: str) -> list[tuple[int, str]]:
     fence = None
     in_comment = False
     for number, original in enumerate(text.splitlines(), 1):
-        marker = re.match(r"^\s*(`{3,}|~{3,})", original)
-        if marker:
-            token = marker.group(1)
-            if fence is None:
-                fence = token
-            elif token[0] == fence[0] and len(token) >= len(fence):
+        marker = re.match(r"^ {0,3}(`{3,}|~{3,})(.*)$", original)
+        if fence is not None:
+            if (
+                marker
+                and marker[1][0] == fence[0]
+                and len(marker[1]) >= len(fence)
+                and not marker[2].strip()
+            ):
                 fence = None
             continue
-        if fence is not None or original.startswith(("    ", "\t")):
+        if marker and (marker[1][0] != "`" or "`" not in marker[2]):
+            fence = marker[1]
             continue
-        # HTML comments are not rendered references.
+        if original.startswith(("    ", "\t")):
+            continue
+        # HTML 注释不是渲染出的文档引用。
         line = original
         if in_comment:
             if "-->" not in line:
@@ -49,8 +54,8 @@ def visible_lines(text: str) -> list[tuple[int, str]]:
 def destination(text: str) -> str:
     text = text.strip()
     if text.startswith("<") and ">" in text:
-        return text[1:text.index(">")]
-    # Markdown allows escaped whitespace and nested parentheses in bare destinations.
+        return text[1 : text.index(">")]
+    # Markdown 裸路径允许转义空白和嵌套括号。
     match = re.match(r"(?:\\.|[^\s])+", text)
     return match.group(0) if match else ""
 
@@ -61,20 +66,24 @@ def references(lines: list[tuple[int, str]]) -> tuple[list[tuple[int, str]], lis
     errors = []
     for number, line in lines:
         match = re.match(r"^\s{0,3}\[([^\]]+)\]:\s*(.+)$", line)
-        if match:
+        if match and not match.group(1).startswith("^"):
             key = " ".join(match.group(1).lower().split())
             target = destination(match.group(2))
             definitions[key] = target
             found.append((number, target))
     for number, line in lines:
-        if re.match(r"^\s{0,3}\[[^\]]+\]:", line):
+        definition = re.match(r"^\s{0,3}\[([^\]]+)\]:", line)
+        if definition and not definition.group(1).startswith("^"):
             continue
-        # Mask code spans when scanning Markdown links; path-only code spans are
-        # checked separately, whereas commands and example placeholders are skipped.
+        # 路径形代码跨度单独核对；命令与显式示例占位不当作文档路径。
         for code in re.finditer(r"(`+)(.+?)\1", line):
             token = code.group(2).strip()
+            suffix = Path(token).suffix.lower()
             if not re.search(r"\s", token) and (
-                token.endswith((".md", ".py", "/")) or "/" in token and not Path(token).suffix
+                suffix in {".md", ".html", ".htm", ".py", ".sh"}
+                or token.endswith("/")
+                or "/" in token
+                and not suffix
             ):
                 found.append((number, token))
         plain = re.sub(r"(`+)(.+?)\1", lambda m: " " * len(m.group(0)), line)
@@ -82,6 +91,9 @@ def references(lines: list[tuple[int, str]]) -> tuple[list[tuple[int, str]], lis
         position = 0
         while match := pattern.search(plain, position):
             end = match.end()
+            if match.group(1).startswith("^"):
+                position = end
+                continue
             label = match.group(1)
             if end < len(plain) and plain[end] == "(":
                 depth = 1
@@ -99,7 +111,7 @@ def references(lines: list[tuple[int, str]]) -> tuple[list[tuple[int, str]], lis
                     escaped = char == "\\" and not escaped
                     cursor += 1
                 if depth == 0:
-                    found.append((number, destination(plain[end + 1:cursor])))
+                    found.append((number, destination(plain[end + 1 : cursor])))
                     end = cursor + 1
                 else:
                     errors.append(f"{number}: Markdown 链接括号未闭合")
@@ -120,7 +132,7 @@ def references(lines: list[tuple[int, str]]) -> tuple[list[tuple[int, str]], lis
 def local_path(target: str) -> str | None:
     if not target or target.startswith(("#", "//")):
         return None
-    # Explicit placeholders/globs are examples, not a request to guess a book.
+    # 显式占位和通配符属于示例，不猜测具体书籍。
     if re.search(r"<[^>]+>|\{[^}]+\}|\*|\$\w|\$\(", target):
         return None
     target = re.sub(r"\\([\\ ()\[\]#])", r"\1", target)
@@ -130,8 +142,8 @@ def local_path(target: str) -> str | None:
     path = unquote(parsed.path)
     if not path or Path(path).is_absolute():
         return None
-    # EPUB-internal members belong to EPUB QA, not work-root documentation.
-    if Path(path).suffix.lower() in {".xhtml", ".html", ".opf", ".ncx", ".css"}:
+    # EPUB 内部件名交给 EPUB QA；普通 HTML 文档链接仍须核对。
+    if Path(path).suffix.lower() in {".xhtml", ".opf", ".ncx", ".css"}:
         return None
     if any(part in {"OEBPS", "EPUB", "META-INF"} for part in Path(path).parts):
         return None
@@ -139,8 +151,12 @@ def local_path(target: str) -> str | None:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="离线检查 AGENTS.md + docs/*.md 的相对文档、脚本及目录引用。")
-    parser.add_argument("--root", type=Path, default=Path(__file__).resolve().parents[1], help="工作根")
+    parser = argparse.ArgumentParser(
+        description="离线检查 AGENTS.md + docs/*.md 的相对文档、脚本及目录引用。"
+    )
+    parser.add_argument(
+        "--root", type=Path, default=Path(__file__).resolve().parents[1], help="工作根"
+    )
     args = parser.parse_args()
     try:
         root = args.root.resolve(strict=True)
@@ -157,7 +173,9 @@ def main() -> int:
             for number, target in sorted(set(found)):
                 relative = local_path(target)
                 if relative is not None and not (doc.parent / relative).exists():
-                    print(f"{doc.relative_to(root)}:{number}: 断链 {target!r} → {doc.parent / relative}")
+                    print(
+                        f"{doc.relative_to(root)}:{number}: 断链 {target!r} → {doc.parent / relative}"
+                    )
                     failures += 1
         print(f"已检查 {len(documents)} 份文档；断链/语法问题 {failures} 项。")
         return 1 if failures else 0

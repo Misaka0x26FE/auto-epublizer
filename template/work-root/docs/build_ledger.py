@@ -40,8 +40,11 @@ def cells(line: str) -> list[str]:
 
 def table(text: str) -> tuple[list[str], int, int, list[list[str]]]:
     lines = text.splitlines()
-    candidates = [i for i, line in enumerate(lines) if line.lstrip().startswith("|")
-                  and "slug" in [c.strip() for c in cells(line)]]
+    candidates = [
+        i
+        for i, line in enumerate(lines)
+        if line.lstrip().startswith("|") and "slug" in [c.strip() for c in cells(line)]
+    ]
     if len(candidates) != 1:
         raise ValueError("必须存在且仅存在一个带 slug 表头的台账表格")
     start = candidates[0]
@@ -51,7 +54,9 @@ def table(text: str) -> tuple[list[str], int, int, list[list[str]]]:
     if start + 1 >= len(lines):
         raise ValueError("台账缺少分隔行")
     separator = cells(lines[start + 1])
-    if len(separator) != len(headers) or not all(re.fullmatch(r"\s*:?-+:?\s*", c) for c in separator):
+    if len(separator) != len(headers) or not all(
+        re.fullmatch(r"\s*:?-+:?\s*", c) for c in separator
+    ):
         raise ValueError("台账分隔行/列数非法")
     rows = []
     end = start + 2
@@ -84,23 +89,33 @@ def merge(fresh: str, old: str | None) -> str:
             }
     output_headers = headers + [name for name in MANUAL if name not in headers]
     lines = fresh.splitlines()
-    replacement = ["|" + "|".join(f" {name} " for name in output_headers) + "|",
-                   "|" + "|".join("---" for _ in output_headers) + "|"]
+    replacement = [
+        "|" + "|".join(f" {name} " for name in output_headers) + "|",
+        "|" + "|".join("---" for _ in output_headers) + "|",
+    ]
     for row in rows:
         key = row[headers.index("slug")].strip()
         manual = saved.get(key, {})
-        output = [manual.get(name, row[index]) if name in MANUAL else row[index]
-                  for index, name in enumerate(headers)]
-        output.extend(manual.get(name, "  ") for name in output_headers[len(headers):])
+        output = [
+            manual.get(name, row[index]) if name in MANUAL else row[index]
+            for index, name in enumerate(headers)
+        ]
+        output.extend(manual.get(name, "  ") for name in output_headers[len(headers) :])
         replacement.append("|" + "|".join(output) + "|")
     return "\n".join(lines[:start] + replacement + lines[end:]) + "\n"
 
 
 def main() -> int:
     root = Path(__file__).resolve().parents[1]
-    parser = argparse.ArgumentParser(description="调用真实 ledger 重算机器列，按唯一 slug 原样保留四个人工列。")
-    parser.add_argument("--workspace", type=Path, default=root / "workspaces", help="工作区集合根目录")
-    parser.add_argument("--output", type=Path, default=root / "docs" / "工作台账.md", help="台账路径")
+    parser = argparse.ArgumentParser(
+        description="调用真实 ledger 重算机器列，按唯一 slug 原样保留四个人工列。"
+    )
+    parser.add_argument(
+        "--workspace", type=Path, default=root / "workspaces", help="工作区集合根目录"
+    )
+    parser.add_argument(
+        "--output", type=Path, default=root / "docs" / "工作台账.md", help="台账路径"
+    )
     parser.add_argument("--cli", default="auto-epublizer", help="真实 auto-epublizer 可执行路径")
     args = parser.parse_args()
     temporary = None
@@ -110,12 +125,27 @@ def main() -> int:
             raise ValueError("拒绝替换符号链接台账")
         before = output.read_bytes() if output.exists() else None
         output.parent.mkdir(parents=True, exist_ok=True)
-        with tempfile.NamedTemporaryFile(dir=output.parent, prefix=".ledger-", suffix=".md", delete=False) as stream:
+        with tempfile.NamedTemporaryFile(
+            dir=output.parent, prefix=".ledger-", suffix=".md", delete=False
+        ) as stream:
             temporary = Path(stream.name)
-        subprocess.run([args.cli, "ledger", "--workspace", str(args.workspace.resolve()),
-                        "--output", str(temporary)], check=True, capture_output=True, text=True)
-        result = merge(temporary.read_text(encoding="utf-8"),
-                       before.decode("utf-8") if before is not None else None)
+        subprocess.run(
+            [
+                args.cli,
+                "ledger",
+                "--workspace",
+                str(args.workspace.resolve()),
+                "--output",
+                str(temporary),
+            ],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        result = merge(
+            temporary.read_text(encoding="utf-8"),
+            before.decode("utf-8") if before is not None else None,
+        )
         temporary.write_text(result, encoding="utf-8")
         if (output.read_bytes() if output.exists() else None) != before:
             raise ValueError("台账在生成期间被修改，拒绝覆盖")

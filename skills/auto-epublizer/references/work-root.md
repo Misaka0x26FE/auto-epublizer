@@ -1,4 +1,4 @@
-<!-- i18n: source=work-root.zh.md sha256=61078bfd9e60c1a27deac30f6c9e79f17da301f75100fb6387826d256ce32adf -->
+<!-- i18n: source=work-root.zh.md sha256=6f755d7ab0e8193ab583f1e2f6267657274080bd9758536992588d7725bd5476 -->
 > **English** | [中文](work-root.zh.md)
 
 # Work root (long-running multi-book workspace)
@@ -79,9 +79,10 @@ also fail.
 New batches default to `outbox/<batch>/epub/` (`--outbox` changes the root). Both existing complete
 batches and interrupted batches without `MANIFEST.md` are refused, returning nonzero and stating
 that nothing was copied. After copying, it hashes both each source and its copy again and rechecks
-actual status and the report snapshot. Only when all agree does it exclusively create the batch
-`MANIFEST.md`. A mid-copy failure preserves an incomplete directory without a manifest; inspect it
-and retry under a new batch name. Do not deliver fragments or edit workspaces concurrently.
+actual status and the report snapshot. Only when all agree does it atomically publish the batch
+`MANIFEST.md` through a temporary file. A failed manifest write must not leave a completion marker.
+Mid-run failures preserve an incomplete directory; inspect it and retry under a new batch name.
+Do not deliver fragments or edit workspaces concurrently.
 
 ### Machine ledger and manual columns
 
@@ -95,6 +96,8 @@ scan. Duplicate/empty slugs, malformed column counts, incompatible old machine h
 failure leave the previous ledger untouched. Successful writes use atomic replacement; concurrent
 edits to the old ledger also prevent replacement. If changing a slug, inspect and migrate its
 manual cells explicitly.
+The CLI escapes backslashes/pipes in titles/slugs and replaces line breaks with spaces; the
+tool retains these serialized machine values rather than guessing cell boundaries.
 
 ### Local documentation references
 
@@ -105,6 +108,8 @@ locations and return nonzero. External links, fragment-only references, fenced/i
 explicit `<slug>`/brace/glob placeholders, and EPUB-internal members are skipped. It makes no
 network requests and does not validate anchors. Run the ledger first after generation: the
 `AGENTS.md` reference to a not-yet-created ledger otherwise correctly fails.
+Real links inside Markdown footnote content and links to ordinary HTML documents are checked too;
+the footnote text itself is not a file path.
 
 ### Git/disk/ignore reconciliation
 

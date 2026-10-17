@@ -170,14 +170,17 @@ ZIP 文件名按字面）；源/ZIP 缺资源、同 basename 异目录替身、�
 无 context 仍支持显式 endnotes/footnotes/rearnotes 集合语义区；普通正文和代码不扫描为注释。
 
 常量：1–3 位 ASCII 数字加 `. `（前非单词/点字符，MD `\.` 同计）；MD 候选 ≥8 且
-≥4×（非空 p+li 数）并有 p 含 ≥2 候选，或已确认区单 p ≥1000 字符且 ≥2 候选。
-独立语义单注及代码不计入，li 保护合法列表，多段注不要求一注一 p。集合区没有同口径 MD
-时只用长段判据。长书目/引文会假阳性；短段、非数字/四位标号及无权威区的旧书可能漏报。
+≥4×（非空 p + 独立 li 数）并有文本块含 ≥2 候选，或已确认区单文本块 ≥1000 字符且 ≥2 候选。
+含 p / 嵌套 li 的 li 不重复计数；单项 ol 内摊平内容仍可定位。独立语义单注及代码不计入，
+多段注不要求一注一 p。集合区没有同口径 MD 时只用长块判据。长书目/引文会假阳性；
+短块、非数字/四位标号及无权威区的旧书可能漏报。
 
 finding 非空 `data` 保留 `file/unit/input_path/scope/region_id`、`paragraph_count`、
 `list_item_count`、`input_candidate_count`（无可比输入为 null）、`rendered_candidate_count`、
-`longest_paragraph_chars`、`paragraph_indices`、逐段 `paragraphs[{index,chars,candidate_count}]`、
-`reasons` 和 `raw_evidence=structured/raw/`；段索引按全文件 p 以 1 起计。
+`longest_paragraph_chars`、`longest_list_item_chars`、`longest_block_chars`、
+`paragraph_indices` / `list_item_indices`、逐段 `paragraphs` / 逐项 `list_items`
+（均为 `{index,chars,candidate_count}`）、`reasons` 和 `raw_evidence=structured/raw/`；
+两类索引分别按全文件 p / li 以 1 起计。
 agent 据此回 raw 与原页逐注核证；候选数不是真实注数。字号/大小写/引号/DP 不可自动裁决。
 最终按规范 N 的 note/ref 身份、内容、媒体、href/backlinks hard gate 验收，不按 p 数；
 具体入口与边界见 `skills/auto-epublizer/references/qa.zh.md`、`notes.zh.md`。

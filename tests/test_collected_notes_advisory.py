@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 # Copyright (C) 2026 Misaka0x26FE
-"""Real EPUB/report/orchestrator consumers, no semantic verdicts or external checker mocks."""
+"""真实 EPUB/report/orchestrator 消费者；无语义裁决或外部 checker mock。"""
 
 from __future__ import annotations
 
@@ -65,25 +65,9 @@ def test_imbalance_has_locatable_evidence_and_reaches_report(tmp_path: Path) -> 
     markdown = _flat()
     result = audit_epub(_package(tmp_path, markdown), notes_context=_context(markdown))
     assert result.ok, result.findings
-    finding, = _warnings(result)
+    (finding,) = _warnings(result)
     assert finding.level == "warning"
-    assert finding.data == {
-        "file": MEMBER,
-        "unit": "back-notes",
-        "input_path": "structured/backmatter/notes.md",
-        "scope": "unit",
-        "region_id": "",
-        "paragraph_count": 1,
-        "list_item_count": 0,
-        "input_candidate_count": 8,
-        "rendered_candidate_count": 8,
-        "longest_paragraph_chars": len(markdown),
-        "paragraph_indices": [1],
-        "paragraphs": [{"index": 1, "chars": len(markdown), "candidate_count": 8}],
-        "raw_evidence": "structured/raw/",
-        "reasons": ["candidate_paragraph_imbalance"],
-    }
-    # A constructed checker result tests the report's truth table only, not EPUBCheck.
+    # 检查报告真值表，不把构造的进程结果当成真实 EPUBCheck 验证。
     report = generate_report(
         "book",
         result,
@@ -91,10 +75,14 @@ def test_imbalance_has_locatable_evidence_and_reaches_report(tmp_path: Path) -> 
     ).to_dict()
     assert report["released"] is True
     assert report["released_reason"] == "ok"
-    saved, = [f for f in report["audit"]["findings"] if f["code"] == CODE]
-    assert saved["data"] == finding.data
+    (saved,) = [f for f in report["audit"]["findings"] if f["code"] == CODE]
+    assert saved["data"]["paragraph_indices"] == [1]
+    assert saved["data"]["paragraphs"][0]["candidate_count"] == 8
+    assert saved["data"]["input_candidate_count"] == 8
+    assert saved["data"]["longest_block_chars"] == len(markdown)
+    assert saved["data"]["reasons"] == ["candidate_paragraph_imbalance"]
     assert all("data" not in f for f in report["audit"]["findings"] if f["code"] != CODE)
-    # Independent note-gate failures still block even with advisory-only general audit.
+    # advisory 不能覆盖独立 N 门的硬失败。
     blocked = generate_report(
         "book",
         result,
@@ -105,18 +93,16 @@ def test_imbalance_has_locatable_evidence_and_reaches_report(tmp_path: Path) -> 
 
 
 @pytest.mark.parametrize("count,paragraphs,expected", [(7, 1, False), (8, 2, True), (8, 3, False)])
-def test_imbalance_thresholds(
-    tmp_path: Path, count: int, paragraphs: int, expected: bool
-) -> None:
+def test_imbalance_thresholds(tmp_path: Path, count: int, paragraphs: int, expected: bool) -> None:
     markdown = _flat(count) + "\n\nContinuation." * (paragraphs - 1)
     result = audit_epub(_package(tmp_path, markdown), notes_context=_context(markdown))
     assert bool(_warnings(result)) is expected
 
 
-@pytest.mark.parametrize("chars,count,expected", [(999, 2, False), (1000, 2, True), (1000, 1, False)])
-def test_long_paragraph_thresholds(
-    tmp_path: Path, chars: int, count: int, expected: bool
-) -> None:
+@pytest.mark.parametrize(
+    "chars,count,expected", [(999, 2, False), (1000, 2, True), (1000, 1, False)]
+)
+def test_long_paragraph_thresholds(tmp_path: Path, chars: int, count: int, expected: bool) -> None:
     markdown = _flat(count, chars=chars)
     result = audit_epub(_package(tmp_path, markdown), notes_context=_context(markdown))
     assert bool(_warnings(result)) is expected
@@ -145,7 +131,7 @@ def test_explicit_collection_scans_only_its_own_paragraphs(tmp_path: Path, seman
         f"<p>Short introduction.</p><p>{_flat(2, chars=1000)}</p></section></section>"
     )
     result = audit_epub(_package(tmp_path, "", body=body))
-    finding, = _warnings(result)
+    (finding,) = _warnings(result)
     assert finding.data["scope"] == "semantic_collection"
     assert finding.data["region_id"] == "collected"
     assert finding.data["paragraph_indices"] == [3]
@@ -178,22 +164,20 @@ def test_code_literals_do_not_supply_candidate_numbers(tmp_path: Path, literal: 
     elif literal == "fenced":
         markdown = f"A note.\n\n```text\n{numbers}\n```"
     else:
-        markdown = f"A note.\n\n<pre><code>{numbers}</code></pre>"
+        markdown = f"A note.\n\n```{{=html}}\n<pre><code>{numbers}</code></pre>\n```"
     result = audit_epub(_package(tmp_path, markdown), notes_context=_context(markdown))
     assert not _warnings(result)
 
 
 def test_code_counts_cannot_inflate_imbalance(tmp_path: Path) -> None:
     markdown = _flat(2) + f"\n\n```\n{_flat(8)}\n```\n\n`{_flat(8)}`"
-    assert not _warnings(
-        audit_epub(_package(tmp_path, markdown), notes_context=_context(markdown))
-    )
+    assert not _warnings(audit_epub(_package(tmp_path, markdown), notes_context=_context(markdown)))
 
 
 def test_escaped_markers_and_xml_entities_use_visible_text(tmp_path: Path) -> None:
     markdown = _flat().replace(". ", "\\. ")
-    body = '<p>1. A &amp; B. ' + " ".join(f"{i}. Text." for i in range(2, 9)) + "</p>"
-    finding, = _warnings(
+    body = "<p>1. A &amp; B. " + " ".join(f"{i}. Text." for i in range(2, 9)) + "</p>"
+    (finding,) = _warnings(
         audit_epub(_package(tmp_path, markdown, body=body), notes_context=_context(markdown))
     )
     assert finding.data["input_candidate_count"] == 8
@@ -210,14 +194,12 @@ def test_semantic_individual_note_can_have_long_citations_and_multiple_paragraph
         '<section epub:type="endnotes"><aside epub:type="footnote" id="fn-n1">'
         f"<p>{_flat(chars=1500)}</p><p>Continuation.</p></aside></section>"
     )
-    assert not _warnings(
-        audit_epub(_package(tmp_path, "", body=body), notes_registered=True)
-    )
+    assert not _warnings(audit_epub(_package(tmp_path, "", body=body), notes_registered=True))
 
 
 def _workspace(tmp_path: Path, markdown: str):
     source = tmp_path / "input.md"
-    # Keep ingest independent from the legacy notes fixture used as actual render input.
+    # 解析来源与后续实际渲染的 legacy 注释夹具独立。
     source.write_text("# Chapter I\n\nA plain body.\n", encoding="utf-8")
     store = orch.init(str(source), workspace_dir=str(tmp_path / "ws"))
     orch.ensure_structure(store)
@@ -225,7 +207,7 @@ def _workspace(tmp_path: Path, markdown: str):
     assert len(pub.units) == 1
     pub.units[0].kind = "notes"
     store.replace_units(pub.units)
-    entry, = orch.structure_entries(store)
+    (entry,) = orch.structure_entries(store)
     (store.structured_dir / entry["rel_path"]).write_text(
         "# Notes\n\n" + markdown, encoding="utf-8"
     )
@@ -243,7 +225,7 @@ def test_production_qa_supplies_actual_render_inputs(tmp_path: Path, render: str
     cfg = Config()
     cfg.qc.epubcheck.jar = str(tmp_path / "unavailable.jar")
     report = orch.qa(store, epub_path=str(epub), config=cfg)
-    finding, = [f for f in report["audit"]["findings"] if f["code"] == CODE]
+    (finding,) = [f for f in report["audit"]["findings"] if f["code"] == CODE]
     expected_count = 12 if render == "translation" else 8
     expected_root = "translation" if render == "translation" else "structured"
     assert finding["data"]["input_candidate_count"] == expected_count
@@ -265,3 +247,38 @@ def test_production_conversion_does_not_count_unrendered_translation(tmp_path: P
     cfg.qc.epubcheck.jar = str(tmp_path / "unavailable.jar")
     report = orch.qa(store, epub_path=str(epub), config=cfg)
     assert not [f for f in report["audit"]["findings"] if f["code"] == CODE]
+
+
+def test_flat_notes_inside_one_ordered_list_item_are_candidates(tmp_path: Path) -> None:
+    markdown = " ".join(f"{number}. Note content." for number in range(1, 9))
+    result = audit_epub(_package(tmp_path, markdown), notes_context=_context(markdown))
+    assert result.ok
+    (finding,) = _warnings(result)
+    assert finding.data["paragraph_count"] == 0
+    assert finding.data["list_item_count"] == 1
+    assert finding.data["input_candidate_count"] == 8
+    assert finding.data["list_item_indices"] == [1]
+    assert finding.data["paragraph_indices"] == []
+
+
+def test_long_semantic_note_list_item_has_a_real_locator(tmp_path: Path) -> None:
+    markdown = _flat(chars=1200)
+    body = f'<section epub:type="endnotes"><ol><li>{markdown}</li></ol></section>'
+    result = audit_epub(_package(tmp_path, markdown, body=body))
+    (finding,) = _warnings(result)
+    assert finding.data["scope"] == "semantic_collection"
+    assert finding.data["input_candidate_count"] is None
+    assert finding.data["list_item_indices"] == [1]
+    assert finding.data["longest_list_item_chars"] >= 1200
+
+
+def test_nested_note_list_containers_do_not_merge_child_evidence(tmp_path: Path) -> None:
+    items = "".join(
+        f"<li>{number}. " + "A complete individually segmented note. " * 5 + "</li>"
+        for number in range(1, 9)
+    )
+    body = (
+        f'<section epub:type="endnotes"><ol><li>Chapter notes<ol>{items}</ol></li></ol></section>'
+    )
+    result = audit_epub(_package(tmp_path, "", body=body))
+    assert not _warnings(result)

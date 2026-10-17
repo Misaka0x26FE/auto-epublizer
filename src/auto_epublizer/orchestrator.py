@@ -1987,6 +1987,16 @@ def render_ledger(rows: list[dict[str, Any]]) -> str:
 
     前四字段（开工日期/进度/单元/词数）机器可重算；领域/摘要两列留空待 agent 补。
     """
+
+    def cell(value: object) -> str:
+        return (
+            str(value)
+            .replace("\\", "\\\\")
+            .replace("|", "\\|")
+            .replace("\r", " ")
+            .replace("\n", " ")
+        )
+
     lines = [
         "# 工作台账",
         "",
@@ -1998,7 +2008,7 @@ def render_ledger(rows: list[dict[str, Any]]) -> str:
     for r in rows:
         created = (r.get("facts_created_at") or "")[:10]
         lines.append(
-            f"| {r['slug']} | {r['title']} | {created} | {r['progress']} | "
+            f"| {cell(r['slug'])} | {cell(r['title'])} | {created} | {r['progress']} | "
             f"{r['units_total']} | {r.get('words') or ''} |  |  |"
         )
     lines += [

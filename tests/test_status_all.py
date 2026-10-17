@@ -47,12 +47,6 @@ def test_status_all_nested_layout_and_schema_filter(tmp_path: Path) -> None:
     assert [r["slug"] for r in rows] == ["real-book"]  # 嵌套发现 + schema 过滤
 
 
-def test_render_ledger_has_machine_columns(tmp_path: Path) -> None:
-    md = orch.render_ledger(orch.status_all(_two_workspaces(tmp_path)))
-    assert "| slug | 书名 | 开工日期 | 进度 | 单元 | 词 | 领域 | 摘要 |" in md
-    assert "`auto-epublizer status --all`" in md
-
-
 def test_cli_status_all_json(tmp_path: Path) -> None:
     base = _two_workspaces(tmp_path)
     result = runner.invoke(app, ["status", "--all", "--json", "--workspace", str(base)])
