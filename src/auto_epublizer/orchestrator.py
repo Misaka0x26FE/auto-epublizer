@@ -1481,6 +1481,7 @@ def qa(
     nav_depth = config.output.nav_depth if config is not None else Config().output.nav_depth
     entries = structure_entries(store)
     mode = epub_render_mode(epub)
+    render_inputs = _render_inputs(store, entries, mode=mode or "translation")
     # N 阶段成品注释门（N5）：独立解析成品 XHTML 对账已登记注释；未登记则跳过
     # 构建模式取自成品 OPF；逐注文的实际宿主计划同时约束译注绑定与期望文本。
     notes_audit_dict: dict[str, Any] | None = None
@@ -1491,9 +1492,7 @@ def qa(
             store,
             pub,
             entries=entries,
-            render_inputs=(
-                _render_inputs(store, entries, mode=mode or "translation") if pub.notes else None
-            ),
+            render_inputs=render_inputs if pub.notes else None,
         )
     except OrchestrationError as e:
         notes_audit_dict = {
@@ -1525,7 +1524,25 @@ def qa(
         notes_registered=notes_registered,
     )
     audit = audit_epub(
-        epub, nav_exempt=set(provenance.nav_exempt), notes_registered=notes_registered
+        epub,
+        nav_exempt=set(provenance.nav_exempt),
+        notes_registered=notes_registered,
+        notes_context={
+            f"OEBPS/{slug_file(entry['id'])}.xhtml": {
+                "unit": str(entry["id"]),
+                "kind": str(entry.get("kind", "")),
+                "markdown": render_inputs[str(entry["id"])]["markdown"],
+                "input_path": (
+                    "translation"
+                    if render_inputs[str(entry["id"])]["source"] == "translation"
+                    else "structured"
+                )
+                + "/"
+                + str(entry["rel_path"]),
+            }
+            for entry in entries
+            if str(entry["id"]) in render_inputs
+        },
     )
     review_result = _latest_review_result(store)
     g0_flags = _collect_g0_flags(store, config)

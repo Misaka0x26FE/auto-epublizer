@@ -1,4 +1,4 @@
-<!-- i18n: source=review.zh.md sha256=d775ff89f83e32b0da36740674d2205151c1a5d91358d8b6bb4421eb44625a7c -->
+<!-- i18n: source=review.zh.md sha256=4bbbb51a52e48948559a518b120270f5ddbc2f219dccba30b5df6f2089e3b4ea -->
 > **English** | [中文](review.zh.md)
 
 # Review (six-gate QC operational guide)
@@ -102,6 +102,12 @@ insidious quality problem"; after arbitration write back to `analysis/glossary.c
 - G4: `auto-epublizer qa` runs epubcheck (zero error) + item-by-item unpack audit
   (mimetype first and uncompressed, container points to OPF, manifest/spine parseable,
   nav links resolvable, URL safe, correct lang, exactly one h1 per chapter).
+- `W_COLLECTED_NOTES_UNSEGMENTED` is a G4 segmentation candidate, not a G2 confirmed defect
+  or a direct release blocker. Use the data file/paragraph indices described in `qa.md` to
+  verify against `structured/raw/` and original pages, then follow `notes.md` for note/ref
+  identities, complete multi-paragraph content, media and href/backlinks. Never split
+  automatically or require p count to equal note count. Font size, capitalization, quotes and
+  DP are clues only; the independent canonical N hard gate is unchanged.
 - G5 release conditions: `g2_confirmed == 0` or all revised;
   `g0_terminology_open == 0` (terminology hits cleared);
   `g4_epubcheck_errors == 0` (and epubcheck actually ran); `g4_audit == "pass"`;

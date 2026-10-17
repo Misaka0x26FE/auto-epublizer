@@ -86,6 +86,10 @@ reviews/review-<ts>/
 
 - G4：`auto-epublizer qa` 跑 epubcheck（零 error）+ 解包逐项审计（mimetype 首位未压缩、
   container 指向 OPF、manifest/spine 可解析、nav 链接可解析、URL 安全、lang 正确、每章一个 h1）。
+- `W_COLLECTED_NOTES_UNSEGMENTED` 是 G4 注释分段候选，不是 G2 确认缺陷，也不直接阻断。
+  按 `qa.zh.md` 的 data 文件/段索引回 `structured/raw/` 与原页核证，再按 `notes.zh.md`
+  处理 note/ref、完整多段内容、媒体、href/backlinks；不能自动切注或以 p 数等于注数验收。
+  字号、大小写、引号和 DP 仅提供线索；规范 N 独立 hard gate 不变。
 - G5 放行条件：`g2_confirmed == 0` 或全部已修订；`g0_terminology_open == 0`（术语命中清零）；
   `g4_epubcheck_errors == 0`（且 epubcheck 实际运行）；`g4_audit == "pass"`；
   溯源完整（`provenance_coverage ≈ 1.0`、三边对账/媒体溯源零缺失、目录层级不扁平、

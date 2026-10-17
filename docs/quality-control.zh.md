@@ -162,6 +162,26 @@ Autofix（可选）：先写可恢复索引 `reviews/<ts>/autofix/index.json`，
 ZIP 文件名按字面）；源/ZIP 缺资源、同 basename 异目录替身、越界或符号链接逃逸均阻断
 放行，未绑定 XML 前缀不得静默转义或丢弃；代码展示的 SVG/img 不是资源引用。
 
+#### 注释分段 advisory（#46）
+
+`W_COLLECTED_NOTES_UNSEGMENTED` 由 `qa/audit.py` 发出并进入 `report.json.audit.findings`，
+不直接阻断 released，不自动切注。生产调用传精确成员路径下权威 kind 与实际渲染 Markdown
+（convert 源文；build 实际译文/源文 fallback），不凭 basename/全书数字猜注释。
+无 context 仍支持显式 endnotes/footnotes/rearnotes 集合语义区；普通正文和代码不扫描为注释。
+
+常量：1–3 位 ASCII 数字加 `. `（前非单词/点字符，MD `\.` 同计）；MD 候选 ≥8 且
+≥4×（非空 p+li 数）并有 p 含 ≥2 候选，或已确认区单 p ≥1000 字符且 ≥2 候选。
+独立语义单注及代码不计入，li 保护合法列表，多段注不要求一注一 p。集合区没有同口径 MD
+时只用长段判据。长书目/引文会假阳性；短段、非数字/四位标号及无权威区的旧书可能漏报。
+
+finding 非空 `data` 保留 `file/unit/input_path/scope/region_id`、`paragraph_count`、
+`list_item_count`、`input_candidate_count`（无可比输入为 null）、`rendered_candidate_count`、
+`longest_paragraph_chars`、`paragraph_indices`、逐段 `paragraphs[{index,chars,candidate_count}]`、
+`reasons` 和 `raw_evidence=structured/raw/`；段索引按全文件 p 以 1 起计。
+agent 据此回 raw 与原页逐注核证；候选数不是真实注数。字号/大小写/引号/DP 不可自动裁决。
+最终按规范 N 的 note/ref 身份、内容、媒体、href/backlinks hard gate 验收，不按 p 数；
+具体入口与边界见 `skills/auto-epublizer/references/qa.zh.md`、`notes.zh.md`。
+
 ### G5 交付验收（发布前）
 
 - 汇总 G0–G4 + 溯源审计生成 `report.json`：

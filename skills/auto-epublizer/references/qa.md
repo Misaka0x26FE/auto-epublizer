@@ -1,4 +1,4 @@
-<!-- i18n: source=qa.zh.md sha256=ef63e6940a575c103fadcaa1eab5a9c6275ed396332d846129b1551c4fd86502 -->
+<!-- i18n: source=qa.zh.md sha256=d2cbada11c20db55ee2e96c9abe68ba4294543f8b9cb13aeff2ee41c82557d36 -->
 > **English** | [中文](qa.zh.md)
 
 # QA (epubcheck + unpack audit)
@@ -51,6 +51,42 @@ Standard EPUB note acceptance is mandatory offline: independently verify current
 | img alt empty or missing / poor format compatibility (.webp/.avif) | `W_IMG_NO_ALT` / `W_IMG_FORMAT` (warning) |
 | image too large (>4000px) / too wide or tall (>5:1) / uncompressed (>2MB) | `W_IMG_LARGE` / `W_IMG_RATIO` / `W_IMG_UNCOMPRESSED` (warning) |
 | EPUB total size over threshold (50MB) | `W_EPUB_SIZE` (warning) |
+| Confirmed notes region may be unsegmented | `W_COLLECTED_NOTES_UNSEGMENTED` (warning candidate, nonblocking) |
+
+### Collected-notes segmentation candidates (#46)
+
+Production `qa` passes actual build inputs keyed by exact EPUB member path to
+`audit_epub(notes_context=...)`: authoritative `kind=notes`, unit, Markdown and `input_path`.
+Source conversion uses source only; translation builds select the actual translation/source
+fallback per unit, never unrendered translations. Existing default API calls remain compatible;
+without context, only explicit `epub:type=endnotes|footnotes|rearnotes` or
+`role=doc-endnotes|doc-footnotes` collection regions are scanned. Filenames, whole-book numbers
+and headings never establish notes identity.
+
+Fixed conservative criteria (no new switches): a number shape is 1–3 ASCII digits followed by
+`. `, not preceded by a word character or dot; MD `\.` also counts. Warn for imbalance when
+whole-unit MD candidates ≥8 and ≥4× (nonempty product p count + li count), with at least one p
+containing ≥2 candidates; or for a confirmed-region paragraph ≥1000 characters with ≥2 candidates.
+li boundaries protect legitimate ordered/unordered lists; one p per note is never required.
+Fenced/inline code and actual code/pre literals are excluded. Explicit individual
+footnote/endnote/rearnote nodes (and doc-footnote/doc-endnote) retain legitimate internal
+paragraphs/lists under the independent N gate, not legacy segmentation guessing.
+
+The finding uses existing `report.json.audit.findings`; nonempty `data` contains `file`, `unit`,
+`input_path`, `scope`, `region_id`, `paragraph_count`, `list_item_count`,
+`input_candidate_count`, `rendered_candidate_count`, `longest_paragraph_chars`,
+`paragraph_indices`, per-paragraph `paragraphs[{index,chars,candidate_count}]`, `reasons` and
+`raw_evidence=structured/raw/`. Paragraph indices are 1-based across all p elements in the file;
+input count is null for a semantic region without comparable whole-unit MD. Counts exclude code
+and the individual semantic notes above; they are not verified note counts.
+
+Long bibliographies/quotations can false-positive; short flattened text, nonnumeric/four-digit
+labels, and legacy books without authoritative region semantics can be missed. The agent uses
+file/paragraph indices to verify boundaries, continuations, content and reference positions
+against `structured/raw/` and original pages, then completes canonical phase N per `notes.md`.
+Never split automatically or substitute font size, capitalization, quotes or DP for semantic
+judgement. This warning does not directly affect released; the independent N identity, content,
+media, href/backlink hard gate is unchanged.
 
 ## Quality report `report.json`
 
