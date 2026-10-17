@@ -1,4 +1,4 @@
-<!-- i18n: source=review.zh.md sha256=8f1d8ea910388466c8a2e6d7adb49d519200d7996b591e64042b1aaac970f1f8 -->
+<!-- i18n: source=review.zh.md sha256=d775ff89f83e32b0da36740674d2205151c1a5d91358d8b6bb4421eb44625a7c -->
 > **English** | [中文](review.zh.md)
 
 # Review (six-gate QC operational guide)
@@ -132,10 +132,15 @@ insidious quality problem"; after arbitration write back to `analysis/glossary.c
 > **G0 warnings fall into two categories with different handling**:
 > - `terminology` (terminology hit): a **real defect**, the CLI marks it in red `✗`,
 >   and `import` also counts it separately; you must check the translation/glossary item
->   by item and clear it (supplement the translation / fix the glossary / declare an
->   exception) before release. DouBao field lesson: terminology misses were once lumped
->   together with length false-positives and treated as all noise, missing the real
->   problem.
+>   by item and clear it (supplement translation / fix glossary) before release.
+>   Evidence-backed original-text retention uses only the `unit,source,reason` CSV in
+>   `translation.md`, producing `terminology_exempt` advisory, not waiving other defects.
+>   DouBao field lesson: terminology misses were once lumped together with length
+>   false positives and treated as noise, missing the real problem.
+> - `terminology_exempt` and fidelity forward missing-block findings are advisory;
+>   exemption reasons remain visible in import, g0 and QA `g0_flags`, not exempt from
+>   review. See `translation.md` for the two-sided heading-only empty-align rule;
+>   it does not remove the `heading` gate.
 > - `length` (length ratio too low/too high): advisory, en→zh length ratios are naturally
 >   low and produce many false positives, not a release hard condition; but **spot-check**
 >   whether there is a real omission (especially paragraphs where an overly long sentence

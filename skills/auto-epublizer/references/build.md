@@ -1,4 +1,4 @@
-<!-- i18n: source=build.zh.md sha256=7d210aea551beba0a384f0e6bdea04de91b3cc9139c8c79ecd85c95c1b0cb914 -->
+<!-- i18n: source=build.zh.md sha256=b4abdb35baeae7def7ea8398672624137871c407a105f3413304d6d557c1c60c -->
 > **English** | [中文](build.zh.md)
 
 # Build (EPUB packaging)
@@ -60,6 +60,16 @@ OPF `aep:render-mode` records the actual build entry: `source` (source only) or 
   `E_MEDIA_EPUB_LOST` (media are never dropped silently).
 - **Resource identity**: `%` is literal in Markdown/pandoc source file paths; HTML image URLs are decoded once; ZIP member names are never decoded. Bare names, subdirectories, and existing `media/` / `raw/media/` routes resolve through the actual source file. The note gate, ordinary-body provenance and general G4 use the same full-path identity rule; basename sets cannot exempt wrong-directory images. Media gates check images rather than treating HTML image tags as prose; surrounding text must still survive paragraph reconciliation.
 - **Manifest identifiers**: media use legal, unique XML IDs assigned in stable order, independently of filenames/URIs. This avoids invalid characters and directory-path collisions; cover metadata references the actual manifest item rather than inferring a filename from its ID.
+- **Code versus raw HTML**: preserve ordinary fences whole, including blank lines, and
+  escape/display their contents. HTML-looking tags, headings, media paths, footnotes,
+  anchors and container markers inside code generate neither navigation entries nor
+  media reads. Source-text/Pandoc ingest must not split code headings into chapters or
+  delete standalone code numbers as page numbers. Explicit Pandoc raw HTML is separate.
+- **Inline SVG**: retain the real XHTML SVG namespace and set `svg` on the owning
+  content manifest item. Local SVG image href/xlink:href uses the full-path media identity
+  above. Missing source media, missing ZIP members or wrong-directory same-basename media
+  block release; unbound XML prefixes must fail, never silently escape or disappear.
+  SVG/img examples inside ordinary code are not resource references.
 - **Build-log attribution** (issue #40; no outbound calls): the `EPUB 已生成` line always
   carries the tool name + version + license + source URL, and the workspace
   `meta.producer` plus the `run_initialized` event expose the same identifier so origin is

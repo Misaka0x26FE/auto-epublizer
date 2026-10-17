@@ -258,7 +258,8 @@ def test_import_force_revalidates_built_unit(tmp_path: Path) -> None:
     assert store.load_publication().units[0].status == "built"
 
 
-def test_import_force_rolls_back_on_broken_built_unit(tmp_path: Path) -> None:
+@pytest.mark.parametrize("mark_reviewed", [False, True])
+def test_import_force_rolls_back_on_broken_built_unit(tmp_path: Path, mark_reviewed: bool) -> None:
     """回归 #13：--force 重校验失败 → 状态回退 aligned（显式、不静默）。"""
     store = _workspace(tmp_path)
     _write_agent_products(store)
@@ -274,7 +275,7 @@ def test_import_force_rolls_back_on_broken_built_unit(tmp_path: Path) -> None:
         for row in rows:
             f.write(json.dumps(row, ensure_ascii=False) + "\n")
 
-    r = orch.import_translations(store, unit_id="ch01", force=True)
+    r = orch.import_translations(store, unit_id="ch01", force=True, mark_reviewed=mark_reviewed)
     assert r["failed"] and r["failed"][0]["unit"] == "ch01"
     assert any("回退" in e for e in r["failed"][0]["errors"])
     assert store.load_publication().units[0].status == "aligned"
@@ -391,3 +392,114 @@ def test_g0_call_chains_share_length_thresholds(tmp_path: Path) -> None:
     result = orch.import_translations(store, config=cfg)
     import_flags = [w for w in result["warnings"] if w["check"] == "length"]
     assert import_flags  # import 链同口径
+
+
+def test_heading_only_unit_import_g0_build_and_qa(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """源译均仅有标题时可无对照表，仍通过与正文相同的登记和发布门。"""
+    from auto_common.config import Config
+    from auto_epublizer.qa.epubcheck import EpubcheckResult
+
+    src = tmp_path / "book.md"
+    src.write_text("# 第一部：奠基\n", encoding="utf-8")
+    store = orch.init(str(src), workspace_dir=tmp_path / "ws")
+    (store.translation_dir / "body").mkdir(parents=True, exist_ok=True)
+    (store.translation_dir / "body" / "ch01.md").write_text("# 第一部：奠基\n", encoding="utf-8")
+    (store.translation_dir / "align").mkdir(parents=True, exist_ok=True)
+    store.unit_align_path("ch01").write_text("", encoding="utf-8")
+
+    result = orch.import_translations(store, mark_reviewed=True)
+    assert result["pending"] == []
+    assert result["failed"] == []
+    assert result["imported"] == ["ch01"]
+    assert result["reviewed"] == ["ch01"]
+    assert store.load_publication().units[0].status == "reviewed"
+    assert orch.g0_check(store)["flags"] == []
+    orch.preprocess(store, config=Config())
+    for name in ("capabilities.md", "global.md", "todo.md"):
+        (store.preprocessing_dir / name).write_text("fixture", encoding="utf-8")
+    review_dir = store.reviews_dir / "review-20261017T000000"
+    review_dir.mkdir(parents=True, exist_ok=True)
+    (review_dir / "result.json").write_text(
+        json.dumps({"issue_count": 0, "g2_confirmed": 0, "termination": "clean_confirmed"}),
+        encoding="utf-8",
+    )
+    epub = orch.build(store)
+    monkeypatch.setattr(
+        orch, "run_epubcheck", lambda *a, **k: EpubcheckResult(True, True, 0, 0, returncode=0)
+    )
+    report = orch.qa(store, epub_path=str(epub))
+    assert report["released"] is True, report["released_reason"]
+
+
+def test_import_still_blocks_body_unit_with_missing_align(tmp_path: Path) -> None:
+    """回归 #34 的配套：纯标题单元放行**不得**波及正文单元——正文缺对照表照旧待译。"""
+    store = _workspace(tmp_path)
+    (store.translation_dir / "body").mkdir(parents=True, exist_ok=True)
+    (store.translation_dir / "body" / "ch01.md").write_text(
+        "# 第一章\n\n第一句话。\n\n第二句话。\n", encoding="utf-8"
+    )
+    result = orch.import_translations(store)
+    assert result["imported"] == []
+    assert [p["unit"] for p in result["pending"]] == ["ch01"]
+    assert any("缺少对照表" in r for r in result["pending"][0]["reasons"])
+
+
+def test_exemption_is_nonblocking_and_visible_in_each_validation_entry(tmp_path: Path) -> None:
+    source = tmp_path / "bibliography.md"
+    source.write_text("# Chapter I\n\nSee Konzentrationslager.\n", encoding="utf-8")
+    store = orch.init(str(source), workspace_dir=tmp_path / "ws")
+    target = store.translation_dir / "body" / "ch01.md"
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text("# 书目\n\n参见 Konzentrationslager。\n", encoding="utf-8")
+    store.unit_align_path("ch01").write_text(
+        json.dumps(
+            {"seq": 1, "src": "See Konzentrationslager.", "tgt": "参见 Konzentrationslager。"},
+            ensure_ascii=False,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    store.analysis_dir.mkdir(parents=True, exist_ok=True)
+    (store.analysis_dir / "glossary.csv").write_text(
+        "source,target,type,aliases,gender,reading,status,note\n"
+        "Konzentrationslager,集中营,term,,,,confirmed,\n",
+        encoding="utf-8",
+    )
+    store.preprocessing_dir.mkdir(parents=True, exist_ok=True)
+    (store.preprocessing_dir / "terminology_exemptions.csv").write_text(
+        "unit,source,reason\nch01,Konzentrationslager,引文书名保留\n", encoding="utf-8"
+    )
+    result = orch.import_translations(store)
+    assert result["imported"] == ["ch01"]
+    for flags in (
+        result["warnings"],
+        orch.g0_check(store)["flags"],
+        orch._collect_g0_flags(store),
+    ):
+        assert not any(flag["check"] == "terminology" for flag in flags)
+        advisory = [flag for flag in flags if flag["check"] == "terminology_exempt"]
+        assert len(advisory) == 1
+        assert advisory[0]["blocking"] is False
+
+
+def test_import_rejects_removed_literal_reference_from_code(tmp_path: Path) -> None:
+    code = "```markdown\n[^literal]: Displayed code.\n```"
+    source = tmp_path / "code.md"
+    source.write_text("# Chapter I\n\n" + code + "\n", encoding="utf-8")
+    store = orch.init(str(source), workspace_dir=tmp_path / "workspace")
+    unit = store.load_publication().units[0]
+    target = store.translation_dir / unit.meta["rel_path"]
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text("# 第一章\n\n" + code + "\n", encoding="utf-8")
+    store.unit_align_path(unit.id).write_text(
+        json.dumps({"seq": 1, "src": code, "tgt": code}) + "\n", encoding="utf-8"
+    )
+    accepted = orch.import_translations(store, mark_reviewed=True)
+    assert accepted["reviewed"] == [unit.id]
+    target.write_text(("# 第一章\n\n" + code).replace("[^literal]", "") + "\n", encoding="utf-8")
+    rejected = orch.import_translations(store, mark_reviewed=True, force=True)
+    assert [item["unit"] for item in rejected["failed"]] == [unit.id]
+    assert rejected["reviewed"] == []
+    assert store.load_publication().unit(unit.id).status == "aligned"

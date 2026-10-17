@@ -61,7 +61,7 @@ auto-epublizer qa [--epub <path>] [--workspace <dir>]
 
 - `g4_epubcheck_errors == 0`（epubcheck 已实际运行）
 - `g4_audit == "pass"`（解包审计零 error）
-- G0 术语命中清零（`g0_terminology_open == 0`；长度比类告警才是 advisory）
+- G0 blocking 术语命中清零（`g0_terminology_open == 0`；经取证登记的 `terminology_exempt` 不计入，见 `translation.md`）
 - G0 结构违例清零（`g0_structure_open == 0`：**blocking** 的 align/marker/footnote/
   heading/table/fidelity；fidelity 前向缺块与长度比是 advisory，不计入）
 - 成品注释门清零（有注书：`notes_findings == 0`；`inventory=none` 时零对零）
@@ -81,6 +81,14 @@ auto-epublizer qa [--epub <path>] [--workspace <dir>]
 > 译文/对照表/审校/注释或成品，`status`/`status_all`/`ledger` 即把报告标为过期
 > （`report_stale`，进度降为 `built_not_released`）；须重跑 `build`/`qa` 才恢复。
 > 重跑 qa 时旧成品与当前产物不一致也会被 coverage/drift/注释内容核对拒绝。
+>
+> `preprocessing/terminology_exemptions.csv` 的创建、修改、删除同样使摘要失效；
+> 历史 released 不重写，但 status 标为 stale / `built_not_released`，须重新 QA。
+
+正文与注文独立核对：源 `label`/`ref_id` 不等于显示注号；语义 noteref 与完整脚注/尾注内容
+不计入正文覆盖率，由独立注释门核对引用、内容、href 和回链。注文不能补偿邻接正文丢失。
+字面代码、普通数学上标仍属正文；标题后紧接的正文不能随标题块一起跳过。
+合法字面代码和表格中的 `# 1`、行内代码 `# comment` 必须保留，不能当残留剥掉。
 
 > `qa released=True` 只代表已知契约全绿；**交付前还须执行 `references/delivery.md`
 > 的交付审计清单**（独立对账 + 人工抽查 + 写交付记录），两者都完成才算交付。

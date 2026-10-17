@@ -737,3 +737,125 @@ def test_html_media_does_not_hide_missing_surrounding_text(tmp_path: Path) -> No
     assert result.epub_media_missing == []
     assert result.epub_coverage == 0.0
     assert "E_EPUB_PARA_LOST" in {finding["code"] for finding in result.findings}
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        "正文一句。[^7]",
+        "正文一句。[^7] 后半句。",
+        "正文一句。[^7] 后半句。再次引用[^7]。",
+    ],
+)
+def test_provenance_legacy_note_numbers_are_not_labels(tmp_path: Path, body: str) -> None:
+    md = f"# 一\n\n{body}\n\n[^7]: 注体。\n"
+    store, entries = _make_workspace(tmp_path, [{"id": "ch01", "rel": "body/ch01.md", "md": md}])
+    epub = _build(store, entries)
+    result = audit_provenance(store, entries, epub)
+    assert result.epub_coverage_missing == []
+    assert result.ok
+
+
+def test_provenance_registered_note_number_is_not_reference_id(tmp_path: Path) -> None:
+    from auto_epublizer.build.html import NoteItem, NoteRef
+
+    md = "# 一\n\n正文一句。[^ref-000001] 后半句。\n"
+    store, entries = _make_workspace(tmp_path, [{"id": "ch01", "rel": "body/ch01.md", "md": md}])
+    html = render_document(
+        "一",
+        md,
+        lang="zh-CN",
+        unit_id="ch01",
+        note_refs={"ref-000001": NoteRef("ref-000001", "n-000001", 1)},
+        note_items=[NoteItem("n-000001", 1, "注体。", ("ch01.xhtml#ref-000001",))],
+        href_by_note={"n-000001": "ch01.xhtml"},
+    )
+    epub = store.output_dir / "book.epub"
+    build_epub(
+        _pub(),
+        entries,
+        [("ch01.xhtml", html)],
+        lang="zh-CN",
+        modified="2026-01-01T00:00:00Z",
+        out_path=epub,
+    )
+    result = audit_provenance(store, entries, epub, notes_registered=True)
+    assert result.epub_coverage_missing == []
+    assert result.ok
+
+
+@pytest.mark.parametrize("loss", ["before", "after", "body"])
+@pytest.mark.parametrize("note_type", ["footnote", "endnote"])
+def test_note_text_cannot_replace_missing_body(tmp_path: Path, loss: str, note_type: str) -> None:
+    md = "# 一\n\n正文前句。[^7] 正文后句。\n\n[^7]: 正文前句。正文后句。\n"
+    store, entries = _make_workspace(tmp_path, [{"id": "ch01", "rel": "body/ch01.md", "md": md}])
+    epub = _build(store, entries)
+
+    def remove_body(name: str, data: bytes) -> bytes:
+        if not name.endswith("ch01.xhtml"):
+            return data
+        html = data.decode()
+        if loss == "body":
+            html = re.sub(r"<p>正文前句。.*?</p>", "", html, count=1)
+        else:
+            text = "正文前句。" if loss == "before" else "正文后句。"
+            html = html.replace(text, "", 1)
+        return html.replace('epub:type="footnote"', f'epub:type="{note_type}"').encode()
+
+    bad = _rewrite_epub(epub, tmp_path / "missing-body.epub", remove_body)
+    result = audit_provenance(store, entries, bad)
+    assert "E_EPUB_PARA_LOST" in {f["code"] for f in result.findings}
+
+
+@pytest.mark.parametrize(
+    ("body", "literal", "replacement"),
+    [
+        ("The literal `[^7]` is code.", "[^7]", ""),
+        ("```\n[^7]\n```", "[^7]", ""),
+        ("```\n[^literal]: This is displayed code.\n```", "[^literal]", ""),
+        ("The literal `[^7]: not a definition` is code.", "[^7]", ""),
+        ('```\n<aside epub:type="footnote">Literal note markup.</aside>\n```', "&lt;aside", ""),
+        ('The literal `<img src="missing.png"/>` is code.', "&lt;img", ""),
+        ('```\n<img src="missing.png"/>\n\nLiteral continuation.\n```', "&lt;img", ""),
+        ("```{=html}\n<p>The square is x<sup>2</sup>.</p>\n```", "<sup>2</sup>", "<sup></sup>"),
+    ],
+)
+def test_note_filter_preserves_code_and_math(
+    tmp_path: Path, body: str, literal: str, replacement: str
+) -> None:
+    md = f"# 一\n\n{body}\n"
+    store, entries = _make_workspace(tmp_path, [{"id": "ch01", "rel": "body/ch01.md", "md": md}])
+    epub = _build(store, entries)
+    clean = audit_provenance(store, entries, epub)
+    assert clean.epub_coverage_missing == []
+    assert clean.ok
+    bad = _rewrite_epub(
+        epub,
+        tmp_path / "missing-literal.epub",
+        lambda name, data: (
+            data.replace(literal.encode(), replacement.encode(), 1)
+            if name.endswith("ch01.xhtml")
+            else data
+        ),
+    )
+    result = audit_provenance(store, entries, bad)
+    assert "E_EPUB_PARA_LOST" in {f["code"] for f in result.findings}
+
+
+def test_provenance_detects_lost_body_without_heading_blank_line(tmp_path: Path) -> None:
+    store, entries = _make_workspace(
+        tmp_path,
+        [{"id": "ch01", "rel": "body/ch01.md", "md": "# Chapter\nLost body.\n"}],
+        translate=False,
+    )
+    epub = _build(store, entries)
+    assert audit_provenance(store, entries, epub).epub_coverage_missing == []
+    bad = _rewrite_epub(
+        epub,
+        tmp_path / "lost-heading-body.epub",
+        lambda name, data: (
+            data.replace(b"<p>Lost body.</p>", b"") if name.endswith("ch01.xhtml") else data
+        ),
+    )
+    result = audit_provenance(store, entries, bad)
+    assert "E_EPUB_PARA_LOST" in {f["code"] for f in result.findings}

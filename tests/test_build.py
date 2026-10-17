@@ -732,6 +732,33 @@ def test_footnote_semantics_chapter_numbering() -> None:
     assert "[^1]" not in d1 and "[^1]" not in d2
 
 
+def test_footnote_repeated_citation_unique_ids() -> None:
+    """重复引用同一脚注时 noteref id 必须去重（epubcheck RSC-005 Duplicate ID）。
+
+    背景：2026-10-08 reichsarbeitsministerium essay-07 实测——德文史学著作里
+    「见前引注 6」式的重复引用很常见，原实现对每次出现都发 `id="ref-6"`，
+    成品 2 条 RSC-005 error 直接阻断放行。口径：第 k 次引用取 `ref-{n}-{k}`，
+    章末 backlink 的 `href="#ref-{n}"` 仍落在首次引用上。
+    """
+    d = render_document(
+        "C1",
+        "首见[^6]。中间再提一次[^6]，末尾第三次[^6]。\n\n[^6]: 注丙",
+        lang="zh-CN",
+        unit_id="ch07",
+        fn_state=FootnoteState(),
+    )
+    assert 'id="ref-1" href="#fn-1">[1]</a>' in d
+    assert 'id="ref-1-2" href="#fn-1">[1]</a>' in d
+    assert 'id="ref-1-3" href="#fn-1">[1]</a>' in d
+    # 章末回链仍指向首次引用
+    assert 'id="fn-1"' in d and 'href="#ref-1"' in d
+    # 不得再有裸的 ref-1 重复 id
+    import re as _re
+
+    ids = _re.findall(r'<a[^>]*\bid="([^"]+)"', d)
+    assert len(ids) == len(set(ids)), f"存在重复 id：{ids}"
+
+
 def test_markdown_semantic_tags() -> None:
     """语义标签保留（epub-template-spec P2）：blockquote/诗行块/ul/ol。"""
     md = "> 引用第一行。\n\n| 诗行一\n| 诗行二\n\n- 甲\n- 乙\n\n1. 第一\n2. 第二\n"
@@ -960,3 +987,26 @@ def test_nav_anchor_depth_projection(tmp_path: Path) -> None:
     # ch02（level 3 归一化为深度 2）仍在目录，但其锚点深度 3 被投影剔除
     assert "ch02.xhtml" in nav
     assert "ch02-h1" not in nav and "不出现" not in nav
+
+
+def test_raw_html_block_rejects_mixed_markdown() -> None:
+    """块内混有普通 markdown 时不得放行未转义文本（白名单口径）。"""
+    md = "<div>\nhello world\n</div>"  # 同一块内混排，非纯标签块
+    out = markdown_to_xhtml(md, unit_id="cover")
+    assert "&lt;div&gt;" in out  # 退回常规渲染 = 转义，会被 W_RESIDUE 抓到
+    assert "hello world" in out
+
+
+def test_nav_label_strips_calibre_toc_attribute() -> None:
+    """nav 目录标签须走 plain_label，读者不得看到 ``{#calibre_toc_1}``。
+
+    回归：2026-10-06 Thiriart nav 实测 22 处（``<title>`` 早已修好，nav 标签漏修）。
+    """
+    from auto_epublizer.build import _render_nav_items
+
+    nodes = [
+        {"entry": {"id": "front-introduction", "title": "引言 {#calibre_toc_1}"}, "children": []}
+    ]
+    out = _render_nav_items(nodes)
+    assert "引言</a>" in out
+    assert "calibre_toc" not in out
