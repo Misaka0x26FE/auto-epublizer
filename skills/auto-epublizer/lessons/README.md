@@ -1,4 +1,4 @@
-<!-- i18n: source=README.zh.md sha256=817ed72202b07021e2e9fba06f367d93025fed7c0e50647f3fef317a3734fa95 -->
+<!-- i18n: source=README.zh.md sha256=371e2413847471e71b10756152961384b2bc93fe0b754ac2b86442c8347c6511 -->
 > **English** | [中文](README.zh.md)
 
 # Lessons (distilled field experience)
@@ -44,7 +44,7 @@ downstream agents to directly consult and handle when they encounter the same ty
 | [2026-09-13-delivery-integrity.md](2026-09-13-delivery-integrity.md) | Tool QA all passes yet 38/72 images missing (translated body loses image paragraphs, conservation only checks align) → delivery audit independent reconciliation + rebuild with align + full re-verification | landed (qa/provenance.py reconciliation automation + references/delivery.md mandatory checklist) |
 | [2026-10-15-media-ref-containment.md](2026-10-15-media-ref-containment.md) | Escaping media references (`../`/absolute/outward symlink) get read into the product: containment check + dropped trace + `E_MEDIA_EPUB_LOST` block | fixed (build/collect_media + qa/provenance + tests/test_ingest_boundary.py) |
 | [2026-10-15-epub-source-media-normalization.md](2026-10-15-epub-source-media-normalization.md) | EPUB sources with absolute media paths: machine paths leak into artifacts, nested illustrations lost from the product → `read_epub` now normalises media references | fixed (ingest/epub_reader.py + tests/test_ingest_boundary.py) |
-| [2026-10-17-collected-notes-resegmentation.md](2026-10-17-collected-notes-resegmentation.md) | Flattened collected notes: raw evidence and DP produce candidates requiring agent verification; legacy reconstruction must enter canonical phase N, not one paragraph per note | historical work-root repair reported by author; audit advisory absent at time of report |
+| [2026-10-17-collected-notes-resegmentation.md](2026-10-17-collected-notes-resegmentation.md) | Flattened collected notes: raw evidence and DP produce candidates requiring agent verification; legacy reconstruction must enter canonical phase N, not one paragraph per note | historical work-root repair reported by author; `W_COLLECTED_NOTES_UNSEGMENTED` advisory now in production QA |
 
 ## Source and destination (how experience gets here)
 

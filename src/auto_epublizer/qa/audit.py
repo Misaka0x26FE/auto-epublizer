@@ -8,9 +8,12 @@ import re
 import xml.etree.ElementTree as ET
 import zipfile
 from collections import Counter
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from html.parser import HTMLParser
 from pathlib import Path
+
+from auto_common.markdown import inline_code_chunks, markdown_chunks
 
 from ..fingerprint import strip_fingerprint_comments
 from ..media_paths import epub_member_path
@@ -108,6 +111,165 @@ _MEASURE_AFTER = (
 # 合法的段落收束（含引号/括号收尾与省略号）
 _PARA_END_OK = "。！？…!?;；”’\"'」』）)】〕》>"
 
+# Collected-notes candidates (#46), deliberately conservative and never identity evidence.
+_NOTE_NUMBER = re.compile(r"(?<![\w.])[0-9]{1,3}\.\s")
+_NOTES_MIN_CANDIDATES = 8
+_NOTES_PARAGRAPH_RATIO = 4
+_NOTES_LONG_PARAGRAPH = 1000
+_EPUB_TYPE = "{http://www.idpf.org/2007/ops}type"
+_NOTES_COLLECTION = {"endnotes", "footnotes", "rearnotes"}
+_NOTE_NODE = {"footnote", "endnote", "rearnote"}
+
+
+def _prose_text(element: ET.Element) -> str:
+    """Visible non-code text, keeping tails after excluded code/pre nodes."""
+    if element.tag.rsplit("}", 1)[-1] in {"code", "pre", "script", "style"}:
+        return ""
+    return (element.text or "") + "".join(
+        _prose_text(child) + (child.tail or "") for child in element
+    )
+
+
+def _markdown_note_candidates(markdown: str) -> int:
+    parts: list[str] = []
+    for kind, chunk in markdown_chunks(markdown):
+        if kind == "code":
+            continue
+        for is_code, text in inline_code_chunks(chunk):
+            if not is_code:
+                parts.append(text)
+    # Raw HTML code uses the same exclusion policy as the existing residue audit.
+    parser = _NonCodeMarkup()
+    parser.feed("\n".join(parts))
+    text = _HTML_TAG_RE.sub("", "".join(parser.parts)).replace("\\.", ".")
+    return len(_NOTE_NUMBER.findall(text))
+
+
+def _collected_notes_candidates(
+    result: AuditResult,
+    name: str,
+    root: ET.Element,
+    context: Mapping[str, str] | None,
+) -> None:
+    """Only authoritative notes units or explicit collection regions; no filename guess."""
+    parents = {child: parent for parent in root.iter() for child in parent}
+
+    def ancestors(element: ET.Element) -> list[ET.Element]:
+        chain = [element]
+        while chain[-1] in parents:
+            chain.append(parents[chain[-1]])
+        return chain
+
+    def semantic(element: ET.Element, types: set[str], roles: set[str]) -> bool:
+        return bool(
+            types.intersection(element.get(_EPUB_TYPE, "").split())
+            or roles.intersection(element.get("role", "").split())
+        )
+
+    authoritative = context is not None and context.get("kind") == "notes"
+    regions = (
+        [root]
+        if authoritative
+        else [
+            element
+            for element in root.iter()
+            if semantic(element, _NOTES_COLLECTION, {"doc-endnotes", "doc-footnotes"})
+        ]
+    )
+    # Outermost collections only, so a nested section cannot duplicate a warning.
+    regions = [
+        region for region in regions if not any(a in regions for a in ancestors(region)[1:])
+    ]
+    paragraph_indices = {
+        element: index
+        for index, element in enumerate(
+            (e for e in root.iter() if e.tag.rsplit("}", 1)[-1] == "p"), 1
+        )
+    }
+    for region in regions:
+        paragraphs: list[tuple[int, str, int]] = []
+        list_items = 0
+        for element in region.iter():
+            local = element.tag.rsplit("}", 1)[-1]
+            if local not in {"p", "li"}:
+                continue
+            chain = ancestors(element)
+            if any(a.tag.rsplit("}", 1)[-1] in {"pre", "code"} for a in chain):
+                continue
+            # Canonical individual notes are reconciled by the independent N gate;
+            # their legitimate internal paragraphs/lists are not legacy boundaries.
+            if any(
+                semantic(a, _NOTE_NODE, {"doc-footnote", "doc-endnote"}) for a in chain
+            ):
+                continue
+            text = _prose_text(element).strip()
+            if not text:
+                continue
+            if local == "li":
+                list_items += 1
+            else:
+                paragraphs.append(
+                    (paragraph_indices[element], text, len(_NOTE_NUMBER.findall(text)))
+                )
+        if not paragraphs:
+            continue
+        rendered_count = sum(count for _, _, count in paragraphs)
+        # Whole-unit Markdown is comparable only for an authoritative whole-unit region.
+        input_count = (
+            _markdown_note_candidates(context["markdown"])
+            if authoritative and context is not None and "markdown" in context
+            else None
+        )
+        imbalanced = (
+            input_count is not None
+            and input_count >= _NOTES_MIN_CANDIDATES
+            and input_count >= _NOTES_PARAGRAPH_RATIO * (len(paragraphs) + list_items)
+            and any(count >= 2 for _, _, count in paragraphs)
+        )
+        suspect = [
+            (index, text, count)
+            for index, text, count in paragraphs
+            if count >= 2 and (len(text) >= _NOTES_LONG_PARAGRAPH or imbalanced)
+        ]
+        if not suspect:
+            continue
+        data: dict[str, object] = {
+            "file": name,
+            "unit": context.get("unit", "") if context else "",
+            "input_path": context.get("input_path", "") if context else "",
+            "scope": "unit" if authoritative else "semantic_collection",
+            "region_id": region.get("id", ""),
+            "paragraph_count": len(paragraphs),
+            "list_item_count": list_items,
+            "input_candidate_count": input_count,
+            "rendered_candidate_count": rendered_count,
+            "longest_paragraph_chars": max(len(text) for _, text, _ in paragraphs),
+            "paragraph_indices": [index for index, _, _ in suspect],
+            "paragraphs": [
+                {"index": index, "chars": len(text), "candidate_count": count}
+                for index, text, count in suspect
+            ],
+            "raw_evidence": "structured/raw/",
+        }
+        data["reasons"] = (
+            (["candidate_paragraph_imbalance"] if imbalanced else [])
+            + (
+                ["long_paragraph_multiple_candidates"]
+                if any(len(text) >= _NOTES_LONG_PARAGRAPH for _, text, _ in suspect)
+                else []
+            )
+        )
+        indices = ",".join(str(index) for index, _, _ in suspect)
+        result.add(
+            "warning",
+            "W_COLLECTED_NOTES_UNSEGMENTED",
+            f"疑似书末注释未分段（候选非结论）：{name}；段索引={indices}；"
+            f"段数={len(paragraphs)}，MD注号候选={input_count}，"
+            f"成品段内候选={rendered_count}，最长段={data['longest_paragraph_chars']} 字符；"
+            "请对照 structured/raw/ 和原页逐注核证，不自动切段、不据此阻断；独立 N 门不变",
+            data=data,
+        )
+
 
 def _layout_candidates(result: AuditResult, name: str, content: str) -> None:
     """版面型候选（issue #38）：每文档每类至多一条 W 级提示，供 agent 逐条核证。
@@ -155,6 +317,7 @@ class AuditFinding:
     level: str  # error | warning
     code: str
     message: str
+    data: dict[str, object] | None = None
 
 
 @dataclass
@@ -162,8 +325,10 @@ class AuditResult:
     ok: bool
     findings: list[AuditFinding] = field(default_factory=list)
 
-    def add(self, level: str, code: str, message: str) -> None:
-        self.findings.append(AuditFinding(level=level, code=code, message=message))
+    def add(
+        self, level: str, code: str, message: str, *, data: dict[str, object] | None = None
+    ) -> None:
+        self.findings.append(AuditFinding(level=level, code=code, message=message, data=data))
         if level == "error":
             self.ok = False
 
@@ -204,7 +369,11 @@ def _image_size(data: bytes, ext: str) -> tuple[int, int] | None:
 
 
 def audit_epub(
-    path: str | Path, *, nav_exempt: set[str] | None = None, notes_registered: bool = False
+    path: str | Path,
+    *,
+    nav_exempt: set[str] | None = None,
+    notes_registered: bool = False,
+    notes_context: Mapping[str, Mapping[str, str]] | None = None,
 ) -> AuditResult:
     """解包 EPUB 并逐项审计结构。
 
@@ -212,6 +381,8 @@ def audit_epub(
     文档 basename 集合（orchestrator 由 provenance 的同一投影算得）——这些文档仍在
     spine 阅读顺序中，豁免 E_TOC_COVERAGE；集合中出现非 spine 文档名则报错。
     ``notes_registered``：调用方已验证有效登记并执行独立注释门时，移交必需回链判定。
+    ``notes_context``：实际构建输入按精确 EPUB 成员路径映射，含 kind/unit/markdown/input_path；
+    仅 kind=notes 授权整单元候选检查。不提供时仍检查显式注释集合语义区。
     """
     result = AuditResult(ok=True)
     try:
@@ -335,6 +506,7 @@ def audit_epub(
             except ET.ParseError as exc:
                 result.add("error", "E_XHTML_XML", f"内容文档 XML 无效：{name}：{exc}")
                 continue
+            _collected_notes_candidates(result, name, root, (notes_context or {}).get(name))
             sources = [
                 image.attrib["src"]
                 for image in root.iter("{http://www.w3.org/1999/xhtml}img")

@@ -195,7 +195,13 @@ def generate_report(
             "ok": audit.ok,
             "errors": len(errors),
             "findings": [
-                {"level": f.level, "code": f.code, "message": f.message} for f in audit.findings
+                {
+                    "level": f.level,
+                    "code": f.code,
+                    "message": f.message,
+                    **({"data": f.data} if f.data else {}),
+                }
+                for f in audit.findings
             ],
         },
         epubcheck={

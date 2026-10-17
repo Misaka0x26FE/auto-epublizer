@@ -1,4 +1,4 @@
-<!-- i18n: source=quality-control.zh.md sha256=3bcc7908d781e46fa0edee60d1d99578ef579adcd5788ba0a677de855c6f67fa -->
+<!-- i18n: source=quality-control.zh.md sha256=3cf9369a3f0454ceb204d6cb52ec67103c92fadb11048911fba6fef332c1f188 -->
 > **English** | [中文](quality-control.zh.md)
 
 # Quality-Control Process Design (auto-epublizer)
@@ -172,6 +172,33 @@ full path identity (HTML URLs decoded once; ZIP names literal). Missing source/Z
 same-basename substitutes in another directory, outside-root and symlink escapes block
 release. Unbound XML prefixes must not be silently escaped or dropped; SVG/img displayed
 in code is not a resource reference.
+
+#### Notes segmentation advisory (#46)
+
+`qa/audit.py` emits `W_COLLECTED_NOTES_UNSEGMENTED` through `report.json.audit.findings`;
+it neither directly blocks released nor splits notes automatically. Production supplies
+authoritative kinds and actual rendered Markdown keyed by exact member path (convert source;
+build actual translation/source fallback), never inferring notes from basename/whole-book numbers.
+Without context, explicit endnotes/footnotes/rearnotes collection regions remain supported;
+ordinary body text and code are not scanned as notes.
+
+Constants: 1–3 ASCII digits plus `. ` (not preceded by a word character/dot; MD `\.` also
+counts); MD candidates ≥8 and ≥4× (nonempty p+li count), with a p containing ≥2 candidates,
+or a confirmed-region p ≥1000 characters with ≥2 candidates. Individual semantic notes and code
+are excluded; li protects legitimate lists and multi-paragraph notes need not be one p each.
+Regions without comparable MD use only the long-paragraph criterion. Long bibliographies/quotes
+can false-positive; short text, nonnumeric/four-digit labels and legacy books without authoritative
+regions can be missed.
+
+Nonempty finding `data` preserves `file/unit/input_path/scope/region_id`, `paragraph_count`,
+`list_item_count`, `input_candidate_count` (null without comparable input),
+`rendered_candidate_count`, `longest_paragraph_chars`, `paragraph_indices`, per-paragraph
+`paragraphs[{index,chars,candidate_count}]`, `reasons` and `raw_evidence=structured/raw/`.
+Indices are 1-based across all file p elements. The agent verifies against raw/original pages;
+candidate counts are not actual note counts. Font size/capitalization/quotes/DP cannot decide
+semantics automatically. Final acceptance uses canonical N note/ref identity, content, media,
+href/backlink hard gates, not p count. See `skills/auto-epublizer/references/qa.md` and `notes.md`
+for the workflow and boundaries.
 
 ### G5 Delivery Acceptance (before release)
 

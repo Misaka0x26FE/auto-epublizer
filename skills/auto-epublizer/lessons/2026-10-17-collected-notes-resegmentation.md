@@ -1,4 +1,4 @@
-<!-- i18n: source=2026-10-17-collected-notes-resegmentation.zh.md sha256=fcdf37f892bea6e08a291ffb5c050610698e35da7fc03f68899e9a3146ab9e3e -->
+<!-- i18n: source=2026-10-17-collected-notes-resegmentation.zh.md sha256=42730a41e9e97781410a0310d85e0f1a53387dabe41a9bcf79ab56f84fb109d3 -->
 > **English** | [中文](2026-10-17-collected-notes-resegmentation.zh.md)
 
 # Collected endnotes flattened page-by-page: several notes in one giant paragraph
@@ -101,3 +101,13 @@ notes from whole-book numbers or a filename containing notes.
 - At the time of the report, `qa/audit.py` lacked a collected-notes segmentation advisory;
   the author also reported candidates in 9 other books (75 and 29 paragraphs in two books).
   This historical gap is not a verdict that all those candidates were verified defects.
+
+## Current detection entry (#46)
+
+Production `qa` → `audit_epub` → `report.json.audit.findings` now provides
+`W_COLLECTED_NOTES_UNSEGMENTED`; only authoritative notes build inputs or explicit semantic
+collection regions are scanned. Data retains file/paragraph indices, candidate counts,
+paragraph count, longest paragraph and a `structured/raw/` verification pointer.
+See [qa.md](../references/qa.md) for thresholds, actual source/translation selection and
+false-positive/negative boundaries. It produces candidates only, never automatic splitting
+or direct blocking; canonical N identity/content/media/link acceptance remains mandatory.

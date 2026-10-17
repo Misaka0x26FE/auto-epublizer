@@ -75,3 +75,11 @@
 - 工作根重建脚本：`workspaces/<slug>/preprocessing/tools/rebuild_notes.py`（不在本仓库）。
 - 作者报告时 `qa/audit.py` 尚无 collected-notes 未分段 advisory；另 9 本有同类候选
   （其中两本分别 75 段、29 段）。这是历史检测缺口，不能当作这些候选都已核证的结论。
+
+## 当前检测入口（#46）
+
+现已由生产 `qa` → `audit_epub` → `report.json.audit.findings` 提供
+`W_COLLECTED_NOTES_UNSEGMENTED` warning；权威 notes 构建输入或显式集合语义区才扫描。
+data 保留文件/段索引、候选数、段数、最长段与 `structured/raw/` 核证指针。
+阈值、实际源/译文选择及误报/漏报边界见 [qa.zh.md](../references/qa.zh.md)。
+它只给候选，不自动切注、不直接阻断；最终仍按规范 N 身份/内容/媒体/链接验收。
