@@ -22,11 +22,20 @@ from auto_epublizer.qa.artifacts import artifacts_digest, report_state
 from auto_epublizer.qa.epubcheck import EpubcheckResult
 
 
-def _released_ws(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> RunStore:
-    """构造已放行工作区；仅外部 epubcheck 边界替身，不代表真实检查器验证。"""
+def _released_ws(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, *, relative: bool = False
+) -> RunStore:
+    """构造已放行工作区；仅外部 epubcheck 边界替身，不代表真实检查器验证。
+
+    ``relative=True`` 复现现场用法：工作区路径为**相对路径**（`--workspace workspaces/<slug>`）。
+    """
     src = tmp_path / "book.md"
     src.write_text("# Chapter I\n\nFirst sentence.\n", encoding="utf-8")
-    store = orch.init(str(src), workspace_dir=str(tmp_path / "root"))
+    if relative:
+        monkeypatch.chdir(tmp_path)
+        store = orch.init(str(src), workspace_dir="root")
+    else:
+        store = orch.init(str(src), workspace_dir=str(tmp_path / "root"))
     (store.translation_dir / "body").mkdir(parents=True, exist_ok=True)
     (store.translation_dir / "body" / "ch01.md").write_text(
         "# 第一章\n\n第一句话。\n", encoding="utf-8"
@@ -239,3 +248,26 @@ def test_malformed_insert_json_uses_production_tolerance_in_status(
         assert report_state(store)["stale"] is True
         status = orch.status(store)
         assert any(item["reason"] == "report_stale" for item in status["stale"])
+
+
+def test_relative_workspace_report_is_not_immediately_stale(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """回归：`--workspace` 传**相对路径**时，qa 记录的摘要必须能被 status 复算复现。
+
+    现场：`qa --workspace workspaces/<slug>`（不带 --epub）→ 摘要里**漏掉成品字节** →
+    报告一生成就被判 `artifacts_changed`；`ledger` 据此把已交付书降级为「已建未放行」
+    （实测 26 本全中，而它们的 `report.json` 里 `released` 仍为 true）。
+
+    根因：`qa` 用 `store.output_dir/<slug>.epub` 算摘要，而 `_resolve_epub_path` 把非绝对
+    路径解析为「相对 store.dir」——当 store.dir 本身是相对路径时成品路径已经是相对的，
+    再叠加一次 → 文件不存在 → `epub:` 哈希段为空；而 `report_state` 用记录值
+    （`output/<slug>.epub`）复算时叠加一次恰好命中 → 两者必然不等。
+    """
+    store = _released_ws(tmp_path, monkeypatch, relative=True)
+    state = report_state(store)
+    assert state["stale"] is False, state
+    # 记录的成品路径与摘要必须自洽（不是「碰巧都不存在」）
+    assert store.report_path.is_file()
+    recorded = json.loads(store.report_path.read_text(encoding="utf-8"))
+    assert recorded["artifacts_epub"] == "output/book.epub", recorded["artifacts_epub"]
