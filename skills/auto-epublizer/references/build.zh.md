@@ -57,6 +57,8 @@ OPF 的 `aep:render-mode` 记录本次实际构建入口：`source`（纯源文�
 - **媒体引用边界**（2026-10 D 组修复）：构建只收集 `structured/raw/media/` **之内**（解析符号链接后仍在目录内）的媒体；`../…`、绝对路径、指向工作区外的符号链接一律**拒绝读取**并记入 `events.jsonl` 的 `media_dropped`，随后由 provenance 以 `E_MEDIA_EPUB_LOST` 阻断放行（不静默丢图）。
 - **资源身份**：Markdown/pandoc 源文件路径中的 `%` 是字面字符；HTML 图片 URL 只解码一次；ZIP 成员名不解码。裸文件名、子目录及既有 `media/`、`raw/media/` 路由按实际源文件定位包内路径；注文门、普通正文 provenance 和通用 G4 使用相同的完整路径身份规则，不以 basename 集合豁免错目录图片。图片由媒体门核对，不把 HTML 图片标签当成正文；周围文字仍须逐段保全。
 - **Manifest 标识**：媒体使用稳定顺序分配的合法唯一 XML ID，与资源文件名/URI 分离，避免特殊字符非法和目录路径碰撞；封面元数据关联实际 manifest 项，不从 ID 猜文件名。
+- **代码与 raw HTML**：普通围栏代码完整保留（包括跨空行），转义后显示；其中的 HTML 标签、标题、媒体路径、脚注、锚点和容器标记不生成目录或媒体读取。源文本/Pandoc 解析不得把代码标题切章、把独立数字当页码删除；显式 Pandoc raw HTML 是另一条语法路径。
+- **内联 SVG**：保留真实 XHTML SVG 命名空间，所属内容 manifest 项带 `svg` 属性；本地 SVG `image` 的 href/xlink:href 按上面的完整路径媒体身份核对。缺源媒体、缺 ZIP 项或同 basename 错目录均阻断放行；未绑定 XML 前缀必须失败，不静默转义或丢弃。代码中展示的 SVG/img 不是资源引用。
 - **构建日志署名**（issue #40；不出网）：`EPUB 已生成` 行固定带工具名 + 版本 + 许可证 + 源码地址，工作区 `meta.producer` 与 `run_initialized` 事件给出同一标识，来源可机器判定。
 - **主题**（`--theme` / `config.output.theme`）：`standard`（serif+1.7 行距+缩进+两端对齐+标题居中，
   默认）/ `compact`（sans-serif+1.4+无缩进）/ `spacious`（serif+2.0）。只控排版微调，

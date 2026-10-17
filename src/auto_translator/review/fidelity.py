@@ -22,10 +22,13 @@ from __future__ import annotations
 import re
 from typing import Any
 
+from auto_common.markdown import markdown_chunks
+
 from .models import G0Flag
 
 # 纯 HTML 注释块（前向切块时跳过；正文中的注释残留由 G4 E_RESIDUE 管）
 _COMMENT_BLOCK = re.compile(r"^\s*<!--.*-->\s*$", re.DOTALL)
+_ATX_HEADING = re.compile(r"^#{1,6}[ \t]+\S")
 
 
 def norm_text(text: str) -> str:
@@ -33,14 +36,34 @@ def norm_text(text: str) -> str:
     return re.sub(r"\s+", "", text or "")
 
 
+def is_heading_only(markdown: str | None) -> bool:
+    """非空且仅含规范 ATX 标题；缺源、空文件、缩进代码均不豁免对照表。"""
+    lines = [line for line in (markdown or "").splitlines() if line.strip()]
+    return bool(lines) and all(_ATX_HEADING.match(line) for line in lines)
+
+
 def content_blocks(structured_md: str) -> list[str]:
-    """structured md 的正文块：按空行切，跳标题行（# 开头）、空块、纯注释块。"""
+    """保留标题后无空行的正文和围栏代码，仅跳过标题及纯注释块。"""
     out: list[str] = []
-    for block in re.split(r"\n\s*\n", (structured_md or "").strip("\n")):
-        block = block.strip()
-        if not block or block.startswith("#") or _COMMENT_BLOCK.match(block):
+    lines: list[str] = []
+
+    def flush() -> None:
+        block = "\n".join(lines).strip()
+        if block and not _COMMENT_BLOCK.fullmatch(block):
+            out.append(block)
+        lines.clear()
+
+    for kind, chunk in markdown_chunks(structured_md or ""):
+        if kind != "text":
+            flush()
+            out.append(chunk.strip())
             continue
-        out.append(block)
+        for line in chunk.splitlines():
+            if not line.strip() or _ATX_HEADING.match(line):
+                flush()
+            else:
+                lines.append(line)
+        flush()
     return out
 
 

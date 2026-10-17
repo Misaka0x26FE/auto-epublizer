@@ -20,6 +20,7 @@
 | `references/` | 参考：`user/` 用户上传 + `web/` 网络检索 + `index.jsonl` |
 | `reviews/` | 审校运行记录 `review-<ts>/` |
 | `output/` | 成品 EPUB（二进制，走 Release） |
+| `preprocessing/` | CLI facts + agent 预处理产物；可选 `terminology_exemptions.csv` 按单元记录有据术语豁免 |
 
 ## 如何复现
 
@@ -37,6 +38,10 @@ auto-epublizer qa                     # epubcheck + 解包审计 + 放行报告
 
 > 翻译与审校由**操作本 CLI 的 agent** 完成（本项目遵循单 LLM 原则，CLI 自身不做 LLM 调用）；
 > **没有** `analyze` / `translate` / `review` 子命令。
+
+术语豁免模板只含表头 `unit,source,reason`，没有示例豁免。仅在核对原题/引文等保留依据后，
+填写精确单元 id、规范术语源词与非空理由；误译须修复，不得批量豁免。该表新增、修改或删除
+均使旧 QA 摘要失效，须重新 QA；import、g0 和 QA 均保留带理由的非阻断记录。
 
 ## 许可与版权
 
