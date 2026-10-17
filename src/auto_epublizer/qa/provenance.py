@@ -21,10 +21,12 @@ import zipfile
 from collections import Counter
 from dataclasses import asdict, dataclass, field
 from html import unescape
+from html.parser import HTMLParser
 from pathlib import Path
 from typing import Any
 from urllib.parse import unquote, urlsplit
 
+from auto_common.markdown import inline_code_chunks, markdown_chunks
 from auto_translator.review.fidelity import content_blocks as _paragraphs
 from auto_translator.review.fidelity import norm_text as _norm
 from auto_translator.review.g0 import md_align_drift
@@ -38,8 +40,9 @@ from ..structure import skip_empty_unit
 
 # 图片引用三种形态：pandoc 占位（original-image-src）、HTML <img>、标准 markdown
 _PLACEHOLDER_IMG = re.compile(r'original-image-src="([^"]+)"')
-_HTML_IMG = re.compile(r'<img\b[^>]*?src="([^"]+)"[^>]*>', re.IGNORECASE)
 _MD_IMG = re.compile(r"!\[[^\]]*\]\(([^()]+)\)")
+_HTML_MEDIA = re.compile(r"<(?:img|image)\b[^>]*>", re.IGNORECASE)
+_MEDIA_ATTR = re.compile(r"""([\w:.-]+)\s*=\s*(["'])(.*?)\2""", re.DOTALL)
 _EXTERNAL = re.compile(r"^(https?:|data:)", re.IGNORECASE)
 
 
@@ -88,25 +91,40 @@ class ProvenanceResult:
         return asdict(self)
 
 
+def _html_media_urls(html: str) -> list[str]:
+    refs: list[str] = []
+    for image in _HTML_MEDIA.finditer(html):
+        attrs = {m.group(1).lower(): m.group(3) for m in _MEDIA_ATTR.finditer(image.group(0))}
+        ref = attrs.get("src") or attrs.get("href") or attrs.get("xlink:href")
+        if ref:
+            refs.append(ref)
+    return refs
+
+
 def _img_refs(md_text: str, media_root: Path) -> list[str]:
     """按真实文件定位完整媒体身份；仅 HTML URL 解码，保留源路径字面百分号。"""
+    md_text = "".join(
+        chunk
+        if kind == "raw"
+        else "".join(part for is_code, part in inline_code_chunks(chunk) if not is_code)
+        for kind, chunk in markdown_chunks(md_text or "")
+        if kind != "code"
+    )
     refs: list[str] = []
-    for pattern, is_url in (
-        (_PLACEHOLDER_IMG, False),
-        (_HTML_IMG, True),
-        (_MD_IMG, False),
-    ):
-        for match in pattern.finditer(md_text or ""):
-            src = match.group(1).strip().replace("\\", "/")
-            if not src or _EXTERNAL.match(src):
+    sources = [(m.group(1), False) for m in _PLACEHOLDER_IMG.finditer(md_text or "")]
+    sources.extend((src, True) for src in _html_media_urls(md_text or ""))
+    sources.extend((m.group(1), False) for m in _MD_IMG.finditer(md_text or ""))
+    for source, is_url in sources:
+        src = source.strip().replace("\\", "/")
+        if not src or _EXTERNAL.match(src):
+            continue
+        if is_url:
+            url = urlsplit(unescape(src))
+            if url.scheme or url.netloc:
                 continue
-            if is_url:
-                url = urlsplit(unescape(src))
-                if url.scheme or url.netloc:
-                    continue
-                src = unquote(url.path)
-            resolved = resolve_media_path(src, media_root)
-            refs.append(f"media/{resolved.relative_to(media_root).as_posix()}" if resolved else src)
+            src = unquote(url.path)
+        resolved = resolve_media_path(src, media_root)
+        refs.append(f"media/{resolved.relative_to(media_root).as_posix()}" if resolved else src)
     return refs
 
 
@@ -144,36 +162,128 @@ def _opf_dir(zf: zipfile.ZipFile) -> str:
     return posixpath.dirname(m.group(1)) if m else ""
 
 
-def _strip_tags(html: str) -> str:
-    """剥 XHTML 标签取 body 文本（实体原样保留；md/EPUB 两侧同函数保证可比较）。"""
-    body = re.search(r"<body[^>]*>(.*?)</body>", html or "", re.DOTALL)
-    inner = body.group(1) if body else (html or "")
-    return re.sub(r"<[^>]+>", "", inner)
+class _ProseText(HTMLParser):
+    """Extract prose without semantic note UI; never discard an ordinary superscript."""
+
+    _VOID = frozenset(
+        {
+            "area",
+            "base",
+            "br",
+            "col",
+            "embed",
+            "hr",
+            "img",
+            "input",
+            "link",
+            "meta",
+            "param",
+            "source",
+            "track",
+            "wbr",
+        }
+    )
+
+    def __init__(self, *, strip_markers: bool) -> None:
+        super().__init__(convert_charrefs=True)
+        self.strip_markers = strip_markers
+        self.stack: list[tuple[str, bool, bool]] = []
+        self.parts: list[str] = []
+        self.footnotes = 0
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        attributes = dict(attrs)
+        types = set((attributes.get("epub:type") or "").split())
+        roles = set((attributes.get("role") or "").split())
+        classes = set((attributes.get("class") or "").split())
+        parent_skip = self.stack[-1][1] if self.stack else False
+        parent_code = self.stack[-1][2] if self.stack else False
+        if tag == "aside" and "footnote" in types and not parent_skip and not parent_code:
+            self.footnotes += 1
+        skip = (
+            parent_skip
+            or tag in {"head", "script", "style"}
+            or (
+                not parent_code
+                and (
+                    bool(types & {"noteref", "footnote", "endnote"})
+                    or bool(roles & {"doc-noteref", "doc-footnote", "doc-endnote"})
+                    or "noteref" in classes
+                )
+            )
+        )
+        if tag not in self._VOID:
+            self.stack.append((tag, skip, parent_code or tag in {"code", "pre"}))
+
+    def handle_startendtag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        self.handle_starttag(tag, attrs)
+        if tag not in self._VOID:
+            self.handle_endtag(tag)
+
+    def handle_endtag(self, tag: str) -> None:
+        for index in range(len(self.stack) - 1, -1, -1):
+            if self.stack[index][0] == tag:
+                del self.stack[index:]
+                break
+
+    def handle_data(self, data: str) -> None:
+        if self.stack and self.stack[-1][1]:
+            return
+        in_code = self.stack[-1][2] if self.stack else False
+        if self.strip_markers and not in_code:
+            data = re.sub(r"\[\^[^\]]+\]", "", data)
+        self.parts.append(data)
+
+
+def _prose_text(html: str, *, strip_markers: bool = False) -> str:
+    parser = _ProseText(strip_markers=strip_markers)
+    parser.feed(html)
+    parser.close()
+    return "".join(parser.parts)
+
+
+def _legacy_footnote_count(md: str) -> int:
+    """仅统计代码外的源定义；不调用渲染器构造期望注文。"""
+    total = 0
+    for kind, chunk in markdown_chunks(md):
+        if kind != "text":
+            continue
+        visible = "".join(
+            re.sub(r"\S", "x", part) if is_code else part
+            for is_code, part in inline_code_chunks(chunk)
+        )
+        total += len(re.findall(r"(?m)^\s*\[\^[^\]]+\]:", visible))
+    return total
 
 
 def _probe_missing(md_text: str, doc_text_norm: str) -> tuple[list[str], int]:
     """EPUB 正文段落探针：md 每段（用 build 同款渲染器渲染）应出现在成品文档中。
 
     与 build 共用 ``markdown_to_xhtml``，变换（标记清理/内联/表格/verse）天然一致；
-    跳过标题行与脚注定义块（各有专责校验）。返回（未命中段落头列表, 探针段总数）。
+    跳过标题行与脚注定义块；注码展示和注文由独立注释门核对，不作正文覆盖证据。
     """
     from ..build.html import markdown_to_xhtml
 
     missing: list[str] = []
     total = 0
-    for block in re.split(r"\n\s*\n", (md_text or "").strip("\n")):
+    for block in _paragraphs(md_text or ""):
         stripped = block.strip()
-        if not stripped or stripped.startswith("#") or stripped.startswith("[^"):
+        if re.match(r"^\[\^[^\]]+\]:", stripped):
             continue
-        # 构建将 HTML img 作为媒体而非正文；资源另门核对，周围正文仍须完整命中。
-        rendered = _strip_tags(markdown_to_xhtml(_HTML_IMG.sub("", block)))
-        # build 把 `[^N]` 渲染成 `<sup class="noteref"><a …>[N]</a></sup>`，
-        # 剥标签后**可见 `[N]`**。探针必须映成同样的 `[N]`。
-        # ⚠ 原实现 `re.sub(r"\[\^[^\]]+\]", "", …)` 把注码整个删掉，于是
-        #   成品里明明有的 `[N]` 在探针串中缺席 → **凡正文含行内注码的段一律
-        #   判为「成品缺失」**（reichsarbeitsministerium 实测 178/3540 段，
-        #   epub_coverage 0.95，却一条内容都没丢）。
-        rendered = re.sub(r"\[\^([^\]]+)\]", r"[\1]", rendered)
+        # collect_media consumes raw IMG tags before Markdown rendering. Mirror only
+        # that media omission, preserving display-code literals and all nearby prose.
+        block = "".join(
+            chunk
+            if kind in {"code", "raw"}
+            else "".join(
+                part if is_code else re.sub(r"<img\b[^>]*>", "", part, flags=re.IGNORECASE)
+                for is_code, part in inline_code_chunks(chunk)
+            )
+            for kind, chunk in markdown_chunks(block)
+        )
+        # 期望只移除非代码引用标记，保留相邻正文；不从实际产物推断注码编号。
+        # 成品侧则按 XHTML 节点语义排除 noteref/footnote/endnote。
+        rendered = _prose_text(markdown_to_xhtml(block), strip_markers=True)
         probe = re.sub(r"\s+", "", rendered)
         if not probe:
             continue
@@ -345,13 +455,16 @@ def audit_provenance(
             if not zpath or zpath not in zip_names:
                 continue
             html = zf.read(zpath).decode("utf-8")
-            doc_text[name] = re.sub(r"\s+", "", _strip_tags(html))
+            prose = _ProseText(strip_markers=False)
+            prose.feed(html)
+            prose.close()
+            doc_text[name] = re.sub(r"\s+", "", "".join(prose.parts))
             doc_imgs[name] = Counter(
                 member
-                for src in re.findall(r'<img\b[^>]*?src="([^"]+)"', html, re.IGNORECASE)
-                if (member := epub_member_path(zpath, src)) is not None
+                for src in _html_media_urls(html)
+                if (member := epub_member_path(zpath, src)) is not None and member in zip_names
             )
-            doc_fn[name] = len(re.findall(r"<aside[^>]*epub:type=\"footnote\"", html))
+            doc_fn[name] = prose.footnotes
 
     spine_docs = [Path(unquote(h)).name for h in spine]
     spine_set = set(spine_docs)
@@ -432,7 +545,7 @@ def audit_provenance(
                 result.epub_media_missing.append(f"{e['id']}:{ref}")
         # 仅有效登记上下文可将脚注数量移交独立成品注释门。
         if not notes_registered:
-            md_defs = len(re.findall(r"(?m)^\s*\[\^[^\]]+\]:", md_text))
+            md_defs = _legacy_footnote_count(md_text)
             epub_defs = doc_fn.get(name, 0)
             if md_defs != epub_defs:
                 result.epub_footnotes_missing.append(

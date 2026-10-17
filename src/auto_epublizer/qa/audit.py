@@ -5,9 +5,11 @@
 from __future__ import annotations
 
 import re
+import xml.etree.ElementTree as ET
 import zipfile
 from collections import Counter
 from dataclasses import dataclass, field
+from html.parser import HTMLParser
 from pathlib import Path
 
 from ..fingerprint import strip_fingerprint_comments
@@ -43,13 +45,48 @@ _MD_RESIDUE: tuple[tuple[str, re.Pattern[str]], ...] = (
     # nazi-crimes-occupied-ussr-1 1 处，epubcheck 与 G0 标题计数都不报）。
     # 判据限定在**段首**，以免误报 Pentagon Papers 正文里合法的文件编号 `# 1`。
     ("段首ATX标题", re.compile(r"<p[^>]*>\s*#{1,6}\s+\S")),
-    # 表格单元格里的 ATX 标记：GFM 单元格内无块级标题，渲染层按字面输出（BLP 附录 2）。
-    ("单元格ATX", re.compile(r"<t[dh][^>]*>\s*(?:<strong>|<em>|<code>)?\s*#{1,6}\s+\S")),
     # 剥离 id 后残留的空 pandoc span（`[]{#d1}` 只剥了 `{#d1}`），
     # 以及抽取丢失井号的锚点 `[]{GBS.0014.05}`。id 字符集不含空格，
     # 故 `[]{#word illegible}` 之类校勘标记不会被本条误判。
     ("空span", re.compile(r"\[\]")),
 )
+
+
+class _NonCodeMarkup(HTMLParser):
+    """保留原始标记供残留审计，但不把真实 code/pre 的显示内容当 Markdown。"""
+
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=False)
+        self.parts: list[str] = []
+        self.code_depth = 0
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        if self.code_depth:
+            self.code_depth += 1
+        elif tag in {"pre", "code"}:
+            self.code_depth = 1
+        else:
+            self.parts.append(self.get_starttag_text())
+
+    def handle_endtag(self, tag: str) -> None:
+        if self.code_depth:
+            self.code_depth -= 1
+        else:
+            self.parts.append(f"</{tag}>")
+
+    def handle_startendtag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        if not self.code_depth and tag not in {"pre", "code"}:
+            self.parts.append(self.get_starttag_text())
+
+    def handle_data(self, data: str) -> None:
+        if not self.code_depth:
+            self.parts.append(data)
+
+    def handle_entityref(self, name: str) -> None:
+        self.handle_data(f"&{name};")
+
+    def handle_charref(self, name: str) -> None:
+        self.handle_data(f"&#{name};")
 
 
 # ── 版面型候选（issue #38）───────────────────────────────────────────────
@@ -289,23 +326,37 @@ def audit_epub(
                 if full not in names:
                     result.add("error", "E_LANDMARKS_HREF", f"landmarks 链接无法解析：{href}")
 
-        # 4b. 内容文档 <img src> 引用必须存在于包内（媒体悬空检测）；
-        #     外链（http/data）为 error——媒体必须打包进 EPUB（阅读器普遍离线，远程资源=丢图）
+        # 4b. XHTML img 与 SVG image 的本地媒体引用必须存在，URL 共用一次解码规则。
         for name in names:
             if not name.endswith(".xhtml"):
                 continue
-            content = zf.read(name).decode("utf-8")
-            for src in re.findall(r'<img\b[^>]*?src="([^"]+)"', content):
+            try:
+                root = ET.fromstring(zf.read(name))
+            except ET.ParseError as exc:
+                result.add("error", "E_XHTML_XML", f"内容文档 XML 无效：{name}：{exc}")
+                continue
+            sources = [
+                image.attrib["src"]
+                for image in root.iter("{http://www.w3.org/1999/xhtml}img")
+                if "src" in image.attrib
+            ]
+            for image in root.iter("{http://www.w3.org/2000/svg}image"):
+                sources.extend(
+                    image.attrib[attr]
+                    for attr in ("href", "{http://www.w3.org/1999/xlink}href")
+                    if attr in image.attrib
+                )
+            for src in sources:
                 if _HTTPS.match(src):
                     result.add(
                         "error",
                         "E_IMG_REMOTE",
-                        f"img src 为外部链接（媒体必须打包进 EPUB）：{name} -> {src}",
+                        f"图片引用为外部链接（媒体必须打包进 EPUB）：{name} -> {src}",
                     )
                     continue
                 full = epub_member_path(name, src)
                 if full not in names:
-                    result.add("error", "E_IMG_SRC", f"img src 无法解析：{name} -> {src}")
+                    result.add("error", "E_IMG_SRC", f"图片引用无法解析：{name} -> {src}")
 
         # 5. URL 安全：无 javascript:/data: 注入
         for name in names:
@@ -407,6 +458,9 @@ def audit_epub(
             content = strip_fingerprint_comments(zf.read(name).decode("utf-8"))
             if "<!--" in content:
                 result.add("error", "E_RESIDUE", f"HTML 注释残留：{name}")
+            prose = _NonCodeMarkup()
+            prose.feed(content)
+            content = "".join(prose.parts)
             for label, pattern in _MD_RESIDUE:
                 if pattern.search(content):
                     result.add("warning", "W_RESIDUE", f"markdown 标记残留（{label}）：{name}")

@@ -1,4 +1,4 @@
-<!-- i18n: source=translation.zh.md sha256=7377f5e7ecddf3b9f6d3a7dbcb235f9d88d6ac085d8460bd969ad356d61ecefe -->
+<!-- i18n: source=translation.zh.md sha256=d9a6270cf6319d29a61ee6525b92b1d1f40045f6822b4e9caaf77a497595b68b -->
 > **English** | [中文](translation.zh.md)
 
 # Translation (chunk translation + sentence alignment + terminology loop)
@@ -47,6 +47,11 @@ When both exist, `analysis/` takes priority; the pure-agent preprocessing path u
 - Paragraph-level equal length: one source paragraph usually corresponds to one sentence
   (or several); splits/merges are declared in `note`; `note` records splits/merges/
   omissions/doubts (the prefix `corr:wrong→right` records source-erratum precedents).
+
+Empty align is allowed only when **both existing, nonempty** `structured/` and
+`translation/` documents contain only canonical ATX heading lines and blanks. Missing/empty
+source, body immediately after a heading without a blank, or extra target body is not exempt.
+Import and G0/QA share this test; per-level `heading` conservation still applies.
 
 ## Handling special segments (PDF content-extraction artifacts)
 
@@ -118,6 +123,14 @@ not release (`glossary_conflict_open`).
 - Appellations/honorifics/speech tics/fixed expressions (source-only types) are
   classification annotations of the genre profile; the terminology hit check uniformly
   matches all types by literal/word boundary.
+- For evidence-backed retention of original titles/quotations, use the optional
+  `preprocessing/terminology_exemptions.csv` with required columns `unit,source,reason`.
+  Match the exact unit and canonical glossary source; record source-verification evidence
+  in `reason`, never blanket-waive real mistranslations. Fully blank rows are skipped;
+  partial rows or whitespace-only reasons fail; an absent file means no exemptions.
+  A hit is `terminology_exempt` (`blocking=false`, `data.reason`), visible in import
+  warnings, standalone `g0`, and QA `g0_flags`. Other terminology violations still block.
+  See `qa.md` for report invalidation.
 - **Excerpt `src` verbatim**: each line's `src` in align must be taken verbatim from
   `structured/` (a heading line can also serve as src) — import performs source-fidelity
   validation; a rewritten/truncated/fabricated src blocks registration (for source errata
@@ -136,6 +149,7 @@ not release (`glossary_conflict_open`).
 
 Unit: `split → analyzed → translated → aligned → reviewed → built`. `import` sets a
 completed unit to `aligned`; repeated import is harmless (idempotent). After review passes,
-`import --reviewed` advances it to `reviewed` (idempotent); import skips re-importing
-`reviewed`/`built` units (re-importing a revised draft must first go through review again).
+`import --reviewed` can advance newly validated units to `reviewed` in the same call
+(idempotent); import normally skips `reviewed`/`built` units. Failed forced revalidation
+must not promote a unit back to reviewed.
 

@@ -25,8 +25,7 @@ metadata:
 2. **`source/` 与 `references/user/` 绝不改动**。
 3. **结构（切章/标题层级）翻译前定稿**；中途改动必须重走受影响单元（重 ingest +
    重译），旧译文不作数。
-4. **G0 术语命中/标记守恒/脚注守恒/源保真/表格形状是缺陷不是建议**，放行前必须
-   清零；长度比才是 advisory。
+4. **G0 的 blocking 术语/标记/脚注/源保真/表格结构违例是缺陷不是建议**，放行前须清零；长度比、前向缺块和经取证登记的 `terminology_exempt` 是 advisory，处理见 `references/translation.md`、`references/review.md`。
 5. **EPUB 不是真相源**——发现成品问题改 `translation/` + `align/` 后重新 build，
    不手补成品文件。
 6. **`qa` released ≠ 可发布**：发布前必须过 `references/publishing.md` 的
@@ -56,12 +55,12 @@ multimodal / search**（能否看图、有无搜索工具，CLI 无法探测）�
 | 语义整备：解析缺陷修复 / OCR 修正 / 结构重切（信号触发；OCR 必做） | `references/repair.md` |
 | 四层结构归类、清洗、页眉页脚/页码剔除、溯源 | `references/structure.md` |
 | 分层理解、术语播种、语言/体裁检测 | `references/analysis.md` |
-| 切片翻译、句级对齐、术语三态闭环、agent 手写翻译路径 | `references/translation.md` |
-| 注释结构化与绑定（candidate_id → note/ref；跨页、尾注、孤儿的位置证据契约） | `references/notes.md` |
-| 六道关 QC（G0–G5）操作指引 | `references/review.md` |
+| 切片翻译、纯标题空 align、`unit,source,reason` 术语豁免及三入口 advisory | `references/translation.md` |
+| 注释结构化与绑定、稳定 ref、上标/OCR 取证边界 | `references/notes.md` |
+| 六道关 QC（G0–G5）、blocking/advisory 处理 | `references/review.md` |
 | 交付前全量校验（qa 之后、交付之前，强制） | `references/delivery.md` |
-| EPUB 封装、确定性构建、成品软件指纹与独立制作声明（不改变书稿版权） | `references/build.md` |
-| epubcheck + 解包审计、质量报告 | `references/qa.md` |
+| EPUB 封装、代码/raw HTML、SVG 命名空间/manifest/媒体身份、软件指纹 | `references/build.md` |
+| epubcheck + 解包审计、正文/注文独立对账、豁免变更使报告失效 | `references/qa.md` |
 | 文体档案（novel/academic/paper/poetry/newspaper）应用 | `references/style.md` |
 | 放行条件全集 / 错误码速查 / 排障判读 | `references/invariants.md` |
 | 发布/分发成品（GitHub release / 私有分发）、权属与隐私 | `references/publishing.md` |

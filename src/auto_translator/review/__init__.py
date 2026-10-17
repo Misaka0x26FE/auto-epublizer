@@ -13,7 +13,7 @@ G1–G3 的语义审校由操作 CLI 的 agent 完成：agent 按 G0–G3 语义
 from __future__ import annotations
 
 from .convergence import ConvergenceResult, ConvergenceState, advance, summarize
-from .fidelity import all_lines, content_blocks, fidelity_flags, norm_text
+from .fidelity import all_lines, content_blocks, fidelity_flags, is_heading_only, norm_text
 from .g0 import (
     MIN_SRC_CHARS,
     annotate_correction_notes,
@@ -62,6 +62,7 @@ __all__ = [
     "fidelity_flags",
     "footnote_numbers",
     "g0_unit_flags",
+    "is_heading_only",
     "length_ratio",
     "markers_conserved",
     "md_align_drift",

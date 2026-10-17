@@ -1,4 +1,4 @@
-<!-- i18n: source=qa.zh.md sha256=8b12fb3c26487022845a2246dcec83970e22c31a8309d9ca23fa1c66752f2ee1 -->
+<!-- i18n: source=qa.zh.md sha256=ef63e6940a575c103fadcaa1eab5a9c6275ed396332d846129b1551c4fd86502 -->
 > **English** | [中文](qa.zh.md)
 
 # QA (epubcheck + unpack audit)
@@ -64,8 +64,8 @@ Standard EPUB note acceptance is mandatory offline: independently verify current
 
 - `g4_epubcheck_errors == 0` (epubcheck actually ran)
 - `g4_audit == "pass"` (unpack audit zero error)
-- G0 terminology hits cleared (`g0_terminology_open == 0`; length-ratio warnings are the
-  advisory ones)
+- Blocking G0 terminology hits cleared (`g0_terminology_open == 0`; evidence-registered
+  `terminology_exempt` is excluded; see `translation.md`)
 - G0 structural violations cleared (`g0_structure_open == 0`: **blocking** align/marker/
   footnote/heading/table/fidelity; fidelity forward missing blocks and length ratios are
   advisory and not counted)
@@ -96,6 +96,18 @@ Standard EPUB note acceptance is mandatory offline: independently verify current
 > downgraded to `built_not_released`); rerun `build`/`qa` to restore it. Re-running qa also
 > rejects an old product that disagrees with the current artifacts (coverage/drift/note
 > content reconciliation).
+
+Creating, changing or removing `preprocessing/terminology_exemptions.csv` also invalidates
+the digest. Historical released fields are not rewritten, but status becomes stale /
+`built_not_released`; rerun QA.
+
+Body and note reconciliation are independent: source labels/ref_ids are not displayed
+note numbers. Semantic noterefs and footnote/endnote content are excluded from body
+coverage; the independent notes gate checks references, content, hrefs and backlinks.
+Note text cannot supply adjacent lost prose. Literal code and ordinary mathematical
+superscripts remain body content; body immediately after a heading cannot be skipped
+with that heading. Preserve literal table `# 1` and inline-code `# comment`, not strip
+them or declare them residue.
 
 When `released` is False, look at `released_reason` to determine the cause:
 `unresolved_confirmed` (G2 confirmed but unrevised) / `structure_open` (includes empty or
