@@ -7,6 +7,8 @@ from __future__ import annotations
 import os
 import re
 
+from auto_common.markdown import markdown_chunks, paragraph_blocks
+
 from .models import KIND_HEADING, KIND_TEXT, SourceDocument, SourceSegment, SourceUnit
 
 _MD_HEADING = re.compile(r"^(#{1,6})\s+(.*\S)\s*$")
@@ -28,30 +30,25 @@ def _is_heading(line: str) -> tuple[str, int] | None:
     return None
 
 
-def _split_paragraphs(block: str) -> list[str]:
-    parts = re.split(r"\n\s*\n", block)
-    return [p.strip("\n") for p in parts if p.strip()]
-
-
 def read_text(path: str) -> SourceDocument:
     with open(path, encoding="utf-8") as f:
         content = f.read()
-    lines = content.splitlines()
     book_title = os.path.splitext(os.path.basename(path))[0]
 
     raw_units: list[tuple[str | None, int, list[str]]] = []
     current_title: str | None = None
     current_level = 1
     current_body: list[str] = []
-    for line in lines:
-        info = _is_heading(line)
-        if info is not None:
-            if current_title is not None or current_body:
-                raw_units.append((current_title, current_level, current_body))
-            current_title, current_level = info
-            current_body = []
-        else:
-            current_body.append(line)
+    for kind, chunk in markdown_chunks(content):
+        for line in chunk.splitlines():
+            info = _is_heading(line) if kind == "text" else None
+            if info is not None:
+                if current_title is not None or current_body:
+                    raw_units.append((current_title, current_level, current_body))
+                current_title, current_level = info
+                current_body = []
+            else:
+                current_body.append(line)
     if current_title is not None or current_body:
         raw_units.append((current_title, current_level, current_body))
 
@@ -64,7 +61,7 @@ def read_text(path: str) -> SourceDocument:
             segments.append(SourceSegment(index=idx, source=explicit_title, kind=KIND_HEADING))
             idx += 1
         body = "\n".join(body_lines)
-        for para in _split_paragraphs(body):
+        for para in paragraph_blocks(body):
             segments.append(SourceSegment(index=idx, source=para, kind=KIND_TEXT))
             idx += 1
         units.append(

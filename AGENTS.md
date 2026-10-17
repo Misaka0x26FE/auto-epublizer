@@ -1,4 +1,4 @@
-<!-- i18n: source=AGENTS.zh.md sha256=c1859c169484cac80e0334aa04fec38e4331378d95f4d2d3015dae9dd0233b44 -->
+<!-- i18n: source=AGENTS.zh.md sha256=0f0581d39440b4550f8e35a3f711412048330cf9cb0b37f072df1e28c3c0ffe8 -->
 > **English** | [中文](AGENTS.zh.md)
 
 # auto-epublizer repository guide (for coding agents developing/maintaining this project)
@@ -146,7 +146,7 @@ auto-epublizer import [--unit <id>] [--terms preprocessing/terms.csv] [--reviewe
                                  # acceptance; reviewed/built skip re-import); --force re-runs the
                                  # blocking validation on reviewed/built units (post-delivery
                                  # revision re-registration; pass keeps state, failure rolls back to aligned)
-auto-epublizer g0                # run static validation right after translating/importing (terminology hits are real defects to verify one by one; length ratio is only advisory)
+auto-epublizer g0                # validate after translation/import (verify terminology individually; reasoned per-unit exemptions are advisory)
 
 
 # 6. Review (agent task): the agent performs G1–G3 semantic review itself and writes
@@ -181,6 +181,26 @@ state advances only through CLI commands (`import` registers translation artifac
 agent-written artifacts enter the CLI; review artifacts `result.json` are hand-written by
 the agent and state advances per their contract). The agent never edits state by hand; all
 artifacts flow into the same G0 validation, state machine, terminology loop, build and QA.
+
+**G0 / artifact fidelity contract**: optional `preprocessing/terminology_exemptions.csv`
+requires `unit,source,reason`, matching the exact unit and canonical glossary source;
+reasons must not be blank. The agent verifies evidence for retained original titles/
+quotations, never blanket-waives mistranslations. `terminology_exempt` retains
+`blocking=false` and `data.reason` across import, g0 and QA. Creating/changing/removing
+the CSV invalidates the report digest; historical released reports remain unchanged and
+QA must run again. Empty align is allowed only when both structured and translation
+documents exist, are nonempty and contain only canonical ATX headings and blank lines;
+heading levels remain conserved. Missing source or body immediately after a heading is
+not exempt. Preserve fenced code (including blank lines and apparent headings/page
+numbers) and inline code literally, without generating navigation, media reads or
+residue; table `# 1` is not a note reference. Preserve `[^label]` / `[^ref-ID]`, never
+offset missing citations with Unicode superscripts; ordinary mathematical superscripts
+remain body content. Body QA excludes real semantic notes, does not equate source labels
+with displayed numbers, and cannot use note text to fill missing prose. SVG requires
+the real namespace and `svg` on its owning manifest item. Match local href/xlink:href
+resources by full path identity, decode HTML URLs once and treat ZIP names literally;
+same-basename files in another directory cannot substitute. Escapes outside the root,
+symlink escapes, missing resources and unbound XML prefixes must not silently pass.
 
 ## skills/ directory (installable instructions for downstream agents)
 
@@ -273,6 +293,7 @@ stay Chinese-only.
 │                       + repairs.jsonl (optional semantic-repair trace: done/unresolved)
 │                       + structure.csv (optional structural-rebuild list, used by restructure)
 │                       + note_candidates.jsonl (books with notes: candidates + dispositions exported by notes candidates)
+│                       + terminology_exemptions.csv (optional: unit,source,reason; evidence-backed per-unit terminology exemptions)
 ├── publication.json  authoritative index (DC metadata + content tree + state machine + config snapshot)
 ├── .progress.json    (reserved) batch-level checkpoint; not written today, so resume = unit-level skip
 ├── glossary.db       terminology-store internal index (optional, SQLite)

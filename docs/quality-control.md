@@ -1,4 +1,4 @@
-<!-- i18n: source=quality-control.zh.md sha256=6986962b9869bf28a7135e07dc71bcd6fd716f0b5629be38e6162dc6337d89f8 -->
+<!-- i18n: source=quality-control.zh.md sha256=3bcc7908d781e46fa0edee60d1d99578ef579adcd5788ba0a677de855c6f67fa -->
 > **English** | [中文](quality-control.zh.md)
 
 # Quality-Control Process Design (auto-epublizer)
@@ -69,7 +69,7 @@ Input: `translation/align/<id>.jsonl` + `structured/<id>.md` + `analysis/glossar
 | Source fidelity | each align line's normalized src string must be among all non-empty lines of structured (reverse = hard, import blocked); structured body blocks must be in the concatenation of align src (forward = advisory; legitimate removals such as leftover copyright sentences do not block) | reverse mismatch blocks; forward missing blocks warn |
 | md↔align consistency | translation md (build input) and align tgt (validation baseline) are identical after normalization (strip headings/footnote definitions/markers/whitespace; tolerance conventions see g0) | mismatch = one side is missing content → block that unit's import (delivery audit S1.1) |
 | Length ratio | `len(tgt)/len(src)` falls within `[0.30, 3.0]`; translation non-empty | warning, handed to G1 for re-check |
-| Terminology hit | when the body contains a glossary `source`, the translation contains the corresponding `target` (NFKC normalization + word boundary) | warning, handed to G1 for attribution |
+| Terminology hit | when the body contains a glossary `source`, the translation contains the corresponding `target` (NFKC normalization + word boundaries, respecting hyphen compounds) | verify and clear non-exempt hits individually; evidence-backed per-unit exemptions are advisory |
 | Erratum traceability | a sentence src hits a known typographic-error precedent (IDG→IDF etc.) → align `note` prefixed with `corr:` | trace, no warning |
 
 > Implementation status: the five items above are wired up (`g0_unit_flags` /
@@ -80,6 +80,32 @@ Input: `translation/align/<id>.jsonl` + `structured/<id>.md` + `analysis/glossar
 > residue is a semantic judgement and belongs to G1 (agent task).
 
 G0 burns no tokens and issues no "verdict", only **deterministic warnings**, serving as input leads for G1.
+
+Optional `preprocessing/terminology_exemptions.csv` requires headers `unit,source,reason`
+and matches the exact unit and canonical glossary source. Entirely blank rows are
+skipped; partial rows, missing fields and whitespace-only reasons fail. The agent must
+verify evidence for retained original titles/quotations, not blanket-waive mistranslations.
+An exemption emits `terminology_exempt` (`blocking=false`, `data.reason`), traceable in
+import warnings, standalone g0 and QA `g0_flags`. Creating, changing or removing this CSV
+invalidates the report digest. Old released reports remain historical; status becomes
+stale / built_not_released until fresh QA establishes current release evidence.
+
+The only heading-only empty-align exception requires both structured and translation
+files to exist, be nonempty and contain only canonical ATX headings and blank lines;
+heading-level conservation still applies. Missing/empty source, body immediately after a
+heading without a blank line, or extra target body is not exempt. Import and G0/QA share
+this predicate. `import --reviewed` may advance newly validated units in the same call;
+failed forced revalidation cannot promote a unit back to reviewed.
+
+Never replace `[^label]` / `[^ref-ID]` with Unicode superscripts to bypass conservation:
+ordinary mathematical superscripts are not citations and cannot offset missing markers.
+Quotes/ellipses before a citation do not automatically establish an OCR-noise exemption.
+Ambiguity requires source-evidence repair and a registered note graph. Literal table
+`# 1` and inline-code `# comment` must not be stripped. Source ingest, G0, rendering and
+QA share pure syntax helpers in `auto_common/markdown.py`; translator must not import
+epublizer. Ordinary fenced code stays intact across blank lines: apparent headings, page
+numbers, HTML, media paths, footnotes and container markers are escaped display text,
+not navigation, resource reads or residue. Explicit Pandoc raw HTML is handled separately.
 
 ### G1 Per-Batch Bilingual Review (cheap-tier Reviewer)
 
@@ -135,6 +161,18 @@ Autofix (optional): first write a recoverable index `reviews/<ts>/autofix/index.
 - Provenance audit (`qa/provenance.py`, postprocessing-spec §2): tri-lateral reconciliation, media provenance, per-segment coverage, TOC hierarchy — see G5.
 - **Finished-product presentation reconciliation** (delivery audit S1.2, `qa/provenance.py`): md image references ↔ product `<img>` (`E_MEDIA_EPUB_LOST`, closing off silent build drops), md footnote-definition count ↔ product `<aside>` count (`E_FN_EPUB_LOST`), full body-paragraph probe (`E_EPUB_PARA_LOST` + `epub_coverage`, reusing the same renderer as build); md↔align consistency fallback (`E_ALIGN_MD_DRIFT`). A reference dropped at build time is traced by writing a `media_dropped` event to `events.jsonl`.
 
+Body coverage does not equate source label / ref_id with the displayed note number.
+Actual semantic noteref and footnote/endnote content are excluded from body coverage;
+the independent notes gate owns reference, content, href and backlink checks. Note text
+cannot fill adjacent lost prose. Literal code and ordinary mathematical superscripts
+remain body content; body immediately following a heading must not be skipped with it.
+Inline SVG requires the real XHTML SVG namespace and `svg` on its owning content
+manifest item. Local SVG image href/xlink:href resources are reconciled like images by
+full path identity (HTML URLs decoded once; ZIP names literal). Missing source/ZIP media,
+same-basename substitutes in another directory, outside-root and symlink escapes block
+release. Unbound XML prefixes must not be silently escaped or dropped; SVG/img displayed
+in code is not a resource reference.
+
 ### G5 Delivery Acceptance (before release)
 
 - Aggregate G0–G4 + the provenance audit into `report.json`:
@@ -156,7 +194,7 @@ Autofix (optional): first write a recoverable index `reviews/<ts>/autofix/index.
 - Release checklist verification: product naming (`<slug>.epub`, `W_NAMING`), metadata (all DC items present), cover, copyright attribution, license.
 - **Release conditions** (aligned with docs/postprocessing-spec.md §5 and `qa/report.py::generate_report`):
   `g2_confirmed == 0` or all revised (`g3_patched`);
-  **`g0_terminology_open == 0`** (a G0 terminology hit is a real defect — the translation is missing a glossary source term and must be verified and cleared one by one, otherwise `released_reason=terminology_open`);
+  **`g0_terminology_open == 0`** (non-exempt hits must be verified and cleared individually; reasoned per-unit `terminology_exempt` flags are nonblocking, otherwise `released_reason=terminology_open`);
   **`g0_structure_open == 0`** (marker/footnote conservation violations; `structure_open`);
   **`glossary_conflicts_open == 0`** (undecided terminology conflicts; `glossary_conflict_open` — no release before the arbitration is written back to glossary.csv);
   **`catalog_unresolved_open == 0`** (open items of the source inventory when `catalog.csv` exists; `catalog_unresolved_open` — unresolved content must not be released);

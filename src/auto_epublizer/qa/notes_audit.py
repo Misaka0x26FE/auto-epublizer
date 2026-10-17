@@ -33,11 +33,11 @@ _ANCHOR_RE = re.compile(r"<a\b[^>]*>", re.IGNORECASE)
 _ASIDE_RE = re.compile(
     r'<aside\b([^>]*epub:type="footnote"[^>]*)>(.*?)</aside>', re.DOTALL | re.IGNORECASE
 )
-_ATTR_RE = re.compile(r'([\w:.-]+)="([^"]*)"')
+_ATTR_RE = re.compile(r"""([\w:.-]+)\s*=\s*(["'])(.*?)\2""", re.DOTALL)
 
 
 def _attrs(tag: str) -> dict[str, str]:
-    return {m.group(1): m.group(2) for m in _ATTR_RE.finditer(tag)}
+    return {m.group(1): m.group(3) for m in _ATTR_RE.finditer(tag)}
 
 
 def _unescape(text: str) -> str:
@@ -58,6 +58,7 @@ def _norm_md(md: str) -> str:
     text = re.sub(r"[*_`]+", "", text)
     text = _MD_IMG_RE.sub("", text)  # 图片留空（包含源文件名中的括号）
     text = _IMG_RE.sub("", text)  # HTML 图片同样留空（媒体由专用核对负责）
+    text = re.sub(r"</?svg\b[^>]*>", "", text, flags=re.IGNORECASE)
     text = re.sub(r"\[([^\]]*)\]\([^)]*\)", r"\1", text)  # 链接留标签
     return re.sub(r"\s+", "", text)
 
@@ -68,18 +69,29 @@ def _norm_href(href: str) -> str:
     return h[len("OEBPS/") :] if h.startswith("OEBPS/") else h
 
 
-_IMG_RE = re.compile(r"<img\b[^>]*>", re.IGNORECASE)
+_IMG_RE = re.compile(r"<(?:img|image)\b[^>]*>", re.IGNORECASE)
 _MD_IMG_RE = re.compile(r"!\[[^\]]*\]\(([^()]*(?:\([^()]*\)[^()]*)*)\)")
 _PLACEHOLDER_IMG_RE = re.compile(r'original-image-src="([^"]+)"')
 
 
 def _source_media_refs(md: str, media_root: Path) -> tuple[set[str], set[str]]:
     """按真实源文件定位期望成员；源路径百分号不解码，HTML URL 只解码一次。"""
+    # 只复用语法上下文，不通过注文渲染器构造期望内容。
+    from auto_common.markdown import inline_code_chunks, markdown_chunks
+
+    md = "".join(
+        chunk
+        if kind == "raw"
+        else "".join(part for is_code, part in inline_code_chunks(chunk) if not is_code)
+        for kind, chunk in markdown_chunks(md or "")
+        if kind != "code"
+    )
     refs = [m.group(1) for m in _MD_IMG_RE.finditer(md or "")]
     refs.extend(m.group(1) for m in _PLACEHOLDER_IMG_RE.finditer(md or ""))
     missing: set[str] = set()
     for image in _IMG_RE.finditer(md or ""):
-        src = _attrs(image.group(0)).get("src") or ""
+        attrs = _attrs(image.group(0))
+        src = attrs.get("src") or attrs.get("href") or attrs.get("xlink:href") or ""
         if not src:
             continue
         url = urlsplit(unescape(src))
@@ -101,7 +113,8 @@ def _aside_media_refs(html: str, document: str) -> set[str]:
     """将 HTML 图片 URL 解码一次并按文档目录解析为字面 ZIP 成员名。"""
     members: set[str] = set()
     for image in _IMG_RE.finditer(html or ""):
-        src = _attrs(image.group(0)).get("src") or ""
+        attrs = _attrs(image.group(0))
+        src = attrs.get("src") or attrs.get("href") or attrs.get("xlink:href") or ""
         if not src:
             continue
         members.add(epub_member_path(document, src) or src)

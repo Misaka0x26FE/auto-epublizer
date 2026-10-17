@@ -65,7 +65,7 @@ translator(强档)                 G0 零 token 静态校验 ── 不过则退
 | 源保真（fidelity） | align 每行 src 的规范化串必在 structured 全部非空行中（反向=硬，import 阻断）；structured 正文块必在 align src 拼接中（前向=advisory，合法剔除如版权残句不阻断） | 反向失配阻断；前向缺块告警 |
 | md↔align 一致性 | translation md（build 输入）与 align tgt（校验基准）归一化后一致（去标题/脚注定义/标记/空白；容错约定见 g0） | 不一致 = 一侧缺内容 → 阻断该单元 import（交付审计 S1.1） |
 | 长度比 | `len(tgt)/len(src)` 落在 `[0.30, 3.0]`；译文非空 | 告警，交 G1 复核 |
-| 术语命中 | 正文出现 glossary `source` 时，译文包含对应 `target`（NFKC 归一化 + 词边界） | 告警，交 G1 定责 |
+| 术语命中 | 正文出现 glossary `source` 时，译文包含对应 `target`（NFKC 归一化 + 词边界，保留连字符复合词边界） | 未豁免命中须逐条核证清零；有据按单元豁免为 advisory |
 | 勘误留痕 | 句 src 命中已知排印讹误先例（IDG→IDF 等）→ align `note` 前缀 `corr:` | 留痕，不告警 |
 
 > 实现状态：以上五项已接线（`g0_unit_flags` / `annotate_correction_notes`）。
@@ -74,6 +74,25 @@ translator(强档)                 G0 零 token 静态校验 ── 不过则退
 > 承担；源语言字符残留属语义判断，归 G1（agent 任务）。
 
 G0 不烧 token、不出"裁决"，只出**确定性告警**，作为 G1 的输入线索。
+
+可选 `preprocessing/terminology_exemptions.csv` 的必需表头为 `unit,source,reason`，
+按单元与规范 glossary 源词精确匹配；完整空行跳过，部分填写、缺字段或空白理由报错。
+agent 须对照证据核准原题/引文保留，不得用此表批量掩盖误译。豁免产生
+`terminology_exempt`（`blocking=false`、`data.reason`），在 import 告警、独立 g0 与
+QA `g0_flags` 三链均可追溯。新增、修改或删除表均使报告摘要失效；旧 released 只是历史，
+status 变为 stale / built_not_released，重新 QA 后才有当前放行证据。
+
+空 align 的唯一纯标题例外：structured 与 translation 两份文件均存在、非空，且只含
+规范 ATX 标题与空行；两侧标题层级仍须守恒。缺源、空源、标题后无空行紧跟正文或译文
+额外正文均不得豁免。import 与 G0/QA 共用判定；`import --reviewed` 可在同次调用推进
+新校验单元，强制重验失败的单元不得重新提升为 reviewed。
+
+不得以 Unicode 上标替换 `[^label]` / `[^ref-ID]` 绕过守恒：普通数学上标不是引用，
+不能抵消缺失注码；引用前引号/省略号也不自动构成 OCR 噪声豁免。含混处须回看源证据、
+修复并登记注释图。代码/表格中的字面 `# 1`、行内 `# comment` 不得被剥除。
+源文摄入、G0、渲染和 QA 共用 `auto_common/markdown.py` 纯语法 helper，translator
+不得反向依赖 epublizer。普通围栏代码跨空行完整保存，内部标题、页码、HTML、图片路径、
+脚注与容器标记只作转义显示，不产生目录、资源读取或残留；显式 Pandoc raw HTML 另行处理。
 
 ### G1 逐批双语审校（cheap 档 Reviewer）
 
@@ -135,6 +154,14 @@ Autofix（可选）：先写可恢复索引 `reviews/<ts>/autofix/index.json`，
   复用 build 同款渲染器）；md↔align 一致性兜底（`E_ALIGN_MD_DRIFT`）。构建期丢弃
   引用写 `events.jsonl` 的 `media_dropped` 事件留痕。
 
+正文覆盖不把源 label / ref_id 当成成品显示编号；真实语义 noteref 与 footnote/endnote
+内容不计正文，由独立注释门核对引用、内容、href 与回链。注文不能补足邻接丢失正文；
+字面代码、普通数学上标仍计正文，标题后紧跟的正文不得随标题一起跳过。
+内联 SVG 必须使用真实 XHTML SVG 命名空间，所属内容 manifest 项声明 `svg`。
+本地 SVG image href/xlink:href 与图片同样按完整路径身份核对（HTML URL 解码一次，
+ZIP 文件名按字面）；源/ZIP 缺资源、同 basename 异目录替身、越界或符号链接逃逸均阻断
+放行，未绑定 XML 前缀不得静默转义或丢弃；代码展示的 SVG/img 不是资源引用。
+
 ### G5 交付验收（发布前）
 
 - 汇总 G0–G4 + 溯源审计生成 `report.json`：
@@ -157,8 +184,8 @@ Autofix（可选）：先写可恢复索引 `reviews/<ts>/autofix/index.json`，
   封面、版权署名、许可。
 - **放行条件**（对齐 docs/postprocessing-spec.md §5 与 `qa/report.py::generate_report`）：
   `g2_confirmed == 0` 或全部已修订（`g3_patched`）；
-  **`g0_terminology_open == 0`**（G0 术语命中是真实缺陷——译文缺失术语表源词，
-  必须逐条核验清零，否则 `released_reason=terminology_open`）；
+  **`g0_terminology_open == 0`**（未豁免术语命中须逐条核证清零；
+  有理由的单元级 `terminology_exempt` 不计阻断项，否则 `released_reason=terminology_open`）；
   **`g0_structure_open == 0`**（标记/脚注守恒违例；`structure_open`）；
   **`glossary_conflicts_open == 0`**（未决术语冲突；`glossary_conflict_open`——
   裁决写回 glossary.csv 前不放行）；
