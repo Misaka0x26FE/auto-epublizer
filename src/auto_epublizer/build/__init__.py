@@ -12,6 +12,7 @@
 from __future__ import annotations
 
 import re
+import xml.etree.ElementTree as ET
 import zipfile
 from datetime import datetime
 from html import escape, unescape
@@ -19,6 +20,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import quote, unquote, urlsplit
 
+from auto_common.markdown import inline_code_chunks, markdown_chunks
 from auto_common.workspace import Publication
 
 from ..fingerprint import (
@@ -28,7 +30,7 @@ from ..fingerprint import (
     software_page,
     stamp_document,
 )
-from ..media_paths import resolve_media_path
+from ..media_paths import epub_member_path, resolve_media_path
 from .html import plain_label, slug_file, subheading_anchors
 
 __all__ = [
@@ -56,10 +58,13 @@ _HTML_FIG_IMG = re.compile(
     re.DOTALL,
 )
 _HTML_IMG = re.compile(r"<img\b[^>]*?src=\"([^\"]+)\"[^>]*?/?>", re.DOTALL)
+_SVG_IMAGE = re.compile(r"<image\b[^>]*>", re.DOTALL)
+_SVG_HREF = re.compile(r"""(?<![\w:.-])(?:xlink:)?href\s*=\s*(["'])(.*?)\1""", re.DOTALL)
 _MEDIA_REF = re.compile(
     "|".join(
         f"(?P<{kind}>{pattern.pattern})"
         for kind, pattern in (
+            ("svg", _SVG_IMAGE),
             ("figure", _HTML_FIG_IMG),
             ("html", _HTML_IMG),
             ("placeholder", _PANDOC_PLACEHOLDER),
@@ -558,11 +563,12 @@ def collect_media(
 
     ``media_root`` 为源媒体目录（pandoc 抽取的 ``structured/raw/media``）。
     引用优先按原相对路径解析（保留子目录，避免同名不同目录错配），
-    其次按 basename 兜底；找不到的文件对应引用被移除，避免悬空图片引用——
-    被移除的引用清单一并返回（交付审计：构建期静默丢弃留痕，主对账由
-    provenance 的 ``E_MEDIA_EPUB_LOST`` 兜底）。文件名含括号等特殊字符时
-    URL 引用按需百分号编码。Markdown/pandoc 源路径的百分号保持字面语义，
-    HTML src 按 URL 解码一次；改写后的引用不再进入源资源收集。
+    其次按 basename 兜底；根外路径（包括越界软链接）不可读取。普通围栏/行内显示代码
+    不参与资源收集；显式 pandoc raw HTML 中的 SVG image 则保留标签并改写
+    href/xlink:href。缺失引用记入 dropped；SVG 保留悬空引用让结构审计继续阻断。
+    文件名含特殊字符时 URL 百分号编码，但 ZIP 成员保留字面文件名。
+    Markdown/pandoc 源路径的百分号保持字面语义，HTML/SVG 属性按 URL 解码一次；
+    改写后的引用不再进入源资源收集。
     """
     media_root = Path(media_root).resolve()
     seen: dict[str, bytes] = {}
@@ -582,23 +588,42 @@ def collect_media(
             data = dedupe_svg_ids(decoded).encode("utf-8", errors="surrogateescape")
         return resolved.relative_to(media_root).as_posix(), data
 
-    def _collect(alt: str, src: str) -> str:
-        """收集源文件并输出一次编码的包内 URL。"""
+    def _collect(src: str) -> str | None:
+        """收集共享路径解析器确认的根内文件，返回一次编码的包内 URL。"""
         rel = src.strip().lstrip("/")
         resolved = _resolve(rel)
         if resolved is None:
             dropped.append(rel)
-            return ""
+            return None
         inner, data = resolved
         epub_path = f"media/{inner}"
         seen.setdefault(epub_path, data)
-        href = quote(inner)
-        return f"![{alt}](media/{href})"
+        return f"media/{quote(inner)}"
 
     def _sub(m: re.Match[str]) -> str:
         """每个源引用只收集一次，避免将新 URL 当作字面源路径重读。"""
         kind = m.lastgroup
         assert kind is not None
+        if kind == "svg":
+
+            def rewrite_href(attr: re.Match[str]) -> str:
+                source = attr.group(2)
+                rel = epub_member_path("", source)
+                if rel is None or not rel:
+                    dropped.append(source)
+                    return attr.group(0)
+                href = _collect(rel)
+                if href is None:
+                    return attr.group(0)
+                url = urlsplit(unescape(source))
+                if url.query:
+                    href += f"?{url.query}"
+                if url.fragment:
+                    href += f"#{url.fragment}"
+                prefix = attr.group(0)[: attr.start(2) - attr.start()]
+                return prefix + escape(href, quote=True) + attr.group(1)
+
+            return _SVG_HREF.sub(rewrite_href, m.group(0))
         pattern = {
             "figure": _HTML_FIG_IMG,
             "html": _HTML_IMG,
@@ -613,10 +638,24 @@ def collect_media(
             if url.scheme or url.netloc:
                 dropped.append(source.group(1))
                 return ""
-            return _collect("", unquote(url.path))
-        return _collect(source.group(1), source.group(2))
+            href = _collect(unquote(url.path))
+            return f"![]({href})" if href else ""
+        href = _collect(source.group(2))
+        return f"![{source.group(1)}]({href})" if href else ""
 
-    rewritten = _MEDIA_REF.sub(_sub, md_text)
+    rewritten = "".join(
+        chunk
+        if kind == "code"
+        else (
+            _MEDIA_REF.sub(_sub, chunk)
+            if kind == "raw"
+            else "".join(
+                part if code else _MEDIA_REF.sub(_sub, part)
+                for code, part in inline_code_chunks(chunk)
+            )
+        )
+        for kind, chunk in markdown_chunks(md_text)
+    )
     return rewritten, list(seen.items()), dropped
 
 
@@ -704,8 +743,12 @@ def build_epub(
         ("landmarks", "landmarks.xhtml", "application/xhtml+xml", None),
         ("style", "style.css", "text/css", None),
     ]
-    for fn in spine_ids:
-        items.append((fn, fn, "application/xhtml+xml", None))
+    for fn, document in content_files:
+        root = ET.fromstring(document)
+        props = (
+            "svg" if next(root.iter("{http://www.w3.org/2000/svg}svg"), None) is not None else None
+        )
+        items.append((fn, fn, "application/xhtml+xml", props))
     cover_item_id: str | None = None
     if media_files:
         for index, (epub_path, _data) in enumerate(media_files):

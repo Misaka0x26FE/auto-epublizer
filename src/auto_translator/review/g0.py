@@ -30,7 +30,10 @@ import re
 from collections.abc import Mapping
 from typing import Any
 
+from auto_common.markdown import inline_code_chunks, markdown_chunks
+
 from ..glossary import Glossary, terminology_hits
+from .fidelity import content_blocks, is_heading_only
 from .models import G0Flag  # 数据模型归 models（C 组：消除 g0↔fidelity 双向依赖）
 
 # 插入元素标记，如 {fig:NNN}、{table:NNN}
@@ -40,17 +43,7 @@ _MARKER_RE = re.compile(r"\{\w+:\d+\}")
 # 只认句末标点（. ! ? … 。 ！ ？）；引证里的冒号/分号/逗号（如 1992:110、「；1 公顷」）
 # 不是注码，否则会把统计数字误判为脚注标记而触发守恒硬缺陷。
 # 另排除紧跟百分号的数字（回归 issue #3）：「。46%的机车」是统计数字而非注码。
-# ⚠ **此处曾有一个更宽的 `(?![\u4e00-\u9fff%％])`，现已删除**（回归 #33b，2026-10-08）。
-# 该前瞻的立论是「真注码是句末最后一个 token，后不紧跟中文」——这只对**源文语言**
-# 成立。中文译文里句末注码后面紧跟下一句首字是**常态**：
-#     `…与争端的结局有真正利害关系」。4这是工会与工党…`
-#     `…一种渐进式脱钩」。2如果属实…`
-# 于是**译文侧绝大多数注码数不到**，源侧数得到 → 系统性报「脚注标记数量不守恒」。
-# 现场（contentious-alliance）：back-appendix-14 src=1/tgt=0、ch21 src=3/tgt=2，
-# 两条都是**判据缺陷而非译文缺陷**——注码在译文里好好地在那儿。
-# issue #3 的 4 个样例（`。82个车站`「。95年」「。46%」「。50％」）已分别由
-# `_MEASURE_AFTER_RE` 的 `个`/`年` 与本行的 `%` 前瞻覆盖，删除 CJK 前瞻后仍全部为 0，
-# 且量词类误报（回归 #22/#31）不受影响——与 #31「米」「日」的放宽是同一处置口径。
+# 中文译文的注码后可以直接跟下一句；数量短语由 _MEASURE_AFTER_RE 排除。
 # 再排除**枚举号位**（回归 #8）：数字后紧跟 `.`/`)`/`）`/`、`/`]` 时是列表序号
 # （「结婚礼。1. 订婚」「正文。2) 婚礼」），不是注码。
 # 句末标点类还含 **CJK 闭合引号/括号**（回归 issue #29）：中文排版把句末点放在引号内、
@@ -111,31 +104,8 @@ _ABBREV_STEMS = frozenset(
 _CJK_CHARS_RE = re.compile(r"[\u3400-\u4dbf\u4e00-\u9fff\u3040-\u30ff\uac00-\ud7af]")
 
 
-# OCR/抽取残留点（回归 #32，`history-of-british-labour-party` back-notes 实测）：
-# 扫描版 PDF 的文字层把**页码引用**与**上标注码**抽成点号堆叠的残片——
-#   `Oxford, 1979), .p..221: D. H. …`（`p.221` 的点号重复两次）
-#   `(1979)_,.08 19. J. G. …`（上标注码 8 前多出 `_,`）
-# 两处被 `_FOOTNOTE_REF_RE` 读成「句末点 + 注码」，而 `_ABBREV_BEFORE_RE` 要求点前是
-# 1~5 位字母/№，点前是标点时匹配不到 → 返回 False → 残片计入源侧计数。译文侧早已
-# 正常译作「第 221 页」而不计，**源 2 / 译 0** 于是报脚注守恒硬缺陷、卡住 G5 放行，
-# 实际一个字都没丢（判据类同 #3/#8/#22/#29/#31 五处已收窄的误报）。
-# 判据：点号紧跟前一个**标点**字符时该点是抽取残留、不是句末点。真注码前面必是
-# 完整词（`end. 5`）、CJK（`正文。1`）或闭合引号（『……生产。』33），不会紧跟标点，
-# 故本排除不会吞掉真注码。
-_OCR_NOISE_BEFORE_RE = re.compile(r"[.,;:!?'\"`~*_\-—–/\\|·•]\s*$")
-
-
 def _is_abbrev_dot(text: str, dot_index: int) -> bool:
-    """判断 ``dot_index`` 处的标点是否**不该**被当作句末点（缩写点或 OCR 残留点）。
-
-    缩写启发式只对**非 CJK** 词生效：中文句子以「正文。1」收尾时，点前是 1~2 字的
-    中文词（正文/城/部…），若照搬「≤2 字符即缩写」会把它误判成缩写点而吞掉真注码
-    （回归 #8 修复所引入；这里把 CJK 词排除在外）。
-
-    点前紧跟标点时（回归 #32）判为 OCR 残留点——见 ``_OCR_NOISE_BEFORE_RE`` 注释。
-    """
-    if _OCR_NOISE_BEFORE_RE.search(text[:dot_index]):
-        return True
+    """排除非 CJK 缩写点；引号、连续句末点不能作为 OCR 噪声免计证据。"""
     m = _ABBREV_BEFORE_RE.search(text[:dot_index])
     if not m:
         return False
@@ -168,22 +138,7 @@ _FOOTNOTE_SUPER_RE = re.compile(
 # 括号式注号：〔240〕/ [240]（译文侧现场把注文写成「〔240〕 注文」，方头括号包裹）
 _FOOTNOTE_BRACKET_RE = re.compile(r"[〔\[](\d{1,3})[〕\]]")
 
-# 注码的**上标数字记法**（回归：sample-document-f / forced-labour）。
-# 这两本源书 md 的注码写成 `[^1]` / `[^ch03-004]`，但①定义行**没有冒号**
-# （`[^1] 文本` 而非 pandoc 的 `[^1]: 文本`）→ `_FN_DEF` 抽不出定义；②注文收在
-# **独立的 backmatter 单元** → `_substitute_noterefs` 是单元内解析。两项叠加使
-# `fn_defs` 恒空，走「无定义则保留字面」分支，`[^1]` 原样印给读者
-# （sample-document-f 实测 2192 处，W_RESIDUE 19 个文件 + E_EPUB_PARA_LOST 420 段）。
-# 译文层改用原书自身的上标排法（注号上标数字，sample-document-f 正文本就有 `Edenkoben²`），
-# 于是**同一批注码在源侧是 `[^N]`、在译侧是 `ⁿ`**——只认 pandoc 记法会把守恒判据
-# 打成 19 个单元「脚注标记数量不守恒」（源 116 / 译 0），是纯记法差异、不是丢注号。
-# 本计数器因此**记法无关**：pandoc 记法与上标记法都算一个注码，两侧同用同一函数，
-# 差值仍只反映真丢/多注。全库普查（9 个工作区 structured+translation）无
-# `字母+²/³` 形态，故不设单位指数排除项；若将来出现，`m²`/`km³` 会被误计，
-# 届时按本模块既有先例（#3/#8/#22/#29 六处误报先例）再加白名单。
-_FN_SUPERSCRIPT_RE = re.compile(r"[⁰¹²³⁴⁵⁶⁷⁸⁹]{1,4}(?![\d⁰¹²³⁴⁵⁶⁷⁸⁹])")
-
-_HEADING_RE = re.compile(r"^(#{1,6})\s+", re.MULTILINE)
+_HEADING_RE = re.compile(r"^(#{1,6})[ \t]+", re.MULTILINE)
 
 # 常见排印讹误先例（源文勘误，来自旧真实案例）
 _DEFAULT_CORRECTIONS: dict[str, str] = {
@@ -216,7 +171,7 @@ def markers_conserved(src: str, tgt: str, pattern: re.Pattern[str] = _MARKER_RE)
 # 口径/计量写法（`。3 月` `。10 时` `。50 口径` `。5 年`），不是注码。源英文无此形态，
 # 故只影响译文侧误报。
 _MEASURE_AFTER_RE = re.compile(
-    r"\s*(?:世纪|年代|公里|千米|厘米|毫米|口径|月|日|时|分|秒|年|个|条|名|吨|米|发|位|页|章|节|周|天|号)"
+    r"\s*(?:世纪|年代|公里|千米|厘米|毫米|口径|月|日|时|分|秒|年|个|条|名|吨|米|发|位|页|章|节|周|天|号|十|百|千|万|亿|兆)"
 )
 
 
@@ -291,22 +246,18 @@ def count_footnote_defs(text: str) -> int:
 
 
 def count_footnote_marks(text: str) -> int:
-    """统计脚注标记（`[^label]` 引用与定义 + 上标数字记法）数量。
-
-    三种记法同义、等权：pandoc 的 ``[^1]``（源侧主流）、上标数字 ``¹``（译侧，
-    见 ``_FN_SUPERSCRIPT_RE`` 的记法差异说明）、以及本模块既有的数字式
-    ``。1``（由 ``count_footnote_refs`` 负责）。三者任缺其一都会被守恒判据误判。
-    """
-    text = text or ""
-    return len(_FN_PANDOC_RE.findall(text)) + len(_FN_SUPERSCRIPT_RE.findall(text))
+    """统计明确的 pandoc 引用和定义；普通上标可能是数学指数，不抵扣注释。"""
+    return len(_FN_PANDOC_RE.findall(text or ""))
 
 
 def count_heading_levels(text: str) -> dict[int, int]:
     """统计各标题层级（h1~h6）数量。"""
     levels: dict[int, int] = {}
-    for m in _HEADING_RE.finditer(text or ""):
-        level = len(m.group(1))
-        levels[level] = levels.get(level, 0) + 1
+    for kind, chunk in markdown_chunks(text or ""):
+        if kind == "text":
+            for match in _HEADING_RE.finditer(chunk):
+                level = len(match.group(1))
+                levels[level] = levels.get(level, 0) + 1
     return levels
 
 
@@ -319,34 +270,45 @@ def count_paragraph_blocks(text: str) -> int:
 # ── 交付审计（S1.1）：translation md ↔ align tgt 全文一致性 ────────────────
 
 # 标题行（h1/h2：build 的 h1 来自 publication title，不在 align 行内）
-_HEADING_LINE = re.compile(r"(?m)^\s*#{1,6}\s+.*$")
+_HEADING_LINE = re.compile(r"(?m)^ {0,3}#{1,6}[ \t]+.*$")
 # 脚注定义前缀（[^label]:）
 _FN_DEF_PREFIX = re.compile(r"\[\^[^\]]+\]:")
 
 
 def _drift_norm(text: str) -> str:
-    """漂移比对归一化：去标题行/脚注定义前缀/脚注与插入标记，再去全部空白。"""
-    out = _HEADING_LINE.sub("", text or "")
-    out = _FN_DEF_PREFIX.sub("", out)
-    out = _FN_PANDOC_RE.sub("", out)
-    out = _MARKER_RE.sub("", out)
-    return re.sub(r"\s+", "", out)
+    """仅归一化正文语法；围栏及行内代码中的标题/脚注都是受保护的字面内容。"""
+    parts: list[str] = []
+    for kind, chunk in markdown_chunks(text or ""):
+        if kind != "text":
+            parts.append(chunk)
+            continue
+        for is_code, part in inline_code_chunks(_HEADING_LINE.sub("", chunk)):
+            if not is_code:
+                part = _FN_DEF_PREFIX.sub("", part)
+                part = _FN_PANDOC_RE.sub("", part)
+                part = _MARKER_RE.sub("", part)
+            parts.append(part)
+    return re.sub(r"\s+", "", "".join(parts))
 
 
 def _strip_def_blocks(text: str) -> str:
     """整段剔除脚注定义块（定义行 + 其非空续行）——align 不含定义行时的容错模式。"""
     out: list[str] = []
-    in_def = False
-    for line in (text or "").splitlines():
-        if _FN_DEF_PREFIX.match(line.lstrip()):
-            in_def = True
+    for kind, chunk in markdown_chunks(text or ""):
+        if kind != "text":
+            out.append(chunk)
             continue
-        if in_def:
-            if line.strip():
-                continue  # 定义续行
-            in_def = False
-        out.append(line)
-    return "\n".join(out)
+        in_def = False
+        for line in chunk.splitlines(keepends=True):
+            if _FN_DEF_PREFIX.match(line.lstrip()):
+                in_def = True
+                continue
+            if in_def:
+                if line.strip():
+                    continue
+                in_def = False
+            out.append(line)
+    return "".join(out)
 
 
 def md_align_drift(
@@ -391,11 +353,7 @@ def md_align_drift(
         if _drift_norm(str(r.get("tgt") or ""))
         and _drift_norm(str(r.get("tgt") or "")) not in md_norm
     ]
-    md_blocks = [
-        b.strip()
-        for b in re.split(r"\n\s*\n", (md_input or "").strip("\n"))
-        if b.strip() and not b.strip().startswith("#")
-    ]
+    md_blocks = content_blocks(md_input)
     missing_in_align = [
         b[:40] for b in md_blocks if _drift_norm(b) and _drift_norm(b) not in tgt_norm
     ]
@@ -571,7 +529,8 @@ def g0_unit_flags(
     不阻断放行也不从报告里消失。
     """
     exempt_sources = exempt_sources or {}
-    flags = list(check_alignment(rows))
+    heading_only = not rows and is_heading_only(structured_md) and is_heading_only(translation_md)
+    flags = [] if heading_only else list(check_alignment(rows))
     sum_marker_src = sum_marker_tgt = 0
     sum_fn_src = sum_fn_tgt = 0
     # 引用与定义分开累计（issue #34）：refs=正文注码（句末式∪上标式），defs=pandoc
@@ -633,7 +592,13 @@ def g0_unit_flags(
                     G0Flag(
                         "terminology_exempt",
                         f"术语 {hit.source} 已按体例豁免（{hit.expected}）：{exempt_sources[hit.source]}",
-                        {"seq": seq, "source": hit.source, "expected": hit.expected},
+                        {
+                            "seq": seq,
+                            "source": hit.source,
+                            "expected": hit.expected,
+                            "reason": exempt_sources[hit.source],
+                        },
+                        blocking=False,
                     )
                 )
                 continue

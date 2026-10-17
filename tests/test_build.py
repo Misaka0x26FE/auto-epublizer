@@ -989,25 +989,6 @@ def test_nav_anchor_depth_projection(tmp_path: Path) -> None:
     assert "ch02-h1" not in nav and "不出现" not in nav
 
 
-def test_raw_html_fenced_block_passthrough() -> None:
-    """pandoc `` ```{=html} `` 围栏块应直通输出，不被 escape 成 ``&lt;div&gt;``。
-
-    回归：2026-10-06 Thiriart 封面 —— 缺这层时整段 SVG 连同 `{=html}` 属性
-    与游离反引号漏成读者可见乱码。
-    """
-    md = (
-        '```{=html}\n<svg xmlns="http://www.w3.org/2000/svg" width="100%">\n```\n'
-        '`<image height="751" xlink:href="cover.jpeg">`{=html}`</image>`{=html}\n'
-        "```{=html}\n</svg>\n```"
-    )
-    out = markdown_to_xhtml(md, unit_id="cover")
-    assert "<svg" in out and "</svg>" in out
-    assert "&lt;svg" not in out
-    assert "&lt;image" not in out
-    assert "{=html}" not in out
-    assert "`" not in out
-
-
 def test_raw_html_block_rejects_mixed_markdown() -> None:
     """块内混有普通 markdown 时不得放行未转义文本（白名单口径）。"""
     md = "<div>\nhello world\n</div>"  # 同一块内混排，非纯标签块

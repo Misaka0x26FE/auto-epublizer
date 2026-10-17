@@ -207,24 +207,6 @@ def test_count_footnote_marks() -> None:
     assert count_footnote_marks("no mark") == 0
 
 
-def test_count_footnote_marks_superscript_notation() -> None:
-    """注码的**上标数字记法**与 pandoc 记法同权（回归：sample-document-f 2192 处）。
-
-    源侧写 ``[^1]``、译侧改用原书自身的上标排法写 ``¹``，纯记法差异
-    不得被判成「脚注标记数量不守恒」（实测 19 个单元被打红）。
-    """
-    from auto_translator.review import count_footnote_marks
-
-    assert count_footnote_marks("汉斯·弗兰克⁴ 在后来的岁月里") == 1
-    assert count_footnote_marks("¹ 日记，1944 年 12 月 9 日") == 1
-    # 多位注号算**一个**标记，不是逐位数字
-    assert count_footnote_marks("见⁸²³ 与⁹⁹⁹") == 2
-    # 与 pandoc 记法同权：源 `[^N]` 与译 `ⁿ` 计数相同 → 守恒判据两侧对齐
-    assert count_footnote_marks("[^12]") == count_footnote_marks("¹²") == 1
-    # 无上标时仍为 0（不误伤普通文本）
-    assert count_footnote_marks("面积 5 平方公里") == 0
-
-
 def test_g0_marker_conservation() -> None:
     """单元级总量守恒：标记丢失告警；拆句挪位（总量相等）不误报。"""
     g = Glossary()
@@ -417,42 +399,6 @@ def test_g0_footnote_after_cjk_closing_quote_is_counted() -> None:
     # 英文源侧不受影响：`'` 不是句末标点，`...product,' 5` 不计
     assert count_footnote_refs("…efficient industrial production,’ Allen wrote.33") == 1
     assert count_footnote_refs("…production,’ 33") == 0
-
-
-def test_g0_footnote_ocr_dot_noise_before_dot_is_not_a_ref() -> None:
-    """点号紧跟前一个标点时是 OCR 残留、不是句末点（回归 #32）。
-
-    扫描版 PDF 文字层把页码引用与上标注码抽成点号堆叠的残片：
-    ``Oxford, 1979), .p..221: D. H. Aldcroft…``（``p.221`` 的点号重复两次）与
-    ``(1979)_,.08 19. J. G. Watkins…``（注码 8 前多出 ``_,``）。两者都被
-    ``_FOOTNOTE_REF_RE`` 读成「句末点 + 注码」，而缩写启发式要求点前是字母/№，
-    点前是标点时匹配不到 → 残片计入源侧计数；译文早已正常译作「第 221 页」而不计，
-    于是**源 2 / 译 0** 报脚注守恒硬缺陷、卡住 G5 放行（现场：
-    history-of-british-labour-party back-notes，618 块注释一字未丢）。
-    """
-    g = Glossary()
-    noise = (
-        "see R. B. McCallum, The Liberal Party and the Occupation of the Left, "
-        "in The End of the Peacetime: The Liberal Party in Transition, "
-        "1918-1922 Oxford, 1979), .p..221: D. H. Aldcroft, The British Economy "
-        "between the Wars: Instability and Development, PIII 1939 (1979)_,.08 "
-        "19. J. G. Watkins, ‘Ind"
-    )
-    assert count_footnote_refs(noise) == 0
-    assert not [
-        f
-        for f in g0_unit_flags([{"seq": 1, "src": noise, "tgt": "参见，同上。"}], g)
-        if f.check == "footnote"
-    ]
-    # 真注码不得被这个排除吞掉：英文单引号收尾、中文闭合引号、CJK 句末点各 1 个
-    assert count_footnote_refs("…an absolute majority at last’.1 A second element") == 1
-    assert count_footnote_refs("『……生产。』33 但这件案子") == 1
-    assert count_footnote_refs("正文。1 而接下来") == 1
-    # 真正丢注码仍须报
-    assert any(
-        f.check == "footnote"
-        for f in g0_unit_flags([{"seq": 1, "src": "died.1 and later.2", "tgt": "死亡。1 "}], g)
-    )
 
 
 def test_detect_and_annotate_corrections() -> None:
@@ -678,8 +624,10 @@ def test_terminology_exemption_is_advisory_not_silent() -> None:
 
     flags = g0_unit_flags(rows, g, exempt_sources={"Konzentrationslager": "Kurztiitel 保留德文"})
     assert not [f for f in flags if f.check == "terminology"], "豁免后不得再报硬缺陷"
-    adv = [f for f in flags if f.check == "terminology_exempt"]
-    assert len(adv) == 1 and "Kurztiitel" in adv[0].message, "豁免须以 advisory 报出并带理由"
+    advisory = [f for f in flags if f.check == "terminology_exempt"]
+    assert len(advisory) == 1
+    assert advisory[0].blocking is False
+    assert advisory[0].data["reason"] == "Kurztiitel 保留德文"
 
     # 只豁免指定术语：同单元其他术语仍受检
     flags = g0_unit_flags(rows, g, exempt_sources={"别的术语": "无关"})

@@ -104,7 +104,8 @@ def load_glossary_csv(path: str | Path) -> list[GlossaryEntry]:
 def load_terminology_exemptions(path: str | Path) -> dict[str, dict[str, str]]:
     """读取**按单元**的术语门豁免表，返回 ``{单元 id: {术语 source: 理由}}``。
 
-    CSV 列：``unit,source,reason``。文件不存在即无豁免（不报错）。
+    CSV 必须包含 ``unit,source,reason`` 列，每条非空记录的三项均须填写；
+    缺列或缺值抛出 ``ValueError``，不能作为有效豁免。文件不存在即无豁免。
 
     为什么需要（2026-10-07 于 forced-labour 的 back-notes）：
     G0 术语判据是「源行出现术语 source，译文行必须含 target」，但**文献著录
@@ -122,13 +123,25 @@ def load_terminology_exemptions(path: str | Path) -> dict[str, dict[str, str]]:
     p = Path(path)
     if not p.is_file():
         return {}
+    reader = csv.DictReader(io.StringIO(p.read_text(encoding="utf-8-sig")))
+    required = ("unit", "source", "reason")
+    missing = [field for field in required if field not in (reader.fieldnames or [])]
+    if missing:
+        raise ValueError(f"术语豁免表缺少必需列：{', '.join(missing)}")
     out: dict[str, dict[str, str]] = {}
-    for row in csv.DictReader(io.StringIO(p.read_text(encoding="utf-8-sig"))):
+    for row in reader:
+        if not any(
+            (cell or "").strip()
+            for value in row.values()
+            for cell in (value if isinstance(value, list) else (value,))
+        ):
+            continue
         unit = (row.get("unit") or "").strip()
         source = (row.get("source") or "").strip()
-        if not unit or not source:
-            continue
-        out.setdefault(unit, {})[source] = (row.get("reason") or "").strip()
+        reason = (row.get("reason") or "").strip()
+        if not unit or not source or not reason:
+            raise ValueError(f"术语豁免表第 {reader.line_num} 行的 unit、source、reason 均不能为空")
+        out.setdefault(unit, {})[source] = reason
     return out
 
 

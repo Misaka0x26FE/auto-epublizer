@@ -685,7 +685,7 @@ def import_translations(
         write_conflicts_jsonl,
     )
     from auto_translator.glossary.csv_io import load_terminology_exemptions
-    from auto_translator.review import check_alignment, g0_unit_flags
+    from auto_translator.review import check_alignment, g0_unit_flags, is_heading_only
     from auto_translator.translation.align import read_align
 
     pub = store.load_publication()
@@ -738,7 +738,6 @@ def import_translations(
     failed: list[dict[str, Any]] = []
     warned: list[dict[str, Any]] = []
     skipped: list[str] = []
-    pure_heading: set[str] = set()  # 纯标题单元：本就不该有对照表行（见下）
 
     for unit in pub.units:
         if unit_id and unit.id != unit_id:
@@ -760,30 +759,14 @@ def import_translations(
         structured_md = (
             structured_path.read_text(encoding="utf-8") if structured_path.is_file() else None
         )
+        translation_md = tgt_path.read_text(encoding="utf-8") if tgt_path.is_file() else None
         errors: list[str] = []
         pending_reasons: list[str] = []
         if not tgt_path.is_file():
             pending_reasons.append(f"缺少译文文件：{tgt_path}")
         rows = read_align(align_path) if align_path.is_file() else []
-        if not rows:
-            # **纯标题单元**例外（回归 #34，2026-10-08）。
-            # make_align 逐块跳过以 `#` 开头的块，故「整单元只有一个部分分隔标题」
-            # （`# Part I: Foundations` 之类）的对照表**恒为空**——而下面的
-            # `if not rows: pending` 会把它永远判成「待译」，
-            # 于是这类单元永远进不了 aligned，`stale` 永远非空，整本书永远放行不了。
-            # 现场：contentious-alliance 的 7 个 `part-*` 单元（43 单元里 7 个）。
-            # 判据：源文里**没有任何非标题块** ⟹ 本单元本就不该有对照表行。
-            # 这不是放宽——正文单元缺对照表仍然照旧 pending。
-            body_blocks = [
-                b
-                for b in re.split(r"\n\s*\n", (structured_md or "").strip("\n"))
-                if b.strip() and not b.strip().startswith("#")
-            ]
-            if not body_blocks:
-                rows = []
-                pure_heading.add(unit.id)
-            else:
-                pending_reasons.append(f"缺少对照表或对照表为空：{align_path}")
+        if not rows and not (is_heading_only(structured_md) and is_heading_only(translation_md)):
+            pending_reasons.append(f"缺少对照表或对照表为空：{align_path}")
         if pending_reasons:
             # 未译单元是「待译」不是「失败」：也不继续跑文档/表格/术语检查——
             # 否则会为源文的**每个块**刷出一条「源文块未进对照表」告警
@@ -801,11 +784,9 @@ def import_translations(
             errors.append(f"表格形状：{f.message}（{f.data}）")
         # md↔align 全文一致性（交付审计 S1.1）：md 是 build 输入、align 是校验基准，
         # 一侧缺内容（图片段/脚注/段落）即阻断登记——防缺陷直达成品
-        translation_md: str | None = None
-        if tgt_path.is_file() and rows:
+        if translation_md is not None and rows:
             from auto_translator.review import md_align_drift
 
-            translation_md = tgt_path.read_text(encoding="utf-8")
             for d in md_align_drift(translation_md, rows, title=unit.title):
                 errors.append(f"文档一致性：{d}")
         # N 阶段翻译导入门：译文原位标记守恒 + 所需译注齐全（源注文已登记时启用）
@@ -873,6 +854,7 @@ def import_translations(
             if f.check in (
                 "length",
                 "terminology",
+                "terminology_exempt",
                 "marker",
                 "footnote",
                 "footnote_suspect",
@@ -919,10 +901,9 @@ def import_translations(
     # --reviewed：审校通过的显式登记（aligned → reviewed，幂等）
     reviewed: list[str] = []
     if mark_reviewed:
-        for unit in pub.units:
-            if unit_id and unit.id != unit_id:
-                continue
-            if unit.status == "aligned":
+        accepted = set(imported) | set(revalidated)
+        for unit in store.load_publication().units:
+            if unit.id in accepted and unit.status == "aligned":
                 store.set_unit_status(unit.id, "reviewed")
                 reviewed.append(unit.id)
 
@@ -1175,10 +1156,10 @@ def set_meta(
 
 
 def _qa_requires_align(store: RunStore, unit: Any) -> bool:
-    """该单元在 qa 必须有非空对照表：有译文文件，或状态已进入译文族。
+    """该单元必须进入 G0：有译文文件，或状态已进入译文族。
 
-    未译单元（无译文、状态 pending/split/analyzed）与**源文回退构建**的单元
-    （convert 工作区、frontmatter 回退单元）不要求——避免把「没有译文」误判成对照表缺失。
+    仅源文回退不要求对照表；纯标题也必须进入 G0 检查标题层级，
+    空对照表例外由共享的源译双侧纯标题判据决定。
     """
     rel = (unit.meta or {}).get("rel_path")
     has_translation = bool(rel) and (store.translation_dir / rel).is_file()

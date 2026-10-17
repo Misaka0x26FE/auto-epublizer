@@ -111,10 +111,11 @@ reviews/review-<ts>/
 > 说明：G0 可独立运行——`auto-epublizer g0` 在翻译/导入后立即校验。
 > **G0 告警分两类，处理方式不同**：
 > - `terminology`（术语命中）：**真实缺陷**，CLI 以红色 `✗` 标出，`import` 也会单独
->   计数提示；必须逐条核对译文/术语表后清零（补译 / 修术语表 / 声明例外）才能放行。
+>   计数提示；必须逐条核对译文/术语表后清零（补译 / 修术语表）才能放行。保留原文的有据例外只按 `translation.md` 的 `unit,source,reason` CSV 登记为 `terminology_exempt` advisory，不豁免其他真实缺陷。
 >   豆包实测教训：曾把术语未命中与长度误报混为一谈全当噪声，漏掉真问题。
 > - `length`（长度比过低/过高）：advisory，英→中长度比天然偏低会大量误报，不作为
 >   放行硬条件；但**抽样核对**是否真漏译（尤其超长句被省略号收尾的段落）。
+> - `terminology_exempt` 与 fidelity 前向缺块同属 advisory；豁免理由须在 import、g0、QA `g0_flags` 保持可见，不等于免审。纯标题空 align 的双侧条件见 `translation.md`，不取消 `heading` 门。
 >
 > G1–G3 由你审校后写 `result.json`；全局理解上下文在 `analysis/` 缺失时回退
 > `preprocessing/global.md`。G4 由 `qa` 命令驱动；G5 由 `qa` 聚合 G0–G4 写

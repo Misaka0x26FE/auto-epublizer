@@ -19,6 +19,14 @@ from dataclasses import dataclass
 from html import escape
 from typing import Any
 
+from auto_common.markdown import (
+    CODE_SPAN_RE,
+    fence_body,
+    fence_info,
+    inline_code_chunks,
+    markdown_chunks,
+)
+
 _HEADING_RE = re.compile(r"^(#{1,6})\s+(.*)$")
 _IMG_RE = re.compile(r"!\[([^\]]*)\]\(([^)]+)\)")
 # pandoc 的「缩略图链接图片」语法：
@@ -41,7 +49,6 @@ _EMPTY_ATTR_RE = re.compile(r"\{[ \t]*\[[ \t]*\][ \t]*\}")
 _HEADING_ID_RE = re.compile(r"\s*\{#([\w:.-]+)\}\s*$")
 _BOLD_RE = re.compile(r"\*\*((?:[^*]|\\\*)+)\*\*")
 _ITALIC_RE = re.compile(r"(?<!\*)\*([^*]+)\*(?!\*)")
-_CODE_RE = re.compile(r"`([^`]+)`")
 # pandoc 反斜杠转义：`\(` / `\.` / `\[` / `\*` / `\\` → 字面标点（转义符本身不输出）。
 # 缺失时源里的出版方编辑插入 `\[一年后……\]`、CIP 行 `p\. cm.`、编号 `\(1\)`
 # 会带着**可见反斜杠**进成品（四本书合计 1000+ 处；audit 的 W_RESIDUE
@@ -163,23 +170,28 @@ def _split_footnote_defs(md: str) -> tuple[str, dict[str, str]]:
     defs: dict[str, str] = {}
     body_lines: list[str] = []
     current: str | None = None
-    for line in md.splitlines():
-        m = _FN_DEF.match(line)
-        if m:
-            label = str(m.group(1))
-            defs[label] = m.group(2).strip()
-            current = label
-            continue
-        if current is not None:
-            label = current
-            if line.strip() and not line.startswith("#"):
-                defs[label] = f"{defs[label]} {line.strip()}".strip()
-                continue
+    for kind, chunk in markdown_chunks(md):
+        if kind != "text":
             current = None
-            if not line.strip():
-                continue  # 定义块后的空行不进正文
-        body_lines.append(line)
-    return "\n".join(body_lines), defs
+            body_lines.append(chunk)
+            continue
+        for line in chunk.splitlines(keepends=True):
+            m = _FN_DEF.match(line)
+            if m:
+                label = str(m.group(1))
+                defs[label] = m.group(2).strip()
+                current = label
+                continue
+            if current is not None:
+                label = current
+                if line.strip() and not line.startswith("#"):
+                    defs[label] = f"{defs[label]} {line.strip()}".strip()
+                    continue
+                current = None
+                if not line.strip():
+                    continue
+            body_lines.append(line)
+    return "".join(body_lines), defs
 
 
 def _substitute_noterefs(
@@ -231,80 +243,48 @@ def _render_footnote_section(items: list[tuple[int, str]]) -> str:
     )
 
 
-def _split_heading_blocks(block: str) -> list[str]:
-    """块内二次切分：在**每个** ATX 标题行处切开，使每块各自以标题起头。
-
-    CommonMark 规定 ATX 标题可打断段落，但单纯按空行切块做不到——源抽取与
-    MinerU OCR 常丢失标题前的空行（实测 parliamentary-socialism 全书 33 处，
-    如题词「…Ramsay MacDonald, 1909」下一行紧跟 ``## 1. THE LIBERAL CONNECTION``）。
-    标题遂成为懒续行，被整体塞进 ``<p>``，读者直接看到字面 ``## 1. 与自由党的联系``。
-
-    切点必须**包含块首**（``i == 0``）才覆盖连续标题行 ``## A`` / ``### B``：
-    否则 ``## A`` 仍会命中块首标题分支、把 ``### B`` 当作其后正文塞进 ``<p>``
-    （实测 sample-rtl-a-1 3 处、sample-document-d-1 1 处）。
-
-    与 ``_MD_RESIDUE`` 的关系：审计原先只检查裸 ``##`` 是否整行出现，块首命中即放行，
-    故本形态**检测层与渲染层同时漏**（parliamentary-socialism 33 处零告警）。
-    围栏代码块内不切分（```` ``` ```` 内的 ``#`` 是内容不是标题）。
-    """
-    lines = block.splitlines()
-    starts: list[int] = []
-    fence = False
-    for i, line in enumerate(lines):
-        if line.lstrip().startswith("```"):
-            fence = not fence
-            continue
-        if fence:
-            continue
-        if _HEADING_RE.match(line):
-            starts.append(i)
-    if not starts:
-        return [block]
-    parts: list[str] = []
-    prev = 0
-    for i in starts:
-        part = "\n".join(lines[prev:i]).strip("\n")
-        if part.strip():
-            parts.append(part)
-        prev = i
-    parts.append("\n".join(lines[prev:]).strip("\n"))
-    return [p for p in parts if p.strip()]
-
-
 def _iter_blocks(md: str) -> list[str]:
-    """按空行切块 + 块内 ATX 标题二次切分。
-
-    ``markdown_to_xhtml`` 与 ``subheading_anchors`` **必须**共用本函数：
-    前者产出 ``id``、后者产出 nav 锚点，两套规则一旦分叉，目录链接即悬空。
-    """
+    """围栏完整保留；其他文本按空行和 ATX 标题分块，与 nav 扫描共用。"""
     blocks: list[str] = []
-    for raw in re.split(r"\n\s*\n", md):
-        block = raw.strip("\n")
-        if not block.strip():
+    for kind, chunk in markdown_chunks(md):
+        if kind != "text":
+            blocks.append(chunk)
             continue
-        blocks.extend(_split_heading_blocks(block))
+        for raw in re.split(r"\n\s*\n", chunk):
+            for part in re.split(r"(?m)(?=^#{1,6}[ \t]+)", raw):
+                if part.strip():
+                    blocks.append(part.strip("\n"))
     return blocks
 
 
 def _clean_pandoc_markers(md: str) -> str:
-    """清理 pandoc 转出时的排版残留（确定性纯函数）：
-    - 删除容器 div 标记行（:::/::: gallerytext/::: {.thumb …}/- ::: {…}）
-    - 删除纯反斜杠装饰行（\\）
-    - MediaWiki 引用标记（\\> / \\>\\>）→「——」（贴合中文小说场景提示排版）
-    """
-    cleaned = []
-    for line in md.splitlines():
-        s = line.strip()
-        if _CONTAINER_LINE.match(s) or _SLASH_LINE.match(s):
-            # 带 {#id} 的容器行承载源文档的页码/位置锚点（如 ::: {#page0026}）：
-            # 删除栅栏本身，但保留一个等价的内联锚点，供目录与交叉引用跳转。
-            m_anchor = _CONTAINER_ID_RE.match(s)
-            if m_anchor:
-                cleaned.append(f"[]{{#{m_anchor.group(1)}}}")
+    """清理非围栏文本的 pandoc 容器/装饰行，不改写可见代码或 raw HTML。"""
+    chunks: list[str] = []
+    for kind, chunk in markdown_chunks(md):
+        if kind != "text":
+            chunks.append(chunk)
             continue
-        line = line.replace("\\>\\>", "——").replace("\\>", "——")
-        cleaned.append(line)
-    return "\n".join(cleaned)
+        codes: list[str] = []
+        protected: list[str] = []
+        for code, part in inline_code_chunks(chunk):
+            if code:
+                protected.append(f"\x00{len(codes)}\x00")
+                codes.append(part)
+            else:
+                protected.append(part)
+        cleaned: list[str] = []
+        for line in "".join(protected).splitlines(keepends=True):
+            s = line.strip()
+            if _CONTAINER_LINE.match(s) or _SLASH_LINE.match(s):
+                m_anchor = _CONTAINER_ID_RE.match(s)
+                if m_anchor:
+                    cleaned.append(f"[]{{#{m_anchor.group(1)}}}\n")
+                continue
+            cleaned.append(line.replace("\\>\\>", "——").replace("\\>", "——"))
+        chunks.append(
+            re.sub(r"\x00(\d+)\x00", lambda m, codes=codes: codes[int(m[1])], "".join(cleaned))
+        )
+    return "".join(chunks)
 
 
 def _render_img(alt: str, src: str) -> str:
@@ -378,7 +358,23 @@ def _unescape_punct(text: str) -> str:
 
 
 def _inline(text: str) -> str:
-    """行内 markdown → XHTML；危险 URL（javascript:/data:）降级为纯文本。"""
+    """先隔离显示代码，再解释其余行内 Markdown；调用方已做 XML 转义。"""
+    codes: list[str] = []
+    protected: list[str] = []
+    for code, part in inline_code_chunks(text):
+        if code:
+            match = CODE_SPAN_RE.fullmatch(part)
+            assert match is not None
+            protected.append(f"\x00{len(codes)}\x00")
+            codes.append(f"<code>{match.group(2)}</code>")
+        else:
+            protected.append(part)
+    rendered = _inline_text("".join(protected))
+    return re.sub(r"\x00(\d+)\x00", lambda m: codes[int(m[1])], rendered)
+
+
+def _inline_text(text: str) -> str:
+    """非代码行内 Markdown；危险 URL 降级为纯文本。"""
 
     def _img(m: re.Match[str]) -> str:
         return _render_img(m.group(1), m.group(2))
@@ -401,10 +397,7 @@ def _inline(text: str) -> str:
     text = _LINK_RE.sub(_link, text)
     text = _BOLD_RE.sub(r"<strong>\1</strong>", text)
     text = _ITALIC_RE.sub(r"<em>\1</em>", text)
-    # 脱转义放在结构替换之后、代码段转换之前：既不干扰链接/锚点/强调的识别，
-    # 又能靠仍存在的反引号跳过代码段（其反斜杠是字面内容）
     text = _unescape_punct(text)
-    text = _CODE_RE.sub(r"<code>\1</code>", text)
     return text
 
 
@@ -414,36 +407,24 @@ _IMG_ONLY_BLOCK = re.compile(r"^!\[([^\]]+)\]\(([^)]+)\)\s*$")
 # pandoc 原始 HTML：`` ```{=html} … ``` `` 围栏块，以及行内 `` `X`{=html} ``。
 # 缺这一层时 `<div>` / `<svg>` 会被 escape 成 ``&lt;div&gt;`` 原样印给读者
 # （2026-10-06 Thiriart 封面实测：整段 SVG 连同 `{=html}` 属性与游离反引号漏成乱码）。
-_RAW_HTML_FENCE = re.compile(r"^\s*`{3,}\s*(?:\{=\s*html\s*\})?\s*$")
+_RAW_HTML_FENCE = re.compile(r"^\s*\{=\s*html\s*\}\s*$")
 _RAW_HTML_INLINE = re.compile(r"`([^`]+)`\s*\{\s*=\s*html\s*\}")
 _HTML_TAG_LINE = re.compile(r"^\s*(?:</?[A-Za-z][\w:.-]*(?:\s[^<>]*?)?/?>\s*)+$")
 
 
 def _raw_html_block(block: str) -> str | None:
-    """块内全是 pandoc 原始 HTML 时直通输出，否则返回 None 交常规渲染。
+    """显式 pandoc raw 围栏直通；无围栏块仅在全部为标签行时直通。
 
-    白名单口径：去掉围栏与行内 raw 标记后，**每一行**都必须是纯 HTML 标签行。
-    只要混进一行普通 markdown 就不认（宁可漏渲染，也不可把未转义文本放行）。
+    普通代码围栏由调用方转义，不因恰好包含 HTML 而升级为 raw。
     """
+    opening = fence_info(block.splitlines()[0])
+    if opening is not None:
+        return fence_body(block) if _RAW_HTML_FENCE.fullmatch(opening[1]) else None
     lines = [ln for ln in block.splitlines() if ln.strip()]
-    if not lines:
+    kept = [_RAW_HTML_INLINE.sub(r"\1", line).strip() for line in lines]
+    if not kept or not all(_HTML_TAG_LINE.match(line) for line in kept):
         return None
-    kept: list[str] = []
-    for line in lines:
-        if _RAW_HTML_FENCE.match(line):
-            continue
-        kept.append(_RAW_HTML_INLINE.sub(r"\1", line).strip())
-    if not kept:
-        return None
-    if not all(_HTML_TAG_LINE.match(ln) for ln in kept):
-        return None
-    # 保留原始缩进形态原样输出（SVG 属性换行等），仅去掉围栏与 raw 标记
-    out: list[str] = []
-    for line in lines:
-        if _RAW_HTML_FENCE.match(line):
-            continue
-        out.append(_RAW_HTML_INLINE.sub(r"\1", line).strip())
-    return "\n".join(out)
+    return "\n".join(kept)
 
 
 # 语义标签（epub-template-spec P2）：引用块 / 诗行块 / 列表
@@ -466,28 +447,15 @@ def _split_pipe_row(line: str) -> list[str]:
     return [c.strip() for c in re.split(r"(?<!\\)\|", body)]
 
 
-# 表格单元格里的 ATX 标记：GFM 表格单元内不允许块级标题，源抽取却常把小节标题
-# 连同行内容一起吃进单元格（BLP 附录 2：`| **## 议会工党主席，1906—22** | |`）。
-# 渲染层只能按字面输出，读者遂在表格里看到字面 `##`。
-# 只吃**紧贴行首或紧贴行内 markdown 标记之后**的标记，避免误伤 `# 1` 这类
-# 编号内容（Pentagon Papers 的文件号就在正文标题里，属正常内容）。
-_CELL_ATX = re.compile(r"(?m)(^|(?<=\*\*)|(?<=\*)|(?<=`))#{1,6}[ \t]+")
-
-
-def _cell(text: str) -> str:
-    """单元格文本清洗：去掉无意义的 ATX 标记后交 `_inline` 渲染。"""
-    return _inline(escape(_CELL_ATX.sub(r"\1", text)))
-
-
 def _render_pipe_table(lines: list[str]) -> str:
     """md 管道表 → XHTML table（首行为表头，第二行为分隔行）。"""
-    head = "".join(f"<th>{_cell(c)}</th>" for c in _split_pipe_row(lines[0]))
+    head = "".join(f"<th>{_inline(escape(c))}</th>" for c in _split_pipe_row(lines[0]))
     rows = []
     for line in lines[2:]:
         if not line.strip() or "|" not in line:
             continue
         cells = _split_pipe_row(line)
-        rows.append("<tr>" + "".join(f"<td>{_cell(c)}</td>" for c in cells) + "</tr>")
+        rows.append("<tr>" + "".join(f"<td>{_inline(escape(c))}</td>" for c in cells) + "</tr>")
     return (
         '<table class="data"><thead><tr>'
         + head
@@ -546,10 +514,10 @@ def _render_simple_table(lines: list[str]) -> str | None:
         body = [ln for _i, ln in content[1:]]
 
     def head_cells(line: str) -> str:
-        return "".join(f"<th>{_cell(c)}</th>" for c in _split_span_row(line, spans))
+        return "".join(f"<th>{_inline(escape(c))}</th>" for c in _split_span_row(line, spans))
 
     def body_cells(line: str) -> str:
-        return "".join(f"<td>{_cell(c)}</td>" for c in _split_span_row(line, spans))
+        return "".join(f"<td>{_inline(escape(c))}</td>" for c in _split_span_row(line, spans))
 
     return (
         '<table class="data"><thead>'
@@ -589,7 +557,17 @@ def markdown_to_xhtml(
     末尾渲染完整注文（一注多引各自回链）。与旧记法互不干扰（标记前缀不同）。
     """
     md = _clean_pandoc_markers(md)
-    md = _PANDOC_LINKED_IMG.sub(lambda m: f"![{m.group(1)}]({m.group(2).strip()})", md)
+    md = "".join(
+        "".join(
+            part
+            if code
+            else _PANDOC_LINKED_IMG.sub(lambda m: f"![{m.group(1)}]({m.group(2).strip()})", part)
+            for code, part in inline_code_chunks(chunk)
+        )
+        if kind == "text"
+        else chunk
+        for kind, chunk in markdown_chunks(md)
+    )
     md, fn_defs = _split_footnote_defs(md)
     fn_items: list[tuple[int, str]] = []
     if fn_state is not None and fn_defs:
@@ -607,8 +585,11 @@ def markdown_to_xhtml(
     out: list[str] = []
     hcount = 0  # level≥2 标题计数（与 subheading_anchors 同规则，保证 nav 锚点不悬空）
     for block in _iter_blocks(md):
-        block = block.strip("\n")
         if not block.strip():
+            continue
+        opening = fence_info(block.splitlines()[0])
+        if opening is not None and not _RAW_HTML_FENCE.fullmatch(opening[1]):
+            out.append(f"<pre><code>{escape(fence_body(block))}</code></pre>")
             continue
         raw_html = _raw_html_block(block)
         if raw_html is not None:

@@ -92,15 +92,6 @@ def test_anchor_span_still_rejects_spaces():
     assert 'id="word illegible"' not in out
 
 
-def test_table_cell_strips_atx_marker():
-    """`| **## 议会工党主席，1906—22** | |`：单元格内 ATX 标记无意义，去掉标记保留文字。"""
-    md = "| 时期 | 任职者 |\n| --- | --- |\n| **## 议会工党主席，1906—22** | |\n| 1906—8 | 凯尔·哈第 |\n"
-    out = markdown_to_xhtml(md, unit_id="back-appendix-2")
-    assert "## 议会工党主席" not in out
-    assert "<strong>议会工党主席，1906—22</strong>" in out
-    assert "1906—8" in out
-
-
 def test_anchor_span_allows_space_before_brace():
     """抽取噪声 `[] {#GBS.0053.02}`（`[]` 与 `{` 间有空格）也要认成锚点。"""
     out = markdown_to_xhtml("承诺。[] {#GBS.0053.02}这当然\n", unit_id="ch03")

@@ -43,6 +43,8 @@ translation/
 - 段级等长：一个源段通常对应一句（或多句）；拆句/并句在 `note` 声明；
   `note` 记录拆/并句/漏译/存疑（前缀 `corr:wrong→right` 记源文勘误先例）。
 
+空 align 仅在现有、非空的 `structured/` 与 `translation/` 文档**双方都只有规范 ATX 标题行和空行**时允许；缺失/空源文、标题后无空行紧接正文或译文多出正文均不适用。import 与 G0/QA 共用此判定，`heading` 逐层守恒仍须通过。
+
 ## 特殊段处理（PDF 内容提取产物）
 
 PDF ingest 会产出三类非纯文本段（来源见 `references/ingest.md`；描述文件在
@@ -89,6 +91,13 @@ PDF ingest 会产出三类非纯文本段（来源见 `references/ingest.md`；�
 **裁决写回 glossary.csv 后，对全部已译单元重跑 `g0`**——旧译法违例（terminology）
 当场清零，不要只查新译单元；未决冲突未写回前 `qa` 不放行（`glossary_conflict_open`）。
 
+保留原文书名/引文等确有证据的例外，可写可选的
+`preprocessing/terminology_exemptions.csv`，必需列为 `unit,source,reason`：
+按单元与术语表 canonical source 精确匹配，`reason` 写回源核证理由；不得批量豁免真实误译。
+完全空行跳过，部分空行或空白理由会报错；文件缺失表示无豁免。
+命中输出为 `terminology_exempt`（`blocking=false`、`data.reason`），在 import 告警、
+独立 `g0` 与 QA 的 `g0_flags` 三处可见；其他术语违例仍阻断。报告失效规则见 `qa.md`。
+
 - **跨书复用**：开工先用 `knowledge export` 从统一库播种 `preprocessing/terms.csv`；
   本工作区术语定稿后用 `knowledge import` 回写统一库（默认 `~/Documents/auto-epublizer/`，
   私有 git 仓库，可 `knowledge push` 跨设备同步）；跨书同键异译外置到统一库
@@ -112,6 +121,6 @@ PDF ingest 会产出三类非纯文本段（来源见 `references/ingest.md`；�
 ## 状态机与续跑
 
 单元：`split → analyzed → translated → aligned → reviewed → built`。`import` 把完成单元
-置为 `aligned`；重复 import 无害（幂等）。审校通过后 `import --reviewed` 推进为
-`reviewed`（幂等）；`reviewed`/`built` 单元 import 跳过重导（重导修订稿须先重走审校）。
+置为 `aligned`；重复 import 无害（幂等）。审校通过后 `import --reviewed` 可在同次调用中把新验证通过的单元推进为
+`reviewed`（幂等）；`reviewed`/`built` 单元通常跳过重导；强制重验失败不得再提升为 reviewed。
 

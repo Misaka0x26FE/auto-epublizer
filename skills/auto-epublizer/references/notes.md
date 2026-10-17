@@ -1,4 +1,4 @@
-<!-- i18n: source=notes.zh.md sha256=7f395cdd6cdaee5b4d7465156b382e448f581168d9af2a0179492d9094160986 -->
+<!-- i18n: source=notes.zh.md sha256=4ee9b71a98b8e447dd073c99edb54e357165be13df429ad6ed45ecc13322e603 -->
 > **English** | [中文](notes.zh.md)
 
 # Note Structuring and Binding (phase N)
@@ -42,6 +42,12 @@ has notes but zero semantic nodes, has partial omissions, or mismatches content.
    by source character offsets, and is not forced to a sentence end). When one source note is
    referenced several times, register one independent `references` entry (independent
    `ref_id`) per occurrence.
+
+   Never replace canonical `[^label]` or stable `[^ref-ID]` with Unicode superscripts
+   to pass G0; mathematical superscripts cannot offset lost citations. Quotes or ellipses
+   before a real citation are not automatic OCR-noise waiver evidence. The agent must
+   repair ambiguity against source evidence and register the note/ref graph, not suppress
+   warnings with broad regexes.
 
 5. **Register** (separation-registration gate):
 
