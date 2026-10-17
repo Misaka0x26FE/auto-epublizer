@@ -95,6 +95,60 @@ def test_glossary_edit_invalidates_report(tmp_path: Path, monkeypatch: pytest.Mo
     assert report_state(store)["stale"] is True
 
 
+def test_adding_terminology_exemptions_invalidates_report(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    store = _released_ws(tmp_path, monkeypatch)
+    (store.preprocessing_dir / "terminology_exemptions.csv").write_text(
+        "unit,source,reason\nch01,First sentence,文献题名保留原文\n", encoding="utf-8"
+    )
+    assert report_state(store)["stale"] is True
+    overview = orch.status_all(store.dir.parent)
+    assert overview[0]["report_stale"] is True
+    assert overview[0]["progress"] == "built_not_released"
+
+
+@pytest.mark.parametrize("change", ["reason", "remove-entry", "remove-file"])
+def test_changing_active_terminology_exemption_invalidates_release(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, change: str
+) -> None:
+    store = _released_ws(tmp_path, monkeypatch)
+    (store.analysis_dir / "glossary.csv").write_text(
+        "source,target,type,status\nFirst sentence,首句,term,confirmed\n", encoding="utf-8"
+    )
+    path = store.preprocessing_dir / "terminology_exemptions.csv"
+    path.write_text("unit,source,reason\nch01,First sentence,文献题名保留原文\n", encoding="utf-8")
+    flags = orch.g0_check(store)["flags"]
+    assert any(
+        flag["check"] == "terminology_exempt" and flag["blocking"] is False for flag in flags
+    )
+    epub = store.output_dir / f"{store.load_publication().slug}.epub"
+    report = orch.qa(store, epub_path=str(epub))
+    assert report["released"] is True, report.get("released_reason")
+    assert report_state(store)["stale"] is False
+    assert orch.status_all(store.dir.parent)[0]["progress"] == "released"
+
+    if change == "reason":
+        path.write_text(
+            "unit,source,reason\nch01,First sentence,复核后保留原文\n", encoding="utf-8"
+        )
+    elif change == "remove-entry":
+        path.write_text("unit,source,reason\n", encoding="utf-8")
+    else:
+        path.unlink()
+    assert report_state(store)["stale"] is True
+    overview = orch.status_all(store.dir.parent)
+    assert overview[0]["report_stale"] is True
+    assert overview[0]["progress"] == "built_not_released"
+    if change != "reason":
+        failed_report = orch.qa(store, epub_path=str(epub))
+        assert failed_report["released"] is False
+        assert any(
+            flag["check"] == "terminology" and flag["blocking"]
+            for flag in failed_report["g0_flags"]
+        )
+
+
 def test_notes_registration_change_invalidates_report(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

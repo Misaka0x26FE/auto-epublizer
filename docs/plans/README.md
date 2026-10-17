@@ -41,3 +41,4 @@
 | [2026-10-05-remaining-fixes.md](2026-10-05-remaining-fixes.md) | 已完成（R0–R4） | 现场核对（代码现状 + 本机真实工作区：布局嵌套/schema 异构）与剩余修复计划：R0 `status --all` 嵌套布局（新缺陷）→ R1 #14 页边界证据 → R2 #31 PDF 标题识别 → R3 #30 §4.1/4.4 → R4 模板固化 |
 | [2026-10-14-review-and-repair.md](2026-10-14-review-and-repair.md) | 实施中（§12 代码与架构已提交 `1db8752`，真实书未完） | 单一成品路径、旧注释门移交与入口前移；checker fail-open、旧报告失效、完整媒体身份及当前架构图；真实书 N/术语核证保留 |
 | [2026-10-15-review-backflow.md](2026-10-15-review-backflow.md) | 当前代码与架构已提交（§10.4，`1db8752`） | 更正旧 checker 证据，记录实际退出码/旧报告 stale、无桌面注释及媒体正负验收、架构浏览器核证；644 passed、1 skipped，不冒充原书完整验收 |
+| [2026-10-17-pr42-repair.md](2026-10-17-pr42-repair.md) | 实施中 | PR42 八类缺陷修复、额外 source ingest 围栏边界发现；保留作者 12 提交，记录已观测验证，不冒充真实书迁移 |

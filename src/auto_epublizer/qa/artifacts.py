@@ -54,9 +54,10 @@ def artifacts_digest(store: Any, *, epub_path: str | Path | None = None) -> str:
 
     覆盖**全部放行输入**（P1 漏门修复）：按 publication **发布顺序**（不再按 id 排序，
     排序会抹去单元顺序）编码单元发布描述 + structured/translation/align 内容 + 注释
-    文件 + 放行输入的预处理产物（`catalog.csv`/`repairs.jsonl`）+ 最新审校 result.json
-    + 实际源件字节 + 成品字节。插入资源与溯源审计共用「解析后仍在 raw 内且为文件」
-    判据；仅换 symlink 目标造成资源越界也会使报告过期，且不探测越界文件存在性。
+    文件 + 放行输入的预处理产物（`catalog.csv`/`repairs.jsonl`/术语豁免表）
+    + 最新审校 result.json + 实际源件字节 + 成品字节。插入资源与溯源审计共用
+    「解析后仍在 raw 内且为文件」判据；仅换 symlink 目标造成资源越界也会使报告过期，
+    且不探测越界文件存在性。
     """
     pub = store.load_publication()
     h = hashlib.sha256()
@@ -93,6 +94,7 @@ def artifacts_digest(store: Any, *, epub_path: str | Path | None = None) -> str:
         "preprocessing/catalog.csv",
         "preprocessing/repairs.jsonl",
         "preprocessing/facts.json",
+        "preprocessing/terminology_exemptions.csv",
         "analysis/glossary.csv",
         "analysis/glossary_conflicts.jsonl",
     ):

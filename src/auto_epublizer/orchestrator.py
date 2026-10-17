@@ -684,10 +684,12 @@ def import_translations(
         save_glossary_csv,
         write_conflicts_jsonl,
     )
-    from auto_translator.review import check_alignment, g0_unit_flags
+    from auto_translator.glossary.csv_io import load_terminology_exemptions
+    from auto_translator.review import check_alignment, g0_unit_flags, is_heading_only
     from auto_translator.translation.align import read_align
 
     pub = store.load_publication()
+    exemptions = load_terminology_exemptions(store.preprocessing_dir / "terminology_exemptions.csv")
     glossary_path = store.analysis_dir / "glossary.csv"
     conflicts_path = store.analysis_dir / "glossary_conflicts.jsonl"
 
@@ -757,12 +759,13 @@ def import_translations(
         structured_md = (
             structured_path.read_text(encoding="utf-8") if structured_path.is_file() else None
         )
+        translation_md = tgt_path.read_text(encoding="utf-8") if tgt_path.is_file() else None
         errors: list[str] = []
         pending_reasons: list[str] = []
         if not tgt_path.is_file():
             pending_reasons.append(f"缺少译文文件：{tgt_path}")
         rows = read_align(align_path) if align_path.is_file() else []
-        if not rows:
+        if not rows and not (is_heading_only(structured_md) and is_heading_only(translation_md)):
             pending_reasons.append(f"缺少对照表或对照表为空：{align_path}")
         if pending_reasons:
             # 未译单元是「待译」不是「失败」：也不继续跑文档/表格/术语检查——
@@ -781,11 +784,9 @@ def import_translations(
             errors.append(f"表格形状：{f.message}（{f.data}）")
         # md↔align 全文一致性（交付审计 S1.1）：md 是 build 输入、align 是校验基准，
         # 一侧缺内容（图片段/脚注/段落）即阻断登记——防缺陷直达成品
-        translation_md: str | None = None
-        if tgt_path.is_file() and rows:
+        if translation_md is not None and rows:
             from auto_translator.review import md_align_drift
 
-            translation_md = tgt_path.read_text(encoding="utf-8")
             for d in md_align_drift(translation_md, rows, title=unit.title):
                 errors.append(f"文档一致性：{d}")
         # N 阶段翻译导入门：译文原位标记守恒 + 所需译注齐全（源注文已登记时启用）
@@ -840,6 +841,7 @@ def import_translations(
             structured_md=structured_md,
             translation_md=translation_md,
             **_g0_thresholds(config or Config()),
+            exempt_sources=exemptions.get(unit.id, {}),
         ):
             # 源保真：反向失配（blocking=True，src 不在源文中）= 对照表不可信，阻断登记；
             # 前向缺块（blocking=False，可能为合法剔除）与其余硬缺陷类/advisory 收进告警：
@@ -852,6 +854,7 @@ def import_translations(
             if f.check in (
                 "length",
                 "terminology",
+                "terminology_exempt",
                 "marker",
                 "footnote",
                 "footnote_suspect",
@@ -898,10 +901,9 @@ def import_translations(
     # --reviewed：审校通过的显式登记（aligned → reviewed，幂等）
     reviewed: list[str] = []
     if mark_reviewed:
-        for unit in pub.units:
-            if unit_id and unit.id != unit_id:
-                continue
-            if unit.status == "aligned":
+        accepted = set(imported) | set(revalidated)
+        for unit in store.load_publication().units:
+            if unit.id in accepted and unit.status == "aligned":
                 store.set_unit_status(unit.id, "reviewed")
                 reviewed.append(unit.id)
 
@@ -1154,10 +1156,10 @@ def set_meta(
 
 
 def _qa_requires_align(store: RunStore, unit: Any) -> bool:
-    """该单元在 qa 必须有非空对照表：有译文文件，或状态已进入译文族。
+    """该单元必须进入 G0：有译文文件，或状态已进入译文族。
 
-    未译单元（无译文、状态 pending/split/analyzed）与**源文回退构建**的单元
-    （convert 工作区、frontmatter 回退单元）不要求——避免把「没有译文」误判成对照表缺失。
+    仅源文回退不要求对照表；纯标题也必须进入 G0 检查标题层级，
+    空对照表例外由共享的源译双侧纯标题判据决定。
     """
     rel = (unit.meta or {}).get("rel_path")
     has_translation = bool(rel) and (store.translation_dir / rel).is_file()
@@ -1169,10 +1171,12 @@ def g0_check(
 ) -> dict[str, Any]:
     """G0 零 token 静态校验（独立命令；翻译/导入后立即跑，不必等到 qa）。"""
     from auto_translator.glossary import Glossary, load_glossary_csv
+    from auto_translator.glossary.csv_io import load_terminology_exemptions
     from auto_translator.review import g0_unit_flags
 
     cfg = config or Config()
     pub = store.load_publication()
+    exemptions = load_terminology_exemptions(store.preprocessing_dir / "terminology_exemptions.csv")
     flags: list[dict[str, Any]] = []
     checked: list[str] = []
     for unit in pub.units:
@@ -1199,6 +1203,7 @@ def g0_check(
             structured_md=structured_md,
             translation_md=translation_md,
             **_g0_thresholds(cfg),
+            exempt_sources=exemptions.get(unit.id, {}),
         ):
             flags.append(_flag_dict(unit.id, f))
         for f in _unit_doc_flags(store, rel_path) if rel_path else []:
@@ -1209,10 +1214,12 @@ def g0_check(
 def _collect_g0_flags(store: RunStore, config: Config | None = None) -> list[dict[str, Any]]:
     """对所有已对齐单元执行 G0 零 token 静态校验，返回告警（dict 列表）。"""
     from auto_translator.glossary import Glossary, load_glossary_csv
+    from auto_translator.glossary.csv_io import load_terminology_exemptions
     from auto_translator.review import g0_unit_flags
 
     cfg = config or Config()
     glossary = Glossary(load_glossary_csv(store.analysis_dir / "glossary.csv"))
+    exemptions = load_terminology_exemptions(store.preprocessing_dir / "terminology_exemptions.csv")
     flags: list[dict[str, Any]] = []
     for unit in store.load_publication().units:
         rows = read_align(store.unit_align_path(unit.id))
@@ -1235,6 +1242,7 @@ def _collect_g0_flags(store: RunStore, config: Config | None = None) -> list[dic
             structured_md=structured_md,
             translation_md=translation_md,
             **_g0_thresholds(cfg),
+            exempt_sources=exemptions.get(unit.id, {}),
         ):
             flags.append(_flag_dict(unit.id, f))
         for f in _unit_doc_flags(store, rel_path) if rel_path else []:
