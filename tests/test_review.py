@@ -440,7 +440,8 @@ def test_g0_footnote_ocr_dot_noise_before_dot_is_not_a_ref() -> None:
     )
     assert count_footnote_refs(noise) == 0
     assert not [
-        f for f in g0_unit_flags([{"seq": 1, "src": noise, "tgt": "参见，同上。"}], g)
+        f
+        for f in g0_unit_flags([{"seq": 1, "src": noise, "tgt": "参见，同上。"}], g)
         if f.check == "footnote"
     ]
     # 真注码不得被这个排除吞掉：英文单引号收尾、中文闭合引号、CJK 句末点各 1 个
@@ -657,12 +658,20 @@ def test_terminology_exemption_is_advisory_not_silent() -> None:
     from auto_translator.glossary import STATUS_SEED, GlossaryEntry
     from auto_translator.review import g0_unit_flags
 
-    g = Glossary([
-        GlossaryEntry(source="Konzentrationslager", target="集中营",
-                      type="org", status=STATUS_SEED)
-    ])
-    rows = [{"seq": 0, "src": "vgl. Tuchei, Konzentrationslager, S. 243.",
-             "tgt": "参见 Tuchei，Konzentrationslager，S. 243。"}]
+    g = Glossary(
+        [
+            GlossaryEntry(
+                source="Konzentrationslager", target="集中营", type="org", status=STATUS_SEED
+            )
+        ]
+    )
+    rows = [
+        {
+            "seq": 0,
+            "src": "vgl. Tuchei, Konzentrationslager, S. 243.",
+            "tgt": "参见 Tuchei，Konzentrationslager，S. 243。",
+        }
+    ]
 
     hard = g0_unit_flags(rows, g)
     assert [f for f in hard if f.check == "terminology"], "未豁免时应报硬缺陷"

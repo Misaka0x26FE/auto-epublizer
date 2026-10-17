@@ -408,9 +408,7 @@ def test_import_accepts_pure_heading_unit_with_empty_align(tmp_path: Path) -> No
     src.write_text("# 第一部：奠基\n", encoding="utf-8")
     store = orch.init(str(src), workspace_dir=tmp_path / "ws")
     (store.translation_dir / "body").mkdir(parents=True, exist_ok=True)
-    (store.translation_dir / "body" / "ch01.md").write_text(
-        "# 第一部：奠基\n", encoding="utf-8"
-    )
+    (store.translation_dir / "body" / "ch01.md").write_text("# 第一部：奠基\n", encoding="utf-8")
     (store.translation_dir / "align").mkdir(parents=True, exist_ok=True)
     store.unit_align_path("ch01").write_text("", encoding="utf-8")
 

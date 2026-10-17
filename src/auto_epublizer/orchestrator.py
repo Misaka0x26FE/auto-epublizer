@@ -738,7 +738,7 @@ def import_translations(
     failed: list[dict[str, Any]] = []
     warned: list[dict[str, Any]] = []
     skipped: list[str] = []
-    pure_heading: set[str] = set()   # 纯标题单元：本就不该有对照表行（见下）
+    pure_heading: set[str] = set()  # 纯标题单元：本就不该有对照表行（见下）
 
     for unit in pub.units:
         if unit_id and unit.id != unit_id:

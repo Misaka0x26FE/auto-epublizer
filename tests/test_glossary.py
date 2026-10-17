@@ -249,6 +249,7 @@ def test_load_glossary_csv_tolerates_utf8_bom(tmp_path: Path) -> None:
     assert [e.source for e in entries] == ["zone", "criticize"]
     assert entries[0].target == "赤区"
 
+
 def test_terminology_hit_not_triggered_inside_hyphenated_compound() -> None:
     """``Brest`` 不得在 ``Brest-Litovsk`` 内部命中（连字符接成同一 token）。
 
@@ -267,7 +268,9 @@ def test_terminology_hit_not_triggered_inside_hyphenated_compound() -> None:
         ]
     )
     # 复合地名出现、译文用了长词条的确认译法 → 不应报「Brest 译文缺失」
-    hits = terminology_hits("In Brest-Litovsk, Trotsky was received.", "在布列斯特-立陶宛，托洛茨基受到接待。", g)
+    hits = terminology_hits(
+        "In Brest-Litovsk, Trotsky was received.", "在布列斯特-立陶宛，托洛茨基受到接待。", g
+    )
     assert hits == []
 
     # 独立出现时仍须强制确认译法
@@ -279,7 +282,7 @@ def test_terminology_hit_hyphen_boundary_across_dash_family() -> None:
     """各类 Unicode 连字符/短横线同样视作同一 token 的连接符。"""
     g = Glossary([_entry("Brest", "布雷斯特", type="place", status=STATUS_CONFIRMED)])
     for dash in ("-", "\u2010", "\u2013", "\u2014"):
-        assert terminology_hits("Brest%sLitovsk" % dash, "未用确认译法", g) == []
+        assert terminology_hits(f"Brest{dash}Litovsk", "未用确认译法", g) == []
     # 普通字母后缀同样不是边界（Brestsky 是另一个词，不该命中 Brest）
     assert terminology_hits("Brestsky", "未用确认译法", g) == []
     # 但独立出现仍须命中

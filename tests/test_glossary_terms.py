@@ -21,15 +21,21 @@ def test_em_dash_does_not_block_boundary() -> None:
     """
     g = Glossary([_entry("NSDAP", "NSDAP")])
     # 中文破折号后命中，且译文含该术语 → 不报
-    assert terminology_hits("DAP ist eine Vorläuferin der NSDAP", "DAP\u2014\u2014NSDAP 的前身", g) == []
+    assert (
+        terminology_hits("DAP ist eine Vorläuferin der NSDAP", "DAP\u2014\u2014NSDAP 的前身", g)
+        == []
+    )
     # 普通位置命中 → 不报
     assert terminology_hits("Vorläuferin der NSDAP", "NSDAP 的前身", g) == []
     # en dash 仍按词内连接符处理：短词条 `Brest` 不得命中 `Brest–Litovsk` 内部，
     # 故 src 不命中 → 译文缺不缺都无从谈起 → 0 条告警。
     # （这正是 2026-10-06 把连字符族收进边界集合要保住的行为。）
-    hit = terminology_hits("Stadt Brest–Litovsk", "布列斯特-立陶宛",
-                           Glossary([_entry("Brest", "布雷斯特")]))
+    hit = terminology_hits(
+        "Stadt Brest–Litovsk", "布列斯特-立陶宛", Glossary([_entry("Brest", "布雷斯特")])
+    )
     assert hit == [], "en dash 必须继续阻断边界"
     # 独立出现时仍须强制确认译法
-    assert len(terminology_hits("der Hafen Brest", "该港口",
-                                Glossary([_entry("Brest", "布雷斯特")]))) == 1
+    assert (
+        len(terminology_hits("der Hafen Brest", "该港口", Glossary([_entry("Brest", "布雷斯特")])))
+        == 1
+    )

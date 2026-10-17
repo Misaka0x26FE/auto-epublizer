@@ -54,6 +54,7 @@ def test_normal_block_heading_unchanged():
     out = markdown_to_xhtml("## 1. 甲\n正文。\n", unit_id="ch01")
     assert "1. 甲</h2>" in out and "正文。</p>" in out
 
+
 def test_consecutive_headings_are_separated():
     """连续标题行 `## A` / `### B`：`### B` 不得被当作 `## A` 之后的正文塞进 <p>。
 

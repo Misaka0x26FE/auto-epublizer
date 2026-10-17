@@ -444,6 +444,8 @@ def _raw_html_block(block: str) -> str | None:
             continue
         out.append(_RAW_HTML_INLINE.sub(r"\1", line).strip())
     return "\n".join(out)
+
+
 # 语义标签（epub-template-spec P2）：引用块 / 诗行块 / 列表
 _BQ_LINE = re.compile(r"^\s*>\s?(.*)$")
 _VERSE_LINE = re.compile(r"^\s*\|\s?(.*)$")

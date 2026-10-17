@@ -998,7 +998,7 @@ def test_raw_html_fenced_block_passthrough() -> None:
     md = (
         '```{=html}\n<svg xmlns="http://www.w3.org/2000/svg" width="100%">\n```\n'
         '`<image height="751" xlink:href="cover.jpeg">`{=html}`</image>`{=html}\n'
-        '```{=html}\n</svg>\n```'
+        "```{=html}\n</svg>\n```"
     )
     out = markdown_to_xhtml(md, unit_id="cover")
     assert "<svg" in out and "</svg>" in out
@@ -1023,7 +1023,9 @@ def test_nav_label_strips_calibre_toc_attribute() -> None:
     """
     from auto_epublizer.build import _render_nav_items
 
-    nodes = [{"entry": {"id": "front-introduction", "title": "引言 {#calibre_toc_1}"}, "children": []}]
+    nodes = [
+        {"entry": {"id": "front-introduction", "title": "引言 {#calibre_toc_1}"}, "children": []}
+    ]
     out = _render_nav_items(nodes)
     assert "引言</a>" in out
     assert "calibre_toc" not in out
