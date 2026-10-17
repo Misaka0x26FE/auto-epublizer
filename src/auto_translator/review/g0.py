@@ -28,7 +28,6 @@ from __future__ import annotations
 
 import re
 from collections.abc import Mapping
-from dataclasses import dataclass, field
 from typing import Any
 
 from ..glossary import Glossary, terminology_hits
@@ -58,9 +57,7 @@ _MARKER_RE = re.compile(r"\{\w+:\d+\}")
 # 闭合引号在句末点之后（『……生产。』33），注号因此紧跟 `』`/`」` 而非 `。`；只认
 # `[.!?…。！？]` 会让译文侧少数十几个注码，在源侧可数偏多的单元上误报脚注不守恒。
 # 这些字符在英文源侧不出现，故只放宽译文侧计数、不影响源侧。
-_FOOTNOTE_REF_RE = re.compile(
-    r"(?<!\d)[.!?…。！？』」】〕](\d{1,3})(?!\d)(?![%％])(?![.)）、\]])"
-)
+_FOOTNOTE_REF_RE = re.compile(r"(?<!\d)[.!?…。！？』」】〕](\d{1,3})(?!\d)(?![%％])(?![.)）、\]])")
 
 # 缩写点（回归 #8）：`стр.66` `п.5` `ст.3` `гл.2` `рис.3` `20.Х.77` 这类页码/条款引用，
 # 点号属于缩写词而非句末，后随数字不是注码。

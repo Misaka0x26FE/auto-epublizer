@@ -31,7 +31,7 @@ _CJK = "\u3400-\u4dbf\u4e00-\u9fff\u3040-\u30ff\uac00-\ud7af"
 # 连字符族口径一致；用定长负向后顾 `(?<!——)` 把「连写两个」单独放行即可
 # （Python `re` 的后顾必须定长，`——` 正好是 2 字符）。
 _HYPHENS = "\\-\u2010\u2011\u2012\u2013\u2014\u2015\u2212"
-_CJK_DASH = "——"      # 中文破折号 = 两个 em dash 连写
+_CJK_DASH = "——"  # 中文破折号 = 两个 em dash 连写
 
 
 def _boundary_pattern(source: str) -> re.Pattern[str]:
@@ -50,9 +50,21 @@ def _boundary_pattern(source: str) -> re.Pattern[str]:
     edge = r"[\w" + _HYPHENS + r"]"
     dash = re.escape(_CJK_DASH)
     return re.compile(
-        r"(?:(?<=[" + _CJK + r"])|(?<=" + dash + r")|(?<!" + edge + r"))"
+        r"(?:(?<=["
+        + _CJK
+        + r"])|(?<="
+        + dash
+        + r")|(?<!"
+        + edge
+        + r"))"
         + escaped
-        + r"(?:(?=[" + _CJK + r"])|(?=" + dash + r")|(?!" + edge + r"))"
+        + r"(?:(?=["
+        + _CJK
+        + r"])|(?="
+        + dash
+        + r")|(?!"
+        + edge
+        + r"))"
     )
 
 
