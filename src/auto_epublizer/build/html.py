@@ -19,6 +19,14 @@ from dataclasses import dataclass
 from html import escape
 from typing import Any
 
+from auto_common.markdown import (
+    CODE_SPAN_RE,
+    fence_body,
+    fence_info,
+    inline_code_chunks,
+    markdown_chunks,
+)
+
 _HEADING_RE = re.compile(r"^(#{1,6})\s+(.*)$")
 _IMG_RE = re.compile(r"!\[([^\]]*)\]\(([^)]+)\)")
 # pandoc 的「缩略图链接图片」语法：
@@ -26,13 +34,21 @@ _IMG_RE = re.compile(r"!\[([^\]]*)\]\(([^)]+)\)")
 # 归一为标准 markdown 图片（src 保留），避免内层 <img> 被外层链接二次转义。
 _PANDOC_LINKED_IMG = re.compile(r"\[\[!\[([^\]]*)\]\(([^)]+)\)[^\]]*\]\([^)]*\)[^\]]*\]\{[^}]*\}")
 _LINK_RE = re.compile(r"\[([^\]]+)\]\(([^)]+)\)")
-# 正文导航锚点：[]{#page_15}（ingest 保留的源 <a id>）→ 空锚点元素，供内部链接跳转
-_ANCHOR_INLINE_RE = re.compile(r"\[\]\{#([\w:.-]+)\}")
+# 正文导航锚点：[]{#page_15}（ingest 保留的源 <a id>）→ 空锚点元素，供内部链接跳转。
+# 两处放宽，均不放开 id 字符集：
+#   ① `#` 允许缺省：抽取器会丢属性里的井号，源侧并存 `[]{#GBS.0014.04}` 与
+#      `[]{GBS.0014.05}`（Pentagon Papers 329 处）。
+#   ② `[]` 与 `{` 之间允许空格：抽取噪声 `[] {#GBS.0053.02}`（Pentagon 29 处）。
+#      用 `[ \t]*` 而非 `\s*`，免得跨行吞掉后面的段落。
+# id 字符集**始终不含空格**——`[]{#word illegible}` 是校勘标记而非锚点，
+# 放宽会让它变成空锚点，等于悄悄删掉标记（比显示乱码更糟，见缺陷清单 pentagon ch05）。
+_ANCHOR_INLINE_RE = re.compile(r"\[\][ \t]*\{#?([\w:.-]+)\}")
+# 空属性块 `{[]}`：只裹一个空 span 的 pandoc 属性表，无信息（见 `_inline` 里的说明）
+_EMPTY_ATTR_RE = re.compile(r"\{[ \t]*\[[ \t]*\][ \t]*\}")
 # 标题上的 id 属性：``标题 {#ch01}`` → (标题, ch01)
 _HEADING_ID_RE = re.compile(r"\s*\{#([\w:.-]+)\}\s*$")
 _BOLD_RE = re.compile(r"\*\*((?:[^*]|\\\*)+)\*\*")
 _ITALIC_RE = re.compile(r"(?<!\*)\*([^*]+)\*(?!\*)")
-_CODE_RE = re.compile(r"`([^`]+)`")
 # pandoc 反斜杠转义：`\(` / `\.` / `\[` / `\*` / `\\` → 字面标点（转义符本身不输出）。
 # 缺失时源里的出版方编辑插入 `\[一年后……\]`、CIP 行 `p\. cm.`、编号 `\(1\)`
 # 会带着**可见反斜杠**进成品（四本书合计 1000+ 处；audit 的 W_RESIDUE
@@ -154,40 +170,60 @@ def _split_footnote_defs(md: str) -> tuple[str, dict[str, str]]:
     defs: dict[str, str] = {}
     body_lines: list[str] = []
     current: str | None = None
-    for line in md.splitlines():
-        m = _FN_DEF.match(line)
-        if m:
-            label = str(m.group(1))
-            defs[label] = m.group(2).strip()
-            current = label
-            continue
-        if current is not None:
-            label = current
-            if line.strip() and not line.startswith("#"):
-                defs[label] = f"{defs[label]} {line.strip()}".strip()
-                continue
+    for kind, chunk in markdown_chunks(md):
+        if kind != "text":
             current = None
-            if not line.strip():
-                continue  # 定义块后的空行不进正文
-        body_lines.append(line)
-    return "\n".join(body_lines), defs
+            body_lines.append(chunk)
+            continue
+        for line in chunk.splitlines(keepends=True):
+            m = _FN_DEF.match(line)
+            if m:
+                label = str(m.group(1))
+                defs[label] = m.group(2).strip()
+                current = label
+                continue
+            if current is not None:
+                label = current
+                if line.strip() and not line.startswith("#"):
+                    defs[label] = f"{defs[label]} {line.strip()}".strip()
+                    continue
+                current = None
+                if not line.strip():
+                    continue
+            body_lines.append(line)
+    return "".join(body_lines), defs
 
 
 def _substitute_noterefs(
     xhtml: str, unit_id: str, defs: dict[str, str], fn_state: FootnoteState | None
 ) -> str:
-    """把 XHTML 里的字面 ``[^label]`` 替换为 noteref 锚点（无定义则保留字面）。"""
+    """把 XHTML 里的字面 ``[^label]`` 替换为 noteref 锚点（无定义则保留字面）。
+
+    **同一脚注被重复引用时，锚点 id 必须去重**（2026-10-08 reichsarbeitsministerium
+    essay-07 实测）：德文史学著作里「见前引注 6」式的重复引用很常见，原实现对每次
+    出现都发同一个 ``id="ref-6"``，epubcheck 直接报 RSC-005
+    ``Duplicate ID "ref-6"``（2 处 error，阻断放行）。
+
+    口径：同一单元内某标签的第 k 次引用，id 取 ``ref-{n}``（k=1）或
+    ``ref-{n}-{k}``（k≥2）。章末 backlink 的 ``href="#ref-{n}"`` 仍落在
+    **首次**引用上——重复引用没有独立回链目标，指向首次引用才是正确语义。
+    """
     if "^" not in xhtml:
         return xhtml
+
+    seen: dict[str, int] = {}
 
     def _sub(m: re.Match[str]) -> str:
         label = m.group(1)
         if label not in defs or fn_state is None:
             return m.group(0)
         n = fn_state.number(unit_id, label)
+        k = seen.get(label, 0) + 1
+        seen[label] = k
+        rid = f"ref-{n}" if k == 1 else f"ref-{n}-{k}"
         return (
             f'<sup class="noteref"><a epub:type="noteref" role="doc-noteref" '
-            f'id="ref-{n}" href="#fn-{n}">[{n}]</a></sup>'
+            f'id="{rid}" href="#fn-{n}">[{n}]</a></sup>'
         )
 
     return _FN_REF.sub(_sub, xhtml)
@@ -207,25 +243,48 @@ def _render_footnote_section(items: list[tuple[int, str]]) -> str:
     )
 
 
-def _clean_pandoc_markers(md: str) -> str:
-    """清理 pandoc 转出时的排版残留（确定性纯函数）：
-    - 删除容器 div 标记行（:::/::: gallerytext/::: {.thumb …}/- ::: {…}）
-    - 删除纯反斜杠装饰行（\\）
-    - MediaWiki 引用标记（\\> / \\>\\>）→「——」（贴合中文小说场景提示排版）
-    """
-    cleaned = []
-    for line in md.splitlines():
-        s = line.strip()
-        if _CONTAINER_LINE.match(s) or _SLASH_LINE.match(s):
-            # 带 {#id} 的容器行承载源文档的页码/位置锚点（如 ::: {#page0026}）：
-            # 删除栅栏本身，但保留一个等价的内联锚点，供目录与交叉引用跳转。
-            m_anchor = _CONTAINER_ID_RE.match(s)
-            if m_anchor:
-                cleaned.append(f"[]{{#{m_anchor.group(1)}}}")
+def _iter_blocks(md: str) -> list[str]:
+    """围栏完整保留；其他文本按空行和 ATX 标题分块，与 nav 扫描共用。"""
+    blocks: list[str] = []
+    for kind, chunk in markdown_chunks(md):
+        if kind != "text":
+            blocks.append(chunk)
             continue
-        line = line.replace("\\>\\>", "——").replace("\\>", "——")
-        cleaned.append(line)
-    return "\n".join(cleaned)
+        for raw in re.split(r"\n\s*\n", chunk):
+            for part in re.split(r"(?m)(?=^#{1,6}[ \t]+)", raw):
+                if part.strip():
+                    blocks.append(part.strip("\n"))
+    return blocks
+
+
+def _clean_pandoc_markers(md: str) -> str:
+    """清理非围栏文本的 pandoc 容器/装饰行，不改写可见代码或 raw HTML。"""
+    chunks: list[str] = []
+    for kind, chunk in markdown_chunks(md):
+        if kind != "text":
+            chunks.append(chunk)
+            continue
+        codes: list[str] = []
+        protected: list[str] = []
+        for code, part in inline_code_chunks(chunk):
+            if code:
+                protected.append(f"\x00{len(codes)}\x00")
+                codes.append(part)
+            else:
+                protected.append(part)
+        cleaned: list[str] = []
+        for line in "".join(protected).splitlines(keepends=True):
+            s = line.strip()
+            if _CONTAINER_LINE.match(s) or _SLASH_LINE.match(s):
+                m_anchor = _CONTAINER_ID_RE.match(s)
+                if m_anchor:
+                    cleaned.append(f"[]{{#{m_anchor.group(1)}}}\n")
+                continue
+            cleaned.append(line.replace("\\>\\>", "——").replace("\\>", "——"))
+        chunks.append(
+            re.sub(r"\x00(\d+)\x00", lambda m, codes=codes: codes[int(m[1])], "".join(cleaned))
+        )
+    return "".join(chunks)
 
 
 def _render_img(alt: str, src: str) -> str:
@@ -252,19 +311,29 @@ def _fallback_alt(src: str) -> str:
 
 
 def _split_heading_id(text: str) -> tuple[str, str | None]:
-    """拆分标题末尾的 ``{#id}`` 属性，返回 (纯标题, id|None)。"""
+    """拆分标题末尾的 ``{#id}`` 属性，返回 (纯标题, id|None)。
+
+    pandoc 的行内锚点形态是 ``[]{#id}``（空方括号 + 属性），标题上两者常连用：
+    ``### **# 1**[]{#d1}``。只剥 ``{#d1}`` 会把空 ``[]`` 留给读者，渲染成
+    ``<h3 id="d1"><strong># 1</strong>[]</h3>``（Pentagon Papers 135 处正文标题 +
+    134 处 nav 标签）。故连同其前的 ``[]`` 一并吃掉。
+    """
     m = _HEADING_ID_RE.search(text)
     if not m:
         return text, None
-    return text[: m.start()].rstrip(), m.group(1)
+    head = text[: m.start()].rstrip()
+    if head.endswith("[]"):
+        head = head[:-2].rstrip()
+    return head, m.group(1)
 
 
 # 目录（nav）标签用的行内 markdown 剥离：nav 标签是纯文本，不经 _inline 渲染，
 # 故须在此去掉强调与行内锚点，否则读者在目录里看到字面 `**`、`[]{#…}`
 # （Pentagon Papers 全书 83% 标题行含 markdown；W_RESIDUE 豁免 nav.xhtml）。
 _LABEL_ANCHOR = re.compile(r"\{[^{}]*\}")  # 裸 {…} 属性块（含 {#id}）
-# pandoc 行内属性形态 `[]{#id}` / `[文本]{attrs}`：先吃掉方括号包裹再剥属性
-_LABEL_INLINE_ATTR = re.compile(r"\[([^\]]*)\]\{[^{}]*\}")
+# pandoc 行内属性形态 `[]{#id}` / `[文本]{attrs}`：先吃掉方括号包裹再剥属性。
+# `[]` 与 `{` 之间允许空格（抽取噪声 `[] {#id}`，Pentagon Papers 29 处）
+_LABEL_INLINE_ATTR = re.compile(r"\[([^\]]*)\][ \t]*\{[^{}]*\}")
 _LABEL_IMG = re.compile(r"!\[([^\]]*)\]\([^)]*\)")  # 图片 → 取 alt
 _LABEL_LINK = re.compile(r"\[([^\]]*)\]\([^)]*\)")  # 链接 → 取标签文本
 _LABEL_EMPH = re.compile(r"(\*{1,3}|_{1,3})(.+?)\1", re.S)
@@ -289,7 +358,23 @@ def _unescape_punct(text: str) -> str:
 
 
 def _inline(text: str) -> str:
-    """行内 markdown → XHTML；危险 URL（javascript:/data:）降级为纯文本。"""
+    """先隔离显示代码，再解释其余行内 Markdown；调用方已做 XML 转义。"""
+    codes: list[str] = []
+    protected: list[str] = []
+    for code, part in inline_code_chunks(text):
+        if code:
+            match = CODE_SPAN_RE.fullmatch(part)
+            assert match is not None
+            protected.append(f"\x00{len(codes)}\x00")
+            codes.append(f"<code>{match.group(2)}</code>")
+        else:
+            protected.append(part)
+    rendered = _inline_text("".join(protected))
+    return re.sub(r"\x00(\d+)\x00", lambda m: codes[int(m[1])], rendered)
+
+
+def _inline_text(text: str) -> str:
+    """非代码行内 Markdown；危险 URL 降级为纯文本。"""
 
     def _img(m: re.Match[str]) -> str:
         return _render_img(m.group(1), m.group(2))
@@ -302,21 +387,46 @@ def _inline(text: str) -> str:
         # 否则 &quot; 等实体会被二次转义成 &amp;quot; 直接显示给读者。
         return f'<a href="{escape(href, quote=True)}">{label}</a>'
 
-    # 正文导航锚点 []{#id} → <a id="id"></a>（id 已由白名单正则约束，无需转义）
+    # 正文导航锚点 []{#id} / []{id} → <a id="id"></a>（id 已由白名单正则约束，无需转义）
     text = _ANCHOR_INLINE_RE.sub(r'<a id="\1"></a>', text)
+    # 空属性块 `{[]}`：pandoc 转出噪声，属性表里只裹着一个空 span（Pentagon Papers
+    # 142 处，源侧形态 `{[]}[]{#GBS.0682.04}`）。锚点已被上一行取出，包裹它的
+    # 属性壳没有任何信息，留着就以字面 `{[]}` 印给读者。
+    text = _EMPTY_ATTR_RE.sub("", text)
     text = _IMG_RE.sub(_img, text)
     text = _LINK_RE.sub(_link, text)
     text = _BOLD_RE.sub(r"<strong>\1</strong>", text)
     text = _ITALIC_RE.sub(r"<em>\1</em>", text)
-    # 脱转义放在结构替换之后、代码段转换之前：既不干扰链接/锚点/强调的识别，
-    # 又能靠仍存在的反引号跳过代码段（其反斜杠是字面内容）
     text = _unescape_punct(text)
-    text = _CODE_RE.sub(r"<code>\1</code>", text)
     return text
 
 
 # 图注段落：整段仅一张图且 alt 非空 → figure + figcaption（postprocessing-spec P1）
 _IMG_ONLY_BLOCK = re.compile(r"^!\[([^\]]+)\]\(([^)]+)\)\s*$")
+
+# pandoc 原始 HTML：`` ```{=html} … ``` `` 围栏块，以及行内 `` `X`{=html} ``。
+# 缺这一层时 `<div>` / `<svg>` 会被 escape 成 ``&lt;div&gt;`` 原样印给读者
+# （2026-10-06 Thiriart 封面实测：整段 SVG 连同 `{=html}` 属性与游离反引号漏成乱码）。
+_RAW_HTML_FENCE = re.compile(r"^\s*\{=\s*html\s*\}\s*$")
+_RAW_HTML_INLINE = re.compile(r"`([^`]+)`\s*\{\s*=\s*html\s*\}")
+_HTML_TAG_LINE = re.compile(r"^\s*(?:</?[A-Za-z][\w:.-]*(?:\s[^<>]*?)?/?>\s*)+$")
+
+
+def _raw_html_block(block: str) -> str | None:
+    """显式 pandoc raw 围栏直通；无围栏块仅在全部为标签行时直通。
+
+    普通代码围栏由调用方转义，不因恰好包含 HTML 而升级为 raw。
+    """
+    opening = fence_info(block.splitlines()[0])
+    if opening is not None:
+        return fence_body(block) if _RAW_HTML_FENCE.fullmatch(opening[1]) else None
+    lines = [ln for ln in block.splitlines() if ln.strip()]
+    kept = [_RAW_HTML_INLINE.sub(r"\1", line).strip() for line in lines]
+    if not kept or not all(_HTML_TAG_LINE.match(line) for line in kept):
+        return None
+    return "\n".join(kept)
+
+
 # 语义标签（epub-template-spec P2）：引用块 / 诗行块 / 列表
 _BQ_LINE = re.compile(r"^\s*>\s?(.*)$")
 _VERSE_LINE = re.compile(r"^\s*\|\s?(.*)$")
@@ -447,7 +557,17 @@ def markdown_to_xhtml(
     末尾渲染完整注文（一注多引各自回链）。与旧记法互不干扰（标记前缀不同）。
     """
     md = _clean_pandoc_markers(md)
-    md = _PANDOC_LINKED_IMG.sub(lambda m: f"![{m.group(1)}]({m.group(2).strip()})", md)
+    md = "".join(
+        "".join(
+            part
+            if code
+            else _PANDOC_LINKED_IMG.sub(lambda m: f"![{m.group(1)}]({m.group(2).strip()})", part)
+            for code, part in inline_code_chunks(chunk)
+        )
+        if kind == "text"
+        else chunk
+        for kind, chunk in markdown_chunks(md)
+    )
     md, fn_defs = _split_footnote_defs(md)
     fn_items: list[tuple[int, str]] = []
     if fn_state is not None and fn_defs:
@@ -464,9 +584,16 @@ def markdown_to_xhtml(
         fn_items.sort(key=lambda t: t[0])
     out: list[str] = []
     hcount = 0  # level≥2 标题计数（与 subheading_anchors 同规则，保证 nav 锚点不悬空）
-    for block in re.split(r"\n\s*\n", md):
-        block = block.strip("\n")
+    for block in _iter_blocks(md):
         if not block.strip():
+            continue
+        opening = fence_info(block.splitlines()[0])
+        if opening is not None and not _RAW_HTML_FENCE.fullmatch(opening[1]):
+            out.append(f"<pre><code>{escape(fence_body(block))}</code></pre>")
+            continue
+        raw_html = _raw_html_block(block)
+        if raw_html is not None:
+            out.append(raw_html)
             continue
         table = _maybe_render_table(block)
         if table is not None:
@@ -557,7 +684,16 @@ def markdown_to_xhtml(
 
 
 def _page(title: str, body: str, *, lang: str) -> str:
-    """组装一页完整 XHTML 文档（恰好一个 h1 位于 body 首行由调用方保证）。"""
+    """组装一页完整 XHTML 文档（恰好一个 h1 位于 body 首行由调用方保证）。
+
+    ``<title>`` 必须走 ``plain_label()``：单元 md 的 h1 常带 pandoc 行内属性
+    （``# Dedication {#calibre_toc_2}``），直接 ``escape(title)`` 会把
+    ``{#calibre_toc_2}`` 原样写进 ``<title>``，读者在阅读器标签页/书目里看到
+    字面属性块（实测 Thiriart 22 处、fierce-enigmas 17 处）。
+    该属性块在 h1 上仍由 ``_split_heading_id`` 正常提取为 id，**不受影响**
+    ——目录链接依赖那些 id，故此处只清理 ``<title>`` 的可见文本。
+    与 nav 标签同用 ``plain_label``，避免两处口径不一致。
+    """
     return (
         '<?xml version="1.0" encoding="utf-8"?>\n'
         '<html xmlns="http://www.w3.org/1999/xhtml" '
@@ -567,7 +703,7 @@ def _page(title: str, body: str, *, lang: str) -> str:
         "<head>\n"
         '<meta charset="utf-8"/>\n'
         '<link rel="stylesheet" type="text/css" href="style.css"/>\n'
-        f"<title>{escape(title)}</title>\n"
+        f"<title>{escape(plain_label(title))}</title>\n"
         "</head>\n"
         f"<body>\n{body}\n</body>\n"
         "</html>\n"
@@ -584,7 +720,7 @@ def subheading_anchors(md: str, unit_id: str) -> list[dict[str, Any]]:
     """
     anchors: list[dict[str, Any]] = []
     n = 0
-    for block in re.split(r"\n\s*\n", md):
+    for block in _iter_blocks(md):
         block = block.strip("\n")
         if not block.strip():
             continue

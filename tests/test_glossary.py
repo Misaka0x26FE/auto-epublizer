@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from auto_translator.glossary import (
     STATUS_CONFIRMED,
     STATUS_CONFLICT,
@@ -15,6 +17,8 @@ from auto_translator.glossary import (
     terminology_hits,
     terms_in_text,
 )
+from auto_translator.glossary.csv_io import load_terminology_exemptions
+from auto_translator.review import g0_unit_flags
 
 
 def _entry(source: str, target: str, **kw: object) -> GlossaryEntry:
@@ -248,3 +252,102 @@ def test_load_glossary_csv_tolerates_utf8_bom(tmp_path: Path) -> None:
     entries = load_glossary_csv(p)
     assert [e.source for e in entries] == ["zone", "criticize"]
     assert entries[0].target == "晨区"
+
+
+def test_terminology_hit_not_triggered_inside_hyphenated_compound() -> None:
+    """``Brest`` 不得在 ``Brest-Litovsk`` 内部命中（连字符接成同一 token）。
+
+    短词条与长复合词条并存时，若把 ``-`` 当合法边界，短词条会被长复合词条抢先
+    命中，报出无法靠改译文放行的假阳性（ch08 的 Brest / Brest–Litovsk 词条对撞）。
+    """
+    g = Glossary(
+        [
+            _entry("Brest", "布雷斯特", type="place", status=STATUS_CONFIRMED),
+            _entry(
+                "Brest–Litovsk",
+                "布列斯特-立陶宛",
+                type="place",
+                status=STATUS_CONFIRMED,
+            ),
+        ]
+    )
+    # 复合地名出现、译文用了长词条的确认译法 → 不应报「Brest 译文缺失」
+    hits = terminology_hits(
+        "In Brest-Litovsk, Trotsky was received.", "在布列斯特-立陶宛，托洛茨基受到接待。", g
+    )
+    assert hits == []
+
+    # 独立出现时仍须强制确认译法
+    hits = terminology_hits("The port of Brest", "该港口", g)
+    assert [h.source for h in hits] == ["Brest"]
+
+
+def test_terminology_hit_hyphen_boundary_across_dash_family() -> None:
+    """各类 Unicode 连字符/短横线同样视作同一 token 的连接符。"""
+    g = Glossary([_entry("Brest", "布雷斯特", type="place", status=STATUS_CONFIRMED)])
+    for dash in ("-", "\u2010", "\u2013", "\u2014"):
+        assert terminology_hits(f"Brest{dash}Litovsk", "未用确认译法", g) == []
+    # 普通字母后缀同样不是边界（Brestsky 是另一个词，不该命中 Brest）
+    assert terminology_hits("Brestsky", "未用确认译法", g) == []
+    # 但独立出现仍须命中
+    assert len(terminology_hits("Brest, then Bucharest", "未用确认译法", g)) == 1
+
+
+@pytest.mark.parametrize(
+    "csv_text",
+    [
+        "",
+        "unit,source\nch01,First sentence\n",
+        "source,reason\nFirst sentence,文献题名\n",
+        "unit,reason\nch01,文献题名\n",
+        "unit,source,reason\nch01,First sentence\n",
+        "unit,source,reason\nch01,First sentence,   \n",
+        "unit,source,reason\n,First sentence,文献题名\n",
+        "unit,source,reason\nch01,,文献题名\n",
+    ],
+)
+def test_invalid_terminology_exemption_cannot_reach_gate(tmp_path: Path, csv_text: str) -> None:
+    path = tmp_path / "terminology_exemptions.csv"
+    path.write_text(csv_text, encoding="utf-8")
+    glossary = Glossary([_entry("First sentence", "首句", status=STATUS_CONFIRMED)])
+    rows = [{"seq": 1, "src": "First sentence.", "tgt": "第一句话。"}]
+    with pytest.raises(ValueError, match="术语豁免"):
+        exemptions = load_terminology_exemptions(path)
+        g0_unit_flags(rows, glossary, exempt_sources=exemptions.get("ch01", {}))
+
+
+def test_terminology_exemption_is_audited_and_unit_scoped(tmp_path: Path) -> None:
+    path = tmp_path / "terminology_exemptions.csv"
+    path.write_text(
+        "unit,source,reason\n"
+        "\n"
+        " , , \n"
+        " ch01 , First sentence , 文献题名保留原文 \n"
+        "ch02,Another sentence,另一条理由\n",
+        encoding="utf-8-sig",
+    )
+    exemptions = load_terminology_exemptions(path)
+    assert exemptions == {
+        "ch01": {"First sentence": "文献题名保留原文"},
+        "ch02": {"Another sentence": "另一条理由"},
+    }
+    glossary = Glossary([_entry("First sentence", "首句", status=STATUS_CONFIRMED)])
+    rows = [{"seq": 1, "src": "First sentence.", "tgt": "第一句话。"}]
+    flags = g0_unit_flags(rows, glossary, exempt_sources=exemptions["ch01"])
+    advisory = next(flag for flag in flags if flag.check == "terminology_exempt")
+    assert advisory.blocking is False
+    assert "文献题名保留原文" in advisory.message
+    assert not any(flag.check == "terminology" for flag in flags)
+    other_unit_flags = g0_unit_flags(rows, glossary, exempt_sources=exemptions["ch02"])
+    assert any(flag.check == "terminology" and flag.blocking for flag in other_unit_flags)
+
+
+def test_missing_terminology_exemptions_preserves_term_check(tmp_path: Path) -> None:
+    exemptions = load_terminology_exemptions(tmp_path / "missing.csv")
+    assert exemptions == {}
+    flags = g0_unit_flags(
+        [{"seq": 1, "src": "First sentence.", "tgt": "第一句话。"}],
+        Glossary([_entry("First sentence", "首句", status=STATUS_CONFIRMED)]),
+        exempt_sources=exemptions.get("ch01", {}),
+    )
+    assert any(flag.check == "terminology" and flag.blocking for flag in flags)
