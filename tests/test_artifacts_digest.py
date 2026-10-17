@@ -304,24 +304,44 @@ def test_malformed_insert_json_uses_production_tolerance_in_status(
         assert any(item["reason"] == "report_stale" for item in status["stale"])
 
 
-def test_relative_workspace_report_is_not_immediately_stale(
+@pytest.mark.parametrize("explicit_absolute", [False, True], ids=["default", "absolute-epub"])
+def test_relative_workspace_report_tracks_actual_product(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, explicit_absolute: bool
+) -> None:
+    """相对工作区的新报告保持新鲜，且实际成品变化不能漏掉。"""
+    store = _released_ws(tmp_path, monkeypatch, relative=True)
+    epub = (store.output_dir / f"{store.load_publication().slug}.epub").absolute()
+    report = orch.qa(store, epub_path=str(epub) if explicit_absolute else None)
+    assert report["released"] is True
+    assert report_state(store)["stale"] is False
+    reference = Path(report["artifacts_epub"])
+    assert not reference.is_absolute()
+    assert (store.dir / reference).samefile(epub)
+    assert orch.status_all(tmp_path / "root")[0]["progress"] == "released"
+    epub.write_bytes(epub.read_bytes() + b"\nchanged product")
+    state = report_state(store)
+    assert state["released"] is True
+    assert state["stale"] is True
+    assert state["reason"] == "artifacts_changed"
+    assert orch.status_all(tmp_path / "root")[0]["progress"] == "built_not_released"
+
+
+def test_external_epub_alias_retarget_invalidates_report(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """回归：`--workspace` 传**相对路径**时，qa 记录的摘要必须能被 status 复算复现。
-
-    现场：`qa --workspace workspaces/<slug>`（不带 --epub）→ 摘要里**漏掉成品字节** →
-    报告一生成就被判 `artifacts_changed`；`ledger` 据此把已交付书降级为「已建未放行」
-    （实测 26 本全中，而它们的 `report.json` 里 `released` 仍为 true）。
-
-    根因：`qa` 用 `store.output_dir/<slug>.epub` 算摘要，而 `_resolve_epub_path` 把非绝对
-    路径解析为「相对 store.dir」——当 store.dir 本身是相对路径时成品路径已经是相对的，
-    再叠加一次 → 文件不存在 → `epub:` 哈希段为空；而 `report_state` 用记录值
-    （`output/<slug>.epub`）复算时叠加一次恰好命中 → 两者必然不等。
-    """
-    store = _released_ws(tmp_path, monkeypatch, relative=True)
-    state = report_state(store)
-    assert state["stale"] is False, state
-    # 记录的成品路径与摘要必须自洽（不是「碰巧都不存在」）
-    assert store.report_path.is_file()
-    recorded = json.loads(store.report_path.read_text(encoding="utf-8"))
-    assert recorded["artifacts_epub"] == "output/book.epub", recorded["artifacts_epub"]
+    """外部交付件引用不能因提前 resolve 而失去重定向证据。"""
+    store = _released_ws(tmp_path, monkeypatch)
+    original = store.output_dir / f"{store.load_publication().slug}.epub"
+    first = tmp_path / "first.epub"
+    second = tmp_path / "second.epub"
+    first.write_bytes(original.read_bytes())
+    second.write_bytes(original.read_bytes() + b"\nchanged product")
+    alias = tmp_path / "approved.epub"
+    alias.symlink_to(first)
+    report = orch.qa(store, epub_path=str(alias))
+    assert report["released"] is True
+    assert Path(report["artifacts_epub"]).is_symlink()
+    assert report_state(store)["stale"] is False
+    alias.unlink()
+    alias.symlink_to(second)
+    assert report_state(store)["stale"] is True
