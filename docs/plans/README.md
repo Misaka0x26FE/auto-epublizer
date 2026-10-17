@@ -42,4 +42,4 @@
 | [2026-10-14-review-and-repair.md](2026-10-14-review-and-repair.md) | 实施中（§12 代码与架构已提交 `1db8752`，真实书未完） | 单一成品路径、旧注释门移交与入口前移；checker fail-open、旧报告失效、完整媒体身份及当前架构图；真实书 N/术语核证保留 |
 | [2026-10-15-review-backflow.md](2026-10-15-review-backflow.md) | 当前代码与架构已提交（§10.4，`1db8752`） | 更正旧 checker 证据，记录实际退出码/旧报告 stale、无桌面注释及媒体正负验收、架构浏览器核证；644 passed、1 skipped，不冒充原书完整验收 |
 | [2026-10-17-pr42-repair.md](2026-10-17-pr42-repair.md) | 已合并（`8850c51`，实现 `601c002`） | PR42 八类修复与 source ingest 围栏保真；保留作者 12 提交，755 passed / 1 skipped、真实无桌面正负验收，不冒充真实书迁移 |
-| [2026-10-17-field-followups.md](2026-10-17-field-followups.md) | 实施中（#43 验收通过） | #43/PR44 相对摘要；PR45 注释重建经验边界；#46 分段疑点 advisory；#47 工作根四项完整性工具 |
+| [2026-10-17-field-followups.md](2026-10-17-field-followups.md) | 已完成（集成 `5de1225`；PR44 `0b2c7a6`、PR45 `05db7b8`） | #43 相对摘要；注释经验边界与 #46 分段 advisory；#47 四项工作根工具及失败护栏；802 passed / 1 skipped、真实无桌面 CLI/Java/Git 验收 |
