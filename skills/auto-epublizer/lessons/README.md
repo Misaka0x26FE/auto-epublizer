@@ -1,4 +1,4 @@
-<!-- i18n: source=README.zh.md sha256=bc14519d2ba906b4203d7acc38dec30522785543580e176060e5c69f8ef696e6 -->
+<!-- i18n: source=README.zh.md sha256=243d350ca91c333f8d42c9847b8643a3ce28bd48c4bc0794d1f1274456e9d706 -->
 > **English** | [中文](README.zh.md)
 
 # Lessons (distilled field experience)
@@ -44,6 +44,7 @@ downstream agents to directly consult and handle when they encounter the same ty
 | [2026-09-13-delivery-integrity.md](2026-09-13-delivery-integrity.md) | Tool QA all passes yet 38/72 images missing (translated body loses image paragraphs, conservation only checks align) → delivery audit independent reconciliation + rebuild with align + full re-verification | landed (qa/provenance.py reconciliation automation + references/delivery.md mandatory checklist) |
 | [2026-10-15-media-ref-containment.md](2026-10-15-media-ref-containment.md) | Escaping media references (`../`/absolute/outward symlink) get read into the product: containment check + dropped trace + `E_MEDIA_EPUB_LOST` block | fixed (build/collect_media + qa/provenance + tests/test_ingest_boundary.py) |
 | [2026-10-15-epub-source-media-normalization.md](2026-10-15-epub-source-media-normalization.md) | EPUB sources with absolute media paths: machine paths leak into artifacts, nested illustrations lost from the product → `read_epub` now normalises media references | fixed (ingest/epub_reader.py + tests/test_ingest_boundary.py) |
+| [2026-10-17-collected-notes-resegmentation.md](2026-10-17-collected-notes-resegmentation.md) | Collected endnotes flattened page-by-page: every note ends up in one giant paragraph → rebuild from raw block `font_size` + **line-start note numbers only** + source-templated monotone DP on the translation side; a lone `1. ` block renders as `<ol>`, so the number needs escaping | fixed on the work-root side (`rebuild_notes.py`); **`qa/audit.py` still lacks this detection port** |
 
 ## Source and destination (how experience gets here)
 
