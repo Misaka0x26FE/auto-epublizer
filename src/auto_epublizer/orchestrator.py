@@ -1610,15 +1610,15 @@ def qa(
                 "交付前按 references/delivery.md 执行全量校验并写记录",
             }
         )
-    # B2 报告失效证据链：记录生成时刻的产物摘要与被审计成品路径（status/ledger 据此判过期）
-    report.artifacts_digest = artifacts_digest(store, epub_path=epub)
-    # P2：工作区内成品保存相对 store.dir 的规范路径（切 cwd 不误判 stale）；
-    # 工作区外成品保存规范化绝对路径。
+    # 统一为同一文件引用；保留符号链接，后续重定向也必须使报告失效。
+    epub_location = epub.absolute()
     try:
-        rel_epub = epub.relative_to(store.dir)
+        recorded_epub = str(epub_location.relative_to(store.dir.absolute()))
     except ValueError:
-        rel_epub = None
-    report.artifacts_epub = str(rel_epub) if rel_epub is not None else str(epub.resolve())
+        recorded_epub = str(epub_location)
+    # 相对 store.dir 的引用只拼接一次；摘要与保存值必须使用同一口径。
+    report.artifacts_digest = artifacts_digest(store, epub_path=recorded_epub)
+    report.artifacts_epub = recorded_epub
     store.save_qa(report.to_dict())
     return report.to_dict()
 
