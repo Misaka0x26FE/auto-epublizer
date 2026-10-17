@@ -39,6 +39,7 @@
 | [2026-09-13-delivery-integrity.md](2026-09-13-delivery-integrity.zh.md) | 工具 QA 全过仍缺 38/72 张图（译文正文丢图片段，守恒只查 align）→ 交付审计独立对账 + 以 align 重建 + 全量重验 | 已落地（qa/provenance.py 对账自动化 + references/delivery.md 强制清单） |
 | [2026-10-15-media-ref-containment.md](2026-10-15-media-ref-containment.zh.md) | 媒体引用越界（`../`/绝对路径/外指符号链接）会被读进成品：包含性校验 + 丢弃留痕 + `E_MEDIA_EPUB_LOST` 阻断 | 已修复（build/collect_media + qa/provenance + tests/test_ingest_boundary.py） |
 | [2026-10-15-epub-source-media-normalization.md](2026-10-15-epub-source-media-normalization.zh.md) | EPUB 源的绝对媒体路径：机器路径入产物、嵌套插图在成品丢失 → `read_epub` 补媒体引用归一化 | 已修复（ingest/epub_reader.py + tests/test_ingest_boundary.py） |
+| [2026-10-17-collected-notes-resegmentation.md](2026-10-17-collected-notes-resegmentation.zh.md) | 书末注释被按页摊平：每章注挤成一个巨型段落 → 按 raw 块 `font_size` 重建 + **只在行首认注号** + 译文侧以源为模板的单调 DP；孤立 `1. ` 成块会被渲染成 `<ol>`，注号需转义 | 工作根侧已修（`rebuild_notes.py`）；**`qa/audit.py` 仍缺该检测口** |
 
 ## 来源与去向（经验怎么进这里）
 
