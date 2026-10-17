@@ -39,6 +39,7 @@
 | [2026-09-13-delivery-integrity.md](2026-09-13-delivery-integrity.zh.md) | 工具 QA 全过仍缺 38/72 张图（译文正文丢图片段，守恒只查 align）→ 交付审计独立对账 + 以 align 重建 + 全量重验 | 已落地（qa/provenance.py 对账自动化 + references/delivery.md 强制清单） |
 | [2026-10-15-media-ref-containment.md](2026-10-15-media-ref-containment.zh.md) | 媒体引用越界（`../`/绝对路径/外指符号链接）会被读进成品：包含性校验 + 丢弃留痕 + `E_MEDIA_EPUB_LOST` 阻断 | 已修复（build/collect_media + qa/provenance + tests/test_ingest_boundary.py） |
 | [2026-10-15-epub-source-media-normalization.md](2026-10-15-epub-source-media-normalization.zh.md) | EPUB 源的绝对媒体路径：机器路径入产物、嵌套插图在成品丢失 → `read_epub` 补媒体引用归一化 | 已修复（ingest/epub_reader.py + tests/test_ingest_boundary.py） |
+| [2026-10-17-collected-notes-resegmentation.md](2026-10-17-collected-notes-resegmentation.zh.md) | 书末注释摊平：raw 证据与 DP 仅产出候选，需 agent 核证；legacy 重建必须进入规范 N 阶段，不是一注一段 | 作者报告历史工作根修复；报告时 audit 尚缺 advisory |
 
 ## 来源与去向（经验怎么进这里）
 
