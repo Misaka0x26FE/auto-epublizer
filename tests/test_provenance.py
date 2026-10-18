@@ -247,8 +247,9 @@ def test_provenance_nav_depth_projection(tmp_path: Path) -> None:
     # 不传 nav_depth：审计读产物内声明（build 写入 nav.xhtml 的 nav-depth meta）
     result = audit_provenance(store, entries, epub)
     assert result.nav_exempt == ["ch03.xhtml"]  # 投影剔除，交给 audit 豁免
-    assert result.toc_depths_expected == [1, 2]
-    assert result.toc_depths_nav == [1, 2]
+    # 制作信息页（软件附页）为 nav 顶层条目，期望序列显式计入其深度 1
+    assert result.toc_depths_expected == [1, 1, 2]
+    assert result.toc_depths_nav == [1, 1, 2]
     assert not result.toc_depth_mismatch
     assert not [f for f in result.findings if f["code"] in ("E_TOC_FLAT", "W_TOC_DEPTH")]
 
@@ -589,8 +590,8 @@ def test_provenance_anchor_toc_flat_detection(tmp_path: Path) -> None:
     result = audit_provenance(store, entries, epub)
     assert result.toc_flat
     assert any(f["code"] == "E_TOC_FLAT" for f in result.findings)
-    assert result.toc_depths_expected == [1, 2]
-    assert result.toc_depths_nav == [1]
+    assert result.toc_depths_expected == [1, 1, 2]  # 首条为制作信息页顶层条目
+    assert result.toc_depths_nav == [1, 1]
 
 
 def test_provenance_anchor_toc_consistent(tmp_path: Path) -> None:
@@ -615,8 +616,8 @@ def test_provenance_anchor_toc_consistent(tmp_path: Path) -> None:
         e["anchors"] = subheading_anchors(md, e["id"])
     epub = _build(store, entries)
     result = audit_provenance(store, entries, epub)
-    assert result.toc_depths_expected == [1, 2, 3]
-    assert result.toc_depths_nav == [1, 2, 3]
+    assert result.toc_depths_expected == [1, 1, 2, 3]  # 首条为制作信息页顶层条目
+    assert result.toc_depths_nav == [1, 1, 2, 3]
     assert not result.toc_flat and not result.toc_depth_mismatch
     assert not [f for f in result.findings if f["code"] in ("E_TOC_FLAT", "W_TOC_DEPTH")]
 

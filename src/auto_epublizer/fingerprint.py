@@ -309,8 +309,13 @@ def stamp_document(text: str, data: dict[str, Any], lang: str, *, visible: bool 
     return text
 
 
+def software_page_title(lang: str) -> str:
+    """制作信息页标题：页面 ``<title>`` 与 nav/NCX 目录条目共用同一语言开关。"""
+    return "制作信息" if lang.lower().startswith("zh") else "Production information"
+
+
 def software_page(data: dict[str, Any], lang: str) -> str:
-    title = "制作信息" if lang.lower().startswith("zh") else "Production information"
+    title = software_page_title(lang)
     text = (
         '<?xml version="1.0" encoding="utf-8"?>\n'
         f'<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="{escape(lang, quote=True)}">'

@@ -1,4 +1,4 @@
-<!-- i18n: source=build.zh.md sha256=78de7fef1de5e0acd623d758b571d96ea1b45013f03aef148a3e05724d05fa60 -->
+<!-- i18n: source=build.zh.md sha256=31f19844e7d9ce33f98080d20539240563228eab46b832a6fd7c86041a2ae5ed -->
 > **English** | [中文](build.zh.md)
 
 # Build (EPUB packaging)
@@ -41,7 +41,7 @@ OPF `aep:render-mode` records the actual build entry: `source` (source only) or 
 - OPF includes `generator` and custom `aep:` metadata (`aep:build` stores the structured build record); content XHTML carries a JSON comment prefixed with `auto-epublizer-build` in its head for offline identification.
 - The fingerprint records `auto-epublizer`, its [source URL](https://github.com/Misaka0x26FE/auto-epublizer), the **actual current build version**, and source revision/dirty state when available. Initialization-time `meta.producer` is not the build version; unavailable values remain explicitly unknown.
 - Python and Pydantic describe the current build runtime. Other tools appear only from actual-use records frozen after successful parsing, not from an inventory of installed dependencies. Unknown versions remain unknown; unrecorded historical tools are not inferred from the current environment (`processing_tools=null` means history unknown; `[]` means no additional external parsing tool was used). MinerU API is identified as an external service, without claiming an internal open-source version or license.
-- When a copyright unit exists, a separate software statement is appended without replacing its copyright text. Otherwise, a separate production-information page is generated with a non-linear spine entry (`linear="no"`) and a `copyright-page` landmark. It is not a manuscript unit and does not enter the body nav/NCX TOC.
+- When a copyright unit exists, a separate software statement is appended without replacing its copyright text. Otherwise, a separate production-information page is generated with a non-linear spine entry (`linear="no"`) and a `copyright-page` landmark. It is not a manuscript unit, but it does enter the nav/NCX TOC as a **top-level entry** (`制作信息` / `Production information`, the same language switch as the page title), positioned like its spine entry (before the first non-cover document), so readers that navigate only by TOC can reach it.
 - That statement (or production-information page) carries a **publication and rights** block above the tool list, taken from `publication.json.meta` (`title`/`creator`/`translator`/`publisher`/`date`/`rights`), listing only non-empty fields; when all are empty the block is omitted entirely rather than leaving empty labels.
 - The tool list also carries **generation-model (LLM)** entries: `meta.generation_tools` is written by `meta --generation-tools '<JSON array>'` (each entry `{name, version, task, url, license}`, missing keys tolerated; `[]` means explicitly no generation model was used) and each renders as `name version — task`, with a missing version marked "version unrecorded" rather than invented. All of this wording is emitted in Chinese or English to match the build language (Chinese is authoritative).
 - Only those public credit fields are accepted; unknown keys and non-string/non-null values
@@ -94,7 +94,10 @@ OPF `aep:render-mode` records the actual build entry: `source` (source only) or 
   conservation gate);
   **nav depth projection** (`--nav-depth` / `config.output.nav_depth`, default 3, 1–6): units/anchors beyond the
   depth do not enter nav/NCX (they remain in spine reading order, anchors preserved), the cover unit does not enter the TOC,
-  `dtb:depth` is the actual depth after projection (anchors included).
+  `dtb:depth` is the actual depth after projection (anchors included);
+  the **production-information page** (generated when there is no copyright unit) enters as the first top-level
+  entry (depth 1; it does not take part in source-level projection), in the same order as the NCX `playOrder`
+  (consecutive from 1).
 - **Images**: only shrink, never enlarge, centered + page-break (`page-break-inside: avoid`); standalone image paragraphs (non-empty alt) →
   `figure+figcaption` captions.
 - **Semantic tags**: quote `>` → `blockquote`; verse block `|` → `p.verse`; `- ` → `ul`;
