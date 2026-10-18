@@ -1,24 +1,91 @@
-<!-- i18n: source=work-root.zh.md sha256=6f755d7ab0e8193ab583f1e2f6267657274080bd9758536992588d7725bd5476 -->
+<!-- i18n: source=work-root.zh.md sha256=88f64fc9d3ebfe6fd19ff177eabdca95f2bb1e90db2e19cef7e97fbf699ea768 -->
 > **English** | [中文](work-root.zh.md)
 
 # Work root (long-running multi-book workspace)
 
-Use this when the user wants to translate/convert **many books over time**, not one. It sets up
-a single directory holding one workspace per book plus a cross-book index.
+On first use of the skill, establish a **user-selected work root**, even for one book.
+The skill is documentation; installing it **does not install the Python engine**.
+Keep the source checkout at `<work-root>/auto-epublizer/`, separate from its sibling
+`inbox/`, `sources/`, and `workspaces/` book directories. Never put books in the source repository.
 
-## Generate it
+## First use and safe reuse (before version / doctor)
+
+Prerequisites: Git, `uv`, and Python 3.12 (`uv` can provision the project's declared interpreter).
+Agree on the work root with the user. Replace the single placeholder below with their chosen
+**absolute path**, then execute the whole block in Bash. Do not infer the checkout from the
+skill installation, an incidental current Git repository, or the Gitee mirror. On refusal,
+preserve the scene for the user: never reset, stash, clean, switch branches, change origin,
+or overwrite files to bypass a guard.
 
 ```bash
-auto-epublizer work-root <dir> [--force]
+set -eu
+export AEP_ROOT='/absolute/user-selected-root'
+unset AEP_CLI
+(
+  set -eu
+  fail() { printf '%s\n' "$1" >&2; exit 1; }
+  case "$AEP_ROOT" in /*) ;; *) fail 'Work root must be absolute.' ;; esac
+  command -v git >/dev/null
+  command -v uv >/dev/null
+  mkdir -p -- "$AEP_ROOT"
+  root=$(cd -- "$AEP_ROOT" && pwd -P)
+  checkout="$root/auto-epublizer"
+  official='https://github.com/Misaka0x26FE/auto-epublizer.git'
+  if [ ! -e "$checkout" ] && [ ! -L "$checkout" ]; then
+    git clone --origin origin --branch main --single-branch "$official" "$checkout"
+  fi
+  [ -d "$checkout" ] && [ ! -L "$checkout" ] || fail 'Checkout is not a regular directory.'
+  [ "$(git -C "$checkout" rev-parse --show-toplevel)" = "$checkout" ] ||
+    fail 'Wrong repository root.'
+  [ "$(git -C "$checkout" remote get-url --all origin)" = "$official" ] &&
+    [ "$(git -C "$checkout" remote get-url --push --all origin)" = "$official" ] ||
+    fail 'Origin must be exactly the official GitHub repository.'
+  [ "$(git -C "$checkout" symbolic-ref -q HEAD)" = refs/heads/main ] ||
+    fail 'Checkout must already be on main.'
+  [ "$(git -C "$checkout" rev-parse --symbolic-full-name '@{upstream}')" = refs/remotes/origin/main ] ||
+    fail 'Main must track origin/main.'
+  [ -f "$checkout/pyproject.toml" ] && [ -f "$checkout/skills/auto-epublizer/manifest.json" ] ||
+    fail 'Project files are missing.'
+  dirty=$(git -C "$checkout" status --porcelain=v1 --untracked-files=all)
+  [ -z "$dirty" ] ||
+    fail 'Tracked or untracked changes found; nothing fetched or overwritten.'
+  git -C "$checkout" merge-base --is-ancestor HEAD refs/remotes/origin/main ||
+    fail 'Local main is ahead or divergent; stop without changing HEAD.'
+  git -C "$checkout" fetch --no-tags origin refs/heads/main:refs/remotes/origin/main
+  git -C "$checkout" merge-base --is-ancestor HEAD refs/remotes/origin/main ||
+    fail 'Local main is ahead or divergent after fetch; stop.'
+  git -C "$checkout" merge --ff-only refs/remotes/origin/main
+  UV_PROJECT_ENVIRONMENT="$checkout/.venv" uv sync --project "$checkout" --locked
+  "$checkout/.venv/bin/auto-epublizer" work-root "$root"
+)
+export AEP_CLI="$AEP_ROOT/auto-epublizer/.venv/bin/auto-epublizer"
 ```
 
-The command copies the repository's `template/work-root/` skeleton (the **authoritative**
-template). Existing files are kept unless `--force`. Then put the next source in `inbox/`.
+Checkout validation precedes fetch; the dirty check covers tracked and untracked files.
+Ahead/divergent main, a wrong branch, origin, or repository root stops the flow.
+After fetch, recheck ancestry and allow only fast-forward. Network, dependency, or other
+command failures also stop. The existing `work-root` CLI copies the sole authoritative
+`template/work-root/` skeleton, **without `--force`**: keep existing files and only fill gaps.
+Do not edit the checkout concurrently. Only after success, continue:
+
+```bash
+"$AEP_CLI" version
+# Compare with this skill's manifest.json minimum_cli_version; stop if incompatible.
+"$AEP_CLI" doctor --json
+cd -- "$AEP_ROOT"
+```
+
+Every subsequent `auto-epublizer …` example in the references means this **same prepared CLI**:
+execute it as `"$AEP_CLI" …`, not a namesake from an unknown PATH. In a new shell, repeat the
+safe reuse block before exporting the variable. Do not rely on the current directory,
+a global installation, or Python code bundled in the skill. Relative book paths below
+assume the work root is the current directory.
 
 ## What each component is for
 
 | Component | Function |
 |---|---|
+| `auto-epublizer/` | official main source + `.venv`; CLI only, never book data or artifacts |
 | `AGENTS.md` | how this root works (red lines: one `.md` at the root, sha256 identity, no hand-editing, recompute numbers) |
 | `config.example.yaml` | copy to `config.yaml`; key setting `paths.workspaces_dir: ./workspaces` |
 | `inbox/` | sources not yet started (original name/bytes) |
@@ -31,12 +98,12 @@ template). Existing files are kept unless `--force`. Then put the next source in
 ## How to use it
 
 1. **New book**: `cp inbox/<name> sources/<slug>.<ext>` →
-   `auto-epublizer preprocess sources/<slug>.<ext> --workspace ./workspaces` → then drive the
+   `"$AEP_CLI" preprocess sources/<slug>.<ext> --workspace ./workspaces` → then drive the
    normal per-book loop (`status --json` → task cards → `import` / `g0` / `build` / `qa` /
    delivery).
-2. **Cross-book overview**: `auto-epublizer status --all --workspace . --json` (three-tier
+2. **Cross-book overview**: `"$AEP_CLI" status --all --workspace . --json` (three-tier
    progress: `released` / `built_not_released` / `preprocessing`) and
-   `python3 docs/build_ledger.py` (recompute the ledger while retaining manual columns by unique slug).
+   `python3 docs/build_ledger.py --cli "$AEP_CLI"` (recompute the ledger while retaining manual columns by unique slug).
 3. **Identity is `publication.json.meta.source_sha256`**, never the file name. If the source was
    pre-processed (bookmarks injected, format converted), archive the untouched original with
    `preprocess --original <path>`.
@@ -44,10 +111,11 @@ template). Existing files are kept unless `--force`. Then put the next source in
 
 ## What to tell the user (relay this)
 
-> 这是你的**长期工作区**：`inbox/` 放还没开工的原书；开工时复制到 `sources/<slug>.<ext>` 交给
-> agent 处理；每本书成为 `workspaces/<slug>/` 下一个标准工作区；`docs/` 放过程文档与跨书台账；
-> `references/` 放跨书共享资料。随时用 `auto-epublizer status --all` 看全部书的进度
-> （已交付 / 已建未放行 / 仅预处理），`auto-epublizer ledger` 生成台账。源身份以 sha256 为准。
+> This is your long-running work root: `inbox/` holds untouched sources; copy each one to
+> `sources/<slug>.<ext>` when starting. Each book gets `workspaces/<slug>/`; `docs/` holds
+> process documents and the ledger; `references/` holds shared references. `auto-epublizer/`
+> holds only software and its environment, never books. Use `"$AEP_CLI" status --all` for
+> progress and `"$AEP_CLI" ledger` for the ledger. Source identity is SHA256, not the name.
 
 ## Runnable operational guards (issue #47)
 
@@ -60,8 +128,8 @@ explicit relative arguments are relative to the shell's current directory. Run d
 copying or generating a root; the empty ledger and documentation checks need no books.
 
 ```bash
-python3 docs/build_ledger.py --workspace workspaces --output docs/工作台账.md
-python3 docs/pack_outbox.py workspaces/book-a workspaces/book-b --batch 2026-10-17
+python3 docs/build_ledger.py --cli "$AEP_CLI" --workspace workspaces --output docs/工作台账.md
+python3 docs/pack_outbox.py --cli "$AEP_CLI" workspaces/book-a workspaces/book-b --batch 2026-10-17
 python3 docs/check_doc_links.py --root .
 python3 docs/check_tracked.py --repo workspaces/book-a
 ```

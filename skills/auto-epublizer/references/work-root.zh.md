@@ -2,22 +2,84 @@
 
 # 长期工作区（多书工作根）
 
-当用户要**长期处理多本书**（而非一本）时使用。它建立单一目录，里面每本书一个工作区，
-外加一份跨书索引。
+每次首次使用 Skill 都先建立**用户选定的工作根**，即使只处理一本书。Skill 只是文档，
+安装 Skill **不会安装 Python 引擎**。源码固定放在 `<工作根>/auto-epublizer/`；
+书籍放在同级 `inbox/`、`sources/`、`workspaces/`，绝不放进源码仓库。
 
-## 生成
+## 首次使用与安全续用（先于 version / doctor）
+
+需要 Git、`uv` 及可用的 Python 3.12（`uv` 可按项目声明准备解释器）。先与用户确定工作根，
+将下面唯一占位路径替换为其选定的**绝对路径**，在 Bash 中整体执行。不从 Skill 安装目录、
+当前碰巧所在的 Git 仓库或 Gitee 镜像推断源码位置。停止时保留现场，请用户处理；
+不得 reset、stash、clean、切换分支、改 origin 或覆盖文件来绕过护栏。
 
 ```bash
-auto-epublizer work-root <目录> [--force]
+set -eu
+export AEP_ROOT='/absolute/user-selected-root'
+unset AEP_CLI
+(
+  set -eu
+  fail() { printf '%s\n' "$1" >&2; exit 1; }
+  case "$AEP_ROOT" in /*) ;; *) fail 'Work root must be absolute.' ;; esac
+  command -v git >/dev/null
+  command -v uv >/dev/null
+  mkdir -p -- "$AEP_ROOT"
+  root=$(cd -- "$AEP_ROOT" && pwd -P)
+  checkout="$root/auto-epublizer"
+  official='https://github.com/Misaka0x26FE/auto-epublizer.git'
+  if [ ! -e "$checkout" ] && [ ! -L "$checkout" ]; then
+    git clone --origin origin --branch main --single-branch "$official" "$checkout"
+  fi
+  [ -d "$checkout" ] && [ ! -L "$checkout" ] || fail 'Checkout is not a regular directory.'
+  [ "$(git -C "$checkout" rev-parse --show-toplevel)" = "$checkout" ] ||
+    fail 'Wrong repository root.'
+  [ "$(git -C "$checkout" remote get-url --all origin)" = "$official" ] &&
+    [ "$(git -C "$checkout" remote get-url --push --all origin)" = "$official" ] ||
+    fail 'Origin must be exactly the official GitHub repository.'
+  [ "$(git -C "$checkout" symbolic-ref -q HEAD)" = refs/heads/main ] ||
+    fail 'Checkout must already be on main.'
+  [ "$(git -C "$checkout" rev-parse --symbolic-full-name '@{upstream}')" = refs/remotes/origin/main ] ||
+    fail 'Main must track origin/main.'
+  [ -f "$checkout/pyproject.toml" ] && [ -f "$checkout/skills/auto-epublizer/manifest.json" ] ||
+    fail 'Project files are missing.'
+  dirty=$(git -C "$checkout" status --porcelain=v1 --untracked-files=all)
+  [ -z "$dirty" ] ||
+    fail 'Tracked or untracked changes found; nothing fetched or overwritten.'
+  git -C "$checkout" merge-base --is-ancestor HEAD refs/remotes/origin/main ||
+    fail 'Local main is ahead or divergent; stop without changing HEAD.'
+  git -C "$checkout" fetch --no-tags origin refs/heads/main:refs/remotes/origin/main
+  git -C "$checkout" merge-base --is-ancestor HEAD refs/remotes/origin/main ||
+    fail 'Local main is ahead or divergent after fetch; stop.'
+  git -C "$checkout" merge --ff-only refs/remotes/origin/main
+  UV_PROJECT_ENVIRONMENT="$checkout/.venv" uv sync --project "$checkout" --locked
+  "$checkout/.venv/bin/auto-epublizer" work-root "$root"
+)
+export AEP_CLI="$AEP_ROOT/auto-epublizer/.venv/bin/auto-epublizer"
 ```
 
-命令复制仓库内的 `template/work-root/` 骨架（**唯一权威模板**）。已存在文件默认保留，
-加 `--force` 才覆盖。之后把下一本源书放进 `inbox/`。
+源码校验在 fetch 前完成，dirty 检查包含 tracked 与 untracked 文件；本地 ahead/divergent、
+错误分支、错误 origin 或错误仓库根均停止。fetch 后再次检查祖先关系，只允许 fast-forward；
+网络、依赖或其他命令失败也停止。`work-root` 仍是现有 CLI 命令，复制唯一权威模板
+`template/work-root/`，**不加 `--force`**，已有文件只保留/补缺，不覆盖。
+不要与其他进程并发修改该 checkout；成功后再执行下面命令：
+
+```bash
+"$AEP_CLI" version
+# 对照本 Skill manifest.json 的 minimum_cli_version；不兼容则停止，不运行后续阶段。
+"$AEP_CLI" doctor --json
+cd -- "$AEP_ROOT"
+```
+
+后续所有 reference 中的 `auto-epublizer …` 都指**同一个准备好的 CLI**：运行时写作
+`"$AEP_CLI" …`，不要调用未知 PATH 中的同名程序。新 shell 先重新执行上述安全续用步骤，
+再导出该变量；不要依赖当前目录、全局安装或 Skill 自带 Python。
+下面命令的相对书籍路径均以工作根为当前目录。
 
 ## 各组件的作用
 
 | 组件 | 作用 |
 |---|---|
+| `auto-epublizer/` | 官方 main 源码 + `.venv`；只用于 CLI，绝不存书或提交书籍产物 |
 | `AGENTS.md` | 本目录怎么工作（红线：根目录只保留一个 `.md`、源身份以 sha256 为准、禁手编、数字必须重算） |
 | `config.example.yaml` | 复制为 `config.yaml`；关键项 `paths.workspaces_dir: ./workspaces` |
 | `inbox/` | 尚未开工的源书（原名原字节） |
@@ -30,11 +92,11 @@ auto-epublizer work-root <目录> [--force]
 ## 怎么用
 
 1. **新书**：`cp inbox/<原名> sources/<slug>.<ext>` →
-   `auto-epublizer preprocess sources/<slug>.<ext> --workspace ./workspaces` → 之后按单书常规流程
+   `"$AEP_CLI" preprocess sources/<slug>.<ext> --workspace ./workspaces` → 之后按单书常规流程
    推进（`status --json` → 任务卡 → `import` / `g0` / `build` / `qa` / 交付审计）。
-2. **跨书总览**：`auto-epublizer status --all --workspace . --json`（三档进度：
+2. **跨书总览**：`"$AEP_CLI" status --all --workspace . --json`（三档进度：
    `released` / `built_not_released` / `preprocessing`）；
-   `python3 docs/build_ledger.py` 重算台账并按唯一 slug 保留人工列。
+   `python3 docs/build_ledger.py --cli "$AEP_CLI"` 重算台账并按唯一 slug 保留人工列。
 3. **身份以 `publication.json.meta.source_sha256` 为准**，不认文件名。入库前对源做过加工
    （注入书签、格式转换）时，用 `preprocess --original <原始件>` 归档未改动的交付原件。
 4. **数字一律由命令重算**，绝不手维护。
@@ -43,8 +105,9 @@ auto-epublizer work-root <目录> [--force]
 
 > 这是你的**长期工作区**：`inbox/` 放还没开工的原书；开工时复制到 `sources/<slug>.<ext>` 交给
 > agent 处理；每本书成为 `workspaces/<slug>/` 下一个标准工作区；`docs/` 放过程文档与跨书台账；
-> `references/` 放跨书共享资料。随时用 `auto-epublizer status --all` 看全部书的进度
-> （已交付 / 已建未放行 / 仅预处理），`auto-epublizer ledger` 生成台账。源身份以 sha256 为准。
+> `references/` 放跨书共享资料；`auto-epublizer/` 只放软件源码和环境，不放书。随时用
+> `"$AEP_CLI" status --all` 看全部书的进度（已交付 / 已建未放行 / 仅预处理），
+> `"$AEP_CLI" ledger` 生成台账。源身份以 sha256 为准。
 
 ## 可直接运行的操作护栏（issue #47）
 
@@ -55,8 +118,8 @@ auto-epublizer work-root <目录> [--force]
 shell 当前目录解释。复制或生成工作根后即可运行；无书籍时仍可运行空台账与文档检查。
 
 ```bash
-python3 docs/build_ledger.py --workspace workspaces --output docs/工作台账.md
-python3 docs/pack_outbox.py workspaces/book-a workspaces/book-b --batch 2026-10-17
+python3 docs/build_ledger.py --cli "$AEP_CLI" --workspace workspaces --output docs/工作台账.md
+python3 docs/pack_outbox.py --cli "$AEP_CLI" workspaces/book-a workspaces/book-b --batch 2026-10-17
 python3 docs/check_doc_links.py --root .
 python3 docs/check_tracked.py --repo workspaces/book-a
 ```

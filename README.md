@@ -1,4 +1,4 @@
-<!-- i18n: source=README.zh.md sha256=4175a8404ba31967d7463212d9dfe0a74a8883c3fcf180a26c499da850127008 -->
+<!-- i18n: source=README.zh.md sha256=fe23daf840f98acab72b7fccab4c32e1a6fe4dd96875dbe23776d51834e12b37 -->
 > **English** | [中文](README.zh.md)
 
 # auto-epublizer
@@ -25,11 +25,16 @@ code: parsing, cleaning, intermediate files, QC, EPUB writing).
 ## Usage (agent collaboration mode)
 
 This project is **not aimed at human command-line users**; it is aimed at **AI coding
-agents**. Send the repository URL to your agent (a connected, execution-capable agent such
-as OpenCode / DouBao / Cursor) and tell it which file to process; it will pull this project
-**as a new subdirectory** in your working directory and then follow
-`skills/auto-epublizer/SKILL.md` to run preprocessing, analysis, translation, review,
-packaging and QA on its own.
+agents**. Give an execution-capable connected agent (OpenCode / DouBao / Cursor, etc.) the
+repository URL and input, and choose a work root. Follow the copyable
+[work-root bootstrap](skills/auto-epublizer/references/work-root.md) to clone the latest
+official GitHub **main** at `<work-root>/auto-epublizer/`, prepare the Python CLI with the
+project's `uv` environment, then generate the skeleton using the existing `work-root`
+command without overwriting (`--force` is not used). **Installing the skill installs
+documentation, not the Python engine.** Keep books, workspaces, and outputs separate
+from the source checkout. For an existing checkout, validate root/origin/main and tracked
+plus untracked dirt before fetch and fast-forward only. Wrong branch/origin or ahead/
+divergent history stops: never reset/stash/clean/overwrite user content.
 
 You only need to do three things:
 
@@ -59,12 +64,15 @@ You only need to do three things:
 ```text
 You are a book-translation assistant. Follow these steps exactly:
 
-1. In the current working directory, pull this project as a new subdirectory and install:
-   git clone https://github.com/Misaka0x26FE/auto-epublizer.git
-   cd auto-epublizer && uv sync
-2. Run `uv run auto-epublizer doctor --ping` to self-check the environment (pandoc/pymupdf/
-   OCR/epubcheck/MinerU/network), and tell me your multimodal (can you see images) and
-   search (do you have a search tool) capabilities.
+1. Agree on a work root with me, even for one book. Read
+   skills/auto-epublizer/references/work-root.md and execute its complete safe bootstrap:
+   <work-root>/auto-epublizer is official GitHub latest main + the project uv environment;
+   book inbox/sources/workspaces are siblings, not inside the source checkout.
+   Use only the existing work-root command, without --force. Stop for a dirty checkout,
+   wrong branch/origin, or ahead/divergent history.
+2. After bootstrap succeeds, compare "$AEP_CLI" version against the skill's minimum,
+   then run "$AEP_CLI" doctor --ping and report multimodal/search capabilities.
+   Run every later auto-epublizer command as "$AEP_CLI", not a global namesake.
 3. Collect from me: the file path, target language (optional, default zh-CN), metadata
    (title/author/copyright fields).
    - If the file is a scanned PDF, ask me for MINERU_API_KEY (export it as an environment
@@ -75,35 +83,58 @@ You are a book-translation assistant. Follow these steps exactly:
    terms → meta (metadata verification write-back) → you translate unit by unit with
    sentence alignment → import/g0 registration and checks → you review (G1–G3) → build →
    qa (G4 + epubcheck + G5 release). Obey every red line and protocol in it.
-5. When done, tell me the finished EPUB path.
+5. Tell me the finished EPUB path. At delivery or when a problem arises, follow workflow's
+   feedback procedure: ask about a sanitized issue (symptoms/synthetic reproduction)
+   and/or an actual repair PR. Keep drafts in the work root's docs/ and show me the full
+   body/patch first. Only after explicit consent may you issue create/fork/push/pr create.
+   Without consent or authentication/permissions, stop at a local draft. Never upload
+   book content, identity, paths, or history.
 ```
 
 ---
 
 ## Quick start
 
+First execute the complete Bash [first-use / safe-reuse bootstrap](skills/auto-epublizer/references/work-root.md)
+(Git + Python 3.12 + `uv`). After success, `AEP_ROOT` / `AEP_CLI` are set. The following
+are **stage-command syntax examples** (`<input>`, `<slug>`, etc. must be replaced), with
+relative paths based at the work root, not a separate installation convention.
+Do not process books from the source checkout. In a new shell, perform safe reuse first;
+installing the skill is not installing the engine.
+
 ```bash
-# 1. Install (Python 3.12 + uv)
-uv sync
+# 1. Bootstrap has generated the skeleton without overwriting; check version, then environment
+"$AEP_CLI" version
+"$AEP_CLI" doctor [--ping]
 
-# 2. Environment self-check (toolchain / OCR / epubcheck / MinerU probe)
-uv run auto-epublizer doctor [--ping]
+# 2. Convert only (no translation): source → EPUB
+"$AEP_CLI" convert <input> --workspace "$AEP_ROOT/workspaces" -o "$AEP_ROOT/outbox/book.epub"
 
-# 3. Convert only (no translation): source → EPUB
-uv run auto-epublizer convert <input> -o output/book.epub
-
-# 4. Full translation flow (agent translates → import registration → build → QA)
-uv run auto-epublizer preprocess <input>   # preprocessing: init + fact collection → preprocessing/facts.*
-uv run auto-epublizer meta --translator OpenCode  # metadata verification write-back + translator credit
-uv run auto-epublizer import               # register agent-written translation/alignment
-uv run auto-epublizer build                # package translated EPUB
-uv run auto-epublizer qa                   # structure audit + epubcheck + release report
-uv run auto-epublizer status [--json]      # progress / state machine / artifact reconciliation
+# 3. Full translation (preprocess creates a <slug> workspace below workspaces)
+"$AEP_CLI" preprocess <input> --workspace "$AEP_ROOT/workspaces"
+"$AEP_CLI" meta --workspace "$AEP_ROOT/workspaces/<slug>" --translator OpenCode
+# Follow the skill for agent understanding/plan/translation/alignment/review; CLI stages only below
+"$AEP_CLI" import --workspace "$AEP_ROOT/workspaces/<slug>"
+"$AEP_CLI" build --workspace "$AEP_ROOT/workspaces/<slug>"
+"$AEP_CLI" qa --workspace "$AEP_ROOT/workspaces/<slug>"
+"$AEP_CLI" status --workspace "$AEP_ROOT/workspaces/<slug>" [--json]
 ```
 
 Configuration is documented in [docs/configuration.md](docs/configuration.md)
 (`config.yaml`, no secret section; the optional external parsing API's `MINERU_API_KEY` is
 read from the environment only).
+
+### Feedback and contributions (local draft by default)
+
+At delivery or when a technical problem arises, choose an **issue** (symptoms and minimal
+synthetic reproduction) and/or a **PR** (actual repair, synthetic regression tests, docs).
+See the complete [workflow feedback procedure](skills/auto-epublizer/references/workflow.md).
+First draft in the work root's `docs/`, show the full title/body/patch, and obtain the
+user's consent before issue create, fork, push, or pr create. Use only fictitious fixtures:
+no real book titles/authors, file/workspace names, original/translated text, real paths,
+credentials, sensitive report metadata, or user/book Git history. Never blindly `git add -A`.
+Use the user's own GitHub account without soliciting tokens; without consent or
+authentication/permissions, keep the local draft and do not submit.
 
 ---
 

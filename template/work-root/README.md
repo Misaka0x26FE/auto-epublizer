@@ -1,13 +1,20 @@
 # 工作根模板（长期多书项目）
 
-> `auto-epublizer` **持续处理多本书**时的标准工作根布局（来源：GitHub issue #30 / #32）。
-> 复制本目录为新项目根、按需改名即可；每本书在其中累积为一个工作区。
+> `auto-epublizer` 的标准工作根布局。首次使用或安全续用，先按
+> `auto-epublizer/skills/auto-epublizer/references/work-root.md` 的完整 bootstrap 指引执行：
+> 用户选定工作根，官方 GitHub main 源码在本根 `auto-epublizer/`，项目 `uv` 环境准备 CLI，
+> 再以现有 CLI 的 `work-root` 命令生成本骨架，**不加 `--force`**。安装 Skill 不安装引擎。
+> 续用前检查 root/origin/main 与 tracked+untracked dirty，clean 后才 fetch/只快进；
+> 错误分支/来源、ahead/divergent 均停止，绝不 reset/stash/clean/覆盖用户内容。
+> 以下命令以工作根为当前目录，使用 bootstrap 导出的 `AEP_ROOT` / `AEP_CLI`；
+> 新 shell 先重新安全续用，不从 PATH 猜 CLI。书籍与源码 checkout 严格分离。
 
 ## 目录布局
 
 ```text
 <work-root>/
 ├── AGENTS.md           # 本目录怎么工作（根目录只保留这一个 .md）
+├── auto-epublizer/     # 官方 main 源码 + .venv；只用于 CLI，绝不放书或书籍提交
 ├── config.example.yaml # 配置模板（复制为 config.yaml；workspaces_dir=./workspaces）
 ├── inbox/              # 收件箱：只放「尚未开工」的源文件（原名原字节）
 ├── sources/            # 送审暂存：inbox 文件按 <slug>.<ext> 复制一份，供 preprocess
@@ -19,7 +26,7 @@
 ## 流转（身份以 sha256 为准，不认文件名）
 
 1. 定 slug（书名取短横线小写）→ `cp inbox/<原名> sources/<slug>.<ext>`
-2. `auto-epublizer preprocess sources/<slug>.<ext> --workspace ./workspaces`
+2. `"$AEP_CLI" preprocess sources/<slug>.<ext> --workspace ./workspaces`
 3. 源已入库（`source_sha256` 写入 `publication.json`）后，收件箱副本即视为已处理；
 4. 若入库前对源做过加工（注入书签 / 格式转换），用 `--original <原件>` 把**未改动的交付
    原件**归档到工作区 `references/user/`。
@@ -27,8 +34,8 @@
 ## 跨书索引
 
 ```bash
-auto-epublizer status --all --workspace . --json   # 三档进度 + 单元/词数（机器可重算）
-python3 docs/build_ledger.py                     # 保留人工列后重算，见下
+"$AEP_CLI" status --all --workspace . --json   # 三档进度 + 单元/词数（机器可重算）
+python3 docs/build_ledger.py --cli "$AEP_CLI" # 保留人工列后重算，见下
 ```
 
 **数字列永远由命令重算，绝不手维护。**
@@ -49,8 +56,8 @@ python3 docs/build_ledger.py                     # 保留人工列后重算，�
 显式相对参数则相对于当前 shell 目录。先生成台账，再检查引用它的文档：
 
 ```bash
-python3 docs/build_ledger.py --workspace workspaces --output docs/工作台账.md
-python3 docs/pack_outbox.py workspaces/book-a workspaces/book-b --batch 2026-10-17
+python3 docs/build_ledger.py --cli "$AEP_CLI" --workspace workspaces --output docs/工作台账.md
+python3 docs/pack_outbox.py --cli "$AEP_CLI" workspaces/book-a workspaces/book-b --batch 2026-10-17
 python3 docs/check_doc_links.py --root .
 python3 docs/check_tracked.py --repo workspaces/book-a
 ```
@@ -85,3 +92,12 @@ python3 docs/check_tracked.py --repo workspaces/book-a
   不得以 `.gitignore` 作为允许清单。失败时先核证保密边界，**绝不要为消警把 secret 加 Git**。
 
 这四项检查是操作护栏，不替代逐书 QA 或内容核证；失败均返回非零，不会自动修文件或放行。
+
+## 反馈贡献（issue + PR，默认仅本地草稿）
+
+交付或遇到问题时可询问用户：症状/最小合成复现用 issue，实际修复/文档用 PR。
+按 `auto-epublizer/skills/auto-epublizer/references/workflow.md` 执行：先在本根 `docs/`
+留脱敏草稿，展示完整标题/正文/补丁并获明确同意，才 issue create/fork/push/pr create。
+只用虚构夹具；不外发真实书名/作者、文件/工作区名、原文/译文、路径、凭据、
+敏感报告元数据或用户/书籍 Git 历史。不盲目 `git add -A`；PR 使用独立官方源码 clone，
+不推书籍仓库。使用用户账户且不索要 token；未授权或缺认证/权限时只留本地草稿。

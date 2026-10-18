@@ -1,4 +1,4 @@
-<!-- i18n: source=workflow.zh.md sha256=2f30afd503396fb52dd1bcb89896b502409f53b7fb054e459007116676119ee0 -->
+<!-- i18n: source=workflow.zh.md sha256=047e8945d38b4f38246882c7295c7a3ea07bc0ab7209518e14c2dde2e532fdaa -->
 > **English** | [中文](workflow.zh.md)
 
 # Workflow (stage routing + command overview)
@@ -8,10 +8,14 @@
 The workspace is `<workspaces_dir>/<book-slug>/`, and the authoritative index is
 `publication.json`.
 
-**Before starting**: `auto-epublizer doctor --json` self-checks the environment
-(pandoc/pymupdf/OCR/epubcheck/MinerU/network), and self-reports multimodal / search
-(whether you can see images and whether you have a search tool) — choose the ingest route
-from the capability-routing decision table in `references/ingest.md`.
+**Before any CLI**: complete the user-selected work root, official GitHub main checkout,
+project `uv` environment, and non-overwriting skeleton generation in `references/work-root.md`.
+Installing the skill does not install the engine. Execute all `auto-epublizer …` examples
+on this page as `"$AEP_CLI" …` (exported by bootstrap). Relative book paths assume the work
+root is the current directory; never put books in the source checkout.
+Then compare `"$AEP_CLI" version` with the skill manifest's minimum and stop if incompatible.
+`"$AEP_CLI" doctor --json` self-checks pandoc/pymupdf/OCR/epubcheck/MinerU/network; self-report
+multimodal/search and select the ingest route from `references/ingest.md`.
 
 ```text
 No publication.json              -> fresh flow: first preprocess <input> (= init + fact collection)
@@ -41,6 +45,7 @@ if not, investigate on your own.
 ## Standard stages
 
 ```text
+bootstrap (work root + official main + uv + non-overwriting skeleton) -> version (compatibility gate)
 doctor (capability self-check: toolchain + self-reported multimodal/search)
   -> preprocess (CLI: sniff/metadata/TOC/health/size -> preprocessing/facts.*, zero-token)
   -> agent understanding (read facts.md and write capabilities/plan/global/units/terms/risks/report;
@@ -77,38 +82,87 @@ Conversion only, no translation:
 convert <input>   -> normalize + structure + EPUB + QA
 ```
 
-## Delivery wrap-up: feedback contribution (optional)
+## At delivery or when problems arise: feedback contribution (optional, issue + PR)
 
-After delivery is complete, ask the user: **Should the technical problems encountered in
-this work and the proposed solutions be submitted as an issue to the project's GitHub
-repository (`Misaka0x26FE/auto-epublizer`)?** If the user agrees:
+Ask whether the user wants to contribute: **issues report symptoms and minimal synthetic
+reproduction; PRs carry actual repairs, regression tests, or documentation improvements**.
+They may choose either or both, linking the issue and PR. Do not replace a PR by dumping
+the complete repair patch into an issue. Book delivery and problem handling do not depend
+on public contribution.
 
-1. **Check GitHub login status**: `gh auth status`. Logged in → continue under that account
-   (i.e. the user's account); not logged in → ask the user to log in to their own GitHub
-   account first (`gh auth login`, via the browser/device-code flow); do not ask the user
-   for a password or token, and continue only after login succeeds.
-2. **Prepare the content** (technical problems and solutions only, following the
-   criterion/handling/verification three-part structure of `lessons/`):
-   - Pure experience write-up → write `skills/auto-epublizer/lessons/<date>-<topic>.md` and
-     update the `lessons/README.md` index;
-   - If a code defect was fixed during the work → include the corresponding regression test
-     and docs sync, follow the repository conventions
-     (`uv run pytest -q` + `ruff check .` + `ruff format --check .`), and commit locally as
-     a single-topic Conventional Commit (the issue flow does not require a fork/branch/push).
-3. **File the issue in the user's name, with reference code attached**:
-   - `gh issue create --repo Misaka0x26FE/auto-epublizer --title <topic>
-     --body-file <temp-file>` (the body is long, use `--body-file` rather than `--body`);
-   - issue body = problem symptoms + root cause + proposed solution + verification results
-     (three parts) + **reference code** (i.e. the change that could have been a PR, for the
-     maintainer to adopt directly):
-     - Code fix → the complete patch from `git format-patch -<N> <commit>` (or `git diff`),
-       pasted into a ```diff fenced code block (the maintainer can merge it directly with
-       `git am` / `git apply`);
-     - Pure experience write-up → paste the full lesson file into a ```markdown fenced code
-       block.
-4. **Privacy reminder (must say)**: the submission must not contain the user's book source
-   files, translations, metadata, or any personal information; show the issue title/body/
-   reference code to the user for confirmation before submitting.
+### Default: sanitized local drafts only
+
+1. Write drafts in the work root's `docs/feedback-issue.md` and/or `docs/feedback-pr.md`
+   as needed; do not automatically commit them anywhere. An issue draft contains generic
+   symptoms, minimal fictitious input, exact commands, expected/actual results, and public-safe
+   tool versions. Mark an unknown cause unknown. A PR draft states the reason, exact change
+   scope, synthetic regression fixtures, and checks actually run with their results; explicitly
+   label unexecuted checks.
+2. **Never transmit** real book titles/authors, file/workspace names, original/translated
+   text or quotations, real paths, credentials, sensitive report metadata, or user/book Git
+   history (including logs, patch context, attachments, branch names, and commit messages).
+   Recreate a minimum example with entirely fictitious `sample.md`, `sample-workspace`, and
+   self-written sentences. Do not excerpt "harmless-looking" real book content or paste raw
+   facts/report/events or format-patch output. Preserve the public project's name, URL,
+   and author attribution; do not disguise private material as a public fixture.
+3. Show the user the **complete sanitized title, body, every proposed attachment/patch,
+   and destination repository**. Obtain explicit approval for the planned issue, fork, push,
+   and PR network writes; one approval may explicitly cover them all. General willingness
+   to receive feedback is not authorization. Without approval, keep only local drafts:
+   **never execute** issue create, fork, push, or pr create. If content/action scope changes
+   after approval, show it again and obtain renewed consent.
+4. After approval, use `gh auth status` to confirm **the user's own account**. Missing login
+   or permissions means stop at the draft. The user can resolve this themselves with
+   `gh auth login` via browser/device code. Never solicit passwords or tokens, borrow the
+   maintainer/agent identity, or redirect the submission elsewhere to bypass permissions.
+
+### Approved issue
+
+This template is for manual execution **only after the approval and authentication above**.
+Replace the title with the approved sanitized title first:
+
+```bash
+gh issue create --repo Misaka0x26FE/auto-epublizer \
+  --title 'Synthetic input: concise symptom' \
+  --body-file "$AEP_ROOT/docs/feedback-issue.md"
+```
+
+Keep the issue to symptoms/reproduction/suggestions; use a PR below for an actual repair.
+Link the confirmed public URLs in the drafts if both are created. Do not automatically
+create Releases, upload book artifacts, or mutate existing online issues/PRs.
+
+### PR for actual repair or documentation improvement
+
+Use a **fresh, separate contribution checkout cloned from official main**, for example
+`$AEP_ROOT/docs/contribution-source`. Do not switch the book-running engine checkout to a
+contribution branch, and never fork/push a book repository, user Git history, or task history.
+Preserve official public history and author attribution. Create a single-topic branch in
+the fresh checkout and recreate only the sanitized actual repair/docs and synthetic regression
+fixtures. Follow repository maintenance checks and record actual evidence in the draft.
+Review content and diffs file by file; **only `git add -- <explicit-reviewed-files...>`,
+never blindly `git add -A`**. Inspect the staged diff and commit message for privacy, then
+make a local Conventional Commit. Show the final patch and PR draft and obtain the approval
+above. Without an actual change, do not manufacture an empty PR.
+
+These network-write templates apply **only to an approved actual commit**; the branch name
+must match the reviewed local branch, and the contribution checkout must have official
+`origin` and no existing `fork` remote:
+
+```bash
+contribution="$AEP_ROOT/docs/contribution-source"
+account=$(gh api user --jq .login)
+gh repo fork Misaka0x26FE/auto-epublizer --clone=false --remote=false
+git -C "$contribution" remote add fork "https://github.com/$account/auto-epublizer.git"
+git -C "$contribution" push fork HEAD:refs/heads/fix/synthetic-example
+gh pr create --repo Misaka0x26FE/auto-epublizer --base main \
+  --head "$account:fix/synthetic-example" \
+  --title 'fix: concise synthetic regression repair' \
+  --body-file "$AEP_ROOT/docs/feedback-pr.md"
+```
+
+Stop on authentication/permission failure or any failed step, preserving the draft without
+automatically retrying writes. Report a real URL only after the tool confirms creation.
+If unsubmitted, explicitly say "local draft only", not that feedback was sent upstream.
 
 ## Command overview
 
@@ -194,13 +248,13 @@ auto-epublizer status --workspace <dir> --json
 
 ## Multi-workspace work root (long-running projects)
 
-For continuous multi-book work, use a **work root** containing one workspace per book.
-Generate it deterministically with `auto-epublizer work-root <dir>`; see
-`references/work-root.md` for the component-by-component explanation and the user-facing
-summary. `status --all` and `ledger` are its cross-book index.
+For one book or many, first follow the safe bootstrap in `references/work-root.md`.
+The existing `"$AEP_CLI" work-root "$AEP_ROOT"` generates the skeleton without `--force`.
+Keep one separate workspace per book; `status --all` and `ledger` are the cross-book index.
 
 ```text
 <work-root>/
+├── auto-epublizer/    # official main source and .venv; no books or contribution branches
 ├── AGENTS.md          # how this directory works (keep the root to a single .md)
 ├── config.yaml        # workspaces_dir / qc.epubcheck.jar / pdf.*
 ├── inbox/ sources/    # inbox: not-yet-started sources; sources: staging copies named <slug>.<ext>

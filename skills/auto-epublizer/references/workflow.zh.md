@@ -6,9 +6,13 @@
 
 工作区是 `<workspaces_dir>/<book-slug>/`，权威索引是 `publication.json`。
 
-**开工前**：`auto-epublizer doctor --json` 自检环境（pandoc/pymupdf/OCR/epubcheck/
-MinerU/网络），并自报 multimodal / search（能否看图、有无搜索工具）——按
-`references/ingest.md` 的能力-路由决策表选 ingest 路由。
+**任何 CLI 之前**：先按 `references/work-root.md` 完成用户选定工作根、官方 GitHub main
+checkout、项目 `uv` 环境与无覆盖骨架生成；安装 Skill 不等于安装引擎。本页所有
+`auto-epublizer …` 示例运行时都写作 `"$AEP_CLI" …`（该变量由 bootstrap 导出）；
+相对书籍路径以工作根为当前目录，源码 checkout 不存书。
+然后 `"$AEP_CLI" version` 对照 Skill `manifest.json` 的最低版本，不兼容即停止；
+`"$AEP_CLI" doctor --json` 自检环境（pandoc/pymupdf/OCR/epubcheck/MinerU/网络），
+并自报 multimodal / search——按 `references/ingest.md` 的能力-路由决策表选路。
 
 ```text
 无 publication.json               -> 全新流程：先 preprocess <input>（= init + 事实收集）
@@ -35,6 +39,7 @@ MediaWiki 卷导航垃圾混入 structured），先查 `lessons/` 目录——�
 ## 标准阶段
 
 ```text
+bootstrap（工作根 + 官方 main + uv + 无覆盖骨架） -> version（兼容性门）
 doctor（能力自检：工具链 + 自报 multimodal/search）
   -> preprocess （CLI：嗅探/元数据/TOC/体检/规模 -> preprocessing/facts.*，零 token）
   -> agent 理解 （读 facts.md 撰写 capabilities/plan/global/units/terms/risks/report；
@@ -66,30 +71,72 @@ doctor（能力自检：工具链 + 自报 multimodal/search）
 convert <input>   -> 归一化 + 结构 + EPUB + QA
 ```
 
-## 交付收尾：反馈贡献（可选）
+## 交付或遇到问题：反馈贡献（可选，issue + PR）
 
-交付完成后，询问用户：**是否将本次工作中遇到的技术问题与建议解决方案作为 issue
-提交到项目 GitHub 仓库（`Misaka0x26FE/auto-epublizer`）？** 用户同意时：
+交付收尾或遇到技术问题时询问用户是否愿意贡献：**issue 报告症状与最小合成复现；
+PR 提交实际修复、回归测试或文档改进**。可只选其一，也可 issue 与关联 PR 都做；
+不再把完整修复补丁塞进 issue 来替代 PR。问题处理与书籍交付不以公开贡献为前提。
 
-1. **检查 GitHub 登录状态**：`gh auth status`。已登录 → 以该账户（即用户账户）
-   名义继续；未登录 → 请用户先登录自己的 GitHub 账户（`gh auth login`，走浏览器/
-   设备码流程），不要向用户索要密码或 token，登录成功后再继续。
-2. **整理内容**（只含技术问题与解决方案，参照 `lessons/` 的判据/处置/验证三段式）：
-   - 纯经验沉淀 → 写 `skills/auto-epublizer/lessons/<日期>-<主题>.md` 并同步
-     `lessons/README.md` 索引；
-   - 若工作过程中修复了代码缺陷 → 带上对应回归测试与文档同步，遵循仓库规范
-     （`uv run pytest -q` + `ruff check .` + `ruff format --check .`），
-     在本地以 Conventional Commits 单主题提交（issue 流程不要求 fork/建分支/push）。
-3. **以用户账户名义提交 issue，并附参考代码**：
-   - `gh issue create --repo Misaka0x26FE/auto-epublizer --title <主题>
-     --body-file <临时文件>`（正文较长，用 `--body-file` 而非 `--body`）；
-   - issue 正文 = 问题现象 + 根因 + 建议方案 + 验证结果（三段式）+ **参考代码**
-     （即原可作为 PR 的改动，供维护者直接采用）：
-     - 代码修复 → `git format-patch -<N> <commit>`（或 `git diff`）的完整补丁，
-       贴进 ```diff 围栏代码块（维护者可 `git am` / `git apply` 直接合入）；
-     - 纯经验沉淀 → lesson 文件全文贴进 ```markdown 围栏代码块。
-4. **隐私提醒（必须说）**：提交内容不得包含用户书籍的源文件、译文、元数据或任何
-   个人信息；issue 标题/正文/参考代码先给用户过目确认后再提交。
+### 默认只留本地脱敏草稿
+
+1. 先在工作根 `docs/feedback-issue.md` 和/或 `docs/feedback-pr.md` 写草稿（按需创建，
+   不自动提交到任何仓库）。issue 草稿含：通用症状、最小虚构输入、明确命令、
+   预期/实际结果、可公开的工具版本；根因未知就写未知。PR 草稿含：修复原因、
+   精确变更范围、合成回归夹具、实际执行的检查及结果；未执行就明说。
+2. **禁止外发**真实书名/作者、文件名/工作区名、原文/译文/引用、真实路径、凭据、
+   敏感报告元数据与用户/书籍 Git 历史（包括日志、补丁上下文、附件、分支名、提交信息）。
+   用完全虚构的 `sample.md`、`sample-workspace` 与自写短句重建最小复现；
+   不从真实书籍截取「看似无害」片段，不贴原始 facts/report/events 或 format-patch。
+   保留公开项目名称/仓库地址及原作者归属，不把用户资料伪装为公开夹具。
+3. 给用户展示**完整脱敏标题、正文、所有拟发附件/补丁及目标仓库**。明确询问 issue、
+   fork、push、PR 各项拟执行的网络写操作是否获准；一个明确覆盖这些操作的批准即可，
+   不把「可反馈建议」当作授权。未批准时只保留本地草稿，**绝不执行** issue create、
+   fork、push 或 pr create；批准后如内容/操作范围变化，重新展示并取得同意。
+4. 批准后先 `gh auth status` 核对使用**用户自己的账户**。未登录/权限不足则停在草稿，
+   由用户自行通过 `gh auth login` 浏览器/设备码流程解决；不索要密码或 token，
+   不借用维护者/agent 身份，不以权限失败为由改发别处。
+
+### 经批准的 issue
+
+下面是**仅在上述批准与认证完成后**手动执行的模板；先把标题替换为已批准的脱敏标题：
+
+```bash
+gh issue create --repo Misaka0x26FE/auto-epublizer \
+  --title 'Synthetic input: concise symptom' \
+  --body-file "$AEP_ROOT/docs/feedback-issue.md"
+```
+
+issue 仅含症状/复现/建议；有实际修复时走下面 PR，可在两份草稿中互链已创建的公开 URL。
+不得自动创建 Release、上传书籍产物，或修改现有在线 issue/PR。
+
+### 实际修复或文档改进的 PR
+
+使用**从官方 main 新 clone 的独立贡献 checkout**（例如
+`$AEP_ROOT/docs/contribution-source`），不要在运行书籍任务的源码 checkout 切分支，
+更不要 fork/push 书籍仓库、用户 Git 历史或任务历史。保留官方公开历史和作者归属。
+在新 checkout 创建单主题分支，只重做脱敏的真实修复/文档与合成回归夹具，
+按仓库维护规范执行相应检查，在草稿中记录实际证据。
+逐文件审阅内容与 diff，**只 `git add -- <明确审核的文件...>`，禁止盲目 `git add -A`**；
+检查 staged diff 与提交信息不含隐私后，用 Conventional Commit 本地提交。
+展示最终补丁和 PR 草稿后取得上述批准；没有实际变更就不制造空 PR。
+
+以下网络写模板仅适用于**已批准的实际提交**；其中分支名须与本地已审阅分支一致，
+贡献 checkout 必须有官方 `origin`，且尚无 `fork` remote：
+
+```bash
+contribution="$AEP_ROOT/docs/contribution-source"
+account=$(gh api user --jq .login)
+gh repo fork Misaka0x26FE/auto-epublizer --clone=false --remote=false
+git -C "$contribution" remote add fork "https://github.com/$account/auto-epublizer.git"
+git -C "$contribution" push fork HEAD:refs/heads/fix/synthetic-example
+gh pr create --repo Misaka0x26FE/auto-epublizer --base main \
+  --head "$account:fix/synthetic-example" \
+  --title 'fix: concise synthetic regression repair' \
+  --body-file "$AEP_ROOT/docs/feedback-pr.md"
+```
+
+认证/权限或任一步失败就停止并保留草稿，不自动重试写操作。仅在工具确认创建成功后
+回报真实 URL；未提交就明确说「仅本地草稿」，不得把草稿说成已上游反馈。
 
 ## 命令总览
 
@@ -171,11 +218,13 @@ auto-epublizer status --workspace <dir> --json
 
 ## 多工作区工作根（长期多书项目）
 
-持续多书处理时，用一个**工作根**、每书一个工作区。用 `auto-epublizer work-root <目录>` 确定性
-生成；各组件作用与给用户的说明见 `references/work-root.md`。`status --all` 与 `ledger` 是其跨书索引。
+无论单书还是多书都先按 `references/work-root.md` 安全 bootstrap；
+骨架由现有 `"$AEP_CLI" work-root "$AEP_ROOT"` 生成（不加 `--force`）。
+每书一个独立工作区，`status --all` 与 `ledger` 是跨书索引。
 
 ```text
 <work-root>/
+├── auto-epublizer/    # 官方 main 源码与 .venv；不放书，不切贡献分支
 ├── AGENTS.md          # 本目录怎么工作（根目录只保留这一个 .md）
 ├── config.yaml        # workspaces_dir / qc.epubcheck.jar / pdf.*
 ├── inbox/ sources/    # inbox：尚未开工的源；sources：按 <slug>.<ext> 命名的送审副本

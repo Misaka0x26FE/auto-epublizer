@@ -7,7 +7,7 @@ metadata:
   suite: auto-epublizer
   workspace_model: publication.json
 ---
-<!-- i18n: source=SKILL.zh.md sha256=3053904697696fd6cee5cc3a247a0396fcd00e2fbf9f1b088938bd4e2329b07a -->
+<!-- i18n: source=SKILL.zh.md sha256=a0d6a12ef294d081936287dcd7c05ff1f2e94e7f0787e9780772c82e4e5257e4 -->
 > **English** | [中文](SKILL.zh.md)
 
 # auto-epublizer
@@ -50,17 +50,25 @@ MCP/sub-agents.
 
 ## Route Before Acting
 
-First run `auto-epublizer version`; if it is lower than this directory's `manifest.json`
-`minimum_cli_version`, stop and ask the user to upgrade the CLI (the skill and CLI contract
-are incompatible). Then run `auto-epublizer doctor --json` for the capability self-check
-(toolchain/dependencies/MinerU/network), and **self-report multimodal / search** (whether
-you can see images and whether you have a search tool — the CLI cannot probe these) —
-choose the ingest route accordingly (see the capability-routing decision table in
-`references/ingest.md`). Then read this Skill directory's `manifest.json`, and read only
-the reference needed for the current stage.
+**Bootstrap before calling any CLI**: installing the skill installs instructions, not the
+Python engine. First read `references/work-root.md`, establish the user's chosen work root,
+safely clone/fast-forward official GitHub **main** at `<work-root>/auto-epublizer/`,
+prepare the CLI with the project's `uv` environment, and generate the skeleton using the
+existing `work-root` command (no `--force`). Book workspaces stay outside the source checkout.
+An existing checkout must pass repository-root/origin/main and tracked+untracked dirty guards.
+Ahead/divergent history or a wrong branch/origin stops; never reset/stash/clean/overwrite.
+
+After success, run its exported `"$AEP_CLI" version` and compare with this skill's
+`manifest.json` `minimum_cli_version`; stop if incompatible. Then run
+`"$AEP_CLI" doctor --json` for toolchain/dependency/MinerU/network checks, and **self-report
+multimodal / search** (image and search access cannot be probed by the CLI). Select the
+ingest route from `references/ingest.md`. Execute every `auto-epublizer …` example in this
+skill and its references as `"$AEP_CLI" …`; in a new shell, first follow safe reuse in
+work-root rather than accidentally calling a global namesake. Read only the current stage's reference.
 
 | Scenario | Read |
 |---|---|
+| First use / safe reuse (mandatory before version/doctor) | `references/work-root.md` |
 | Fresh task / state routing / multi-stage request / command overview | `references/workflow.md` |
 | Weak-model path: machine next-task pointer (`status --json`) + atomic task cards | `references/taskcards/` |
 | Long-running work root, batch SHA256 delivery, retained ledger manual cells, link/ignore guards | `references/work-root.md` |
@@ -78,6 +86,7 @@ the reference needed for the current stage.
 | Genre profile (novel/academic/paper/poetry/newspaper) application | `references/style.md` |
 | Complete release-conditions set / error-code quick reference / troubleshooting interpretation | `references/invariants.md` |
 | Publishing/distributing the product (GitHub release / private distribution), rights and privacy | `references/publishing.md` |
+| Delivery or problems: opt-in sanitized issue / repair PR (local draft by default) | `references/workflow.md`, feedback contribution |
 | Field experience with source sites / dirty sources / edge cases (Baka-Tsuki illustration segments, offline epubcheck, etc.) | `lessons/` (match by topic; read only when it hits) |
 
 > **Legacy workspace fingerprint**: if the directory contains `split/`,
@@ -123,11 +132,22 @@ Full command overview and stage list: `references/workflow.md` (not repeated her
 entry stays lean on purpose).
 
 ```text
-doctor → preprocess → agent understanding/analysis → (repair) → translate → import
-       → g0 → review → build → qa → delivery
+bootstrap → version → doctor → preprocess → agent understanding/analysis → (repair) → translate → import
+       → g0 → review → build → qa → delivery → ask about sanitized issue / PR contribution
 ```
 
 Drive it from the machine pointer: take `status --json` → `next_tasks[0]`, do that task
 (see `references/taskcards/`), re-run `status --json`, repeat.
 
-Conversion only, no translation: `auto-epublizer convert <input> -o output/book.epub`.
+Conversion only, no translation: `"$AEP_CLI" convert <input> -o output/book.epub`.
+
+## Feedback contribution (at delivery or when problems arise)
+
+**Use an issue for symptoms/minimal synthetic reproduction, and a PR for actual repairs
+or documentation changes; both are supported.** Keep a sanitized draft in the work root's
+`docs/`, show the full title, body, and proposed patch to the user, and obtain explicit
+consent before issue create / fork / push / pr create. Without consent, keep only the local draft.
+Never contribute real book titles/authors, file or workspace names, original/translated
+text, real paths, credentials, sensitive report metadata, or Git history. Use fictitious
+fixtures; never blindly `git add -A`. Authenticate as the user without soliciting tokens;
+missing authentication/permissions means stop at the draft. Full procedure: `references/workflow.md`.

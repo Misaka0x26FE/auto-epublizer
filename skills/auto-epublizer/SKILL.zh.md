@@ -38,15 +38,24 @@ metadata:
 
 ## Route Before Acting
 
-先跑 `auto-epublizer version`，若低于本目录 `manifest.json` 的
-`minimum_cli_version`，停止并提示用户升级 CLI（skill 与 CLI 契约不兼容）。
-再跑 `auto-epublizer doctor --json` 做能力自检（工具链/依赖/MinerU/网络），并**自报
-multimodal / search**（能否看图、有无搜索工具，CLI 无法探测）——据此选择 ingest 路由
-（见 `references/ingest.md` 的能力-路由决策表）。然后读本 Skill 目录的 `manifest.json`，
-按当前阶段只读需要的 reference。
+**先 bootstrap，后调用 CLI**：安装 Skill 只安装指引，不安装 Python 引擎。先读
+`references/work-root.md`，确定用户选定的工作根，在 `<工作根>/auto-epublizer/`
+安全 clone/快进官方 GitHub **main**，用项目 `uv` 环境准备 CLI，再通过现有
+`work-root` 命令生成骨架（不加 `--force`）。书籍工作区在源码目录之外。
+已有 checkout 必须通过仓库根/origin/main 与 tracked+untracked dirty 护栏；
+ahead/divergent、错误分支/来源均停止，绝不 reset/stash/clean/覆盖。
+
+成功后用其中导出的 `"$AEP_CLI" version`，对照本 Skill `manifest.json` 的
+`minimum_cli_version`；不兼容则停止。再运行 `"$AEP_CLI" doctor --json` 自检
+工具链/依赖/MinerU/网络，并**自报 multimodal / search**（能否看图、有无搜索工具，
+CLI 无法探测），据此选 ingest 路由（见 `references/ingest.md`）。
+本 Skill 及其 references 中所有 `auto-epublizer …` 示例都须以 `"$AEP_CLI" …`
+执行；新 shell 先按 work-root 指引安全续用，禁止碰巧调用全局同名 CLI。
+然后只读当前阶段需要的 reference。
 
 | 场景 | 读 |
 |---|---|
+| 首次使用 / 安全续用（必须先于 version/doctor） | `references/work-root.md` |
 | 全新任务 / 状态路由 / 多阶段请求 / 命令总览 | `references/workflow.md` |
 | 弱模型路径：机器「下一任务」指针（`status --json`）+ 原子任务卡 | `references/taskcards/` |
 | 长期多书：工作根生成、批次 SHA256 交付、台账人工列保留、断链/忽略对账工具 | `references/work-root.md` |
@@ -64,6 +73,7 @@ multimodal / search**（能否看图、有无搜索工具，CLI 无法探测）�
 | 文体档案（novel/academic/paper/poetry/newspaper）应用 | `references/style.md` |
 | 放行条件全集 / 错误码速查 / 排障判读 | `references/invariants.md` |
 | 发布/分发成品（GitHub release / 私有分发）、权属与隐私 | `references/publishing.md` |
+| 交付或遇到问题：经同意提供脱敏 issue / 修复 PR（默认仅本地草稿） | `references/workflow.md`「反馈贡献」 |
 | 源站/脏源/边界情况的实战经验（Baka-Tsuki 插图段、epubcheck 离线等） | `lessons/`（按主题匹配，仅命中才读） |
 
 > **传统工作区指纹**：目录含 `split/`、`split_translated/`、`.progress`、根
@@ -97,11 +107,20 @@ multimodal / search**（能否看图、有无搜索工具，CLI 无法探测）�
 完整命令总览与阶段列表见 `references/workflow.md`（此处不重复——入口刻意保持精简）。
 
 ```text
-doctor → preprocess → agent 理解/分析 → (整备) → 翻译 → import
-       → g0 → 审校 → build → qa → delivery
+bootstrap → version → doctor → preprocess → agent 理解/分析 → (整备) → 翻译 → import
+       → g0 → 审校 → build → qa → delivery → 询问是否贡献脱敏 issue / PR
 ```
 
 按机器指针驱动：取 `status --json` → `next_tasks[0]`，做该任务（见
 `references/taskcards/`），重跑 `status --json`，循环。
 
-仅转换不翻译：`auto-epublizer convert <input> -o output/book.epub`。
+仅转换不翻译：`"$AEP_CLI" convert <input> -o output/book.epub`。
+
+## 反馈贡献（交付或遇到问题时提醒）
+
+**症状/最小合成复现用 issue，实际修复/文档变更用 PR，两者都支持。**
+先在工作根 `docs/` 留脱敏草稿，给用户看完整标题、正文与拟提交补丁并请求明确同意，
+才可 issue create / fork / push / pr create；未授权仅保留本地草稿。
+不得上游提交真实书名/作者、文件或工作区名、原文/译文、真实路径、凭据、敏感报告元数据
+或 Git 历史，改用虚构夹具；禁止盲目 `git add -A`。以用户账户认证，不索要 token；
+缺认证/权限就停在草稿。完整步骤见 `references/workflow.md`。
