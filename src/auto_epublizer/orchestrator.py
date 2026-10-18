@@ -1128,26 +1128,31 @@ def set_meta(
     publisher: str | None = None,
     date: str | None = None,
     rights: str | None = None,
+    generation_tools: list[dict[str, str | None]] | None = None,
 ) -> dict[str, Any]:
     """更新 DC 元数据（agent 补全/核对 facts 嗅探值、译者署名的唯一写入口）。
 
-    仅显式传入的字段会被更新（None=不动；空串=清空该字段）。
+    仅显式传入的字段会被更新（None=不动；空串=清空该字段；generation_tools 同理，
+    `[]` 表示明确未使用生成模型）。
     publication.json 状态只经 CLI 命令推进，agent 不手工编辑。
     """
     pub = store.load_publication()
-    updates: dict[str, str | None] = {
+    updates: dict[str, Any] = {
         "title": title,
         "creator": creator,
         "translator": translator,
         "publisher": publisher,
         "date": date,
         "rights": rights,
+        "generation_tools": generation_tools,
     }
     changed = [k for k, v in updates.items() if v is not None]
     for k in changed:
         setattr(pub.meta, k, updates[k])
     if not changed:
-        raise OrchestrationError("未指定任何要更新的字段（--title/--creator/--translator/…）")
+        raise OrchestrationError(
+            "未指定任何要更新的字段（--title/--creator/--translator/--generation-tools/…）"
+        )
     store.save_publication(pub)
     store.log_event("meta_update", fields=changed)
     return {"updated": changed, "meta": pub.meta.model_dump()}

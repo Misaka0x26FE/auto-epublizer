@@ -458,6 +458,33 @@ def preprocess(
     )
 
 
+def _parse_generation_tools(raw: str | None) -> list[dict[str, str | None]] | None:
+    """解析 ``--generation-tools`` 的 JSON 数组；坏输入明确报错，不静默忽略。
+
+    每项须为 JSON 对象，字段值为字符串或 null（``name``/``version``/``task``/``url``/
+    ``license``；缺键容忍）。``[]`` 表示明确未使用生成模型；未传选项返回 None（不动）。
+    """
+    if raw is None:
+        return None
+    try:
+        data = json.loads(raw)
+    except ValueError as e:
+        raise ValueError(f"--generation-tools 不是合法 JSON：{e}") from None
+    if not isinstance(data, list):
+        raise ValueError("--generation-tools 必须是 JSON 数组")
+    parsed: list[dict[str, str | None]] = []
+    for index, item in enumerate(data, start=1):
+        if not isinstance(item, dict):
+            raise ValueError(f"--generation-tools 第 {index} 项必须是 JSON 对象")
+        entry: dict[str, str | None] = {}
+        for key, value in item.items():
+            if value is not None and not isinstance(value, str):
+                raise ValueError(f"--generation-tools 第 {index} 项字段 {key} 必须是字符串或 null")
+            entry[str(key)] = value
+        parsed.append(entry)
+    return parsed
+
+
 @app.command()
 def meta(
     title: str | None = typer.Option(
@@ -472,6 +499,14 @@ def meta(
     publisher: str | None = typer.Option(None, "--publisher", help="出版社"),
     date: str | None = typer.Option(None, "--date", help="出版日期"),
     rights: str | None = typer.Option(None, "--rights", help="版权/许可声明"),
+    generation_tools: str | None = typer.Option(
+        None,
+        "--generation-tools",
+        help=(
+            "生成模型（LLM）署名：JSON 数组，每项 "
+            '{"name":…,"version":…,"task":…,"url":…,"license":…}；[]=明确未使用生成模型'
+        ),
+    ),
     workspace: str | None = typer.Option(None, "--workspace", help="工作区目录"),
     config: str | None = typer.Option(None, "--config", help="配置文件路径"),
 ) -> None:
@@ -487,6 +522,7 @@ def meta(
             publisher=publisher,
             date=date,
             rights=rights,
+            generation_tools=_parse_generation_tools(generation_tools),
         )
     except (ValueError, OSError, orch.OrchestrationError) as e:
         raise typer.Exit(f"元数据更新失败：{e}") from None

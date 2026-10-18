@@ -43,6 +43,8 @@ OPF 的 `aep:render-mode` 记录本次实际构建入口：`source`（纯源文�
 - 指纹记录项目 `auto-epublizer`、[源码地址](https://github.com/Misaka0x26FE/auto-epublizer)、**当前实际构建版本**与可取得的源码 revision/dirty 状态，不把初始化时的 `meta.producer` 当成构建版本；不可取得的值明确为未知。
 - Python、Pydantic 是本次构建运行时；其他工具只列成功解析时冻结的实际使用记录，不枚举已安装依赖。未知版本保持未知；历史工作区未记录的上游工具不从当前环境倒推（`processing_tools=null` 表示历史未知，`[]` 表示已知未使用额外外部解析工具）。MinerU API 按外部服务标识，不声称其服务内部运行某个开源版本或采用某个开源许可。
 - 有 copyright 单元时，在其尾部追加独立软件声明，保留原版权内容；没有时生成独立制作信息页，设为非线性 spine（`linear="no"`），由 `copyright-page` 地标进入，不新增书稿单元、不进入正文 nav/NCX 目录。
+- 该声明（或制作信息页）在工具列表之前给出**出版与版权信息**块，取自 `publication.json.meta` 的 `title`/`creator`/`translator`/`publisher`/`date`/`rights`，只列非空字段；全部为空时整块省略，不留空标签。
+- 工具列表内另加**生成模型（LLM）**条目：`meta.generation_tools` 由 `meta --generation-tools '<JSON 数组>'` 写入（每项 `{name, version, task, url, license}`，缺键容忍，`[]` 表示明确未使用生成模型），每条渲染为 `name version — task`，版本缺失如实标注「版本未记录」，不伪造。以上文案均按构建语言输出中/英两版（中文权威）。
 - 软件许可仅说明制作软件，不授予或改变书稿、译文、图像的许可。指纹不是数字签名，可以移除；记录过程无遥测、无网络请求，不写机器路径、密钥或唯一跟踪 ID。
 - 旧 `output.about_page` 是保留配置，不是这项强制构建指纹的开关，也不表示旧关于页功能已接线。
 - QA 仅对有效结构化指纹注释作残留豁免；制作页须由 OPF 指纹声明、页内制作标记及一致的有效 JSON 指纹共同识别，不能仅按文件名或任意 `linear="no"` 豁免正文对账/目录检查。普通注释、伪造前缀或损坏 JSON 仍属 `E_RESIDUE`。

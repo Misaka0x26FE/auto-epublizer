@@ -167,3 +167,29 @@ def test_meta_command_updates_fields(tmp_path: Path) -> None:
     result = runner.invoke(app, ["meta", "--workspace", str(ws)])
     assert result.exit_code != 0
     assert "未指定" in result.output
+
+
+def test_meta_generation_tools_json_round_trip_and_errors(tmp_path: Path) -> None:
+    """--generation-tools：JSON 数组写回（[] 表示未使用）；坏 JSON/非数组明确报错。"""
+    src = tmp_path / "book.md"
+    src.write_text("# 第一章\n\n正文。\n", encoding="utf-8")
+    ws = tmp_path / "ws"
+    _invoke("init", str(src), "--workspace", str(ws))
+    pub_path = ws / "book" / "publication.json"
+    tools = [{"name": "DeepSeek-V3", "version": "2026-10", "task": "翻译"}]
+
+    _invoke("meta", "--generation-tools", json.dumps(tools), "--workspace", str(ws))
+    data = json.loads(pub_path.read_text(encoding="utf-8"))
+    assert data["meta"]["generation_tools"] == tools
+
+    _invoke("meta", "--generation-tools", "[]", "--workspace", str(ws))
+    data = json.loads(pub_path.read_text(encoding="utf-8"))
+    assert data["meta"]["generation_tools"] == []
+
+    for bad in ("{broken", "{}", '["DeepSeek-V3"]', '[{"name": 3}]'):
+        result = runner.invoke(app, ["meta", "--generation-tools", bad, "--workspace", str(ws)])
+        assert result.exit_code != 0, bad
+        assert "generation-tools" in result.output, bad
+    # 坏输入不得覆盖已写回的值（不是静默 no-op）
+    data = json.loads(pub_path.read_text(encoding="utf-8"))
+    assert data["meta"]["generation_tools"] == []
