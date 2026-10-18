@@ -101,6 +101,143 @@ def test_copyright_and_all_machine_fields_use_current_build_not_init(
     assert audit_epub(out).ok
 
 
+def _production_page(tmp_path: Path, pub: Publication, *, lang: str = "zh-CN") -> Path:
+    """无 copyright 单元 → 触发独立制作信息页（非线性 spine）的构建。"""
+    entries = [{"id": "ch01", "region": "body", "title": "第一章"}]
+    content_files = [("ch01.xhtml", render_document("第一章", "# 第一章\n\n正文。\n", lang=lang))]
+    return build_epub(
+        pub,
+        entries,
+        content_files,
+        lang=lang,
+        modified="2026-01-01T00:00:00Z",
+        out_path=tmp_path / "page.epub",
+    )
+
+
+_GENERATION_TOOLS = [
+    {
+        "name": "DeepSeek-V3",
+        "version": "2026-10",
+        "task": "翻译",
+        "url": "https://example.invalid/deepseek",
+        "license": "MIT",
+    },
+    {"name": "GPT-5", "task": "复核"},
+]
+
+
+def test_production_page_carries_publication_and_generation_tools(tmp_path: Path) -> None:
+    """制作页带出版/版权信息块与生成模型（LLM）条目，页面身份仍与指纹逐字一致。"""
+    pub = Publication(
+        slug="book",
+        meta=PublicationMeta(
+            title="测试书",
+            creator="原作者",
+            translator="OpenCode",
+            publisher="测试出版社",
+            date="2026-01-01",
+            rights="© 原作者；保留所有权利",
+            generation_tools=list(_GENERATION_TOOLS),
+        ),
+    )
+    out = _production_page(tmp_path, pub)
+    with zipfile.ZipFile(out) as zf:
+        _, data = _read_fingerprint(zf)
+        assert data["publication"] == {
+            "title": "测试书",
+            "creator": "原作者",
+            "translator": "OpenCode",
+            "publisher": "测试出版社",
+            "date": "2026-01-01",
+            "rights": "© 原作者；保留所有权利",
+        }
+        assert data["generation_tools"] == _GENERATION_TOOLS
+        page = data["generated_page"]
+        assert page and fingerprint.generated_pages(zf) == {page}
+        text = zf.read("OEBPS/" + page).decode()
+        assert _document_fingerprints(text) == [data]
+    assert "版权与出版信息" in text
+    assert "书名：测试书" in text
+    assert "译者：OpenCode" in text
+    assert "出版社：测试出版社" in text
+    assert "生成模型（LLM）" in text
+    assert "DeepSeek-V3 2026-10 — 翻译" in text
+    assert "GPT-5 版本未记录 — 复核" in text  # 版本未知如实标注，不伪造
+    assert text.index("版权与出版信息") < text.index("生成模型（LLM）")
+    xhtml = "{http://www.w3.org/1999/xhtml}"
+    section = ET.fromstring(text).find(f".//{xhtml}section[@class='software-provenance']")
+    assert section is not None
+    uls = section.findall(f"{xhtml}ul")
+    assert len(uls) == 2  # 出版信息块在前，工具列表在后
+    assert [li.text for li in uls[0].findall(f"{xhtml}li")] == [
+        "书名：测试书",
+        "作者：原作者",
+        "译者：OpenCode",
+        "出版社：测试出版社",
+        "出版日期：2026-01-01",
+        "版权/许可：© 原作者；保留所有权利",
+    ]
+    top_items = uls[1].findall(f"{xhtml}li")
+    assert top_items[0].text == "生成模型（LLM）"
+    assert len(top_items[0].findall(f"{xhtml}ul/{xhtml}li")) == 2
+    assert len(top_items) == 1 + 2  # 生成模型标签 + Python/Pydantic
+    assert audit_epub(out).ok
+
+
+def test_production_page_without_publication_or_generation_tools_still_validates(
+    tmp_path: Path,
+) -> None:
+    """旧工作区（无出版信息/生成模型）：制作页仍被识别，且不渲染空块/空列表。"""
+    out = _production_page(tmp_path, Publication(slug="plain"), lang="en")
+    with zipfile.ZipFile(out) as zf:
+        _, data = _read_fingerprint(zf)
+        assert data["publication"] == {}
+        assert data["generation_tools"] is None
+        page = data["generated_page"]
+        assert page and fingerprint.generated_pages(zf) == {page}
+        text = zf.read("OEBPS/" + page).decode()
+    assert "Publication and rights information" not in text
+    assert "Generation models (LLM)" not in text
+    assert "Production software and open-source tools" in text
+    assert audit_epub(out).ok
+
+
+def test_software_section_renders_new_blocks_in_both_languages() -> None:
+    """zh/en 两版文案：出版信息标签、生成模型条目标签与条目形式。"""
+    data = fingerprint.build_fingerprint(
+        Publication(
+            slug="b",
+            meta=PublicationMeta(
+                title="测试书", creator="作者", generation_tools=list(_GENERATION_TOOLS)
+            ),
+        )
+    )
+    zh = fingerprint.software_section(data, "zh-CN", heading="h1")
+    en = fingerprint.software_section(data, "en", heading="h1")
+    assert "<h2>版权与出版信息</h2>" in zh
+    assert "书名：测试书" in zh and "作者：作者" in zh
+    assert "<li>生成模型（LLM）<ul>" in zh
+    assert "<li>DeepSeek-V3 2026-10 — 翻译</li>" in zh
+    assert "<h2>Publication and rights information</h2>" in en
+    assert "Title: 测试书" in en and "Creator: 作者" in en
+    assert "<li>Generation models (LLM)<ul>" in en
+    assert "<li>DeepSeek-V3 2026-10 — 翻译</li>" in en
+    assert en.index("Publication and rights information") < en.index("Generation models (LLM)")
+
+
+def test_valid_accepts_new_optional_keys_without_loosening_identity() -> None:
+    """_valid 接受新增可选键，但不放宽任何既有身份校验。"""
+    data = fingerprint.build_fingerprint(Publication(slug="b"))
+    assert fingerprint._valid(data)
+    assert fingerprint._valid({**data, "publication": {"title": "T"}, "generation_tools": []})
+    assert fingerprint._valid({**data, "publication": {}, "generation_tools": None})
+    assert not fingerprint._valid({**data, "publication": ["title"]})
+    assert not fingerprint._valid({**data, "generation_tools": "DeepSeek-V3"})
+    assert not fingerprint._valid({**data, "project": {"name": "other"}})
+    assert not fingerprint._valid({k: v for k, v in data.items() if k != "runtime"})
+
+
 def test_legacy_workspace_marks_processing_history_unknown_not_current_installation(
     tmp_path: Path,
 ) -> None:

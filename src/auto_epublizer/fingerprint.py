@@ -42,6 +42,15 @@ _TOOLS = {
     "httpx": ("HTTPX", "https://github.com/encode/httpx", "BSD-3-Clause", "httpx"),
     "mineru": ("MinerU API", "https://mineru.net/", None, None),
 }
+# 制作页可见的出版/版权信息顺序与中英标签（zh 权威、en 派生）。
+_PUBLICATION_FIELDS = (
+    ("title", "书名", "Title"),
+    ("creator", "作者", "Creator"),
+    ("translator", "译者", "Translator"),
+    ("publisher", "出版社", "Publisher"),
+    ("date", "出版日期", "Date"),
+    ("rights", "版权/许可", "Rights"),
+)
 
 
 def used_tool(key: str) -> dict[str, str | None]:
@@ -112,6 +121,16 @@ def _revision() -> tuple[str | None, bool | None]:
         return None, None
 
 
+def _publication_fields(pub: Publication) -> dict[str, str]:
+    """制作页可见的出版/版权信息：只收非空字段，空值不渲染也不猜测。"""
+    out: dict[str, str] = {}
+    for key, *_ in _PUBLICATION_FIELDS:
+        value = getattr(pub.meta, key, None)
+        if isinstance(value, str) and value.strip():
+            out[key] = value
+    return out
+
+
 def build_fingerprint(pub: Publication) -> dict[str, Any]:
     """构建时身份与已冻结的 ingest 工具分开；绝不拿 init producer 充当构建版本。"""
     revision, dirty = _revision()
@@ -127,6 +146,8 @@ def build_fingerprint(pub: Publication) -> dict[str, Any]:
         },
         "runtime": [used_tool("python"), used_tool("pydantic")],
         "processing_tools": pub.meta.processing_tools,
+        "publication": _publication_fields(pub),
+        "generation_tools": pub.meta.generation_tools,
         "generated_page": None,
     }
 
@@ -149,6 +170,8 @@ def _valid(data: Any) -> bool:
         and bool(project["version"].strip())
         and isinstance(data.get("runtime"), list)
         and (data.get("processing_tools") is None or isinstance(data["processing_tools"], list))
+        and isinstance(data.get("publication", {}), dict)
+        and (data.get("generation_tools") is None or isinstance(data["generation_tools"], list))
         and (data.get("generated_page") is None or isinstance(data["generated_page"], str))
     )
 
@@ -175,6 +198,46 @@ def _link(url: str, text: str) -> str:
     if not url.startswith(("https://", "http://")):
         return escape(text)
     return f'<a href="{escape(url, quote=True)}">{escape(text)}</a>'
+
+
+def _next_heading(heading: str) -> str:
+    """子块标题按父标题降一级（h1→h2），无法识别时退回 h2。"""
+    match = re.fullmatch(r"h([1-6])", heading)
+    return f"h{min(int(match.group(1)) + 1, 6)}" if match else "h2"
+
+
+def _publication_block(data: dict[str, Any], lang: str, *, heading: str) -> str:
+    """出版/版权信息块；无非空字段时整块省略，不输出空标签。"""
+    zh = lang.lower().startswith("zh")
+    fields = data.get("publication") or {}
+    separator = "：" if zh else ": "
+    rows = [
+        f"<li>{escape(label_zh if zh else label_en)}{separator}{escape(str(fields[key]))}</li>"
+        for key, label_zh, label_en in _PUBLICATION_FIELDS
+        if isinstance(fields.get(key), str) and fields[key].strip()
+    ]
+    if not rows:
+        return ""
+    title = "版权与出版信息" if zh else "Publication and rights information"
+    sub = _next_heading(heading)
+    return f"<{sub}>{title}</{sub}><ul>{''.join(rows)}</ul>"
+
+
+def _generation_items(data: dict[str, Any], lang: str) -> str:
+    """生成模型（LLM）署名条目：name version — task；未知值如实标注，不伪造。"""
+    zh = lang.lower().startswith("zh")
+    items = []
+    for tool in data.get("generation_tools") or []:
+        if not isinstance(tool, dict):
+            continue
+        name = str(tool.get("name") or ("未署名工具" if zh else "unnamed tool"))
+        version = tool.get("version") or ("版本未记录" if zh else "version unrecorded")
+        task = tool.get("task") or ("任务未记录" if zh else "task unrecorded")
+        items.append(f"<li>{escape(name)} {escape(str(version))} — {escape(str(task))}</li>")
+    if not items:
+        return ""
+    label = "生成模型（LLM）" if zh else "Generation models (LLM)"
+    return f"<li>{label}<ul>{''.join(items)}</ul></li>"
 
 
 def software_section(data: dict[str, Any], lang: str, *, heading: str = "h2") -> str:
@@ -216,7 +279,9 @@ def software_section(data: dict[str, Any], lang: str, *, heading: str = "h2") ->
         f"<{heading}>{title}</{heading}>"
         f"<p>{_link(PROJECT_URL, PROJECT_NAME)} {escape(project['version'])} — {PROJECT_LICENSE}</p>"
         f"<p>Revision: {escape(revision)}{dirty}</p>"
-        f"<p>{disclaimer}</p>{history}<ul>{''.join(lines)}</ul></section>"
+        f"<p>{disclaimer}</p>{history}"
+        f"{_publication_block(data, lang, heading=heading)}"
+        f"<ul>{_generation_items(data, lang)}{''.join(lines)}</ul></section>"
     )
 
 

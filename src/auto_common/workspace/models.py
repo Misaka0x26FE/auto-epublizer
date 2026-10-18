@@ -77,6 +77,9 @@ class PublicationMeta(BaseModel):
     producer: str = ""
     # 实际 ingest 工具与当时版本；None=历史未记录，[]=明确未用额外解析工具。
     processing_tools: list[dict[str, str | None]] | None = None
+    # 生成模型（LLM）署名：agent 自报的实际生成工具/版本/任务；None=历史未记录，
+    # []=明确未使用生成模型。每项 {name, version, task, url, license}，缺键容忍。
+    generation_tools: list[dict[str, str | None]] | None = None
     identifier: Identifier = Field(default_factory=Identifier)
     source: str = ""  # 相对 source/ 的主文件路径
     source_sha256: str = ""  # 源内容身份（64 位十六进制）
