@@ -1,4 +1,4 @@
-<!-- i18n: source=build.zh.md sha256=7d210aea551beba0a384f0e6bdea04de91b3cc9139c8c79ecd85c95c1b0cb914 -->
+<!-- i18n: source=build.zh.md sha256=1aac5e426c6b8bdfc930ab7bd60f5d2fa6a946766070629fa384f4f6bfbe6444 -->
 > **English** | [中文](build.zh.md)
 
 # Build (EPUB packaging)
@@ -41,7 +41,7 @@ OPF `aep:render-mode` records the actual build entry: `source` (source only) or 
 - OPF includes `generator` and custom `aep:` metadata (`aep:build` stores the structured build record); content XHTML carries a JSON comment prefixed with `auto-epublizer-build` in its head for offline identification.
 - The fingerprint records `auto-epublizer`, its [source URL](https://github.com/Misaka0x26FE/auto-epublizer), the **actual current build version**, and source revision/dirty state when available. Initialization-time `meta.producer` is not the build version; unavailable values remain explicitly unknown.
 - Python and Pydantic describe the current build runtime. Other tools appear only from actual-use records frozen after successful parsing, not from an inventory of installed dependencies. Unknown versions remain unknown; unrecorded historical tools are not inferred from the current environment (`processing_tools=null` means history unknown; `[]` means no additional external parsing tool was used). MinerU API is identified as an external service, without claiming an internal open-source version or license.
-- When a copyright unit exists, a separate software statement is appended without replacing its copyright text. Otherwise, a separate production-information page is generated with a non-linear spine entry (`linear="no"`) and a `copyright-page` landmark. It is not a manuscript unit and does not enter the body nav/NCX TOC.
+- When a copyright unit exists, a separate software statement is appended without replacing its copyright text. Otherwise, a separate production-information page is generated with a non-linear spine entry (`linear="no"`) and a `copyright-page` landmark. It is not a manuscript unit, but it does enter the nav/NCX TOC as a **top-level entry** (`制作信息` / `Production information`, the same language switch as the page title), positioned like its spine entry (before the first non-cover document), so readers that navigate only by TOC can reach it.
 - Software licenses do not grant or change rights to the manuscript, translation, or images. The fingerprint is removable, not a digital signature. Recording uses no telemetry or network requests and includes no machine paths, secrets, or unique tracking IDs.
 - Legacy `output.about_page` remains reserved configuration, not a switch for this mandatory build fingerprint; it does not mean the legacy about-page feature is wired up.
 - QA exempts only valid structured fingerprint comments from residue checks. A production page requires an OPF fingerprint declaration, its page marker, and a matching valid JSON fingerprint; a filename or arbitrary `linear="no"` alone grants no body-reconciliation/TOC exemption. Ordinary comments, forged prefixes, and malformed JSON remain `E_RESIDUE`.
@@ -77,7 +77,10 @@ OPF `aep:render-mode` records the actual build entry: `source` (source only) or 
   conservation gate);
   **nav depth projection** (`--nav-depth` / `config.output.nav_depth`, default 3, 1–6): units/anchors beyond the
   depth do not enter nav/NCX (they remain in spine reading order, anchors preserved), the cover unit does not enter the TOC,
-  `dtb:depth` is the actual depth after projection (anchors included).
+  `dtb:depth` is the actual depth after projection (anchors included);
+  the **production-information page** (generated when there is no copyright unit) enters as the first top-level
+  entry (depth 1; it does not take part in source-level projection), in the same order as the NCX `playOrder`
+  (consecutive from 1).
 - **Images**: only shrink, never enlarge, centered + page-break (`page-break-inside: avoid`); standalone image paragraphs (non-empty alt) →
   `figure+figcaption` captions.
 - **Semantic tags**: quote `>` → `blockquote`; verse block `|` → `p.verse`; `- ` → `ul`;

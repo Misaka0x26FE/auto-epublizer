@@ -26,6 +26,7 @@ from ..fingerprint import (
     build_fingerprint,
     fingerprint_json,
     software_page,
+    software_page_title,
     stamp_document,
 )
 from ..media_paths import resolve_media_path
@@ -36,6 +37,7 @@ __all__ = [
     "collect_media",
     "nav_depth_sequence",
     "nav_toc_entries",
+    "production_toc_entry",
     "slug_file",
     "subheading_anchors",
     "theme_css",
@@ -302,6 +304,23 @@ def nav_toc_entries(entries: list[dict[str, Any]], nav_depth: int) -> list[dict[
     return out
 
 
+def production_toc_entry(lang: str, page: str | None) -> dict[str, Any] | None:
+    """制作信息（软件附页）的 nav/NCX 顶层目录条目；非源书单元，故无 region/anchors。
+
+    ``page`` 为构建期插入 spine 的页面文件名（``None`` 表示有版权单元、无附页）。
+    ``id`` 取文件名主干，经 ``slug_file`` 还原为原文件名；条目固定为深度 1
+    （qa 的期望深度序列以同样的深度 1 顶层计入，见 qa/provenance.py）。
+    """
+    if not page:
+        return None
+    return {
+        "id": Path(page).stem,
+        "kind": "production",
+        "title": software_page_title(lang),
+        "level": 1,
+    }
+
+
 def _anchor_nodes(e: dict[str, Any]) -> list[dict[str, Any]]:
     """把 entry 的锚点清单组织成嵌套树节点：[{"href","label","children"}]。
 
@@ -385,14 +404,20 @@ def _render_nav(
     lang: str,
     *,
     nav_depth: int = 3,
+    production: dict[str, Any] | None = None,
 ) -> str:
     """渲染 EPUB 3 导航文档（nav.xhtml，epub:type=toc）。
 
     层级按源文标题层级嵌套；封面单元不进目录，``nav_depth`` 之外不渲染
-    （epub-template-spec §3 目录深度投影）。
+    （epub-template-spec §3 目录深度投影）。``production``（``production_toc_entry``
+    产物）作为**顶层**条目前插——制作页在 spine 中位于首个非封面文档之前，与
+    阅读顺序一致；它是软件附页而非源书单元，故不参与层级投影。
     """
     entries = nav_toc_entries(content_entries, nav_depth)
-    items = _render_nav_items(_toc_tree(entries))
+    nodes = _toc_tree(entries)
+    if production is not None:
+        nodes = [{"entry": production, "children": []}, *nodes]
+    items = _render_nav_items(nodes)
     # 两个不同语义的声明，务必分开（#16 S-A / 2026-10-04-backlog-three-items §1.4）：
     # - nav-depth：**渲染后实际最大深度** A，与 NCX 的 dtb:depth 同源（对外如实）；
     # - nav-projection：**投影上限** K（构建期 --nav-depth/配置），qa 用它重建期望集。
@@ -451,12 +476,20 @@ def _render_ncx(
     content_entries: list[dict[str, Any]],
     *,
     nav_depth: int = 3,
+    production: dict[str, Any] | None = None,
 ) -> str:
-    """渲染 NCX（toc.ncx，向后兼容）；层级嵌套（同 nav 投影），只引用实际内容文档防悬空。"""
+    """渲染 NCX（toc.ncx，向后兼容）；层级嵌套（同 nav 投影），只引用实际内容文档防悬空。
+
+    ``production``（``production_toc_entry`` 产物）作为首个 navPoint 前插，``playOrder``
+    自 1 起连续编号，与 nav 顺序一致。
+    """
     uid = pub.slug
     entries = nav_toc_entries(content_entries, nav_depth)
     depth = max(nav_depth_sequence(entries), default=1)
-    body = _render_ncx_points(_toc_tree(entries), [0]) or "    <!-- 无目录条目 -->"
+    nodes = _toc_tree(entries)
+    if production is not None:
+        nodes = [{"entry": production, "children": []}, *nodes]
+    body = _render_ncx_points(nodes, [0]) or "    <!-- 无目录条目 -->"
     return (
         '<?xml version="1.0" encoding="utf-8"?>\n'
         '<ncx xmlns="http://www.daisy.org/z3986/2005/ncx/" version="2005-1">\n'
@@ -728,8 +761,19 @@ def build_epub(
         fingerprint=fingerprint,
         render_mode=render_mode,
     )
-    nav = _render_nav(pub, content_entries, lang, nav_depth=nav_depth)
-    ncx = _render_ncx(pub, content_entries, nav_depth=nav_depth)
+    nav = _render_nav(
+        pub,
+        content_entries,
+        lang,
+        nav_depth=nav_depth,
+        production=production_toc_entry(lang, generated_page),
+    )
+    ncx = _render_ncx(
+        pub,
+        content_entries,
+        nav_depth=nav_depth,
+        production=production_toc_entry(lang, generated_page),
+    )
     landmarks = _render_landmarks(content_entries, lang, copyright_page=copyright_page)
     container = (
         '<?xml version="1.0" encoding="utf-8"?>\n'

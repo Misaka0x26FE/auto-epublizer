@@ -42,7 +42,7 @@ OPF 的 `aep:render-mode` 记录本次实际构建入口：`source`（纯源文�
 - OPF 写入 `generator` 与自定义 `aep:` 元数据（`aep:build` 保存结构化构建记录）；内容 XHTML 的 head 内写入 `auto-epublizer-build` 前缀的 JSON 注释，供离线识别。
 - 指纹记录项目 `auto-epublizer`、[源码地址](https://github.com/Misaka0x26FE/auto-epublizer)、**当前实际构建版本**与可取得的源码 revision/dirty 状态，不把初始化时的 `meta.producer` 当成构建版本；不可取得的值明确为未知。
 - Python、Pydantic 是本次构建运行时；其他工具只列成功解析时冻结的实际使用记录，不枚举已安装依赖。未知版本保持未知；历史工作区未记录的上游工具不从当前环境倒推（`processing_tools=null` 表示历史未知，`[]` 表示已知未使用额外外部解析工具）。MinerU API 按外部服务标识，不声称其服务内部运行某个开源版本或采用某个开源许可。
-- 有 copyright 单元时，在其尾部追加独立软件声明，保留原版权内容；没有时生成独立制作信息页，设为非线性 spine（`linear="no"`），由 `copyright-page` 地标进入，不新增书稿单元、不进入正文 nav/NCX 目录。
+- 有 copyright 单元时，在其尾部追加独立软件声明，保留原版权内容；没有时生成独立制作信息页，设为非线性 spine（`linear="no"`），由 `copyright-page` 地标进入。该页不新增书稿单元，但作为**顶层条目**进入 nav/NCX 目录（`制作信息` / `Production information`，与页面标题同一语言开关），位置与其 spine 位置一致（首个非封面文档之前），使只能按目录导航的阅读器也能到达。
 - 软件许可仅说明制作软件，不授予或改变书稿、译文、图像的许可。指纹不是数字签名，可以移除；记录过程无遥测、无网络请求，不写机器路径、密钥或唯一跟踪 ID。
 - 旧 `output.about_page` 是保留配置，不是这项强制构建指纹的开关，也不表示旧关于页功能已接线。
 - QA 仅对有效结构化指纹注释作残留豁免；制作页须由 OPF 指纹声明、页内制作标记及一致的有效 JSON 指纹共同识别，不能仅按文件名或任意 `linear="no"` 豁免正文对账/目录检查。普通注释、伪造前缀或损坏 JSON 仍属 `E_RESIDUE`。
@@ -70,7 +70,9 @@ OPF 的 `aep:render-mode` 记录本次实际构建入口：`source`（纯源文�
   子级进 nav/NCX——译文中应保留这些子标题（g0 `heading` 守恒门校验）；
   **目录深度投影**（`--nav-depth` / `config.output.nav_depth`，默认 3，1–6）：超出
   深度的单元/锚点不进 nav/NCX（仍在 spine 阅读顺序、锚点保留），封面单元不进目录，
-  `dtb:depth` 为投影后实际深度（含锚点）。
+  `dtb:depth` 为投影后实际深度（含锚点）；
+  **制作信息页**（无 copyright 单元时生成）作为顶层条目置于目录首位（深度 1，不参与源文
+  层级投影），与 NCX `playOrder`（自 1 起连续）同序。
 - **图片**：只缩不放大居中 + 断页（`page-break-inside: avoid`）；独立图段（alt 非空）→
   `figure+figcaption` 图注。
 - **语义标签**：引用 `>` → `blockquote`；诗行块 `|` → `p.verse`；`- ` → `ul`；

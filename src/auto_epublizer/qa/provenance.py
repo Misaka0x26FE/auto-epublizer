@@ -223,6 +223,20 @@ def _nav_depths(zf: zipfile.ZipFile) -> list[int]:
     return depths
 
 
+def _nav_hrefs(zf: zipfile.ZipFile) -> set[str]:
+    """nav.xhtml 目录区条目 href 的文档名集合（剥离锚点；无 nav 返回空）。"""
+    navs = [n for n in zf.namelist() if n.endswith("nav.xhtml")]
+    if not navs:
+        return set()
+    html = zf.read(navs[0]).decode("utf-8")
+    m = re.search(r'<nav[^>]+epub:type="toc"[^>]*>(.*?)</nav>', html, re.DOTALL)
+    if not m:
+        m = re.search(r"<nav\b[^>]*>(.*?)</nav>", html, re.DOTALL)
+    if not m:
+        return set()
+    return {h.split("#", 1)[0] for h in re.findall(r'href="([^"]+\.xhtml)[^"]*"', m.group(1))}
+
+
 def _opf_has_cover(zf: zipfile.ZipFile) -> bool:
     """OPF 是否声明了 cover-image 属性（封面对账用）。"""
     try:
@@ -322,6 +336,7 @@ def audit_provenance(
     with zf:
         spine = _spine_docs(zf)
         nav_depths = _nav_depths(zf)
+        nav_hrefs = _nav_hrefs(zf)
         declared_depth = _nav_declared_depth(zf)
         opf_has_cover = _opf_has_cover(zf)
         software_pages = generated_pages(zf)
@@ -511,8 +526,20 @@ def audit_provenance(
         for e in spine_entries
         if f"{slug_file(e['id'])}.xhtml" not in nav_names
     ]
-    result.toc_depths_expected = nav_depth_sequence(nav_candidates)
+    # 制作信息（软件附页）非源书单元，故不在 spine_entries 中；它在 nav/NCX 里是
+    # build 侧 production_toc_entry 前插的**顶层**条目。期望深度序列须显式计入其
+    # 深度 1，否则 nav 多出的这条会被误判为「层级不一致」（旧产物缺该条目时不误报，
+    # 由 W_TOC_PRODUCTION_MISSING 单独提示）。
+    production_pages = [p for p in sorted(software_pages) if p in nav_hrefs]
+    result.toc_depths_expected = [1] * len(production_pages) + nav_depth_sequence(nav_candidates)
     result.toc_depths_nav = nav_depths
+    missing_production = sorted(p for p in software_pages if p not in nav_hrefs)
+    if missing_production:
+        result.add(
+            "warning",
+            "W_TOC_PRODUCTION_MISSING",
+            "制作信息页未进目录：" + "、".join(missing_production),
+        )
     if (
         result.toc_depths_expected
         and max(result.toc_depths_expected) > 1

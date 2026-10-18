@@ -707,6 +707,96 @@ def test_nav_depth_projection_and_cover_exclusion(tmp_path: Path) -> None:
     assert '<itemref idref="ch04.xhtml"' in opf and '<itemref idref="ch05.xhtml"' in opf
 
 
+_PRODUCTION_PAGE = "auto-epublizer-build-info.xhtml"
+
+
+def test_production_page_enters_toc_as_top_level_entry(tmp_path: Path) -> None:
+    """无版权单元 → 制作信息页进 nav/NCX 顶层（zh 标签同页面标题），spine 仍 linear="no"。"""
+    pub = _pub()
+    entries = [
+        {"id": "ch01", "region": "body", "kind": "chapter", "title": "第一章", "level": 1},
+        {"id": "ch02", "region": "body", "kind": "chapter", "title": "第一节", "level": 2},
+    ]
+    content = [
+        (f"{e['id']}.xhtml", render_document(e["title"], "正文。", lang="zh-CN")) for e in entries
+    ]
+    out = build_epub(
+        pub,
+        entries,
+        content,
+        lang="zh-CN",
+        modified="2026-01-01T00:00:00Z",
+        out_path=tmp_path / "prod.epub",
+    )
+    with zipfile.ZipFile(out) as zf:
+        nav = zf.read("OEBPS/nav.xhtml").decode("utf-8")
+        ncx = zf.read("OEBPS/toc.ncx").decode("utf-8")
+        opf = zf.read("OEBPS/content.opf").decode("utf-8")
+    # nav：恰好一条指向制作页的条目，且为顶层（在首个单元之前）
+    assert nav.count(_PRODUCTION_PAGE) == 1
+    assert f'<li><a href="{_PRODUCTION_PAGE}">制作信息</a></li>' in nav
+    assert nav.index(_PRODUCTION_PAGE) < nav.index("ch01.xhtml")
+    assert nav.count("<ol>") == 2  # 顶层 + ch01 的子级；制作页未成为父节点
+    # NCX：首个 navPoint，playOrder 连续自 1 起，标签与页面标题同源
+    assert ncx.count(_PRODUCTION_PAGE) == 1
+    assert f'<content src="{_PRODUCTION_PAGE}"/>' in ncx
+    assert "<text>制作信息</text>" in ncx
+    assert ncx.index(_PRODUCTION_PAGE) < ncx.index("ch01.xhtml")
+    orders = [int(m) for m in re.findall(r'playOrder="(\d+)"', ncx)]
+    assert orders == list(range(1, len(orders) + 1)) and orders[0] == 1
+    # spine 保持非线性；制作页仍在版权地标指向处
+    assert f'<itemref idref="{_PRODUCTION_PAGE}" linear="no"/>' in opf
+    assert '<meta name="nav-depth" content="2"/>' in nav
+    assert 'name="dtb:depth" content="2"' in ncx
+
+
+def test_production_page_toc_label_follows_language(tmp_path: Path) -> None:
+    """en 书目：目录条目与页面标题共用同一语言开关（Production information）。"""
+    pub = _pub()
+    entries = [{"id": "ch01", "region": "body", "kind": "chapter", "title": "Chapter 1"}]
+    content = [("ch01.xhtml", render_document("Chapter 1", "Body.", lang="en"))]
+    out = build_epub(
+        pub,
+        entries,
+        content,
+        lang="en",
+        modified="2026-01-01T00:00:00Z",
+        out_path=tmp_path / "en.epub",
+    )
+    with zipfile.ZipFile(out) as zf:
+        nav = zf.read("OEBPS/nav.xhtml").decode("utf-8")
+        ncx = zf.read("OEBPS/toc.ncx").decode("utf-8")
+    assert f'<li><a href="{_PRODUCTION_PAGE}">Production information</a></li>' in nav
+    assert "<text>Production information</text>" in ncx
+
+
+def test_copyright_unit_suppresses_production_toc_entry(tmp_path: Path) -> None:
+    """存在版权单元时不生成制作页，目录不得出现多余条目。"""
+    pub = _pub()
+    entries = [
+        {"id": "copyright", "kind": "copyright", "region": "frontmatter", "title": "版权"},
+        {"id": "ch01", "region": "body", "kind": "chapter", "title": "第一章"},
+    ]
+    content = [
+        (f"{e['id']}.xhtml", render_document(e["title"], "正文。", lang="zh-CN")) for e in entries
+    ]
+    out = build_epub(
+        pub,
+        entries,
+        content,
+        lang="zh-CN",
+        modified="2026-01-01T00:00:00Z",
+        out_path=tmp_path / "cp.epub",
+    )
+    with zipfile.ZipFile(out) as zf:
+        nav = zf.read("OEBPS/nav.xhtml").decode("utf-8")
+        ncx = zf.read("OEBPS/toc.ncx").decode("utf-8")
+        opf = zf.read("OEBPS/content.opf").decode("utf-8")
+    assert "build-info" not in nav and "build-info" not in ncx
+    assert "build-info" not in opf
+    assert "copyright.xhtml" in nav and "copyright.xhtml" in ncx
+
+
 def test_footnote_semantics_chapter_numbering() -> None:
     """脚注语义化：noteref/footnote + [N] 注码 + 章内独立编号 + 双向跳转（epub-template-spec §6）。"""
     d1 = render_document(
