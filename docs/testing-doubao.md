@@ -1,4 +1,4 @@
-<!-- i18n: source=testing-doubao.zh.md sha256=c5f25f9bb397c9081fbcdbe75f91722fcc2a807e4423c1668eec46973f0d6194 -->
+<!-- i18n: source=testing-doubao.zh.md sha256=ac1c01967b57e05253529da259cc6dbbde52c30eb5677a73825f967928fcff39 -->
 > **English** | [中文](testing-doubao.zh.md)
 
 # Testing Guide for Real Use in the DouBao Cloud Container

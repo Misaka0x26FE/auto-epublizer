@@ -1,4 +1,4 @@
-<!-- i18n: source=2026-09-05-baka-tsuki-html-figures.zh.md sha256=be98777dfbe4dd633bbd55ad5d81c878741ea32946c9a25f1a70de201b841ae2 -->
+<!-- i18n: source=2026-09-05-baka-tsuki-html-figures.zh.md sha256=99f8c4aeb362048f84487bcd96fef9d6c77f92642a38ed30393bbfac7f216338 -->
 > **English** | [中文](2026-09-05-baka-tsuki-html-figures.zh.md)
 
 # Illustration paragraph fidelity in Baka-Tsuki source-site HTML

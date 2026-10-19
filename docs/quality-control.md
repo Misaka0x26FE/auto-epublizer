@@ -1,4 +1,4 @@
-<!-- i18n: source=quality-control.zh.md sha256=f69dac5ca385c54df36cd1ccc6b7e43f01548ca20bb2c1bde7b08b91acb52346 -->
+<!-- i18n: source=quality-control.zh.md sha256=93bf143b7ec9fe0e9df539f022e9c1ccd1f620ba538f8fdeb9abdb5f86c5becb -->
 > **English** | [中文](quality-control.zh.md)
 
 # Quality-Control Process Design (auto-epublizer)

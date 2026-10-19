@@ -1,4 +1,4 @@
-<!-- i18n: source=pdf-content-spec.zh.md sha256=6168261c20a7bafe40e79ee89cd37494a11aa8f7c00b4518968ce87987a0c175 -->
+<!-- i18n: source=pdf-content-spec.zh.md sha256=09c336a1708c00d93be446409ed5dc73e9c5c9db1a8fe10c86773a79713148f1 -->
 > **English** | [中文](pdf-content-spec.zh.md)
 
 # PDF Content Extraction Spec (pdf-content-spec)

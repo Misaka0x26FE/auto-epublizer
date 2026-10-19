@@ -1,4 +1,4 @@
-<!-- i18n: source=README.zh.md sha256=371e2413847471e71b10756152961384b2bc93fe0b754ac2b86442c8347c6511 -->
+<!-- i18n: source=README.zh.md sha256=b477cca5c8b3e5ce6aadd6632fee3df5cabbb7db384189bb9be5dcccf92761fa -->
 > **English** | [中文](README.zh.md)
 
 # Lessons (distilled field experience)

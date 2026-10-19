@@ -1,4 +1,4 @@
-<!-- i18n: source=2026-09-05-scanned-pdf-mineru-first.zh.md sha256=16f9440a81b1ac71b69898ebc107fe08cb8803c08548fa949a86620d1104a650 -->
+<!-- i18n: source=2026-09-05-scanned-pdf-mineru-first.zh.md sha256=616c2679f36caa7a70fa45d58751041b7d6b03db5dcf196944ef680bca5f1026 -->
 > **English** | [中文](2026-09-05-scanned-pdf-mineru-first.zh.md)
 
 # Scanned-copy PDF: MinerU first, traditional OCR page-by-page reading as fallback

@@ -1,4 +1,4 @@
-<!-- i18n: source=2026-09-05-scanned-pdf-issue-checklist.zh.md sha256=94fb2d38209ea2849dee9d2a31b36fcdde736748ea1a620e035b7df3b1cee0f7 -->
+<!-- i18n: source=2026-09-05-scanned-pdf-issue-checklist.zh.md sha256=6e5c95081b0da1864a5ccfa2c20623f3d55d356c956b7690d047457726ac37e8 -->
 > **English** | [中文](2026-09-05-scanned-pdf-issue-checklist.zh.md)
 
 # Scanned-file PDF full-flow issue checklist (DouBao JS authoritative guide 15-issue measurement)

@@ -7,8 +7,9 @@
 ## CLI 入口与首次使用
 
 安装 Skill 只安装指引，不安装 Python 引擎。首次使用/新 shell 按
-`auto-epublizer/skills/auto-epublizer/references/work-root.md` 完整执行安全 bootstrap：
-本根 `auto-epublizer/` 是官方 GitHub main 源码与项目 `.venv`；书籍在同级目录，
+[安全 bootstrap 指引](https://github.com/Misaka0x26FE/auto-epublizer/blob/main/skills/auto-epublizer/references/work-root.md) 执行；
+源码的目标位置为 `<工作根>/auto-epublizer/`，尚未克隆时不要假定它存在。
+该目录存放官方 GitHub main 源码与项目 `.venv`；书籍在同级目录，
 不放进源码 checkout。已有 checkout 校验 root/origin/main、tracked+untracked dirty，
 clean 后才 fetch/只快进；错误分支/来源或 ahead/divergent 就停止，绝不 reset/stash/clean。
 骨架由现有 CLI `work-root` 生成，不加 `--force`。以下命令使用 bootstrap 导出的
@@ -42,7 +43,7 @@ python3 docs/pack_outbox.py --cli "$AEP_CLI" workspaces/<slug> --batch <batch>
 ## 反馈贡献（可选）
 
 交付或遇到问题时询问用户是否需要脱敏 issue（症状/合成复现）和/或 PR（实际修复/文档）。
-完整流程见 `auto-epublizer/skills/auto-epublizer/references/workflow.md`。先在本根 `docs/`
+完整流程见[脱敏反馈指引](https://github.com/Misaka0x26FE/auto-epublizer/blob/main/skills/auto-epublizer/references/workflow.md)。先在本根 `docs/`
 留草稿并展示完整标题/正文/补丁，获明确同意才 issue create/fork/push/pr create。
 只用虚构夹具，不外发真实书名/作者、文件/工作区名、原文/译文、路径、凭据、
 敏感报告元数据或用户/书籍 Git 历史；不盲目 `git add -A`。以用户账户认证，不索要 token；

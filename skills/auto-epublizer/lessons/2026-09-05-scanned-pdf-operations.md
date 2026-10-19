@@ -1,4 +1,4 @@
-<!-- i18n: source=2026-09-05-scanned-pdf-operations.zh.md sha256=980d3b780a1f8d5015a4d293bdf40cbee6252143c3cd581b0fe4c084ddf2e8fd -->
+<!-- i18n: source=2026-09-05-scanned-pdf-operations.zh.md sha256=91d052a4abb63e7cddf291b444343c19f2c1db26226baec69477777f6622649d -->
 > **English** | [中文](2026-09-05-scanned-pdf-operations.zh.md)
 
 # Scanned-copy PDF in practice: traditional OCR disaster vs MinerU (measured on 1018 pages)

@@ -1,4 +1,4 @@
-<!-- i18n: source=quality-lessons.zh.md sha256=52c015f7aa58a4f6fbcb0611e7fa6d25f57c9f2d3328c8ea3d53f2bde39cc3c6 -->
+<!-- i18n: source=quality-lessons.zh.md sha256=2ae54efd862db696f6ca9fb7be387f37b6015e09c21ebe394c535f266426b097 -->
 > **English** | [中文](quality-lessons.zh.md)
 
 # Quality-Control Measures (Distilled from Historical Practice)

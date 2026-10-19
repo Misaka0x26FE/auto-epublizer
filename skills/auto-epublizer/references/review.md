@@ -1,4 +1,4 @@
-<!-- i18n: source=review.zh.md sha256=4bbbb51a52e48948559a518b120270f5ddbc2f219dccba30b5df6f2089e3b4ea -->
+<!-- i18n: source=review.zh.md sha256=8a1a1b8d6404f25796d002cc9b98bd71397adab4893a101c543095be4425af13 -->
 > **English** | [中文](review.zh.md)
 
 # Review (six-gate QC operational guide)

@@ -1,4 +1,4 @@
-<!-- i18n: source=2026-10-17-collected-notes-resegmentation.zh.md sha256=42730a41e9e97781410a0310d85e0f1a53387dabe41a9bcf79ab56f84fb109d3 -->
+<!-- i18n: source=2026-10-17-collected-notes-resegmentation.zh.md sha256=79b4207add4fe9f972faaf7cab1a5792aefd0564b2eeaa69e057de0253a7a185 -->
 > **English** | [中文](2026-10-17-collected-notes-resegmentation.zh.md)
 
 # Collected endnotes flattened page-by-page: several notes in one giant paragraph

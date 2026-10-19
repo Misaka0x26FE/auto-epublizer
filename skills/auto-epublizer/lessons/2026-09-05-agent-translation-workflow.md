@@ -1,4 +1,4 @@
-<!-- i18n: source=2026-09-05-agent-translation-workflow.zh.md sha256=9bb283b9249da9e1ac05b6aa25bd25ecd93f870ce6143adb2316cfad1d287970 -->
+<!-- i18n: source=2026-09-05-agent-translation-workflow.zh.md sha256=fd96bd82be449f8ec8887246728a138270f9100fd126d180692b4f33b08e40c0 -->
 > **English** | [中文](2026-09-05-agent-translation-workflow.zh.md)
 
 # Agent main-process translation workflow: lessons from three rounds of sample-volume-a/sample-volume-b/Sample Technical Volume measurement

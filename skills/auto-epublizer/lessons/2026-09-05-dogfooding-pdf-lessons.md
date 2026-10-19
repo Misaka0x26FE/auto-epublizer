@@ -1,4 +1,4 @@
-<!-- i18n: source=2026-09-05-dogfooding-pdf-lessons.zh.md sha256=095cfcea17427145b083401be3ded5d6da87eb5523f203d08afb02350d0a0a65 -->
+<!-- i18n: source=2026-09-05-dogfooding-pdf-lessons.zh.md sha256=e3ebb2ed4f4bf824bb7c7fee57479fc93d82895d6ab633282a697637cf7ed5c0 -->
 > **English** | [中文](2026-09-05-dogfooding-pdf-lessons.zh.md)
 
 # Real-book dogfooding: 5 real defects in the PDF pipeline (criterion/handling)
