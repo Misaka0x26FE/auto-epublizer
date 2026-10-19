@@ -189,6 +189,37 @@ def test_build_epub_ncx(tmp_path: Path) -> None:
         assert "ch01.xhtml" in ncx
 
 
+def test_build_epub_ncx_label_strips_inline_attrs(tmp_path: Path) -> None:
+    """NCX navLabel 不得残留 pandoc 行内属性块（2026-10-20 vanguard 实测 20/102 条）。
+
+    回归：NCX 路径原先直接 ``escape(label)``，把 ``[]{#page_ii}`` /
+    ``{#acprof-…-titleGroup-1}`` 原样印给读者；nav.xhtml 早已走 plain_label。
+    """
+    pub = _pub()
+    entries = [
+        {
+            "id": "ch01",
+            "region": "body",
+            "title": "伊玛目的先锋队[]{#page_ii} {#acprof-9780199387892-miscMatter-1-titleGroup-1}",
+        },
+    ]
+    content = [("ch01.xhtml", render_document("伊玛目的先锋队", "正文。\n", lang="zh-CN"))]
+    out = build_epub(
+        pub,
+        entries,
+        content,
+        lang="zh-CN",
+        modified="2026-01-01T00:00:00Z",
+        out_path=tmp_path / "d.epub",
+    )
+    with zipfile.ZipFile(out) as zf:
+        ncx = zf.read("OEBPS/toc.ncx").decode("utf-8")
+        nav = zf.read("OEBPS/nav.xhtml").decode("utf-8")
+    assert "{#" not in ncx
+    assert "{#" not in nav
+    assert "伊玛目的先锋队" in ncx
+
+
 def test_build_epub_escapes_xml_metadata(tmp_path: Path) -> None:
     """书名/作者含 XML 特殊字符时，所有 XML 文档必须仍可解析（P2 回归）。"""
     import xml.etree.ElementTree as ET

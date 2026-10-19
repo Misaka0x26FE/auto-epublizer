@@ -437,10 +437,13 @@ def _render_ncx_points(nodes: list[dict[str, Any]], counter: list[int]) -> str:
         if "entry" in node:
             e = node["entry"]
             href = f"{slug_file(e['id'])}.xhtml"
-            label = e["title"] or e["id"]
+            # NCX 标签与 nav 标签同口径走 plain_label：裸 escape 会把
+            # ``{#calibre_toc_1}`` / ``[]{#page_ii}`` 原样印给读者
+            # （2026-10-20 vanguard 成品实测 20/102 条 navLabel 带属性块）
+            label = plain_label(e["title"] or e["id"])
         else:  # 锚点节点（_anchor_nodes 产物）
             href = node["href"]
-            label = node["label"]
+            label = plain_label(node["label"])
         head = (
             f'    <navPoint id="navpoint-{n}" playOrder="{n}">\n'
             f"      <navLabel><text>{escape(label)}</text></navLabel>\n"
