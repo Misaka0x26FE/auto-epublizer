@@ -21,11 +21,11 @@ def _write_translation_and_align(store) -> None:
         sp = store.structured_dir / rel
         src_md = sp.read_text(encoding="utf-8")
         tgt_md = src_md.replace(
-            'This synthetic paragraph introduces a sample document.',
-            '这个合成的文本段落介绍了一份示例文档。',
+            "This synthetic paragraph introduces a sample document.",
+            "这个合成的文本段落介绍了一份示例文档。",
         ).replace(
-            'A second synthetic paragraph demonstrates sentence alignment.',
-            '第二个合成的文本段落演示了句子级别的对齐。',
+            "A second synthetic paragraph demonstrates sentence alignment.",
+            "第二个合成的文本段落演示了句子级别的对齐。",
         )
         tgt_md = tgt_md.replace("# Chapter I", "# 第一章")
         tp = store.translation_dir / rel
@@ -36,14 +36,14 @@ def _write_translation_and_align(store) -> None:
             {"seq": 1, "src": "Chapter I", "tgt": "第一章", "note": None},
             {
                 "seq": 2,
-                "src": 'This synthetic paragraph introduces a sample document.',
-                "tgt": '这个合成的文本段落介绍了一份示例文档。',
+                "src": "This synthetic paragraph introduces a sample document.",
+                "tgt": "这个合成的文本段落介绍了一份示例文档。",
                 "note": None,
             },
             {
                 "seq": 3,
-                "src": 'A second synthetic paragraph demonstrates sentence alignment.',
-                "tgt": '第二个合成的文本段落演示了句子级别的对齐。',
+                "src": "A second synthetic paragraph demonstrates sentence alignment.",
+                "tgt": "第二个合成的文本段落演示了句子级别的对齐。",
                 "note": None,
             },
         ]
@@ -55,7 +55,7 @@ def _write_translation_and_align(store) -> None:
 def test_full_pipeline_agent_path(tmp_path: Path) -> None:
     src = tmp_path / "book.md"
     src.write_text(
-        '# Chapter I\n\nThis synthetic paragraph introduces a sample document.\n\nA second synthetic paragraph demonstrates sentence alignment.\n',
+        "# Chapter I\n\nThis synthetic paragraph introduces a sample document.\n\nA second synthetic paragraph demonstrates sentence alignment.\n",
         encoding="utf-8",
     )
 

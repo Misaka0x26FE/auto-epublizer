@@ -92,13 +92,20 @@ def test_terminology_conflict_sample_area() -> None:
 def test_terminology_hit_sample_name() -> None:
     """合成边界：人名用字错误（示例人物误字→示例A词语10）应被术语命中捕获。"""
     g = Glossary(
-        [GlossaryEntry(source="Sample A entry 10", target="示例A词语10", type="person", status="confirmed")]
+        [
+            GlossaryEntry(
+                source="Sample A entry 10", target="示例A词语10", type="person", status="confirmed"
+            )
+        ]
     )
     # 译文写错字
     hits = terminology_hits("Sample A entry 10 visited Sample Place", "示例人物误字访问示例地点", g)
     assert any(h.source == "Sample A entry 10" and h.expected == "示例A词语10" for h in hits)
     # 正确译法不报
-    assert terminology_hits("Sample A entry 10 visited Sample Place", "示例A词语10访问示例地点", g) == []
+    assert (
+        terminology_hits("Sample A entry 10 visited Sample Place", "示例A词语10访问示例地点", g)
+        == []
+    )
 
 
 def test_marker_conservation() -> None:

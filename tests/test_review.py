@@ -40,7 +40,11 @@ def test_length_ratio() -> None:
 
 def test_g0_unit_flags_terminology_and_length() -> None:
     g = Glossary(
-        [GlossaryEntry(source="sample greeting", target="老兄", type="fixed_expr", status="confirmed")]
+        [
+            GlossaryEntry(
+                source="sample greeting", target="老兄", type="fixed_expr", status="confirmed"
+            )
+        ]
     )
     rows = [
         {"seq": 1, "src": "sample greeting", "tgt": "老伙计"},

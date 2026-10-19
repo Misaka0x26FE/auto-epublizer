@@ -27,7 +27,9 @@ def _entry(source: str, target: str, **kw: object) -> GlossaryEntry:
 
 def test_csv_roundtrip(tmp_path: Path) -> None:
     entries = [
-        _entry("sample greeting", "老兄", type="fixed_expr", status=STATUS_CONFIRMED, note="口头禅"),
+        _entry(
+            "sample greeting", "老兄", type="fixed_expr", status=STATUS_CONFIRMED, note="口头禅"
+        ),
         _entry("Sample Alpha", "示例甲", type="person", aliases=["Alpha Example", "Jay"]),
     ]
     p = tmp_path / "glossary.csv"
