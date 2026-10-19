@@ -1,8 +1,8 @@
 ---
 name: auto-epublizer
 description: Orchestrates the auto-epublizer translation and EPUB workflow. Use for publication.json workspaces, init/preprocess/import/g0/build/qa/status/convert stage routing, glossary.csv three-state terminology, translation/align/ sentence tables, structured/ four-layer content, or EPUB output. The only LLM is the agent using the CLI (no internal LLM calls).
-license: AGPL-3.0
-compatibility: opencode
+license: AGPL-3.0-only
+compatibility: 需要具备文件读写和 shell 执行能力的 agent，以及 Git、uv、Python 3.12+ 和访问 GitHub 与 Python 包索引的网络。
 metadata:
   suite: auto-epublizer
   workspace_model: publication.json
