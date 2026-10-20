@@ -55,19 +55,36 @@ def _norm_html(html: str) -> str:
 
 
 def _norm_md(md: str) -> str:
-    """注文 Markdown → 比对用规范形（去标记符号与空白；用于发现空/错内容）。"""
-    text = md or ""
+    """注文 Markdown → 比对用规范形（与构建器同口径：去标记符号与空白）。
+
+    与构建器 `build/html.py::_inline` 的规则一一对应：行内代码跨度原样保留
+    （内容不被其它规则处理）、粗体/斜体只脱**配对**标记（裸下划线与裸反引号
+    是字面量，不能连坐）、反斜杠转义脱去、链接留标签、锚点与属性块不留文字。
+    """
+    parts = _MD_CODE_SPAN_RE.split(md or "")
+    out: list[str] = []
+    for i, part in enumerate(parts):
+        out.append(part if i % 2 == 1 else _norm_md_text(part))
+    return re.sub(r"\s+", "", "".join(out))
+
+
+def _norm_md_text(text: str) -> str:
+    """非代码部分的 Markdown → 规范形（标记符号脱除）。"""
     text = _MD_HEADING_ID_RE.sub(r"\1", text)  # 标题行尾 id 属性（渲染后不印出）
     text = _MD_ANCHOR_INLINE_RE.sub("", text)  # 内联锚点（渲染为 <a id>，无文字）
     text = _MD_EMPTY_ATTR_RE.sub("", text)  # 空属性块 {[]}（渲染时丢弃）
     text = re.sub(r"(?m)^\s{0,3}(?:[-*+]|\d+[.)])\s+", "", text)  # 列表标记
     text = re.sub(r"(?m)^#{1,6}\s+", "", text)  # 标题标记
-    text = re.sub(r"[*_`]+", "", text)
+    text = _MD_BOLD_RE.sub(r"\1", text)  # 粗体标记（配对才脱）
+    text = _MD_ITALIC_RE.sub(r"\1", text)  # 斜体标记（配对才脱）
     text = _MD_IMG_RE.sub("", text)  # 图片留空（包含源文件名中的括号）
     text = _IMG_RE.sub("", text)  # HTML 图片同样留空（媒体由专用核对负责）
     text = re.sub(r"</?svg\b[^>]*>", "", text, flags=re.IGNORECASE)
     text = re.sub(r"\[([^\]]*)\]\([^)]*\)", r"\1", text)  # 链接留标签
-    return re.sub(r"\s+", "", text)
+    # pandoc 反斜杠转义（`\[` `\]` `\.` …）：渲染器在最后一步脱去反斜杠，
+    # 比对侧必须同口径（否则含转义的注文必然误报「内容不符」）。
+    text = _MD_ESCAPED_PUNCT_RE.sub(r"\1", text)
+    return text
 
 
 def _norm_href(href: str) -> str:
@@ -84,6 +101,13 @@ _MD_IMG_RE = re.compile(r"!\[[^\]]*\]\(([^()]*(?:\([^()]*\)[^()]*)*)\)")
 _MD_ANCHOR_INLINE_RE = re.compile(r"\[\][ \t]*\{#?[\w:.-]+\}")
 _MD_EMPTY_ATTR_RE = re.compile(r"\{[ \t]*\[[ \t]*\][ \t]*\}")
 _MD_HEADING_ID_RE = re.compile(r"(?m)^(#{1,6}[^\n]*?)\s*\{#[\w:.-]+\}\s*$")
+# 与构建器 `build/html.py::_ESCAPED_PUNCT_RE` 同集：pandoc 反斜杠转义
+_MD_ESCAPED_PUNCT_RE = re.compile(r"\\([!\"#$%&'()*+,\-./:;<=>?@\[\\\]^_`{|}~])")
+# 行内代码跨度：内容原样保留（构建器把它单独保护，不受强调/转义规则影响）
+_MD_CODE_SPAN_RE = re.compile(r"`([^`]+)`")
+# 粗体/斜体：只脱**配对**标记（裸 `_` 与裸反引号是字面量，不能连坐删除）
+_MD_BOLD_RE = re.compile(r"\*\*((?:[^*]|\\\*)+)\*\*")
+_MD_ITALIC_RE = re.compile(r"(?<!\*)\*([^*]+)\*(?!\*)")
 _PLACEHOLDER_IMG_RE = re.compile(r'original-image-src="([^"]+)"')
 
 

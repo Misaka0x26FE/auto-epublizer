@@ -792,6 +792,28 @@ def test_notes_gate_accepts_inline_anchor_in_note_text(tmp_path: Path) -> None:
     assert result.ok, result.findings
 
 
+def test_notes_gate_accepts_escaped_punctuation_in_note_text(tmp_path: Path) -> None:
+    """注文含 pandoc 反斜杠转义（``\\[…\\]``）：渲染时脱去反斜杠，内容核对须同口径。"""
+    from auto_epublizer.qa import audit_notes_epub
+
+    store, digest = _two_chapter_ws(tmp_path)
+    _write_two_chapter_translation(
+        store,
+        digest,
+        tgt_texts={"n-000001": r"他说 \[该主张\] 与证据相悖。", "n-000002": "第二条注。"},
+    )
+    orch.import_translations(store)
+    epub = orch.build(store)
+    ch01 = _read_epub(epub, "ch01.xhtml")
+    assert "[该主张]" in ch01 and "\\[" not in ch01, "反斜杠转义应渲染为字面方括号"
+    ctx = notes_mod.read_notes_json(notes_mod.source_notes_path(store))
+    tgt = notes_mod.read_notes_json(notes_mod.translation_notes_path(store))
+    result = audit_notes_epub(
+        epub, source_notes=ctx, target_notes=tgt, media_root=store.structured_dir / "raw" / "media"
+    )
+    assert result.ok, result.findings
+
+
 def test_notes_stale_after_source_change_blocks_qa(tmp_path: Path) -> None:
     """正文/源注文 JSON 变更后，旧登记与旧报告失效：qa 明确阻断（E_NOTES_STALE）。"""
     store, digest = _two_chapter_ws(tmp_path)
@@ -1342,3 +1364,28 @@ def test_registered_orphan_passes_offline_notes_and_structure_gates(tmp_path: Pa
         report = orch.qa(store, epub_path=str(bad), config=cfg)
         assert report["released"] is False
         assert report["notes_findings"]
+
+
+def test_notes_gate_accepts_literal_underscore_and_code_span(tmp_path: Path) -> None:
+    """注文含 URL 下划线与行内代码：渲染保留字面量，内容核对须同口径（不得连坐删下划线）。"""
+    from auto_epublizer.qa import audit_notes_epub
+
+    store, digest = _two_chapter_ws(tmp_path)
+    _write_two_chapter_translation(
+        store,
+        digest,
+        tgt_texts={
+            "n-000001": "参见 <http://example.com/a_b_c/story.html> 与 `pādegāh`（据 *Turban*）。",
+            "n-000002": "第二条注。",
+        },
+    )
+    orch.import_translations(store)
+    epub = orch.build(store)
+    ch01 = _read_epub(epub, "ch01.xhtml")
+    assert "a_b_c" in ch01, "URL 中的下划线是字面量，不应被强调规则吃掉"
+    ctx = notes_mod.read_notes_json(notes_mod.source_notes_path(store))
+    tgt = notes_mod.read_notes_json(notes_mod.translation_notes_path(store))
+    result = audit_notes_epub(
+        epub, source_notes=ctx, target_notes=tgt, media_root=store.structured_dir / "raw" / "media"
+    )
+    assert result.ok, result.findings
