@@ -310,10 +310,33 @@ def _note_plan(
     ordered.sort(key=lambda t: (t[0], t[1]))
 
     counters: dict[str, int] = {}
+    used_numbers: dict[str, set[int]] = {}
     number_by_note: dict[str, int] = {}
     ref_info: dict[str, dict[str, Any]] = {}
     host: dict[str, str] = {}
     backlinks: dict[str, list[str]] = {}
+
+    def _display_number(note: dict[str, Any], scope: str) -> int:
+        """显示号：**原书注号优先**，否则按作用域计数。
+
+        原书注号就是读者在纸书上看到的号。原书若存在未被正文引用的注（或编号
+        跳号），按引用顺序重排会把后续全部注的号顶前一位——与纸书对不上。
+        登记门已保证 ``(scope_id, source_label)`` 唯一，故注号在作用域内不冲突；
+        注号非正整数时才退回作用域计数，并跳过已占用的号。
+        """
+        label = str(note.get("source_label") or "").strip()
+        if label.isdigit():
+            n = int(label)
+            if n > 0:
+                return n
+        taken = used_numbers.setdefault(scope, set())
+        n = counters.get(scope, 0) + 1
+        while n in taken:
+            n += 1
+        counters[scope] = n
+        taken.add(n)
+        return n
+
     for _, _, unit, r in ordered:
         nid = str(r.get("note_id") or "")
         note = notes_by_id.get(nid)
@@ -321,9 +344,10 @@ def _note_plan(
             continue
         scope = str(note.get("scope_id") or unit)
         if nid not in number_by_note:
-            # 显示号按**注文**分配（一注多引同号）；跨作用域独立递增
-            counters[scope] = counters.get(scope, 0) + 1
-            number_by_note[nid] = counters[scope]
+            # 显示号按**注文**分配（一注多引同号）；跨作用域独立
+            n = _display_number(note, scope)
+            number_by_note[nid] = n
+            used_numbers.setdefault(scope, set()).add(n)
         rid = str(r.get("ref_id") or "")
         ref_info[rid] = {
             "note_id": nid,
@@ -338,9 +362,19 @@ def _note_plan(
             continue
         note = notes_by_id[nid]
         scope = str(note.get("scope_id") or "")
-        counters[scope] = counters.get(scope, 0) + 1
-        number_by_note[nid] = counters[scope]
-        host[nid] = scope if scope in order_index else (str(entries[0]["id"]) if entries else "")
+        n = _display_number(note, scope)
+        number_by_note[nid] = n
+        used_numbers.setdefault(scope, set()).add(n)
+        # 宿主：作用域本身就是单元时用它；否则退到**注文自身所在单元**
+        # （注文页），最后才退到首个单元——未引用注不该跑到书首。
+        host_unit = scope if scope in order_index else ""
+        if not host_unit:
+            for loc in note.get("source_locations") or []:
+                cand = str((loc or {}).get("unit") or "")
+                if cand in order_index:
+                    host_unit = cand
+                    break
+        host[nid] = host_unit or (str(entries[0]["id"]) if entries else "")
         ref_info[f"__orphan__{nid}"] = {
             "note_id": nid,
             "number": number_by_note[nid],

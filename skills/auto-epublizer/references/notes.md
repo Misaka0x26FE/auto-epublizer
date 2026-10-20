@@ -72,9 +72,14 @@ has notes but zero semantic nodes, has partial omissions, or mismatches content.
 8. **`build`**: whole-book rendering — body markers → `epub:type="noteref"` links; notes render
    as `epub:type="footnote"` asides (`id="fn-<note_id>"`, full block-level Markdown + one
    independent backlink per reference); cross-file references point at the note's host file
-   (the first unit in spine order that references it); display numbers are generated
+   (the first unit in spine order that references it); the display number is the **original
+   printed note number** (`source_label` when it is a positive integer), otherwise generated
    deterministically per scope (same number inside a scope is legal, one note keeps one
-   number). If the build finds an unregistered marker or a reference that did not make it into
+   number). Renumbering by reference order would shift every later note up by one whenever
+   the original has a gap or an uncited note, breaking the match with the printed book. A note
+   that is never referenced is hosted in **its own source unit** (when the scope id is not a
+   unit) or in the unit matching the scope — never in the first unit of the book. If the
+   build finds an unregistered marker or a reference that did not make it into
    the product, it errors out and **never drops it silently**.
 
 9. **`qa`** (product gate): independently parses the final XHTML and reconciles reference

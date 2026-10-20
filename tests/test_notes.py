@@ -1389,3 +1389,152 @@ def test_notes_gate_accepts_literal_underscore_and_code_span(tmp_path: Path) -> 
         epub, source_notes=ctx, target_notes=tgt, media_root=store.structured_dir / "raw" / "media"
     )
     assert result.ok, result.findings
+
+
+# ── 显示号与孤立注宿主（回归：原书注号跳号 / 未引用注不得跑到书首）──────────
+
+
+def _gap_ws(tmp_path: Path):
+    """两章：ch01 引用注 1；另有一条**未被引用**的注（注号 3，作用域不是单元名）。"""
+    tmp_path.mkdir(parents=True, exist_ok=True)
+    src = tmp_path / "book.md"
+    src.write_text(
+        "# Chapter I\n\nFirst sentence.1\n\n# Chapter II\n\nSecond sentence.2\n",
+        encoding="utf-8",
+    )
+    store = orch.init(str(src), workspace_dir=str(tmp_path / "ws"))
+    pub = store.load_publication()
+    sha = pub.meta.source_sha256
+
+    def _md(unit: str) -> Path:
+        rel = (pub.unit(unit).meta or {})["rel_path"]
+        return store.structured_dir / rel
+
+    _md("ch01").write_text(
+        _md("ch01")
+        .read_text(encoding="utf-8")
+        .replace("First sentence.", "First sentence.[^ref-000001]"),
+        encoding="utf-8",
+    )
+    # ch02 只有普通正文：那条注在正文里**没有**引用点（orphan）
+    data = {
+        "schema_version": "1",
+        "source_sha256": sha,
+        "inventory": "present",
+        "notes": [
+            {
+                "note_id": "n-000001",
+                "scope_id": "ch01",
+                "source_label": "1",
+                "note_type": "footnote",
+                "source_markdown": "First note.",
+                "source_locations": [
+                    {"kind": "block", "unit": "ch01", "line": 3, "text_block": "First sentence."}
+                ],
+                "status": "verified",
+            },
+            {
+                "note_id": "n-000002",
+                # 作用域不是单元名（原书的一节），且该注在正文中没有引用
+                "scope_id": "chapter-3",
+                "source_label": "3",
+                "note_type": "footnote",
+                "source_markdown": "Third note.",
+                "source_locations": [
+                    {"kind": "block", "unit": "ch02", "line": 3, "text_block": "Second sentence."}
+                ],
+                "status": "verified",
+                "orphan_ok": True,
+                "orphan_reason": "原书注号存在但正文未见引用",
+            },
+        ],
+        "references": [
+            {
+                "ref_id": "ref-000001",
+                "note_id": "n-000001",
+                "unit": "ch01",
+                "scope_id": "ch01",
+                "label_text": "1",
+                "context": "First sentence.",
+                "status": "verified",
+            },
+        ],
+    }
+    (store.structured_dir / "notes.json").write_text(
+        json.dumps(data, ensure_ascii=False), encoding="utf-8"
+    )
+    orch.register_notes(store)
+    digest = notes_mod.file_digest(notes_mod.source_notes_path(store))
+    return store, digest
+
+
+def _write_gap_translation(store, digest: str):
+    (store.translation_dir / "body").mkdir(parents=True, exist_ok=True)
+    (store.translation_dir / "align").mkdir(parents=True, exist_ok=True)
+    (store.translation_dir / "body" / "ch01.md").write_text(
+        "# 第一章\n\n第一句话。[^ref-000001]\n", encoding="utf-8"
+    )
+    (store.translation_dir / "body" / "ch02.md").write_text(
+        "# 第二章\n\n第二句话。\n", encoding="utf-8"
+    )
+    align = {
+        "ch01": [
+            {
+                "seq": 1,
+                "src": "First sentence.[^ref-000001]",
+                "tgt": "第一句话。[^ref-000001]",
+                "note": None,
+            }
+        ],
+        "ch02": [
+            {
+                "seq": 1,
+                "src": "Second sentence.",
+                "tgt": "第二句话。",
+                "note": None,
+            }
+        ],
+    }
+    for unit, rows in align.items():
+        with open(store.unit_align_path(unit), "w", encoding="utf-8") as f:
+            for row in rows:
+                f.write(json.dumps(row, ensure_ascii=False) + "\n")
+    (store.translation_dir / "notes.json").write_text(
+        json.dumps(
+            {
+                "schema_version": "1",
+                "source_notes_sha256": digest,
+                "notes": [
+                    {"note_id": "n-000001", "target_markdown": "第一条注。"},
+                    {"note_id": "n-000002", "target_markdown": "第三条注。"},
+                ],
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+
+
+def test_display_number_follows_source_label(tmp_path: Path) -> None:
+    """显示号取**原书注号**：跳号/未引用注不得把后续注的号顶前一位。"""
+    store, digest = _gap_ws(tmp_path)
+    _write_gap_translation(store, digest)
+    orch.import_translations(store)
+    epub = orch.build(store)
+    ch02 = _read_epub(epub, "ch02.xhtml")
+    # 原书注号 3 → 显示 [3]，不被顶成 [2]
+    assert ">[3]<" in ch02, ch02
+    assert ">[2]<" not in ch02, ch02
+    assert "第三条注。" in ch02
+
+
+def test_orphan_note_renders_in_its_own_source_unit(tmp_path: Path) -> None:
+    """未被引用的注挂在**注文自身所在单元**，不得跑到书首单元。"""
+    store, digest = _gap_ws(tmp_path)
+    _write_gap_translation(store, digest)
+    orch.import_translations(store)
+    epub = orch.build(store)
+    ch01 = _read_epub(epub, "ch01.xhtml")
+    ch02 = _read_epub(epub, "ch02.xhtml")
+    assert "第三条注。" in ch02, "孤立注应渲染在注文所在单元"
+    assert "第三条注。" not in ch01, "孤立注不应跑到书首单元"
