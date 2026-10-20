@@ -17,10 +17,10 @@
 
 from __future__ import annotations
 
+import html as html_lib
 import re
 import zipfile
 from dataclasses import dataclass, field
-from html import unescape
 from pathlib import Path
 from typing import Any
 from urllib.parse import unquote, urlsplit
@@ -41,9 +41,13 @@ def _attrs(tag: str) -> dict[str, str]:
 
 
 def _unescape(text: str) -> str:
-    for src, dst in (("&amp;", "&"), ("&lt;", "<"), ("&gt;", ">"), ("&quot;", '"')):
-        text = text.replace(src, dst)
-    return text.replace("&#39;", "'").replace("&apos;", "'")
+    """HTML 实体反转义（单遍，与浏览器解码一致）。
+
+    渲染器把撇号等标点转成**数字实体**（``&#x27;``），只解具名实体会让注文正文
+    比对必然失配（误报 E_NOTES_CONTENT_MISMATCH）。``html.unescape`` 单遍解具名与
+    数字实体，语义与阅读器一致。
+    """
+    return html_lib.unescape(text)
 
 
 def _norm_html(html: str) -> str:
@@ -53,6 +57,9 @@ def _norm_html(html: str) -> str:
 def _norm_md(md: str) -> str:
     """注文 Markdown → 比对用规范形（去标记符号与空白；用于发现空/错内容）。"""
     text = md or ""
+    text = _MD_HEADING_ID_RE.sub(r"\1", text)  # 标题行尾 id 属性（渲染后不印出）
+    text = _MD_ANCHOR_INLINE_RE.sub("", text)  # 内联锚点（渲染为 <a id>，无文字）
+    text = _MD_EMPTY_ATTR_RE.sub("", text)  # 空属性块 {[]}（渲染时丢弃）
     text = re.sub(r"(?m)^\s{0,3}(?:[-*+]|\d+[.)])\s+", "", text)  # 列表标记
     text = re.sub(r"(?m)^#{1,6}\s+", "", text)  # 标题标记
     text = re.sub(r"[*_`]+", "", text)
@@ -71,6 +78,12 @@ def _norm_href(href: str) -> str:
 
 _IMG_RE = re.compile(r"<(?:img|image)\b[^>]*>", re.IGNORECASE)
 _MD_IMG_RE = re.compile(r"!\[[^\]]*\]\(([^()]*(?:\([^()]*\)[^()]*)*)\)")
+
+# 渲染期被**消费掉**的 Markdown 语法（成品里不印出，比对时须从登记文本中剥离）：
+# 内联锚点 `[]{#id}` → <a id>；空属性块 `{[]}` → 丢弃；标题行尾 id `## 标题 {#id}` → 标题 id。
+_MD_ANCHOR_INLINE_RE = re.compile(r"\[\][ \t]*\{#?[\w:.-]+\}")
+_MD_EMPTY_ATTR_RE = re.compile(r"\{[ \t]*\[[ \t]*\][ \t]*\}")
+_MD_HEADING_ID_RE = re.compile(r"(?m)^(#{1,6}[^\n]*?)\s*\{#[\w:.-]+\}\s*$")
 _PLACEHOLDER_IMG_RE = re.compile(r'original-image-src="([^"]+)"')
 
 
@@ -94,7 +107,7 @@ def _source_media_refs(md: str, media_root: Path) -> tuple[set[str], set[str]]:
         src = attrs.get("src") or attrs.get("href") or attrs.get("xlink:href") or ""
         if not src:
             continue
-        url = urlsplit(unescape(src))
+        url = urlsplit(html_lib.unescape(src))
         if url.scheme or url.netloc:
             missing.add(src)
         else:

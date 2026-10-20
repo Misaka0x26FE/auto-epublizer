@@ -745,6 +745,53 @@ def test_notes_gate_supports_multi_paragraph_note(tmp_path: Path) -> None:
     ).ok
 
 
+def test_notes_gate_accepts_entity_escaped_punctuation(tmp_path: Path) -> None:
+    """注文含撇号：渲染为 ``&#x27;``，内容核对须按实体反转义后比对（不得误报截断）。"""
+    from auto_epublizer.qa import audit_notes_epub
+
+    store, digest = _two_chapter_ws(tmp_path)
+    _write_two_chapter_translation(
+        store,
+        digest,
+        tgt_texts={
+            "n-000001": "迪布与温加，2015，*Anthropology's Politics*。",
+            "n-000002": "第二条注。",
+        },
+    )
+    orch.import_translations(store)
+    epub = orch.build(store)
+    ch01 = _read_epub(epub, "ch01.xhtml")
+    assert "&#x27;" in ch01, "撇号应被渲染为数字实体"
+    ctx = notes_mod.read_notes_json(notes_mod.source_notes_path(store))
+    tgt = notes_mod.read_notes_json(notes_mod.translation_notes_path(store))
+    result = audit_notes_epub(
+        epub, source_notes=ctx, target_notes=tgt, media_root=store.structured_dir / "raw" / "media"
+    )
+    assert result.ok, result.findings
+
+
+def test_notes_gate_accepts_inline_anchor_in_note_text(tmp_path: Path) -> None:
+    """注文含内联锚点（``[]{#page_1}``）：渲染为 ``<a id>``，内容核对须忽略锚点语法。"""
+    from auto_epublizer.qa import audit_notes_epub
+
+    store, digest = _two_chapter_ws(tmp_path)
+    _write_two_chapter_translation(
+        store,
+        digest,
+        tgt_texts={"n-000001": "[]{#page_1}锚点之后的注文正文。", "n-000002": "第二条注。"},
+    )
+    orch.import_translations(store)
+    epub = orch.build(store)
+    ch01 = _read_epub(epub, "ch01.xhtml")
+    assert 'id="page_1"' in ch01, "内联锚点应渲染为 a[id]"
+    ctx = notes_mod.read_notes_json(notes_mod.source_notes_path(store))
+    tgt = notes_mod.read_notes_json(notes_mod.translation_notes_path(store))
+    result = audit_notes_epub(
+        epub, source_notes=ctx, target_notes=tgt, media_root=store.structured_dir / "raw" / "media"
+    )
+    assert result.ok, result.findings
+
+
 def test_notes_stale_after_source_change_blocks_qa(tmp_path: Path) -> None:
     """正文/源注文 JSON 变更后，旧登记与旧报告失效：qa 明确阻断（E_NOTES_STALE）。"""
     store, digest = _two_chapter_ws(tmp_path)
