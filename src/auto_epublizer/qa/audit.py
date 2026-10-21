@@ -378,8 +378,12 @@ def _image_size(data: bytes, ext: str) -> tuple[int, int] | None:
 
 # ── 图注判据（T12-4）────────────────────────────────────────────────────
 # 文件名式图注：带图片扩展名，或「含数字、无空格」的机器名（p001-img01 / image_1）。
+# **slug 只认 ASCII**：Python 的 ``\w`` 在 Unicode 下包含 CJK，早期写法
+# ``^[\w.\-]*\d[\w.\-]*$`` 会把「1955年两名年轻女子在花丛中微笑的合影」这种
+# 正常中文图注判成文件名（批次 11 复查实测两本书被误挡）。文件名是 ASCII 串，
+# 中文说明文字不该被这条判据拦下。
 _CAPTION_FILENAME_EXT = re.compile(r"\.(png|jpe?g|gif|svg|tiff?|bmp|webp)$", re.IGNORECASE)
-_CAPTION_FILENAME_SLUG = re.compile(r"^[\w.\-]*\d[\w.\-]*$")
+_CAPTION_FILENAME_SLUG = re.compile(r"^[A-Za-z0-9._\-]*\d[A-Za-z0-9._\-]*$")
 # 占位词图注
 _CAPTION_PLACEHOLDER = re.compile(
     r"^(image|img|figure|fig|picture|photo|graphic|icon|illustration|"

@@ -236,6 +236,31 @@ def test_caption_filename_is_error(tmp_path: Path) -> None:
     assert any(f.code == "E_CAPTION_FILENAME" for f in result.findings)
 
 
+def test_caption_chinese_description_is_not_filename(tmp_path: Path) -> None:
+    """中文说明文字（带数字）不是文件名，不得误报 E_CAPTION_FILENAME。
+
+    回归背景（2026-10-21，批次 11 复查）：判据用 ``\\w`` 匹配 slug，而 ``\\w``
+    在 Unicode 下**包含 CJK**，于是「1955年两名年轻女子在花丛中微笑的合影」这种
+    正常中文图注被判成「文件名」，把两本书的合格成品挡在放行门外。文件名是
+    ASCII 串，判据只该认 ASCII。
+    """
+    path = _epub(
+        tmp_path,
+        _page(
+            '<h1>t</h1><p><img src="media/p233-img01.png" alt="1955年两名年轻女子在花丛中微笑的合影"/></p>'
+        ),
+    )
+    result = qa_audit.audit_epub(path)
+    assert not any(f.code == "E_CAPTION_FILENAME" for f in result.findings)
+
+
+def test_caption_ascii_slug_with_underscore_is_error(tmp_path: Path) -> None:
+    """ASCII 串（含下划线/连字符 + 数字）仍是文件名，必须照报。"""
+    path = _epub(tmp_path, _page('<h1>t</h1><p><img src="media/101_1.png" alt="101_1"/></p>'))
+    result = qa_audit.audit_epub(path)
+    assert any(f.code == "E_CAPTION_FILENAME" for f in result.findings)
+
+
 def test_caption_placeholder_is_error(tmp_path: Path) -> None:
     path = _epub(tmp_path, _page('<h1>t</h1><p><img src="media/p001.png" alt="插图"/></p>'))
     result = qa_audit.audit_epub(path)
