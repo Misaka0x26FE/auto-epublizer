@@ -93,8 +93,10 @@ agent 按文件/段索引回 `structured/raw/` 与原页逐注核证边界、续
 - `g4_audit == "pass"`（解包审计零 error）
 - G0 blocking 术语命中清零（`g0_terminology_open == 0`；经取证登记的 `terminology_exempt` 不计入，见 `translation.md`）
 - G0 结构违例清零（`g0_structure_open == 0`：**blocking** 的 align/marker/footnote/
-  heading/table/fidelity；fidelity 前向缺块与长度比是 advisory，不计入）
+  heading/table/fidelity/language；fidelity 前向缺块与长度比是 advisory，不计入）
 - 成品注释门清零（有注书：`notes_findings == 0`；`inventory=none` 时零对零）
+  ——源件有注文（`structured/notes.json` 已核证，或正文有 `[^ref-…]` 标记）却没
+  `notes register` 时**硬失败**（注文门不得静默跳过）
 - 未决术语冲突清零（`glossary_conflicts_open == 0`；未清零 → `glossary_conflict_open`——
   回 analysis/glossary_conflicts.jsonl 裁决写回 glossary.csv 后重跑 qa）
 - 审校 `g2_confirmed == 0` 或全部已修订
@@ -132,7 +134,18 @@ E_TOC_FLAT/E_INSERT_MISSING_FILE/E_INSERT_BAD_SOURCE 定位）/
 `epubcheck_not_run`（jar 缺失，装 jar 重跑）/ `epubcheck_errors`。
 G0 **长度比**类告警是 advisory 线索，不阻断放行；**术语命中**（`g0_terminology_open`）
 是放行硬门，未清零 → `released_reason=terminology_open`。
+**译文为空**与**语言一致性**（`language`：源译文逐字相同）同为 blocking 硬门；
+经 `preprocessing/style_exemptions.csv` 登记体例豁免的命中输出 `language_exempt`
+（advisory），未豁免的仍阻断。
 `toc_missing`（facts 源 TOC 对账）与 `W_TOC_DEPTH` 是 warning 线索，不阻断。
+
+## 图注与重复图（成品呈现）
+
+- `E_CAPTION_FILENAME` / `E_CAPTION_PLACEHOLDER`（**error**）：成品的 `<img alt>`
+  或 `<figcaption>` 是**文件名**（`p001-img01`、`image_1.png`）或**占位词**
+  （`image`、`插图`、`TODO`）→ 不是说明文字，须改写。
+- `W_IMAGE_DUPLICATE`（**warning**）：同一图片被引用多次 → 交流程裁决
+  （流程门禁可对已解释的条目放行，CLI 只报事实）。
 
 ## 插入内容（inserts）审计判读
 

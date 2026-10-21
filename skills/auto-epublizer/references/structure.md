@@ -1,4 +1,4 @@
-<!-- i18n: source=structure.zh.md sha256=4a334cd400864934e2ef9e33548f49938eb9181f1ced6bf9b390c32495738f3d -->
+<!-- i18n: source=structure.zh.md sha256=90bc52148fad142397ea29a72e9c7fdffdf6f6b608e11cc94a8c5d5714064d67 -->
 > **English** | [中文](structure.zh.md)
 
 # Structure (four-layer structural rebuild + provenance)

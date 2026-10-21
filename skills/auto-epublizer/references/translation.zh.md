@@ -108,6 +108,14 @@ PDF ingest 会产出三类非纯文本段（来源见 `references/ingest.md`；�
   与 confirmed 异译→conflict）。
 - 称谓/敬称/口癖/固定表达（source-only 类型）是文体档案的分类标注；
   术语命中检查对所有类型统一按字面/词边界匹配。
+- **语言一致性门**：`src` 与 `tgt` 归一化后**逐字相同**（= 原文没被翻译）判**硬缺陷**
+  （`language`，import 阻断）。只对**正文行**成立：标题行、图片/链接行、注码定位行、
+  属性锚点行等页面家具按体例保留原文，不在本门内。
+  文献著录体例（书名/刊名/出版社/档号/索引条目/ISBN 等按体例保留原文）需要豁免时，
+  写可选的 `preprocessing/style_exemptions.csv`，必需列为 `unit,pattern,style_ref,reason`：
+  `pattern` 是正则（空 = 整单元），`style_ref` 指向该书 `analysis/style.md` 的体例条目，
+  `reason` 写回核证理由。命中输出为 `language_exempt`（`blocking=false`），
+  在 import 告警、独立 `g0` 与 QA 的 `g0_flags` 三处可见；未豁免的同类行仍阻断。
 - **src 原样摘抄**：align 每行 `src` 必须原样取自 `structured/`（含标题行也可作
   src）——import 做源保真校验，被改写/截断/杜撰的 src 会阻断登记（源文勘误只改
   `tgt` 并用 note `corr:` 留痕，不要顺手改 src）。

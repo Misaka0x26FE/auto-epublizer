@@ -11,6 +11,7 @@ C 组最小重构：原实现位于 ``orchestrator.py``，但它们是**预处�
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 from typing import Any
 
@@ -19,6 +20,56 @@ from auto_common.workspace import RunStore
 
 class ArtifactContractError(ValueError):
     """预处理产物违反已登记契约（可预期用户错误；中文提示带行号/列名）。"""
+
+
+def read_style_exemptions(
+    store: RunStore,
+) -> dict[str, list[tuple[re.Pattern[str], str]]]:
+    """读取**语言一致性门**的体例豁免表（``preprocessing/style_exemptions.csv``）。
+
+    契约（T12-1）：列 ``unit,pattern,style_ref,reason``；``unit`` 必填且须存在于
+    ``publication.json`` 的单元；``pattern`` 是**正则**（空 = 整单元的正文行）；
+    ``reason`` 必填非空；``style_ref`` 指向该书 ``analysis/style.md`` 的体例条目
+    （机器可读的 CSV + 人读的体例，二者互指）。文件不存在即无豁免。
+
+    命中时命中行降为 advisory ``language_exempt``（照样报出，不阻断放行）。
+
+    返回 ``{单元 id: [(已编译正则, 理由), …]}``。
+    """
+    path = store.preprocessing_dir / "style_exemptions.csv"
+    if not path.is_file():
+        return {}
+    import csv
+    import io
+
+    unit_ids = {u.id for u in store.load_publication().units}
+    reader = csv.DictReader(io.StringIO(path.read_text(encoding="utf-8-sig")))
+    required = ("unit", "pattern", "style_ref", "reason")
+    missing = [c for c in required if c not in (reader.fieldnames or [])]
+    if missing:
+        raise ArtifactContractError(f"体例豁免表缺少必需列：{', '.join(missing)}")
+    out: dict[str, list[tuple[re.Pattern[str], str]]] = {}
+    for lineno, row in enumerate(reader, start=2):
+        unit = (row.get("unit") or "").strip()
+        pattern = (row.get("pattern") or "").strip()
+        reason = (row.get("reason") or "").strip()
+        style_ref = (row.get("style_ref") or "").strip()
+        if not unit and not pattern and not reason and not style_ref:
+            continue
+        if not unit:
+            raise ArtifactContractError(f"体例豁免表第 {lineno} 行 unit 必填")
+        if unit not in unit_ids:
+            raise ArtifactContractError(f"体例豁免表第 {lineno} 行 unit 不是已知单元：{unit!r}")
+        if not reason:
+            raise ArtifactContractError(f"体例豁免表第 {lineno} 行 reason 必填")
+        try:
+            compiled = re.compile(pattern) if pattern else re.compile("")
+        except re.error as exc:
+            raise ArtifactContractError(
+                f"体例豁免表第 {lineno} 行 pattern 不是合法正则：{exc}"
+            ) from None
+        out.setdefault(unit, []).append((compiled, reason))
+    return out
 
 
 def read_repairs(store: RunStore) -> list[dict[str, Any]] | None:

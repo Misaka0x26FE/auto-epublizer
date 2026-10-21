@@ -291,7 +291,8 @@ def nav_toc_entries(entries: list[dict[str, Any]], nav_depth: int) -> list[dict[
     entry 可携带 ``anchors``（``subheading_anchors`` 产物）：单元进目录时其锚点
     以「单元深度 + 相对深度」参与投影，超深锚点剔除；单元被剔除则锚点一并剔除。
     """
-    visible = [e for e in entries if e.get("kind") != "cover"]
+    # nav=false 的单元进 spine 但不进目录（献词页等前置噪声页）
+    visible = [e for e in entries if e.get("kind") != "cover" and e.get("nav") is not False]
     depths = _toc_depths(visible)
     out: list[dict[str, Any]] = []
     for e, d in zip(visible, depths, strict=False):

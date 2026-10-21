@@ -63,6 +63,8 @@ structured/
 1. 按真实章节手动重写 `structured/`（每个单元一个 md，首行 `# 标题`）；
 2. 写 `preprocessing/structure.csv`（列 `id,region,kind,title,level,rel_path`；
    每行一个单元，`title` 必须等于该文件首行标题、`rel_path` 与 region 前缀一致）；
+   可选第 7 列 `nav`（`yes`/`no`，缺省 `yes`）：`no` 的单元**进 spine 但不进目录**
+   ——献词页等前置噪声页用它从正文目录里排除（仍在阅读顺序中）；
 3. 运行 `auto-epublizer restructure`：校验（文件在、无孤儿 md、无重复 id）后更新
    `publication.json.units`；
 4. 状态语义：同 id 且内容未变 → 保留状态；有变 → 回退 `split`（需重译重 import）；

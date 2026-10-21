@@ -27,7 +27,7 @@ heading（标题层级守恒，structured 与 translation 逐层计数对账）�
 from __future__ import annotations
 
 import re
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from typing import Any
 
 from auto_common.markdown import inline_code_chunks, markdown_chunks
@@ -267,6 +267,54 @@ def count_paragraph_blocks(text: str) -> int:
     return len([p for p in parts if p.strip()])
 
 
+# ── 语言一致性（T12-1）───────────────────────────────────────────────────
+# 源译文**逐字相同**＝原文没被翻译。判据只看**正文行**：标题、图注、链接、
+# 注码定位行、页码等页面家具按体例保留原文，不在本门内。
+LANGUAGE_MIN_CHARS = 20  # 归一化后短于该长度的行不判（单字母页眉、页码、短题）
+_MARKDOWN_LINK_ONLY = re.compile(r"^\s*!?\[[^\]]*\]\([^)]*\)\s*$")
+# 页面家具行：Pandoc 围栏、属性锚点、图片、链接、注标记行
+_FURNITURE_LINE = re.compile(
+    r"^\s*(?:::.*|\[\]\{[^}]*\}|\[!?\[[^\]]*\]\([^)]*\)\]|\!\[[^\]]*\]\([^)]*\)"
+    r"|\[[^\]]*\]\([^)]*\)|\[\^[^\]]+\].*)$"
+)
+# 行首的属性锚点（`[]{#id}`）——判页面家具前先剥掉
+_ANCHOR_PREFIX = re.compile(r"\[\]\{[^}]*\}")
+_HEADING_LINE = re.compile(r"^\s{0,3}#{1,6}\s")
+_IMAGE_ONLY = re.compile(r"^\s*!?\[[^\]]*\]\([^)]*\)\s*$")
+_NOTE_MARKER = re.compile(r"\[\^[^\]\s]+\]")
+_CJK = re.compile(r"[㐀-鿿豈-﫿]")
+
+
+def _norm_ws(text: str) -> str:
+    return re.sub(r"\s+", "", text or "")
+
+
+def language_identical(src: str, tgt: str) -> bool:
+    """源译文归一化后逐字相同（= 未翻译）。
+
+    只对**正文行**成立：标题行、图片/链接行、注码定位行、含注标记的行、
+    含汉字的译文行都不算（页面家具按体例保留原文，译文含汉字也不算漏译）。
+    """
+    s = _norm_ws(src)
+    t = _norm_ws(tgt)
+    if not s or s != t:
+        return False
+    if len(s) < LANGUAGE_MIN_CHARS:
+        return False
+    if _HEADING_LINE.match(src or ""):
+        return False
+    lines = [ln for ln in (src or "").splitlines() if ln.strip()]
+    stripped = [_ANCHOR_PREFIX.sub("", ln).strip() for ln in lines]
+    if lines and all((not s) or bool(_FURNITURE_LINE.match(s)) for s in stripped):
+        return False  # 整块都是页面家具（属性锚点、图片、链接、注码定位行）
+    if _NOTE_MARKER.search(src or ""):
+        return False
+    if _CJK.search(tgt or ""):
+        return False
+    # 纯页码/页眉类（无字母的短行）不在门内
+    return bool(re.search(r"[A-Za-z]", src or ""))
+
+
 # ── 交付审计（S1.1）：translation md ↔ align tgt 全文一致性 ────────────────
 
 # 标题行（h1/h2：build 的 h1 来自 publication title，不在 align 行内）
@@ -495,18 +543,27 @@ def g0_unit_flags(
     structured_md: str | None = None,
     translation_md: str | None = None,
     exempt_sources: Mapping[str, str] | None = None,
+    language_exempt: Sequence[tuple[Any, str]] | None = None,
 ) -> list[G0Flag]:
     """对一个单元执行全部 G0 检查，返回告警列表。
 
-    检查项：align（对照表完整性）/ length（长度比，advisory）/ terminology（术语
-    命中）/ marker（插入标记守恒）/ footnote（脚注标记守恒）/ heading（标题层级
-    守恒）。守恒类做**单元级总量比对**而非行级——拆句/并句会把标记挪到相邻行，
-    总量守恒恰好对应「一个都不能丢」且不误报。
+    检查项：align（对照表完整性）/ length（长度比，advisory）/ language（语言
+    一致性，**硬缺陷**）/ terminology（术语命中）/ marker（插入标记守恒）/
+    footnote（脚注标记守恒）/ heading（标题层级守恒）。守恒类做**单元级总量比对**
+    而非行级——拆句/并句会把标记挪到相邻行，总量守恒恰好对应「一个都不能丢」
+    且不误报。
 
     ``length`` 的**短源保护**（issue #39）：源文去空白后不足 ``min_src_chars`` 个
     字符时不做比值判定（含上界），因为短行上比值不携带信息（1 个字符的差就能翻转
     判定）。两条真正重要的信号不受影响：**译文为空**（不看源长）与**长源行**的
     比值越界。告警 data 带 ``src_len``/``tgt_len`` 长度上下文，便于 agent 复核。
+
+    ``language``（T12-1）：源译文**归一化后逐字相同**＝原文没被翻译 → **硬缺陷**
+    （import 阻断）。只对**正文行**成立（标题/图注/链接/注码定位行/页码等页面
+    家具按体例保留原文，不在本门内）；``language_exempt`` 是**可核证的人工豁免**
+    （``preprocessing/style_exemptions.csv``：``unit,pattern,style_ref,reason``，
+    pattern 为正则，空 = 整单元），命中时降为 advisory ``language_exempt``
+    **照样报出**，不阻断放行也不从报告里消失。
 
     ``footnote``（issue #34）：**守恒门保持句末式口径**（译文侧不得少于源侧）；
     告警 data 分开给出 ``*_refs``（正文引用）与 ``*_defs``（pandoc 定义行）与
@@ -529,6 +586,7 @@ def g0_unit_flags(
     不阻断放行也不从报告里消失。
     """
     exempt_sources = exempt_sources or {}
+    language_exempt = list(language_exempt or [])
     heading_only = not rows and is_heading_only(structured_md) and is_heading_only(translation_md)
     flags = [] if heading_only else list(check_alignment(rows))
     sum_marker_src = sum_marker_tgt = 0
@@ -560,7 +618,6 @@ def g0_unit_flags(
                     "length",
                     "译文为空",
                     {"seq": seq, "src_len": src_len, "tgt_len": 0},
-                    blocking=False,
                 )
             )
         elif src_len >= min_src_chars:
@@ -609,6 +666,29 @@ def g0_unit_flags(
                     {"seq": seq, "source": hit.source, "expected": hit.expected},
                 )
             )
+        if language_identical(src, tgt):
+            reason = ""
+            for pattern, why in language_exempt:
+                if pattern.search(src or ""):
+                    reason = why
+                    break
+            if reason:
+                flags.append(
+                    G0Flag(
+                        "language_exempt",
+                        f"译文与源文逐字相同，已按体例豁免：{reason}",
+                        {"seq": seq, "reason": reason, "head": (src or "")[:80]},
+                        blocking=False,
+                    )
+                )
+            else:
+                flags.append(
+                    G0Flag(
+                        "language",
+                        "译文与源文逐字相同（疑漏译）",
+                        {"seq": seq, "head": (src or "")[:80], "src_len": src_len},
+                    )
+                )
         sum_marker_src += count_markers(src)
         sum_marker_tgt += count_markers(tgt)
         src_marks = count_footnote_marks(src)

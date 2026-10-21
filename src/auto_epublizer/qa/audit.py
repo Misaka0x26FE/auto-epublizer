@@ -376,6 +376,33 @@ def _image_size(data: bytes, ext: str) -> tuple[int, int] | None:
         return None
 
 
+# ── 图注判据（T12-4）────────────────────────────────────────────────────
+# 文件名式图注：带图片扩展名，或「含数字、无空格」的机器名（p001-img01 / image_1）。
+_CAPTION_FILENAME_EXT = re.compile(r"\.(png|jpe?g|gif|svg|tiff?|bmp|webp)$", re.IGNORECASE)
+_CAPTION_FILENAME_SLUG = re.compile(r"^[\w.\-]*\d[\w.\-]*$")
+# 占位词图注
+_CAPTION_PLACEHOLDER = re.compile(
+    r"^(image|img|figure|fig|picture|photo|graphic|icon|illustration|"
+    r"插图|图片|圖片|图像|圖像|图|未命名|待补|待定|todo|tbd|n/?a|xxx+)\.?$",
+    re.IGNORECASE,
+)
+
+
+def _caption_is_filename(label: str) -> bool:
+    """图注看起来是**文件名**（而非说明文字）。"""
+    text = (label or "").strip()
+    if not text or " " in text:
+        return False
+    if _CAPTION_FILENAME_EXT.search(text):
+        return True
+    return bool(_CAPTION_FILENAME_SLUG.match(text))
+
+
+def _caption_is_placeholder(label: str) -> bool:
+    """图注是**占位词**（image / 插图 / TODO …）。"""
+    return bool(_CAPTION_PLACEHOLDER.match((label or "").strip()))
+
+
 def audit_epub(
     path: str | Path,
     *,
@@ -651,6 +678,47 @@ def audit_epub(
             if not name.endswith(".xhtml") or name.endswith(("nav.xhtml", "landmarks.xhtml")):
                 continue
             _layout_candidates(result, name, zf.read(name).decode("utf-8"))
+
+        # 9c. 图注判据（T12-4）：alt / figcaption 不得是**文件名**或**占位词**
+        img_refs: dict[str, list[str]] = {}
+        for name in names:
+            if not name.endswith(".xhtml") or name.endswith(("nav.xhtml", "landmarks.xhtml")):
+                continue
+            content = zf.read(name).decode("utf-8")
+            for tag, attrs in re.findall(r"<(img|figure)\b([^>]*)>", content, re.IGNORECASE):
+                src = re.search(r'src="([^"]+)"', attrs)
+                alt = re.search(r'alt="([^"]*)"', attrs)
+                caption = ""
+                if tag.lower() == "figure":
+                    cap = re.search(
+                        r"<figcaption[^>]*>(.*?)</figcaption>", content, re.DOTALL | re.IGNORECASE
+                    )
+                    caption = re.sub(r"<[^>]+>", "", cap.group(1)).strip() if cap else ""
+                label = (alt.group(1).strip() if alt else "") or caption
+                if not label:
+                    continue
+                if _caption_is_filename(label):
+                    result.add(
+                        "error",
+                        "E_CAPTION_FILENAME",
+                        f"图注是文件名而非说明文字：{label!r}（{name}）",
+                    )
+                elif _caption_is_placeholder(label):
+                    result.add(
+                        "error",
+                        "E_CAPTION_PLACEHOLDER",
+                        f"图注是占位词：{label!r}（{name}）",
+                    )
+                if src:
+                    img_refs.setdefault(src.group(1), []).append(name)
+        # 9d. 重复图（T12-4）：同一图片文件被多处引用 → warning（是否缺陷由流程裁决）
+        for src, where in sorted(img_refs.items()):
+            if len(where) > 1:
+                result.add(
+                    "warning",
+                    "W_IMAGE_DUPLICATE",
+                    f"同一图片被引用 {len(where)} 次（{len(set(where))} 个文档）：{src}",
+                )
 
         # 10. 元数据完备（postprocessing-spec P2）：次级 DC 项缺失**或空白**提示（供 agent 补全）
         missing_meta = [

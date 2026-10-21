@@ -66,6 +66,8 @@ def structure_entries(store: RunStore) -> list[dict[str, Any]]:
             "title": u.title,
             "level": int((u.meta or {}).get("level") or 1),
             "rel_path": (u.meta or {}).get("rel_path", ""),
+            # nav=false：单元进 spine 但不进目录（献词页等前置噪声页）
+            "nav": (u.meta or {}).get("nav", True) is not False,
         }
         for u in pub.units
     ]
@@ -724,6 +726,9 @@ def import_translations(
 
     pub = store.load_publication()
     exemptions = load_terminology_exemptions(store.preprocessing_dir / "terminology_exemptions.csv")
+    from .preprocess.artifacts import read_style_exemptions
+
+    style_exemptions = read_style_exemptions(store)
     glossary_path = store.analysis_dir / "glossary.csv"
     conflicts_path = store.analysis_dir / "glossary_conflicts.jsonl"
 
@@ -876,6 +881,7 @@ def import_translations(
             translation_md=translation_md,
             **_g0_thresholds(config or Config()),
             exempt_sources=exemptions.get(unit.id, {}),
+            language_exempt=style_exemptions.get(unit.id, []),
         ):
             # 源保真：反向失配（blocking=True，src 不在源文中）= 对照表不可信，阻断登记；
             # 前向缺块（blocking=False，可能为合法剔除）与其余硬缺陷类/advisory 收进告警：
@@ -889,6 +895,7 @@ def import_translations(
                 "length",
                 "terminology",
                 "terminology_exempt",
+                "language_exempt",
                 "marker",
                 "footnote",
                 "footnote_suspect",
@@ -961,6 +968,44 @@ def import_translations(
     }
 
 
+def _assert_no_unregistered_notes(store: RunStore, pub: Any) -> None:
+    """源件有注文却没登记时**硬失败**（T12-3）。
+
+    ``pub.notes`` 为空 → 注文门被整体跳过；若无条件跳过，「源文有注、成品没注」
+    就会一路绿灯放行。故此处查两处证据：
+
+    1. ``structured/notes.json`` 存在且含注文（说明核证过但没 ``notes register``）；
+    2. 正文里出现 ``[^ref-…]`` 原位标记（说明正文有引用而登记缺失）。
+
+    两处都没有 → 确实无注，正常跳过。
+    """
+    from . import notes as notes_mod
+
+    npath = notes_mod.source_notes_path(store)
+    if npath.is_file():
+        try:
+            data = notes_mod.read_notes_json(npath)
+        except notes_mod.NotesError:
+            data = {}
+        if data.get("inventory") == "present" and data.get("notes"):
+            raise OrchestrationError(
+                "structured/notes.json 有已核证的源注文，但 publication.json.notes 为空："
+                "须跑 notes register（注文门不得静默跳过）"
+            )
+    for unit in pub.units:
+        rel = (unit.meta or {}).get("rel_path")
+        if not rel:
+            continue
+        path = store.structured_dir / rel
+        if not path.is_file():
+            continue
+        if "[^ref-" in path.read_text(encoding="utf-8"):
+            raise OrchestrationError(
+                f"正文 {rel} 有注文原位标记 [^ref-…]，但 publication.json.notes 为空："
+                "须跑 notes register（注文门不得静默跳过）"
+            )
+
+
 def _load_notes_context(
     store: RunStore,
     pub: Any,
@@ -972,6 +1017,7 @@ def _load_notes_context(
     from . import notes as notes_mod
 
     if not pub.notes:
+        _assert_no_unregistered_notes(store, pub)
         return None
     npath = notes_mod.source_notes_path(store)
     if not npath.is_file():
@@ -1211,6 +1257,9 @@ def g0_check(
     cfg = config or Config()
     pub = store.load_publication()
     exemptions = load_terminology_exemptions(store.preprocessing_dir / "terminology_exemptions.csv")
+    from .preprocess.artifacts import read_style_exemptions
+
+    style_exemptions = read_style_exemptions(store)
     flags: list[dict[str, Any]] = []
     checked: list[str] = []
     for unit in pub.units:
@@ -1238,6 +1287,7 @@ def g0_check(
             translation_md=translation_md,
             **_g0_thresholds(cfg),
             exempt_sources=exemptions.get(unit.id, {}),
+            language_exempt=style_exemptions.get(unit.id, []),
         ):
             flags.append(_flag_dict(unit.id, f))
         for f in _unit_doc_flags(store, rel_path) if rel_path else []:
@@ -1254,6 +1304,9 @@ def _collect_g0_flags(store: RunStore, config: Config | None = None) -> list[dic
     cfg = config or Config()
     glossary = Glossary(load_glossary_csv(store.analysis_dir / "glossary.csv"))
     exemptions = load_terminology_exemptions(store.preprocessing_dir / "terminology_exemptions.csv")
+    from .preprocess.artifacts import read_style_exemptions
+
+    style_exemptions = read_style_exemptions(store)
     flags: list[dict[str, Any]] = []
     for unit in store.load_publication().units:
         rows = read_align(store.unit_align_path(unit.id))
@@ -1277,6 +1330,7 @@ def _collect_g0_flags(store: RunStore, config: Config | None = None) -> list[dic
             translation_md=translation_md,
             **_g0_thresholds(cfg),
             exempt_sources=exemptions.get(unit.id, {}),
+            language_exempt=style_exemptions.get(unit.id, []),
         ):
             flags.append(_flag_dict(unit.id, f))
         for f in _unit_doc_flags(store, rel_path) if rel_path else []:
@@ -1369,6 +1423,7 @@ def restructure(store: RunStore) -> dict[str, Any]:
     if not path.is_file():
         raise OrchestrationError(f"缺少结构清单：{path}（先写 preprocessing/structure.csv）")
     required = ["id", "region", "kind", "title", "level", "rel_path"]
+    optional = ["nav"]
     regions = {"cover", "frontmatter", "body", "backmatter"}
     kinds = {
         "cover",
@@ -1392,9 +1447,13 @@ def restructure(store: RunStore) -> dict[str, Any]:
     seen_ids: set[str] = set()
     with open(path, encoding="utf-8-sig", newline="") as f:
         reader = csv.DictReader(f)
-        if reader.fieldnames is None or list(reader.fieldnames) != required:
+        if reader.fieldnames is None or list(reader.fieldnames) not in (
+            list(required),
+            list(required) + optional,
+        ):
             raise OrchestrationError(
-                f"structure.csv 列契约不符（要求 {','.join(required)}）：{path}"
+                f"structure.csv 列契约不符（要求 {','.join(required)}"
+                f"[+可选 {','.join(optional)}]）：{path}"
             )
         for lineno, row in enumerate(reader, start=2):
             uid = (row.get("id") or "").strip()
@@ -1447,6 +1506,13 @@ def restructure(store: RunStore) -> dict[str, Any]:
                 raise OrchestrationError(
                     f"structure.csv 第 {lineno} 行 title 与文件首行不一致：{title!r} vs {head!r}"
                 )
+            nav_cell = (
+                (row.get("nav") or "").strip().lower() if "nav" in (reader.fieldnames or []) else ""
+            )
+            if nav_cell and nav_cell not in ("yes", "no", "true", "false", "1", "0"):
+                raise OrchestrationError(
+                    f"structure.csv 第 {lineno} 行 nav 非法（yes/no）：{nav_cell!r}"
+                )
             rows.append(
                 {
                     "id": uid,
@@ -1455,6 +1521,7 @@ def restructure(store: RunStore) -> dict[str, Any]:
                     "title": title,
                     "level": level,
                     "rel_path": rel,
+                    "nav": nav_cell not in ("no", "false", "0"),
                 }
             )
 
@@ -1478,6 +1545,10 @@ def restructure(store: RunStore) -> dict[str, Any]:
         prior = existing.get(r["id"])
         meta = dict(prior.meta) if prior else {}
         meta.update({"rel_path": r["rel_path"], "region": r["region"], "level": r["level"]})
+        if r.get("nav") is False:
+            meta["nav"] = False
+        else:
+            meta.pop("nav", None)
         if prior is None:
             status = "split"
             added.append(r["id"])
@@ -1488,6 +1559,8 @@ def restructure(store: RunStore) -> dict[str, Any]:
                 and int((prior.meta or {}).get("level") or 1) == r["level"]
                 and prior.kind == r["kind"]
                 and (prior.meta or {}).get("region") == r["region"]
+                and ((prior.meta or {}).get("nav", True) is not False)
+                == (r.get("nav") is not False)
             )
             status = prior.status if unchanged else "split"
             if not unchanged:

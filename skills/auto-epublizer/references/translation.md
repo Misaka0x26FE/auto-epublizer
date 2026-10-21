@@ -1,4 +1,4 @@
-<!-- i18n: source=translation.zh.md sha256=d9a6270cf6319d29a61ee6525b92b1d1f40045f6822b4e9caaf77a497595b68b -->
+<!-- i18n: source=translation.zh.md sha256=814c31fcc7df69c51dbd1a1746c21c442ee65c0534f6f69b1547186fdce6d53f -->
 > **English** | [中文](translation.zh.md)
 
 # Translation (chunk translation + sentence alignment + terminology loop)
