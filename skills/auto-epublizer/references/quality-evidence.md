@@ -1,7 +1,23 @@
-<!-- i18n: source=quality-evidence.zh.md sha256=6b8d19bf6a7630b09ce3cd0c348747fbb2db74418aaa29c73b6a4812ff7063a5 -->
+<!-- i18n: source=quality-evidence.zh.md sha256=d80b24523056342d869bc5640364d94f7fe88f84a059a2ee321228ba2e4f6e4c -->
 > **English** | [中文](quality-evidence.zh.md)
 
 # Evidence and safe-repair contract
+
+## Read-only command
+
+`auto-epublizer evidence report --workspace <dir> --json [--epub <path>]
+[--external-source <file>] [--copy <expected.epub> ...]` recomputes current evidence without
+running QA or writing reports/state/events. JSON includes rule version, input digest,
+per-check scope, `pass/fail/unknown/manual` and actual evidence. Any fail exits 1;
+unknown/manual checks never masquerade as pass.
+
+It hashes the source, reconciles source alignment, md/align and independently normalized
+complete product bodies per unit, and separately checks registered notes according to
+the actual render mode. Navigation/media reuse existing mechanical gates; source-TOC
+semantics still need source review. Unprovided external sources/copy lists remain unknown;
+an explicitly expected missing copy fails. There is no released field: this does not
+replace QA, source-note inventory or semantic acceptance. Output goes to stdout; choose
+a new file yourself if retaining it.
 
 ## 1. Identify what was actually proved
 

@@ -2,6 +2,18 @@
 
 # 证据与安全修复契约
 
+## 只读命令
+
+`auto-epublizer evidence report --workspace <dir> --json [--epub <path>]
+[--external-source <file>] [--copy <expected.epub> ...]` 重做当前证据，不运行 QA、不写
+report/state/events。JSON 含规则版本、输入摘要、每项 scope、`pass/fail/unknown/manual`
+及实际证据；存在 fail 时退出 1，但未知/人工项不伪装通过。
+
+源件身份实算；逐单元核 src↔structured、md↔align 和独立规范化的完整成品正文；注文按
+当前登记及成品渲染模式独立核验。目录/媒体使用既有机械门，源目录语义仍待人工回源。
+不提供外部源件或预期副本时记 unknown；显式副本缺失即 fail。该报告没有 released 字段，
+不能替代 QA、源注清点或语义验收。报告默认 stdout，调用方若保存应自己选择新文件。
+
 ## 1. 分清证明对象
 
 - `qa released` 证明已知机器契约；不证明全译、译名正确、索引栏序正确、源书无漏注。

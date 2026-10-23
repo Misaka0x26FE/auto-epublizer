@@ -221,6 +221,34 @@ def work_root(
     console.print(f"  各组件功能与用法见 {result['dir']}/README.md（下一步把待处理源放入 inbox/）")
 
 
+@evidence_app.command("report")
+def evidence_report_cmd(
+    workspace: str | None = typer.Option(None, "--workspace", help="工作区目录"),
+    epub: str | None = typer.Option(None, "--epub", help="显式待核成品"),
+    external_source: str | None = typer.Option(
+        None, "--external-source", help="显式外部源件；未给出记 unknown"
+    ),
+    copy: list[str] | None = typer.Option(None, "--copy", help="预期副本，逐件核字节，可重复"),
+    json_output: bool = typer.Option(False, "--json", help="只读 JSON 证据（不运行 QA）"),
+    config: str | None = typer.Option(None, "--config", help="配置文件路径"),
+) -> None:
+    """重做只读证据：pass/fail/unknown/manual；不等于语义验收。"""
+    store = _store_from(workspace, load_config(config or _CONFIG_PATH))
+    try:
+        data = orch.quality_evidence(
+            store, epub_path=epub, external_source=external_source, copies=copy
+        )
+    except (ValueError, OSError, orch.OrchestrationError) as exc:
+        raise typer.Exit(f"证据读取失败：{exc}") from None
+    if json_output:
+        _emit_json(json.dumps(data, ensure_ascii=False, indent=2))
+    else:
+        for item in data["checks"]:
+            console.print(f"{item['status']} {item['id']}：{item['scope']}")
+    if any(item["status"] == "fail" for item in data["checks"]):
+        raise typer.Exit(1)
+
+
 @evidence_app.command("breaks")
 def evidence_breaks_cmd(
     output: str | None = typer.Option(

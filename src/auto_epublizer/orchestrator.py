@@ -585,6 +585,40 @@ def preprocess(store: RunStore, *, config: Config | None = None) -> dict[str, An
     return {"facts": facts, "facts_json": str(json_path), "facts_md": str(md_path)}
 
 
+def quality_evidence(
+    store: RunStore,
+    *,
+    epub_path: str | None = None,
+    external_source: str | None = None,
+    copies: list[str] | None = None,
+) -> dict[str, Any]:
+    """只读证据入口；复用实际渲染选择与注册上下文，不写状态。"""
+    from .qa.notes_audit import epub_render_mode
+    from .quality_evidence import collect_quality_evidence, validate_workspace_paths
+
+    validate_workspace_paths(store)
+    pub = store.load_publication()
+    entries = structure_entries(store)
+    epub = Path(epub_path) if epub_path else store.output_dir / f"{pub.slug}.epub"
+    inputs = _render_inputs(store, entries, mode=epub_render_mode(epub) or "translation")
+    context = None
+    error = None
+    try:
+        context = _load_notes_context(store, pub, entries=entries, render_inputs=inputs)
+    except (ValueError, OrchestrationError) as exc:
+        error = str(exc)
+    return collect_quality_evidence(
+        store,
+        entries,
+        inputs,
+        epub=epub,
+        notes_context=context,
+        notes_error=error,
+        external_source=Path(external_source) if external_source else None,
+        copies=[Path(path) for path in copies or []],
+    )
+
+
 def evidence_breaks(store: RunStore, *, output: str | None = None) -> dict[str, Any]:
     """产出页边界证据 ``preprocessing/breaks.jsonl``（issue #14 / #10-B3）。
 

@@ -84,7 +84,7 @@
 
 ### D. #57/#58 后续能力（先定接口，不自动扩张）
 
-- [ ] **D1 只读证据报告设计**（依赖 A 的统一证据语义；中）：确认是否扩展现有 evidence 命令；不预设新数据库或第二套发布状态。
+- [x] **D1 只读证据报告设计**（依赖 A 的统一证据语义；中）：确认是否扩展现有 evidence 命令；不预设新数据库或第二套发布状态。
   验收：每项绑定当前 source/结构/译文/成品摘要，区分 pass/fail/unknown/manual；未取得外部 sources 记 unknown；逐单元正文、完整注文、目录与副本按实际对象对账。
 - [ ] **D2 来源候选与全范围覆盖**（依赖 D1；按 PDF/EPUB/注释各拆小批）：先核实已有 pages/raw/breaks/notes-candidates 可提供哪些证据，再增缺口。
   验收：合成双栏/跨页样本保留真实可得 page/bbox/font/column/TOC；源注清点独立于已登记集合；残留普查包含 aside 与后置单元。跳号/栏界/页眉只出候选，不自动合并删除或补造注文。
@@ -186,3 +186,13 @@
   制作页含模型与出版社，nav/NCX 均有制作页入口；正例 released=true/ok、stale=false、
   checker=0；同成品伪造追加注文仍被 notes_open 拦截。现场目录
   `/tmp/opencode/aep-cli-smoke-9dxsoxvb`；并非实书/阅读器验收。
+
+## 10. D 批实施记录
+
+- D1：新增 `evidence report --json`，只读文件快照且不调用 QA/渲染器来构造正文期望；
+  复用独立 Markdown 可见文字规范化、实际 XML、源对照保真和现有独立注释/资源门。
+  实算源哈希、逐单元 src↔structured/md↔align/完整正文、登记注文、目录媒体与显式副本；
+  source inventory、译名、栏序、源目录语义明确 manual，缺外部源/副本清单 unknown。
+  未产生第二份 released 状态，报告绑定当前输入哈希和规则版本。
+- D1 公共入口先 **4 failed**，再补伪造 align src 反例 **1 failed**；实现后 evidence/
+  CLI/i18n/架构组 **29 passed**，含文件字节快照证明只读、缺副本/截短/伪源拒绝。
