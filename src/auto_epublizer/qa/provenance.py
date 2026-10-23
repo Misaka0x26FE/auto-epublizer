@@ -25,6 +25,7 @@ from html.parser import HTMLParser
 from pathlib import Path
 from typing import Any
 from urllib.parse import unquote, urlsplit
+from xml.etree import ElementTree as ET
 
 from auto_common.markdown import inline_code_chunks, markdown_chunks
 from auto_translator.review.fidelity import content_blocks as _paragraphs
@@ -339,18 +340,75 @@ def _nav_depths(zf: zipfile.ZipFile) -> list[int]:
     return depths
 
 
-def _nav_hrefs(zf: zipfile.ZipFile) -> set[str]:
-    """nav.xhtml 目录区条目 href 的文档名集合（剥离锚点；无 nav 返回空）。"""
-    navs = [n for n in zf.namelist() if n.endswith("nav.xhtml")]
-    if not navs:
+def _production_navigation(
+    result: ProvenanceResult, zf: zipfile.ZipFile, pages: set[str]
+) -> set[str]:
+    """以 OPF 声明和完整 ZIP 路径核制作页入口；不凭同名文件猜可达。"""
+    if not pages:
         return set()
-    html = zf.read(navs[0]).decode("utf-8")
-    m = re.search(r'<nav[^>]+epub:type="toc"[^>]*>(.*?)</nav>', html, re.DOTALL)
-    if not m:
-        m = re.search(r"<nav\b[^>]*>(.*?)</nav>", html, re.DOTALL)
-    if not m:
-        return set()
-    return {h.split("#", 1)[0] for h in re.findall(r'href="([^"]+\.xhtml)[^"]*"', m.group(1))}
+    nav_pages: set[str] = set()
+    try:
+        container = ET.fromstring(zf.read("META-INF/container.xml"))
+        opf_path = next(
+            n.attrib["full-path"] for n in container.iter() if n.tag.endswith("}rootfile")
+        )
+        opf = ET.fromstring(zf.read(opf_path))
+        items = [n for n in opf.iter() if n.tag.endswith("}item")]
+        for kind in ("nav", "ncx"):
+            item = next(
+                (
+                    n
+                    for n in items
+                    if (kind == "nav" and "nav" in n.get("properties", "").split())
+                    or (kind == "ncx" and n.get("media-type") == "application/x-dtbncx+xml")
+                ),
+                None,
+            )
+            if item is None:
+                result.add("warning", "W_TOC_PRODUCTION_MISSING", f"制作页缺 {kind} 入口")
+                continue
+            document = epub_member_path(opf_path, item.get("href", ""))
+            root = ET.fromstring(zf.read(document or ""))
+            if kind == "nav":
+                toc = next(
+                    n
+                    for n in root.iter()
+                    if n.tag.endswith("}nav")
+                    and "toc" in n.get("{http://www.idpf.org/2007/ops}type", "").split()
+                )
+                anchors = [(n, n.get("href", "")) for n in toc.iter() if n.tag.endswith("}a")]
+                top = set(toc.findall("{*}ol/{*}li/{*}a"))
+            else:
+                anchors = [(n, n.get("src", "")) for n in root.iter() if n.tag.endswith("}content")]
+                top = set(root.findall("{*}navMap/{*}navPoint/{*}content"))
+            for page in sorted(pages):
+                expected = epub_member_path(opf_path, page)
+                matches = [
+                    n for n, href in anchors if epub_member_path(document or "", href) == expected
+                ]
+                wrong = [
+                    href
+                    for _, href in anchors
+                    if Path(unquote(urlsplit(href).path)).name == page
+                    and epub_member_path(document or "", href) != expected
+                ]
+                if wrong:
+                    result.add(
+                        "error", "E_TOC_PRODUCTION_TARGET", f"{kind} 制作页指向错误路径：{wrong}"
+                    )
+                if not matches:
+                    result.add("warning", "W_TOC_PRODUCTION_MISSING", f"{kind} 缺制作页：{page}")
+                elif len(matches) != 1 or matches[0] not in top:
+                    result.add(
+                        "error",
+                        "E_TOC_PRODUCTION_TARGET",
+                        f"{kind} 制作页必须恰好一个顶层入口：{page}",
+                    )
+                elif kind == "nav":
+                    nav_pages.add(page)
+    except (KeyError, StopIteration, ET.ParseError, ValueError) as exc:
+        result.add("error", "E_TOC_PRODUCTION_TARGET", f"制作页目录不可解析：{exc}")
+    return nav_pages
 
 
 def _opf_has_cover(zf: zipfile.ZipFile) -> bool:
@@ -452,10 +510,10 @@ def audit_provenance(
     with zf:
         spine = _spine_docs(zf)
         nav_depths = _nav_depths(zf)
-        nav_hrefs = _nav_hrefs(zf)
         declared_depth = _nav_declared_depth(zf)
         opf_has_cover = _opf_has_cover(zf)
         software_pages = generated_pages(zf)
+        nav_hrefs = _production_navigation(result, zf, software_pages)
         # EPUB 呈现对账（交付审计 S1.2）：按 spine 收集每文档的呈现数据
         opf_dir = _opf_dir(zf)
         zip_names = set(zf.namelist())

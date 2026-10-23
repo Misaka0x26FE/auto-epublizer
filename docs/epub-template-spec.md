@@ -1,4 +1,4 @@
-<!-- i18n: source=epub-template-spec.zh.md sha256=2fb0bd900730da0ff7f92f26e37d464804508077ee77088bcd20214ce115bd97 -->
+<!-- i18n: source=epub-template-spec.zh.md sha256=c4e2c484c6c72a6b85b5a825b325e800e265b9d120b0cc593a25ce0b755297bc -->
 > **English** | [中文](epub-template-spec.zh.md)
 
 # EPUB File Spec: Unstyled Standard Template + Limited Themes
@@ -17,7 +17,7 @@ The actual build entry is recorded as OPF `aep:render-mode`: `source` / `transla
 
 Python/Pydantic describe the build runtime. Other tools come only from records frozen after successful parsing, never from installed-dependency inventories. Unknown versions remain explicit; missing historical records cannot be reconstructed from the current installation. MinerU API is an external service, with no claim about its internal open-source version or license.
 
-A separate software statement is appended to an existing copyright unit without replacing author/translator rights. Otherwise, a separate production-information page has a non-linear spine entry (`linear="no"`) and a `copyright-page` landmark. It is not a manuscript unit and does not enter the body nav/NCX TOC. Software licenses do not grant or change manuscript, translation, or image rights. Legacy `output.about_page` remains reserved configuration, not a switch for the mandatory fingerprint or evidence that the legacy about-page feature is wired up.
+A separate software statement is appended to an existing copyright unit without replacing author/translator rights. Otherwise, a separate production-information page has a non-linear spine entry (`linear="no"`), a `copyright-page` landmark and a top-level nav/NCX entry, without adding a manuscript unit. The statement displays nonempty publication/rights fields and agent-reported generation models; unknown history and explicit non-use remain distinct, without guessed versions. Software licenses do not grant or change manuscript, translation, or image rights. Legacy `output.about_page` remains reserved configuration, not a switch for the mandatory fingerprint or evidence that the legacy about-page feature is wired up.
 
 The fingerprint is readable offline, uses no telemetry or network requests, and includes no machine paths, secrets, or unique tracking IDs. It is removable, not a digital signature. QA exempts only valid structured fingerprint comments. A separate production page requires the OPF fingerprint declaration, its page marker, and a matching valid JSON fingerprint; neither its filename nor `linear="no"` alone exempts it from content-reconciliation/TOC checks. Ordinary residual comments, forged prefixes, and malformed JSON still produce `E_RESIDUE`. See `skills/auto-epublizer/references/build.md`.
 

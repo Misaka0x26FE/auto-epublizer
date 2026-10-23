@@ -1,4 +1,4 @@
-<!-- i18n: source=AGENTS.zh.md sha256=0f0581d39440b4550f8e35a3f711412048330cf9cb0b37f072df1e28c3c0ffe8 -->
+<!-- i18n: source=AGENTS.zh.md sha256=8794933e13ceb6f60e42e3b8656a16f392a5cb03d1400a6f2e8b3449050082e1 -->
 > **English** | [中文](AGENTS.zh.md)
 
 # auto-epublizer repository guide (for coding agents developing/maintaining this project)
@@ -68,8 +68,10 @@ shared pipeline:
   initialization version. OPF `generator` + custom `aep:` metadata and structured JSON
   comments in content XHTML provide offline provenance. A separate software statement is
   appended to an existing copyright unit without replacing it; otherwise, a non-linear
-  production-information page is reachable through a `copyright-page` landmark, not a
-  manuscript unit or body TOC entry. Python/Pydantic are build-runtime records; other tools
+  production-information page is reachable through a `copyright-page` landmark and a
+  top-level nav/NCX entry, not a manuscript unit. It includes nonempty publication/rights
+  fields and agent-reported generation models; unknown history is not guessed and explicit
+  non-use is displayed separately. Python/Pydantic are build-runtime records; other tools
   come only from successful-parsing snapshots. Unknown versions/history remain unknown,
   never inferred from currently installed tools; MinerU API is a service, not a claim
   about its internal open-source version/license. Recording makes no network requests

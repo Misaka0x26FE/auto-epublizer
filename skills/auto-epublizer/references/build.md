@@ -1,4 +1,4 @@
-<!-- i18n: source=build.zh.md sha256=31f19844e7d9ce33f98080d20539240563228eab46b832a6fd7c86041a2ae5ed -->
+<!-- i18n: source=build.zh.md sha256=067a98d78aea5da5362febd3df7031f54b43088085524f4341cbed60ac753a2d -->
 > **English** | [中文](build.zh.md)
 
 # Build (EPUB packaging)
@@ -34,7 +34,7 @@ auto-epublizer build [-o <out.epub>] [--theme standard|compact|spacious] [--work
 
 DC metadata comes from `publication.json.meta`: `dc:title`, `dc:creator`, `dc:language` (the translation uses `target_language`, pure conversion uses the source language), `dc:identifier` (isbn/uri/slug), `dc:date`, `dc:publisher`, `dc:rights`.
 
-OPF `aep:render-mode` records the actual build entry: `source` (source only) or `translation` (translation preferred, with per-unit source fallback). QA reconstructs each note's host plan from this mode and the current inputs: the first spine reference determines the host; an unreferenced note uses its scope unit or the first actually rendered unit. Only notes whose hosts actually use translation load and validate translated-note binding and complete text; other notes are reconciled against source text independently. Entirely unused stale or malformed translated notes do not block source output. Products with registered notes but no valid mode must be rebuilt, not guessed.
+OPF `aep:render-mode` records the actual build entry: `source` (source only) or `translation` (translation preferred, with per-unit source fallback). QA reconstructs each note's host plan from this mode and the current inputs: the first spine reference determines the host; an unreferenced note uses its own source-location unit first, then a valid scope unit, and refuses to guess if neither exists. Only notes whose hosts actually use translation load and validate translated-note binding and complete text; other notes are reconciled against source text independently. Entirely unused stale or malformed translated notes do not block source output. Products with registered notes but no valid mode must be rebuilt, not guessed.
 
 ## Product software fingerprint
 
@@ -52,6 +52,10 @@ OPF `aep:render-mode` records the actual build entry: `source` (source only) or 
 - Software licenses do not grant or change rights to the manuscript, translation, or images. The fingerprint is removable, not a digital signature. Recording uses no telemetry or network requests and includes no machine paths, secrets, or unique tracking IDs.
 - Legacy `output.about_page` remains reserved configuration, not a switch for this mandatory build fingerprint; it does not mean the legacy about-page feature is wired up.
 - QA exempts only valid structured fingerprint comments from residue checks. A production page requires an OPF fingerprint declaration, its page marker, and a matching valid JSON fingerprint; a filename or arbitrary `linear="no"` alone grants no body-reconciliation/TOC exemption. Ordinary comments, forged prefixes, and malformed JSON remain `E_RESIDUE`.
+- Production navigation is independently checked using OPF-declared nav/NCX and full package
+  paths. Same-basename wrong-directory, duplicate or non-top-level entries produce
+  `E_TOC_PRODUCTION_TARGET`. Completely missing legacy entries only warn with
+  `W_TOC_PRODUCTION_MISSING`; they are not missing source units and do not weaken source-depth checks.
 
 ## Naming
 

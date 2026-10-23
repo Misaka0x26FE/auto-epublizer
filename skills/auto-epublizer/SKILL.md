@@ -7,7 +7,7 @@ metadata:
   suite: auto-epublizer
   workspace_model: publication.json
 ---
-<!-- i18n: source=SKILL.zh.md sha256=f68811d2e9bdfd65c591239e9634c901ab9fd93a1d1381a90f2ae42856db547e -->
+<!-- i18n: source=SKILL.zh.md sha256=10de612aacb9984c0f8f569def54ef76e4e59cb51b2d7e8d07db20a880a68240 -->
 > **English** | [中文](SKILL.zh.md)
 
 # auto-epublizer
@@ -82,7 +82,7 @@ work-root rather than accidentally calling a global namesake. Read only the curr
 | Six-gate QC (G0–G5), blocking/advisory handling | `references/review.md` |
 | Pre-delivery full validation (after qa, before delivery; mandatory) | `references/delivery.md` |
 | Evidence scope, audit honesty, safe index/structure repair tools (read before writing your own audit or bulk-repair script) | `references/quality-evidence.md` |
-| EPUB packaging, code/raw HTML, SVG namespace/manifest/media identity, software fingerprint | `references/build.md` |
+| EPUB packaging, code/raw HTML, SVG/media identity, software fingerprint, production credits and nav/NCX entry | `references/build.md` |
 | epubcheck + unpack audit, independent body/note reconciliation, segmentation advisory, report invalidation | `references/qa.md` |
 | Genre profile (novel/academic/paper/poetry/newspaper) application | `references/style.md` |
 | Complete release-conditions set / error-code quick reference / troubleshooting interpretation | `references/invariants.md` |
