@@ -1,4 +1,4 @@
-<!-- i18n: source=delivery.zh.md sha256=9c3f52905b36fa164e5cfee355d7060887793c986038a40cc1f107f4ef36dd20 -->
+<!-- i18n: source=delivery.zh.md sha256=f78564625bdf7fed13d269436703aa5c6442c8c42190cf74f747731bf3f352f5 -->
 > **English** | [中文](delivery.zh.md)
 
 # Delivery (delivery audit: mandatory full validation after qa and before delivery)
@@ -56,12 +56,14 @@ mkdir -p /tmp/epub-check && cd /tmp/epub-check && unzip -o <slug>.epub
 - **Body probe**: pick 3–5 representative sentences from the translation and grep each
   one in `OEBPS/*.xhtml` for a hit (the tool already reconciles everything; this step is
   a **second safeguard** against the tool itself being misaligned);
-- **Images**: confirm the file count in `OEBPS/media/` = the citation count (the tool
-  already checked); then **look at 2–3 images** (multimodal) to confirm the image content
+- **Images**: reconcile package resource identities and reference locations (reused images
+  need not have equal file/reference counts); then **look at 2–3 images** to confirm content
   matches the surrounding position — preventing "the image is there but misplaced/wrong";
-- **Notes**: sample up to 3 available references (all if fewer) against the source/translation evidence and complete packaged note **content**, not merely the existence of a backlink; inspect resolvable round-trip links and readable note areas offline;
-- **TOC**: nav entry count = unit count, and hierarchy consistent with the original
-  book's TOC (against the source TOC in facts).
+- **Notes**: independently reconcile all registered note content against complete package
+  notes; manual samples cover first/middle/last and risky page boundaries, listing IDs,
+  denominator and selection rationale. Empty strings and truncated substrings do not pass.
+- **TOC**: inspect each label/target/hierarchy against real source sections, separating
+  subheadings, cover exclusions, nav=no and landmarks; a count equality is not sufficient.
 
 ## 3. Manual checks
 
@@ -112,7 +114,7 @@ Write `reviews/delivery-<YYYYMMDD-HHMMSS>.md` (once this file exists, qa no long
 - Sampled chapters: <list of first/middle/last/high-risk chapters>
 - [ ] Body probe N/N hits
 - [ ] Image semantic spot-check M images correct (list them)
-- [ ] Note content spot-check: up to 3 available references correct (or no notes, zero-to-zero verified)
+- [ ] All note content reconciled; manual sample IDs/scope/denominator/rationale/results (or verified zero-to-zero)
 - [ ] TOC/cover/metadata check (conclusion)
 - [ ] inserts desc empty-value handling: fill in X / explicitly accept Y (reason)
 - Mandatory offline notes gate: registration/semantics/content/links/backlinks/resources (result)
@@ -120,7 +122,14 @@ Write `reviews/delivery-<YYYYMMDD-HHMMSS>.md` (once this file exists, qa no long
 - Findings and handling: (defect → root cause → fix → re-verify; or "none")
 - Repair loop rounds: 0 (or N)
 - Artifact list and sync: local/backup/cloud/repository (byte-check result)
+- Check mode: mark each check redo/reuse; reuse requires unchanged input digest and checking rules
+- Source identity: actual source/ hash vs registered identity; missing external sources/ is unknown, not a three-way match
+- Mechanical green is not content acceptance: state verified scope, unknowns and remaining manual review
 ```
+
+Custom audit/index-repair tools must follow the [evidence and safe-repair contract](quality-evidence.md).
+Unexecuted checks remain unknown/manual, never pre-checked. H1 hits, token bags and TOC counts
+cannot stand in for content acceptance.
 
 ## 8. Artifact sync and distribution
 

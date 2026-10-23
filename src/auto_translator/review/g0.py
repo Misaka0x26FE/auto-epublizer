@@ -275,7 +275,7 @@ _MARKDOWN_LINK_ONLY = re.compile(r"^\s*!?\[[^\]]*\]\([^)]*\)\s*$")
 # 页面家具行：Pandoc 围栏、属性锚点、图片、链接、注标记行
 _FURNITURE_LINE = re.compile(
     r"^\s*(?:::.*|\[\]\{[^}]*\}|\[!?\[[^\]]*\]\([^)]*\)\]|\!\[[^\]]*\]\([^)]*\)"
-    r"|\[[^\]]*\]\([^)]*\)|\[\^[^\]]+\].*)$"
+    r"|\[[^\]]*\]\([^)]*\))$"
 )
 # 行首的属性锚点（`[]{#id}`）——判页面家具前先剥掉
 _ANCHOR_PREFIX = re.compile(r"\[\]\{[^}]*\}")
@@ -289,30 +289,30 @@ def _norm_ws(text: str) -> str:
     return re.sub(r"\s+", "", text or "")
 
 
-def language_identical(src: str, tgt: str) -> bool:
-    """源译文归一化后逐字相同（= 未翻译）。
+def _language_prose(src: str) -> str:
+    """去除独立家具和代码，不因内嵌标记丢弃正文。"""
+    prose: list[str] = []
+    for kind, chunk in markdown_chunks(src or ""):
+        if kind != "text":
+            continue  # 代码是必须保真的字面量，不是待译正文
+        for line in chunk.splitlines():
+            if _HEADING_LINE.match(line):
+                continue  # 只剔除标题行，不豁免同块的后续正文
+            line = _NOTE_MARKER.sub("", _ANCHOR_PREFIX.sub("", line)).strip()
+            if line and not _FURNITURE_LINE.fullmatch(line):
+                prose.append(line)
+    return "\n".join(prose)
 
-    只对**正文行**成立：标题行、图片/链接行、注码定位行、含注标记的行、
-    含汉字的译文行都不算（页面家具按体例保留原文，译文含汉字也不算漏译）。
-    """
+
+def language_identical(src: str, tgt: str, *, target_language: str = "zh-CN") -> bool:
+    """原样复制的待核证信号；不是语义漏译证明，默认目标语言为中文。"""
     s = _norm_ws(src)
-    t = _norm_ws(tgt)
-    if not s or s != t:
+    if not s or s != _norm_ws(tgt) or len(s) < LANGUAGE_MIN_CHARS:
         return False
-    if len(s) < LANGUAGE_MIN_CHARS:
-        return False
-    if _HEADING_LINE.match(src or ""):
-        return False
-    lines = [ln for ln in (src or "").splitlines() if ln.strip()]
-    stripped = [_ANCHOR_PREFIX.sub("", ln).strip() for ln in lines]
-    if lines and all((not s) or bool(_FURNITURE_LINE.match(s)) for s in stripped):
-        return False  # 整块都是页面家具（属性锚点、图片、链接、注码定位行）
-    if _NOTE_MARKER.search(src or ""):
-        return False
-    if _CJK.search(tgt or ""):
+    if target_language.lower().startswith("zh") and _CJK.search(tgt or ""):
         return False
     # 纯页码/页眉类（无字母的短行）不在门内
-    return bool(re.search(r"[A-Za-z]", src or ""))
+    return any(char.isalpha() for char in _language_prose(src))
 
 
 # ── 交付审计（S1.1）：translation md ↔ align tgt 全文一致性 ────────────────
@@ -544,6 +544,8 @@ def g0_unit_flags(
     translation_md: str | None = None,
     exempt_sources: Mapping[str, str] | None = None,
     language_exempt: Sequence[tuple[Any, str]] | None = None,
+    target_language: str = "zh-CN",
+    source_language: str = "auto",
 ) -> list[G0Flag]:
     """对一个单元执行全部 G0 检查，返回告警列表。
 
@@ -641,6 +643,32 @@ def g0_unit_flags(
                         blocking=False,
                     )
                 )
+        # 独立于 0.30 比值告警的严重短译待核证门：长正文仅剩极少字母/汉字。
+        # 不声称语义漏译；代码/标题家具不在范围，整单元空正则不能豁免此门。
+        source_letters = sum(c.isalpha() for c in _language_prose(src))
+        target_letters = sum(c.isalpha() for c in _language_prose(tgt))
+        if source_letters >= 80 and tgt.strip() and target_letters <= 4:
+            evidence = next(
+                (
+                    why
+                    for pattern, why in language_exempt
+                    if pattern.pattern and pattern.search(src)
+                ),
+                "",
+            )
+            flags.append(
+                G0Flag(
+                    "length_review_exempt" if evidence else "length_review",
+                    f"长正文译文极短，须回源核证{('：' + evidence) if evidence else ''}",
+                    {
+                        "seq": seq,
+                        "src_letters": source_letters,
+                        "tgt_letters": target_letters,
+                        "reason": evidence,
+                    },
+                    blocking=not bool(evidence),
+                )
+            )
         for hit in terminology_hits(src, tgt, glossary):
             if hit.source in exempt_sources:
                 # 按单元豁免（文献著录体例内保留德文，改译文也放行不了）：
@@ -666,7 +694,10 @@ def g0_unit_flags(
                     {"seq": seq, "source": hit.source, "expected": hit.expected},
                 )
             )
-        if language_identical(src, tgt):
+        same_language = (
+            source_language.lower().split("-")[0] == target_language.lower().split("-")[0]
+        )
+        if not same_language and language_identical(src, tgt, target_language=target_language):
             reason = ""
             for pattern, why in language_exempt:
                 if pattern.search(src or ""):

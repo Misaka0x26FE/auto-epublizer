@@ -1,4 +1,4 @@
-<!-- i18n: source=translation.zh.md sha256=814c31fcc7df69c51dbd1a1746c21c442ee65c0534f6f69b1547186fdce6d53f -->
+<!-- i18n: source=translation.zh.md sha256=0e3999389557f15f506d090b2735f4374bff60944202d2a76506f593b5553e6f -->
 > **English** | [中文](translation.zh.md)
 
 # Translation (chunk translation + sentence alignment + terminology loop)
@@ -145,6 +145,28 @@ not release (`glossary_conflict_open`).
   conservation validation; loss is a hard defect (`marker`/`footnote`) that blocks G5
   release.
 
+## Copied prose and severely short translation gates
+
+Normalized identical `src`/`tgt` prose emits blocking `language` as a **review signal**,
+not proof of a semantic omission. Only standalone headings, images, link-only locators,
+anchors and literal code are outside scope; an inline note marker never exempts a whole
+paragraph. Unicode letters are supported. Explicit same-source/target-language conversion
+does not require translation; Chinese source copied to an English target is not exempt.
+
+Optional `preprocessing/style_exemptions.csv` requires `unit,pattern,style_ref,reason`.
+`pattern` is a regex (empty means the whole unit for the copying check); `style_ref` must
+be nonempty and resolve to a real entry in `analysis/style.md` (`§5` matches `## 5.`).
+Matches remain visible as advisory `language_exempt`. Do not exempt an entire index when
+the user has explicitly required localized headwords. Changing either evidence file
+invalidates the report digest. The agent must verify the actual reason, not merely fill fields.
+
+The separate severe-short gate emits blocking `length_review` when source prose contains
+at least 80 alphabetic characters and a nonempty translation retains at most four, after
+excluding standalone furniture/code. Existing 0.30/3.0 ratio advisories are unchanged.
+Repair against the source, or provide a **nonempty source-specific regex** and written
+style evidence; accepted cases remain advisory `length_review_exempt`. An empty translation
+always blocks and cannot be exempted. These deterministic signals cannot detect all omissions.
+
 ## State machine and resume
 
 Unit: `split → analyzed → translated → aligned → reviewed → built`. `import` sets a
@@ -152,4 +174,3 @@ completed unit to `aligned`; repeated import is harmless (idempotent). After rev
 `import --reviewed` can advance newly validated units to `reviewed` in the same call
 (idempotent); import normally skips `reviewed`/`built` units. Failed forced revalidation
 must not promote a unit back to reviewed.
-

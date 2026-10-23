@@ -62,13 +62,28 @@ def read_style_exemptions(
             raise ArtifactContractError(f"体例豁免表第 {lineno} 行 unit 不是已知单元：{unit!r}")
         if not reason:
             raise ArtifactContractError(f"体例豁免表第 {lineno} 行 reason 必填")
+        if not style_ref:
+            raise ArtifactContractError(f"体例豁免表第 {lineno} 行 style_ref 必填")
+        style_path = store.dir / "analysis" / "style.md"
+        if not style_path.is_file():
+            raise ArtifactContractError("体例豁免表 style_ref 缺少依据文件 analysis/style.md")
+        style = style_path.read_text(encoding="utf-8")
+        section = re.match(r"§\s*(\d+)(?:\s|$)", style_ref)
+        if section:
+            found = re.search(rf"(?m)^#{{1,6}}\s+{section[1]}(?:[.、\s]|$)", style)
+        else:
+            found = style_ref in style
+        if not found:
+            raise ArtifactContractError(
+                f"体例豁免表第 {lineno} 行 style_ref 未见于 analysis/style.md：{style_ref!r}"
+            )
         try:
             compiled = re.compile(pattern) if pattern else re.compile("")
         except re.error as exc:
             raise ArtifactContractError(
                 f"体例豁免表第 {lineno} 行 pattern 不是合法正则：{exc}"
             ) from None
-        out.setdefault(unit, []).append((compiled, reason))
+        out.setdefault(unit, []).append((compiled, f"{style_ref}：{reason}"))
     return out
 
 

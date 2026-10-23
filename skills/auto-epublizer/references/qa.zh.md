@@ -93,7 +93,8 @@ agent 按文件/段索引回 `structured/raw/` 与原页逐注核证边界、续
 - `g4_audit == "pass"`（解包审计零 error）
 - G0 blocking 术语命中清零（`g0_terminology_open == 0`；经取证登记的 `terminology_exempt` 不计入，见 `translation.md`）
 - G0 结构违例清零（`g0_structure_open == 0`：**blocking** 的 align/marker/footnote/
-  heading/table/fidelity/language；fidelity 前向缺块与长度比是 advisory，不计入）
+  heading/table/fidelity/language/length_review 及显式 blocking 的空译文 length；
+  fidelity 前向缺块与普通长度比是 advisory，不计入）
 - 成品注释门清零（有注书：`notes_findings == 0`；`inventory=none` 时零对零）
   ——源件有注文（`structured/notes.json` 已核证，或正文有 `[^ref-…]` 标记）却没
   `notes register` 时**硬失败**（注文门不得静默跳过）
@@ -137,6 +138,9 @@ G0 **长度比**类告警是 advisory 线索，不阻断放行；**术语命中*
 **译文为空**与**语言一致性**（`language`：源译文逐字相同）同为 blocking 硬门；
 经 `preprocessing/style_exemptions.csv` 登记体例豁免的命中输出 `language_exempt`
 （advisory），未豁免的仍阻断。
+严重短译另报 `length_review`（阻断）或核证后的 `length_review_exempt`（advisory），
+不粗暴升格原 0.30 长度比告警。修改体例 CSV、analysis/style.md 或单元 nav 开关
+都会使旧报告过期；仅看历史 released 字段不足以交付。
 `toc_missing`（facts 源 TOC 对账）与 `W_TOC_DEPTH` 是 warning 线索，不阻断。
 
 ## 图注与重复图（成品呈现）
@@ -144,7 +148,9 @@ G0 **长度比**类告警是 advisory 线索，不阻断放行；**术语命中*
 - `E_CAPTION_FILENAME` / `E_CAPTION_PLACEHOLDER`（**error**）：成品的 `<img alt>`
   或 `<figcaption>` 是**文件名**（`p001-img01`、`image_1.png`）或**占位词**
   （`image`、`插图`、`TODO`）→ 不是说明文字，须改写。
-- `W_IMAGE_DUPLICATE`（**warning**）：同一图片被引用多次 → 交流程裁决
+- `W_IMAGE_DUPLICATE`（**warning**）：按文档相对路径解析资源，按包内字节摘要归组；
+  空 alt、不同文件名也计数。各 figure 只检查自身 figcaption，支持两种属性引号。
+  同字节图片被引用多次 → 交流程裁决
   （流程门禁可对已解释的条目放行，CLI 只报事实）。
 
 ## 插入内容（inserts）审计判读

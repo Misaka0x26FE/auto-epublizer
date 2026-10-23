@@ -78,7 +78,10 @@ directly), but boundary-level changes must be registered, otherwise
    line `# title`);
 2. Write `preprocessing/structure.csv` (columns `id,region,kind,title,level,rel_path`; one
    unit per row; `title` must equal that file's first-line heading, `rel_path` must match
-   the region prefix);
+    the region prefix);
+   optional seventh column `nav` accepts `yes`/`no` (default `yes`). `no` keeps the unit
+   in spine reading order but excludes it from nav/NCX, e.g. a dedication page. It does
+   not delete content; changing this switch invalidates the QA report digest.
 3. Run `auto-epublizer restructure`: after validation (files exist, no orphan md, no
    duplicate id) it updates `publication.json.units`;
 4. State semantics: same id and unchanged content → state retained; changed → roll back to

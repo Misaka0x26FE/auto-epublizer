@@ -158,7 +158,15 @@ def test_generate_report_g5_release_fields() -> None:
         audit,
         EpubcheckResult(available=True, ran=True, errors=0, warnings=0, returncode=0),
         review=review,
-        g0_flags=[{"unit": "ch01", "check": "length", "message": "译文为空", "data": {}}],
+        g0_flags=[
+            {
+                "unit": "ch01",
+                "check": "length",
+                "message": "长度比过低",
+                "data": {},
+                "blocking": False,
+            }
+        ],
         total_sentences=100,
     )
     assert result.g1_candidates == 3

@@ -1,4 +1,4 @@
-<!-- i18n: source=notes.zh.md sha256=4ee9b71a98b8e447dd073c99edb54e357165be13df429ad6ed45ecc13322e603 -->
+<!-- i18n: source=notes.zh.md sha256=af457b246a443456c88f879c8d9d30438ebdd50c2d1d9381178c03ae15e511fc -->
 > **English** | [中文](notes.zh.md)
 
 # Note Structuring and Binding (phase N)

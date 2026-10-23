@@ -108,7 +108,7 @@ PDF ingest 会产出三类非纯文本段（来源见 `references/ingest.md`；�
   与 confirmed 异译→conflict）。
 - 称谓/敬称/口癖/固定表达（source-only 类型）是文体档案的分类标注；
   术语命中检查对所有类型统一按字面/词边界匹配。
-- **语言一致性门**：`src` 与 `tgt` 归一化后**逐字相同**（= 原文没被翻译）判**硬缺陷**
+- **语言一致性门**：`src` 与 `tgt` 归一化后**逐字相同**是须核证的复制信号，不是语义证明；判**硬门待办**
   （`language`，import 阻断）。只对**正文行**成立：标题行、图片/链接行、注码定位行、
   属性锚点行等页面家具按体例保留原文，不在本门内。
   文献著录体例（书名/刊名/出版社/档号/索引条目/ISBN 等按体例保留原文）需要豁免时，
@@ -116,6 +116,14 @@ PDF ingest 会产出三类非纯文本段（来源见 `references/ingest.md`；�
   `pattern` 是正则（空 = 整单元），`style_ref` 指向该书 `analysis/style.md` 的体例条目，
   `reason` 写回核证理由。命中输出为 `language_exempt`（`blocking=false`），
   在 import 告警、独立 `g0` 与 QA 的 `g0_flags` 三处可见；未豁免的同类行仍阻断。
+  `style_ref` 必须非空，且能定位现存 `analysis/style.md` 的条目（例如 `§5` 对应 `## 5.`）；
+  依据和 CSV 改动均使报告过期。不得以整单元豁免覆盖用户明确要求中文化的索引。
+  内嵌脚注标记不豁免正文；非 ASCII 字母同样检查；代码字面量不作为待译正文，
+  已明确同源/目标语的转换不要求翻译。
+- **严重短译待核证门**：独立于原有 0.30 比值 advisory；剔除独立家具/代码后源正文
+  至少 80 个字母/汉字、非空译文仅余至多 4 个字母/汉字时，输出 blocking `length_review`。
+  须回源补译或用体例表的**非空、针对该源句的正则**及成文依据核证，命中输出
+  `length_review_exempt`。空译文始终阻断，不能被豁免。这不覆盖所有语义漏译。
 - **src 原样摘抄**：align 每行 `src` 必须原样取自 `structured/`（含标题行也可作
   src）——import 做源保真校验，被改写/截断/杜撰的 src 会阻断登记（源文勘误只改
   `tgt` 并用 note `corr:` 留痕，不要顺手改 src）。
@@ -131,4 +139,3 @@ PDF ingest 会产出三类非纯文本段（来源见 `references/ingest.md`；�
 单元：`split → analyzed → translated → aligned → reviewed → built`。`import` 把完成单元
 置为 `aligned`；重复 import 无害（幂等）。审校通过后 `import --reviewed` 可在同次调用中把新验证通过的单元推进为
 `reviewed`（幂等）；`reviewed`/`built` 单元通常跳过重导；强制重验失败不得再提升为 reviewed。
-

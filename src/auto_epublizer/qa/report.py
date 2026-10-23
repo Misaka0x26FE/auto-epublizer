@@ -103,7 +103,17 @@ def generate_report(
     flags = list(g0_flags or [])
     # 放行硬门只计 blocking 告警（B 组真值表）：fidelity 前向缺块/长度比/注号差集等
     # advisory 已在告警里带 blocking=False，不得计入 g0_structure_open/terminology_open。
-    _STRUCT_CHECKS = ("align", "marker", "footnote", "heading", "table", "fidelity")
+    _STRUCT_CHECKS = (
+        "align",
+        "marker",
+        "footnote",
+        "heading",
+        "table",
+        "fidelity",
+        "language",
+        "length",
+        "length_review",
+    )
     g0_terminology_open = sum(
         1 for f in flags if f.get("check") == "terminology" and f.get("blocking", True)
     )

@@ -102,8 +102,10 @@ def test_style_exemptions_contract(tmp_path: Path) -> None:
     )
     from auto_epublizer.preprocess.artifacts import read_style_exemptions
 
+    (store.dir / "analysis").mkdir(exist_ok=True)
+    (store.dir / "analysis" / "style.md").write_text("## 5. 著录\n保留原文。\n", encoding="utf-8")
     data = read_style_exemptions(store)
-    assert "ch01" in data and data["ch01"][0][1] == "文献著录体例"
+    assert "ch01" in data and data["ch01"][0][1] == "§5：文献著录体例"
 
     p.write_text("unit,pattern,style_ref,reason\nnope,^A,§5,x\n", encoding="utf-8")
     with pytest.raises(ValueError):

@@ -882,6 +882,8 @@ def import_translations(
             **_g0_thresholds(config or Config()),
             exempt_sources=exemptions.get(unit.id, {}),
             language_exempt=style_exemptions.get(unit.id, []),
+            source_language=pub.meta.language or "auto",
+            target_language=pub.meta.target_language or "zh-CN",
         ):
             # 源保真：反向失配（blocking=True，src 不在源文中）= 对照表不可信，阻断登记；
             # 前向缺块（blocking=False，可能为合法剔除）与其余硬缺陷类/advisory 收进告警：
@@ -891,11 +893,15 @@ def import_translations(
             if f.check == "fidelity" and f.blocking:
                 errors.append(f"源保真：{f.message}（seq={f.data.get('seq')}）")
                 continue
+            if f.check in ("language", "length", "length_review") and f.blocking:
+                errors.append(f"{f.check}：{f.message}（seq={f.data.get('seq')}）")
+                continue
             if f.check in (
                 "length",
                 "terminology",
                 "terminology_exempt",
                 "language_exempt",
+                "length_review_exempt",
                 "marker",
                 "footnote",
                 "footnote_suspect",
@@ -977,7 +983,8 @@ def _assert_no_unregistered_notes(store: RunStore, pub: Any) -> None:
     1. ``structured/notes.json`` 存在且含注文（说明核证过但没 ``notes register``）；
     2. 正文里出现 ``[^ref-…]`` 原位标记（说明正文有引用而登记缺失）。
 
-    两处都没有 → 确实无注，正常跳过。
+    两处都没有 → 仅表示无机器证据，保持转换兼容；不能据此宣称源件无注，
+    仍须 agent 独立源清点。
     """
     from . import notes as notes_mod
 
@@ -985,8 +992,8 @@ def _assert_no_unregistered_notes(store: RunStore, pub: Any) -> None:
     if npath.is_file():
         try:
             data = notes_mod.read_notes_json(npath)
-        except notes_mod.NotesError:
-            data = {}
+        except notes_mod.NotesError as exc:
+            raise OrchestrationError(f"源注文清单不可读：{exc}") from exc
         if data.get("inventory") == "present" and data.get("notes"):
             raise OrchestrationError(
                 "structured/notes.json 有已核证的源注文，但 publication.json.notes 为空："
@@ -1288,6 +1295,8 @@ def g0_check(
             **_g0_thresholds(cfg),
             exempt_sources=exemptions.get(unit.id, {}),
             language_exempt=style_exemptions.get(unit.id, []),
+            source_language=pub.meta.language or "auto",
+            target_language=pub.meta.target_language or "zh-CN",
         ):
             flags.append(_flag_dict(unit.id, f))
         for f in _unit_doc_flags(store, rel_path) if rel_path else []:
@@ -1308,7 +1317,8 @@ def _collect_g0_flags(store: RunStore, config: Config | None = None) -> list[dic
 
     style_exemptions = read_style_exemptions(store)
     flags: list[dict[str, Any]] = []
-    for unit in store.load_publication().units:
+    pub = store.load_publication()
+    for unit in pub.units:
         rows = read_align(store.unit_align_path(unit.id))
         if not rows and not _qa_requires_align(store, unit):
             continue
@@ -1331,6 +1341,8 @@ def _collect_g0_flags(store: RunStore, config: Config | None = None) -> list[dic
             **_g0_thresholds(cfg),
             exempt_sources=exemptions.get(unit.id, {}),
             language_exempt=style_exemptions.get(unit.id, []),
+            source_language=pub.meta.language or "auto",
+            target_language=pub.meta.target_language or "zh-CN",
         ):
             flags.append(_flag_dict(unit.id, f))
         for f in _unit_doc_flags(store, rel_path) if rel_path else []:

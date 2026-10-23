@@ -74,7 +74,7 @@ def artifacts_digest(store: Any, *, epub_path: str | Path | None = None) -> str:
         rel = meta.get("rel_path") or ""
         h.update(
             f"unit:{unit.id}:{meta.get('region', '')}:{unit.kind}:"
-            f"{meta.get('level', '')}:{rel}:{unit.title}\n".encode()
+            f"{meta.get('level', '')}:{rel}:{unit.title}:{meta.get('nav', True)}\n".encode()
         )
         pairs: list[tuple[str, Path | None]] = [
             ("structured", store.structured_dir / rel if rel else None),
@@ -95,6 +95,8 @@ def artifacts_digest(store: Any, *, epub_path: str | Path | None = None) -> str:
         "preprocessing/repairs.jsonl",
         "preprocessing/facts.json",
         "preprocessing/terminology_exemptions.csv",
+        "preprocessing/style_exemptions.csv",
+        "analysis/style.md",
         "analysis/glossary.csv",
         "analysis/glossary_conflicts.jsonl",
     ):

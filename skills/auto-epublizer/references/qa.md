@@ -1,4 +1,4 @@
-<!-- i18n: source=qa.zh.md sha256=5b9b3f54637bbc638ecb0a981e0f6d0bc13425e258eeb4e9abb5d38cdf57b9ff -->
+<!-- i18n: source=qa.zh.md sha256=526d662dcb553679780163a2f31bd58fcbbe3bda392a8555a4e9cb3637fb929b -->
 > **English** | [中文](qa.zh.md)
 
 # QA (epubcheck + unpack audit)
@@ -106,10 +106,13 @@ media, href/backlink hard gate is unchanged.
 - Blocking G0 terminology hits cleared (`g0_terminology_open == 0`; evidence-registered
   `terminology_exempt` is excluded; see `translation.md`)
 - G0 structural violations cleared (`g0_structure_open == 0`: **blocking** align/marker/
-  footnote/heading/table/fidelity; fidelity forward missing blocks and length ratios are
+  footnote/heading/table/fidelity/language/length_review and explicitly blocking empty-target
+  length flags; fidelity forward missing blocks and ordinary length ratios are
   advisory and not counted)
 - Product note gate cleared (books with notes: `notes_findings == 0`; zero-to-zero when
   `inventory=none`)
+  Source notes present in `structured/notes.json` or registered-form body references without
+  `notes register` block the operation; a malformed inventory is an error, never “no notes”.
 - Unresolved terminology conflicts cleared (`glossary_conflicts_open == 0`; if not
   cleared → `glossary_conflict_open` — go back to analysis/glossary_conflicts.jsonl,
   arbitrate and write back to glossary.csv, then rerun qa)
@@ -140,6 +143,9 @@ Creating, changing or removing `preprocessing/terminology_exemptions.csv` also i
 the digest. Historical released fields are not rewritten, but status becomes stale /
 `built_not_released`; rerun QA.
 
+The same applies to `preprocessing/style_exemptions.csv`, `analysis/style.md`, and each
+unit's `nav` switch. A historical `released=true` field alone does not establish freshness.
+
 Body and note reconciliation are independent: source labels/ref_ids are not displayed
 note numbers. Semantic noterefs and footnote/endnote content are excluded from body
 coverage; the independent notes gate checks references, content, hrefs and backlinks.
@@ -161,6 +167,19 @@ hits** (`g0_terminology_open`) are a release hard gate, and if not cleared →
 `released_reason=terminology_open`.
 `toc_missing` (facts source-TOC reconciliation) and `W_TOC_DEPTH` are warning clues and do
 not block.
+
+Empty targets, unresolved copied-prose signals (`language`) and severe-short review signals
+(`length_review`) block import and G5. Evidence-backed style exemptions remain visible as
+advisories; see `translation.md`. The old ratio advisory is not wholesale promoted.
+
+## Image labels and duplicate media
+
+`E_CAPTION_FILENAME` and `E_CAPTION_PLACEHOLDER` are errors for filename/placeholder image
+alt text or a figure's own figcaption. Parsed XHTML supports either attribute quote style.
+`W_IMAGE_DUPLICATE` groups repeated image references by package bytes, resolving paths
+relative to each document, even for empty alt or distinct member names. This is a warning
+for agent review, not authority to delete legitimate repeated ornaments. External/missing
+resources remain the responsibility of the existing resource checks.
 
 ## Inserts audit interpretation
 
