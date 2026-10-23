@@ -17,6 +17,7 @@ from typing import Any
 from zipfile import ZipFile
 
 from auto_common.workspace import Publication
+from auto_common.workspace.models import validate_generation_tools
 
 from . import __version__
 
@@ -161,6 +162,10 @@ def _valid(data: Any) -> bool:
     if not isinstance(data, dict) or data.get("schema_version") != 1:
         return False
     project = data.get("project")
+    try:
+        validate_generation_tools(data.get("generation_tools"))
+    except ValueError:
+        return False
     return (
         isinstance(project, dict)
         and project.get("name") == PROJECT_NAME
@@ -171,6 +176,7 @@ def _valid(data: Any) -> bool:
         and isinstance(data.get("runtime"), list)
         and (data.get("processing_tools") is None or isinstance(data["processing_tools"], list))
         and isinstance(data.get("publication", {}), dict)
+        and all(isinstance(v, str) for v in data.get("publication", {}).values())
         and (data.get("generation_tools") is None or isinstance(data["generation_tools"], list))
         and (data.get("generated_page") is None or isinstance(data["generated_page"], str))
     )
@@ -226,6 +232,12 @@ def _publication_block(data: dict[str, Any], lang: str, *, heading: str) -> str:
 def _generation_items(data: dict[str, Any], lang: str) -> str:
     """生成模型（LLM）署名条目：name version — task；未知值如实标注，不伪造。"""
     zh = lang.lower().startswith("zh")
+    if data.get("generation_tools") == []:
+        return (
+            "<li>明确未使用生成模型（agent 自报）。</li>"
+            if zh
+            else "<li>No generation model was used (agent-reported).</li>"
+        )
     items = []
     for tool in data.get("generation_tools") or []:
         if not isinstance(tool, dict):

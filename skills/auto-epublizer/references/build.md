@@ -1,4 +1,4 @@
-<!-- i18n: source=build.zh.md sha256=b790b78fe4b6419d6410cafd369edb250f85d76c127aadf014e8524591dcd67d -->
+<!-- i18n: source=build.zh.md sha256=78de7fef1de5e0acd623d758b571d96ea1b45013f03aef148a3e05724d05fa60 -->
 > **English** | [中文](build.zh.md)
 
 # Build (EPUB packaging)
@@ -44,6 +44,11 @@ OPF `aep:render-mode` records the actual build entry: `source` (source only) or 
 - When a copyright unit exists, a separate software statement is appended without replacing its copyright text. Otherwise, a separate production-information page is generated with a non-linear spine entry (`linear="no"`) and a `copyright-page` landmark. It is not a manuscript unit and does not enter the body nav/NCX TOC.
 - That statement (or production-information page) carries a **publication and rights** block above the tool list, taken from `publication.json.meta` (`title`/`creator`/`translator`/`publisher`/`date`/`rights`), listing only non-empty fields; when all are empty the block is omitted entirely rather than leaving empty labels.
 - The tool list also carries **generation-model (LLM)** entries: `meta.generation_tools` is written by `meta --generation-tools '<JSON array>'` (each entry `{name, version, task, url, license}`, missing keys tolerated; `[]` means explicitly no generation model was used) and each renders as `name version — task`, with a missing version marked "version unrecorded" rather than invented. All of this wording is emitted in Chinese or English to match the build language (Chinese is authoritative).
+- Only those public credit fields are accepted; unknown keys and non-string/non-null values
+  are rejected before persistence, keeping configuration/credential keys out of the list.
+  `None` means history unrecorded; `[]` visibly states "No generation model was used
+  (agent-reported)." Names, versions and tasks are self-reported, not detected or obtained
+  through model-service calls. Metadata changes invalidate the old report.
 - Software licenses do not grant or change rights to the manuscript, translation, or images. The fingerprint is removable, not a digital signature. Recording uses no telemetry or network requests and includes no machine paths, secrets, or unique tracking IDs.
 - Legacy `output.about_page` remains reserved configuration, not a switch for this mandatory build fingerprint; it does not mean the legacy about-page feature is wired up.
 - QA exempts only valid structured fingerprint comments from residue checks. A production page requires an OPF fingerprint declaration, its page marker, and a matching valid JSON fingerprint; a filename or arbitrary `linear="no"` alone grants no body-reconciliation/TOC exemption. Ordinary comments, forged prefixes, and malformed JSON remain `E_RESIDUE`.

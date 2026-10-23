@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 SCHEMA_VERSION = "0.1.0"
 
@@ -59,6 +59,24 @@ class Identifier(BaseModel):
     uri: str | None = None
 
 
+def validate_generation_tools(value: Any) -> list[dict[str, str | None]] | None:
+    """只接收公开模型署名字段；不容忍任意配置/凭据键混入产物指纹。"""
+    if value is None:
+        return None
+    if not isinstance(value, list):
+        raise ValueError("generation_tools 必须是数组或 null")
+    allowed = {"name", "version", "task", "url", "license"}
+    for index, item in enumerate(value, start=1):
+        if not isinstance(item, dict):
+            raise ValueError(f"generation_tools 第 {index} 项必须是对象")
+        for key, content in item.items():
+            if key not in allowed:
+                raise ValueError(f"generation_tools 第 {index} 项含未允许字段：{key}")
+            if content is not None and not isinstance(content, str):
+                raise ValueError(f"generation_tools 第 {index} 项字段 {key} 必须是字符串或 null")
+    return value
+
+
 class PublicationMeta(BaseModel):
     """DC 元数据；source_sha256 绑定源内容身份。"""
 
@@ -87,6 +105,11 @@ class PublicationMeta(BaseModel):
     rights: str | None = None
     description: str | None = None
     subjects: list[str] = Field(default_factory=list)
+
+    @field_validator("generation_tools", mode="before")
+    @classmethod
+    def _generation_tools(cls, value: Any) -> list[dict[str, str | None]] | None:
+        return validate_generation_tools(value)
 
 
 class ConfigSnapshot(BaseModel):

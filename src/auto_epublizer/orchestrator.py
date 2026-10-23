@@ -1237,6 +1237,9 @@ def set_meta(
     `[]` 表示明确未使用生成模型）。
     publication.json 状态只经 CLI 命令推进，agent 不手工编辑。
     """
+    from auto_common.workspace.models import validate_generation_tools
+
+    validate_generation_tools(generation_tools)
     pub = store.load_publication()
     updates: dict[str, Any] = {
         "title": title,

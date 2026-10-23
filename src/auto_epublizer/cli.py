@@ -466,23 +466,18 @@ def _parse_generation_tools(raw: str | None) -> list[dict[str, str | None]] | No
     """
     if raw is None:
         return None
+    from auto_common.workspace.models import validate_generation_tools
+
     try:
         data = json.loads(raw)
     except ValueError as e:
         raise ValueError(f"--generation-tools 不是合法 JSON：{e}") from None
     if not isinstance(data, list):
         raise ValueError("--generation-tools 必须是 JSON 数组")
-    parsed: list[dict[str, str | None]] = []
-    for index, item in enumerate(data, start=1):
-        if not isinstance(item, dict):
-            raise ValueError(f"--generation-tools 第 {index} 项必须是 JSON 对象")
-        entry: dict[str, str | None] = {}
-        for key, value in item.items():
-            if value is not None and not isinstance(value, str):
-                raise ValueError(f"--generation-tools 第 {index} 项字段 {key} 必须是字符串或 null")
-            entry[str(key)] = value
-        parsed.append(entry)
-    return parsed
+    try:
+        return validate_generation_tools(data)
+    except ValueError as exc:
+        raise ValueError(f"--generation-tools：{exc}") from None
 
 
 @app.command()
