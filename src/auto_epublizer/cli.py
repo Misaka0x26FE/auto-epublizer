@@ -630,6 +630,9 @@ def import_cmd(
         f"待译={len(result.get('pending') or [])} 失败={len(result['failed'])} "
         f"告警={len(result['warnings'])}{terms_suffix}"
     )
+    if result["failed"]:
+        # 失败必须反映到退出码：否则 agent/CI 只看 exit=0 会把阻断当成成功
+        raise typer.Exit(f"导入失败：{len(result['failed'])} 个单元未通过校验（见上）")
 
 
 @app.command()

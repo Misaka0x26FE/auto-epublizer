@@ -197,3 +197,33 @@ def test_style_reference_section_must_exist(tmp_path: Path) -> None:
     )
     with pytest.raises(ValueError, match="style_ref"):
         read_style_exemptions(store)
+
+
+def _copied_ws(tmp_path: Path):
+    """合成工作区：译文与源文逐字相同（长正文）。"""
+    import json as _json
+
+    src = tmp_path / "book.md"
+    prose = "This synthetic paragraph is deliberately copied verbatim without translation."
+    src.write_text(f"# Chapter I\n\n{prose}\n", encoding="utf-8")
+    store = orch.init(str(src), workspace_dir=str(tmp_path / "ws"))
+    rel = store.load_publication().units[0].meta["rel_path"]
+    (store.translation_dir / rel).parent.mkdir(parents=True, exist_ok=True)
+    (store.translation_dir / rel).write_text(f"# Chapter I\n\n{prose}\n", encoding="utf-8")
+    store.unit_align_path("ch01").parent.mkdir(parents=True, exist_ok=True)
+    store.unit_align_path("ch01").write_text(
+        _json.dumps({"seq": 1, "src": prose, "tgt": prose, "note": None}) + "\n",
+        encoding="utf-8",
+    )
+    return store
+
+
+def test_cli_import_blocks_copied_prose(tmp_path: Path) -> None:
+    from typer.testing import CliRunner
+
+    from auto_epublizer.cli import app
+
+    store = _copied_ws(tmp_path)
+    result = CliRunner().invoke(app, ["import", "--workspace", str(store.dir)])
+    assert result.exit_code != 0, result.output
+    assert "language" in result.output or "语言" in result.output, result.output
