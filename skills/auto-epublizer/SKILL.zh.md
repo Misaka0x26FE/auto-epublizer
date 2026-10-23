@@ -67,7 +67,8 @@ CLI 无法探测），据此选 ingest 路由（见 `references/ingest.md`）。
 | 切片翻译、纯标题空 align、`unit,source,reason` 术语豁免及三入口 advisory | `references/translation.md` |
 | 注释结构化与绑定、稳定 ref、上标/OCR 取证边界 | `references/notes.md` |
 | 六道关 QC（G0–G5）、blocking/advisory 处理 | `references/review.md` |
-| 交付前全量校验（qa 之后、交付之前，强制） | `references/delivery.md` |
+| 交付前全量校验（qa 之后、交付之前，强制） | `references/delivery.zh.md` |
+| 证据范围、审计诚实性、索引/结构批量修复工具的安全契约（自己写审计或批量修复脚本前必读） | `references/quality-evidence.zh.md` |
 | EPUB 封装、代码/raw HTML、SVG 命名空间/manifest/媒体身份、软件指纹 | `references/build.md` |
 | epubcheck + 解包审计、正文/注文独立对账、注释分段疑点 advisory、报告失效 | `references/qa.md` |
 | 文体档案（novel/academic/paper/poetry/newspaper）应用 | `references/style.md` |
