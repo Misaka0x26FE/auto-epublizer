@@ -61,6 +61,11 @@ def artifacts_digest(store: Any, *, epub_path: str | Path | None = None) -> str:
     """
     pub = store.load_publication()
     h = hashlib.sha256()
+    # 源/目标语言改变 G0；出版元数据改变 OPF 与制作页，均为当前成品身份输入。
+    h.update(
+        json.dumps(pub.meta.model_dump(mode="json"), ensure_ascii=False, sort_keys=True).encode()
+    )
+    h.update(b"\n")
     h.update(f"src:{pub.meta.source_sha256}\n".encode())
     # 实际源身份：文件字节哈希（meta 声明与磁盘不一致时摘要必然不同）
     src_rel = str(getattr(pub.meta, "source", "") or "")

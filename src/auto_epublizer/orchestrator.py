@@ -275,11 +275,10 @@ def _note_plan(
     """构造全书注释计划（N4，确定性）：作用域显示号 + 宿主单元 + 回链 + 文本。
 
     规则：
-    - 显示号：按引用在 **spine 序 → 单元内正文标记位置** 的顺序，在各自 ``scope_id``
-      内从 1 递增（章内重号、跨章同号互不影响）；
+    - 显示号：原印正整数号优先；符号号按引用顺序分配，跳过全作用域预留的数字号；
     - 宿主：注文渲染在 spine 序中**第一个引用它的单元**；跨文件引用 href 指回宿主；
-    - 未引用注文（``orphan_ok``）：挂在 ``scope_id`` 对应单元（存在时）或首个单元，
-      保留显示号并渲染（不得为凑对账删除）；
+    - 未引用注文（``orphan_ok``）：优先取自身 source_locations 单元，缺失时仅允许
+      有效 scope_id 单元；无法定位时拒绝构建，不猜书首；
     - 文本来源：由实际渲染输入决定；同一宿主选择同时供绑定校验、构建和成品审计使用。
     """
 
@@ -313,6 +312,10 @@ def _note_plan(
 
     counters: dict[str, int] = {}
     used_numbers: dict[str, set[int]] = {}
+    for note in notes_by_id.values():
+        label = str(note.get("source_label") or "").strip()
+        if label.isdecimal() and int(label) > 0:
+            used_numbers.setdefault(str(note.get("scope_id") or ""), set()).add(int(label))
     number_by_note: dict[str, int] = {}
     ref_info: dict[str, dict[str, Any]] = {}
     host: dict[str, str] = {}
@@ -327,7 +330,7 @@ def _note_plan(
         注号非正整数时才退回作用域计数，并跳过已占用的号。
         """
         label = str(note.get("source_label") or "").strip()
-        if label.isdigit():
+        if label.isdecimal():
             n = int(label)
             if n > 0:
                 return n
@@ -367,16 +370,18 @@ def _note_plan(
         n = _display_number(note, scope)
         number_by_note[nid] = n
         used_numbers.setdefault(scope, set()).add(n)
-        # 宿主：作用域本身就是单元时用它；否则退到**注文自身所在单元**
-        # （注文页），最后才退到首个单元——未引用注不该跑到书首。
-        host_unit = scope if scope in order_index else ""
+        # 注文自己的位置优先；跨页多位置按已核证清单顺序取首个有效宿主。
+        host_unit = next(
+            (
+                str(loc["unit"])
+                for loc in note.get("source_locations") or []
+                if isinstance(loc, dict) and str(loc.get("unit") or "") in order_index
+            ),
+            scope if scope in order_index else "",
+        )
         if not host_unit:
-            for loc in note.get("source_locations") or []:
-                cand = str((loc or {}).get("unit") or "")
-                if cand in order_index:
-                    host_unit = cand
-                    break
-        host[nid] = host_unit or (str(entries[0]["id"]) if entries else "")
+            raise OrchestrationError(f"孤注 {nid} 缺少可解析宿主单元：须核证 source_locations")
+        host[nid] = host_unit
         ref_info[f"__orphan__{nid}"] = {
             "note_id": nid,
             "number": number_by_note[nid],
@@ -1006,7 +1011,7 @@ def _assert_no_unregistered_notes(store: RunStore, pub: Any) -> None:
         path = store.structured_dir / rel
         if not path.is_file():
             continue
-        if "[^ref-" in path.read_text(encoding="utf-8"):
+        if notes_mod.extract_markers(path.read_text(encoding="utf-8")):
             raise OrchestrationError(
                 f"正文 {rel} 有注文原位标记 [^ref-…]，但 publication.json.notes 为空："
                 "须跑 notes register（注文门不得静默跳过）"

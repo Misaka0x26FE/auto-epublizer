@@ -7,7 +7,7 @@ metadata:
   suite: auto-epublizer
   workspace_model: publication.json
 ---
-<!-- i18n: source=SKILL.zh.md sha256=d70daffcd12c9ec913f9b4f015eca9cc856204014a197f511537149098c2f721 -->
+<!-- i18n: source=SKILL.zh.md sha256=f68811d2e9bdfd65c591239e9634c901ab9fd93a1d1381a90f2ae42856db547e -->
 > **English** | [中文](SKILL.zh.md)
 
 # auto-epublizer
@@ -78,7 +78,7 @@ work-root rather than accidentally calling a global namesake. Read only the curr
 | Four-layer structure classification, cleaning, running head/footer and page-number removal, provenance | `references/structure.md` |
 | Layered understanding, terminology seeding, language/genre detection | `references/analysis.md` |
 | Chunk translation, heading-only empty align, `unit,source,reason` exemptions and three-entry advisory visibility | `references/translation.md` |
-| Note structuring/binding, stable refs, superscript/OCR evidence boundaries | `references/notes.md` |
+| Note structuring/binding, stable refs, label collisions/orphan hosts, complete notes and code-literal boundaries | `references/notes.md` |
 | Six-gate QC (G0–G5), blocking/advisory handling | `references/review.md` |
 | Pre-delivery full validation (after qa, before delivery; mandatory) | `references/delivery.md` |
 | Evidence scope, audit honesty, safe index/structure repair tools (read before writing your own audit or bulk-repair script) | `references/quality-evidence.md` |

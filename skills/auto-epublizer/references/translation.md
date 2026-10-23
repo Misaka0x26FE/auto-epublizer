@@ -1,4 +1,4 @@
-<!-- i18n: source=translation.zh.md sha256=0e3999389557f15f506d090b2735f4374bff60944202d2a76506f593b5553e6f -->
+<!-- i18n: source=translation.zh.md sha256=7277c7640d6156ba05f9ee89f50fcdca8fe446e09df9ae49f60afcb8684bd6e1 -->
 > **English** | [中文](translation.zh.md)
 
 # Translation (chunk translation + sentence alignment + terminology loop)
@@ -152,6 +152,11 @@ not proof of a semantic omission. Only standalone headings, images, link-only lo
 anchors and literal code are outside scope; an inline note marker never exempts a whole
 paragraph. Unicode letters are supported. Explicit same-source/target-language conversion
 does not require translation; Chinese source copied to an English target is not exempt.
+The signal examines prose after removing headings/furniture and code: Chinese headings
+cannot hide copied foreign prose. For a Chinese target, a few embedded CJK characters do
+not exempt identical prose when CJK accounts for less than half of its alphabetic characters.
+This heuristic requests review, not a language or mistranslation verdict. Literal code is
+excluded from the severe-short rule's source and target character counts.
 
 Optional `preprocessing/style_exemptions.csv` requires `unit,pattern,style_ref,reason`.
 `pattern` is a regex (empty means the whole unit for the copying check); `style_ref` must

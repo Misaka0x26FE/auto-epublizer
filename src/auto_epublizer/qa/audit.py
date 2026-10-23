@@ -398,6 +398,8 @@ def _caption_is_filename(label: str) -> bool:
     text = (label or "").strip()
     if not text or " " in text:
         return False
+    if re.fullmatch(r"\d+(?:[.\-]\d+)*\.?", text):
+        return False  # 纯数字图号/年份不是机器文件名证据
     if _CAPTION_FILENAME_EXT.search(text):
         return True
     return bool(_CAPTION_FILENAME_SLUG.match(text))

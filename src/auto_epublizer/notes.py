@@ -25,6 +25,8 @@ import re
 from pathlib import Path
 from typing import Any
 
+from auto_common.markdown import inline_code_chunks, markdown_chunks
+
 SCHEMA_VERSION = "1"
 
 # 原位标记：``[^ref-000123]``（标记文本即 ref_id；生成器保证身份稳定、不重排）
@@ -143,8 +145,15 @@ def read_notes_json(path: str | Path) -> dict[str, Any]:
 
 
 def extract_markers(md_text: str) -> list[str]:
-    """按出现顺序提取正文原位标记（``[^ref-xxxxxxxx]``），返回 ref_id 列表。"""
-    return MARKER_RE.findall(md_text or "")
+    """按出现顺序提取正文原位标记；围栏和行内代码字面量不是引用。"""
+    return [
+        rid
+        for kind, chunk in markdown_chunks(md_text or "")
+        if kind == "text"
+        for code, text in inline_code_chunks(chunk)
+        if not code
+        for rid in MARKER_RE.findall(text)
+    ]
 
 
 def _digest_of_text(text: str) -> str:
@@ -212,7 +221,8 @@ def validate_source_notes(
         label = str(n.get("source_label") or "")
         if not label:
             errors.append(f"{where}.source_label 不得为空（原书显示号）")
-        key = (scope, label)
+        # 渲染数字号会转成整数；01/1、全角数字与 ASCII 不得变成同一显示号。
+        key = (scope, str(int(label)) if label.isdecimal() and int(label) > 0 else label)
         if key in labels:
             # 同作用域同号是复制粘贴痕迹；跨作用域同号合法（各章重号）
             errors.append(f"{where} 与已有注文同作用域同注号（scope={scope}, label={label}）")

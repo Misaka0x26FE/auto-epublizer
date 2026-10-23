@@ -1,4 +1,4 @@
-<!-- i18n: source=qa.zh.md sha256=526d662dcb553679780163a2f31bd58fcbbe3bda392a8555a4e9cb3637fb929b -->
+<!-- i18n: source=qa.zh.md sha256=866560a5b7592081cedead8d1915d14006c98cc2b4bbad3d625ee0fd6b9bbbf2 -->
 > **English** | [中文](qa.zh.md)
 
 # QA (epubcheck + unpack audit)
@@ -180,6 +180,9 @@ alt text or a figure's own figcaption. Parsed XHTML supports either attribute qu
 relative to each document, even for empty alt or distinct member names. This is a warning
 for agent review, not authority to delete legitimate repeated ornaments. External/missing
 resources remain the responsibility of the existing resource checks.
+Pure numeric labels such as `1`, `1955` and `1.2` are not filename evidence and do not
+trigger that error. Source/target languages and publication metadata also participate in
+the report digest; changing gate inputs or product metadata requires rebuilding/rechecking.
 
 ## Inserts audit interpretation
 

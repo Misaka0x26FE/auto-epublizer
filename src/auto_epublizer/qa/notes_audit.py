@@ -26,6 +26,14 @@ from typing import Any
 from urllib.parse import unquote, urlsplit
 from xml.etree import ElementTree
 
+from auto_common.markdown import (
+    CODE_SPAN_RE,
+    fence_body,
+    inline_code_chunks,
+    markdown_chunks,
+    paragraph_blocks,
+)
+
 from ..media_paths import epub_member_path, resolve_media_path
 
 _TAG_RE = re.compile(r"<[^>]+>")
@@ -61,19 +69,56 @@ def _norm_md(md: str) -> str:
     （内容不被其它规则处理）、粗体/斜体只脱**配对**标记（裸下划线与裸反引号
     是字面量，不能连坐）、反斜杠转义脱去、链接留标签、锚点与属性块不留文字。
     """
-    parts = _MD_CODE_SPAN_RE.split(md or "")
     out: list[str] = []
-    for i, part in enumerate(parts):
-        out.append(part if i % 2 == 1 else _norm_md_text(part))
+    for block in paragraph_blocks(md or ""):
+        kind, chunk = markdown_chunks(block)[0]
+        if kind == "code":
+            out.append(fence_body(chunk))
+            continue
+        if kind == "raw":
+            out.append(_norm_html(fence_body(chunk)))
+            continue
+        text = _note_block_prose(chunk)
+        for code, part in inline_code_chunks(text):
+            if code:
+                match = CODE_SPAN_RE.fullmatch(part)
+                out.append(match[2] if match else part)
+            else:
+                out.append(_norm_md_text(part))
     return re.sub(r"\s+", "", "".join(out))
+
+
+def _note_block_prose(block: str) -> str:
+    """独立读取 Markdown 块的可见文字；不吞掉非连续原印列表号。"""
+    lines = [line.strip() for line in block.splitlines() if line.strip()]
+    if (
+        lines
+        and all(re.match(r"^(?:>|\|)\s", line) for line in lines)
+        and len({line[0] for line in lines}) == 1
+    ):
+        return "\n".join(line[1:].lstrip() for line in lines)
+    if lines and all(re.match(r"^[-*+]\s+", line) for line in lines):
+        return "\n".join(re.sub(r"^[-*+]\s+", "", line) for line in lines)
+    ordered = [re.match(r"^(\d+)([.)、])\s+(.*)$", line) for line in lines]
+    if ordered and all(ordered):
+        numbers = [int(m[1]) for m in ordered if m]
+        if numbers == list(range(1, len(lines) + 1)) and all(
+            m[2] in (".", "、") for m in ordered if m
+        ):
+            return "\n".join(m[3] for m in ordered if m)
+    return block
 
 
 def _norm_md_text(text: str) -> str:
     """非代码部分的 Markdown → 规范形（标记符号脱除）。"""
+    # 独立 Markdown 图片会渲染可见 figcaption，内嵌图片则仅有 alt；两者不能一概删字。
+    text = "\n".join(
+        line.strip()[2 : line.strip().index("]")] if _MD_IMG_RE.fullmatch(line.strip()) else line
+        for line in text.splitlines()
+    )
     text = _MD_HEADING_ID_RE.sub(r"\1", text)  # 标题行尾 id 属性（渲染后不印出）
     text = _MD_ANCHOR_INLINE_RE.sub("", text)  # 内联锚点（渲染为 <a id>，无文字）
     text = _MD_EMPTY_ATTR_RE.sub("", text)  # 空属性块 {[]}（渲染时丢弃）
-    text = re.sub(r"(?m)^\s{0,3}(?:[-*+]|\d+[.)])\s+", "", text)  # 列表标记
     text = re.sub(r"(?m)^#{1,6}\s+", "", text)  # 标题标记
     text = _MD_BOLD_RE.sub(r"\1", text)  # 粗体标记（配对才脱）
     text = _MD_ITALIC_RE.sub(r"\1", text)  # 斜体标记（配对才脱）
@@ -103,8 +148,6 @@ _MD_EMPTY_ATTR_RE = re.compile(r"\{[ \t]*\[[ \t]*\][ \t]*\}")
 _MD_HEADING_ID_RE = re.compile(r"(?m)^(#{1,6}[^\n]*?)\s*\{#[\w:.-]+\}\s*$")
 # 与构建器 `build/html.py::_ESCAPED_PUNCT_RE` 同集：pandoc 反斜杠转义
 _MD_ESCAPED_PUNCT_RE = re.compile(r"\\([!\"#$%&'()*+,\-./:;<=>?@\[\\\]^_`{|}~])")
-# 行内代码跨度：内容原样保留（构建器把它单独保护，不受强调/转义规则影响）
-_MD_CODE_SPAN_RE = re.compile(r"`([^`]+)`")
 # 粗体/斜体：只脱**配对**标记（裸 `_` 与裸反引号是字面量，不能连坐删除）
 _MD_BOLD_RE = re.compile(r"\*\*((?:[^*]|\\\*)+)\*\*")
 _MD_ITALIC_RE = re.compile(r"(?<!\*)\*([^*]+)\*(?!\*)")
@@ -345,8 +388,16 @@ def audit_notes_epub(
         else:
             expected_md = str((note_by_id.get(nid) or {}).get("source_markdown") or "")
         expected = _norm_md(expected_md)
-        actual = _norm_html(aside[1])
-        if expected and expected not in actual:
+        # 仅移除渲染器添加的首个显示号和语义回链；不能用子串包含放过附加正文。
+        body = re.sub(r"^\s*<p>\[\d+\]</p>", "", aside[1], count=1)
+        body = re.sub(
+            r"<a\b[^>]*>.*?</a>",
+            lambda m: "" if _attrs(m.group(0)).get("epub:type") == "backlink" else m.group(0),
+            body,
+            flags=re.DOTALL | re.IGNORECASE,
+        )
+        actual = _norm_html(body)
+        if actual != expected:
             result.add(
                 "E_NOTES_CONTENT_MISMATCH",
                 f"注文 {nid} 的成品内容与登记文本不符（疑错配/截断）",

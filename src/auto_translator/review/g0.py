@@ -295,6 +295,7 @@ def _language_prose(src: str) -> str:
     for kind, chunk in markdown_chunks(src or ""):
         if kind != "text":
             continue  # 代码是必须保真的字面量，不是待译正文
+        chunk = "".join(part for code, part in inline_code_chunks(chunk) if not code)
         for line in chunk.splitlines():
             if _HEADING_LINE.match(line):
                 continue  # 只剔除标题行，不豁免同块的后续正文
@@ -309,10 +310,15 @@ def language_identical(src: str, tgt: str, *, target_language: str = "zh-CN") ->
     s = _norm_ws(src)
     if not s or s != _norm_ws(tgt) or len(s) < LANGUAGE_MIN_CHARS:
         return False
-    if target_language.lower().startswith("zh") and _CJK.search(tgt or ""):
-        return False
+    prose = _language_prose(src)
+    if target_language.lower().startswith("zh"):
+        # 家具中的汉字不能豁免正文；少量汉字同样不能掩盖整段未译的外语。
+        letters = [c for c in prose if c.isalpha()]
+        cjk = len(_CJK.findall(prose))
+        if letters and cjk / len(letters) >= 0.5:
+            return False
     # 纯页码/页眉类（无字母的短行）不在门内
-    return any(char.isalpha() for char in _language_prose(src))
+    return any(char.isalpha() for char in prose)
 
 
 # ── 交付审计（S1.1）：translation md ↔ align tgt 全文一致性 ────────────────

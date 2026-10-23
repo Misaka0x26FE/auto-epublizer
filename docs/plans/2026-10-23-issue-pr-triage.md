@@ -46,15 +46,15 @@
 
 ### A. 优先：PR59 的独立合并审查
 
-- [ ] **A1 固定审查环境与实际基线**（无前置依赖；小）：在批准沙箱建立隔离 checkout，固定 base/head、确认导入路径确为该 checkout；读取全部 diff、测试和相关文档。
+- [x] **A1 固定审查环境与实际基线**（无前置依赖；小）：在批准沙箱建立隔离 checkout，固定 base/head、确认导入路径确为该 checkout；读取全部 diff、测试和相关文档。
   验收：不覆盖作者历史或本地工作；记录 Python/uv/工具和准确 SHA；作者测试数字与本机证据分栏。
-- [ ] **A2 #54 硬门与时效链**（依赖 A1；中）：源码入口 `review/g0.py`、`qa/report.py`、`qa/artifacts.py`、`cli.py`；G0 参数传递相关调用位于 orchestrator。
+- [x] **A2 #54 硬门与时效链**（依赖 A1；中）：源码入口 `review/g0.py`、`qa/report.py`、`qa/artifacts.py`、`cli.py`；G0 参数传递相关调用位于 orchestrator。
   验收：复制正文、Unicode、标题后正文、内嵌注码、空译、严重短译均有正负例；import 失败退出非零、QA 拒绝错误放行；源语言=目标语言/代码/合法体例不误挡；改豁免、依据或 nav 使旧报告 stale。
   验证：`test_t12_gates.py`、`test_field_quality_followup.py`、`test_artifacts_digest.py`、`test_cli.py`；必要时按不变量再拆小任务，不一次改多门。
-- [ ] **A3 #56 注号与宿主**（依赖 A1；中）：`orchestrator.py` 的注释上下文装配、`qa/notes_audit.py`、`tests/test_notes.py`。
+- [x] **A3 #56 注号与宿主**（依赖 A1；中）：`orchestrator.py` 的注释上下文装配、`qa/notes_audit.py`、`tests/test_notes.py`。
   验收：原印号与稳定 ID 分离；混合符号/数字注号不碰撞；孤注只能按可核证位置归位，未知不能假装已知；实体/代码/强调规范化不接受截短注文；缺登记和损坏 JSON 不静默跳过。
   验证：新最小反例先失败，再修复；检查实际 noteref/aside/href/backlink 和完整注文，不只断言计数相等。
-- [ ] **A4 #55 与导航独立审计**（依赖 A1；中，图像与导航可分两次实施）：`qa/audit.py`、`build/__init__.py` 及现有 provenance 消费者。
+- [x] **A4 #55 与导航独立审计**（依赖 A1；中，图像与导航可分两次实施）：`qa/audit.py`、`build/__init__.py` 及现有 provenance 消费者。
   验收：多 figure、空 alt、同字节多路径准确定位；合法纯数字图号不误挡；nav=no 保正文且不掩盖其他目录缺失；NCX plain label 保留真实目标锚点。
   验证：实际构建并篡改小型 EPUB，独立解析 XML；资源门继续拒绝包外/越界资源。
 - [ ] **A5 集成与合并建议**（依赖 A2–A4）：全套 pytest、Ruff、format、i18n 和真实无桌面 CLI/EPUBCheck 正负 smoke。
@@ -95,6 +95,8 @@
 
 ## 4. PR59 静态审查候选（尚未执行反例）
 
+下列为原始候选，实际复现与处置见 §6；保留发现轨迹，不把原候选本身当结论。
+
 1. `_display_number` 仅逐次填 used_numbers，未先保留全部原印数字号：符号注先分配 1、后遇原印 1，可能显示重号；`01` 与 `1` 的字符串唯一性也不等于显示整数唯一性。需验证实际渲染与语义。
 2. 孤注宿主仍有 `host_unit or entries[0]` 回退，且 scope 可能先于 source_locations；与 #56 “只依据自身有效位置、不猜”验收存在张力。需测试位置缺失/冲突，不直接猜选一章。
 3. `_CAPTION_FILENAME_SLUG` 可匹配纯数字，例如 `1`/`1955`；与 #55 “数字图号不误报”可能冲突。需构建真实图注反例后决定最窄判据。
@@ -109,3 +111,18 @@
 - 文档中英正文先实质同步，再 finalize 及 `--check`/`--links`；历史计划按仓库约定仅中文。
 - 工具缺失、外部源缺失、未执行语义审校分别记录，不以 unknown 充 pass，不把 skip 算验收完成。
 - 计划/issue 状态只按实际完成证据回写；真实书验收未完成时 #41/#57/#58 及相关私有任务继续保留明确边界。
+
+## 6. A 批实施与独立审查记录
+
+- 隔离目录 `/tmp/opencode/aep-triage-20261023`，分支 `fix/issue-triage-20261023` 基于投稿 head `9e57d9f`；合并本地计划提交 `7dd9d1c`，保留投稿者所有原提交，不重写历史。
+- 复用主 checkout 虚拟环境，但所有运行显式 `PYTHONPATH=src`；已实查 `auto_epublizer` / `auto_translator` 导入来自隔离目录。实际 Python **3.13.14**，不是推测为 3.12。
+- OCR delegate preview/rule（无 LLM 调用）选择 9 个生产文件；本 agent 已审查这 **9/9**，无跳过；另手工审阅工具因类型/默认路径排除的 15 个文档和 5 个测试文件，即 PR 共 **29/29** diff，未委托子 agent。
+- `tests/test_pr59_review.py` 首轮 **12 failed / 1 passed**：数字图号误挡、符号号占用后遇数字号碰撞、`01`/`1` 显示碰撞、`²` 触发 int 异常、孤注优先 scope 导致错章/无位置回书首、字面代码误触登记、中文标题掩盖复制正文、inline code 被严重短译门计数。
+- 追加 **4 failed**：成品注文多出伪造正文仍被子串包含放过；源/目标语言和出版标题改变不使报告失效。最后补测 **1 failed**：同名注册 ref 在 fenced/inline code 中也被替换，成品出现重复引用 ID。
+- 修复：预留全作用域数字号、登记拒绝规范化重号、decimal 与符号分开；孤注来源单元优先，未知宿主拒绝构建；标记提取/替换尊重代码边界；纯数字图号不作为文件名证据；语言门基于去家具/代码后的正文；摘要纳入元数据；注文去真正显示号/回链后完整规范化相等，独立图片可见图注同口径保留。
+- 截短注文反例原本即被拒绝，未冒充新修复。新增导航消费者验证：nav=no 仍有 spine/正文且结构门通过，移除另一合法入口仍拒绝通过。
+- 完整相等审计的合法负对照追加 **4 failed**（blockquote、fenced code、多反引号行内代码、非连续原印列表号）；修正独立 Markdown 文字提取，而非改回子串包含。相关 notes/render/media/PR59 组 **113 passed**。
+- 分组验证：首次修复后 **209 passed**；代码标记替换与真实 nav 负例补修后，PR59/notes/build/review/i18n 相关组 **173 passed**。Ruff check 通过；format-check 发现新增长行后需格式化，最终结果见后续记录。
+- 第一轮全套 **869 passed / 1 skipped，445.76 秒**（最后补加代码渲染/nav 测试之前）；此前 120 秒基线运行超时，不能写成通过。最终代码全套仍须在 A5/ship 回填。
+- 真实无桌面 CLI：通过 init→notes register→meta→import --reviewed→g0→build→qa→status；EPUBCheck **5.2.1** 实跑返回 0、零 error、g4=pass、released=true/ok、stale=false。给同一成品注文追加伪造文字后，qa 为 released=false/notes_open，定位 `E_NOTES_CONTENT_MISMATCH`。合成现场位于 `/tmp/opencode/aep-cli-smoke-ylo5mcsi`；非真实书或阅读器验收。
+- 所有 A 改动同步 notes/translation/qa 与 SKILL 路由中英文；i18n check/links 均 OK。B 的机器接口矩阵正在另批整理。

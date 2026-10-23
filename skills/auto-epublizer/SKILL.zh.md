@@ -65,7 +65,7 @@ CLI 无法探测），据此选 ingest 路由（见 `references/ingest.md`）。
 | 四层结构归类、清洗、页眉页脚/页码剔除、溯源 | `references/structure.md` |
 | 分层理解、术语播种、语言/体裁检测 | `references/analysis.md` |
 | 切片翻译、纯标题空 align、`unit,source,reason` 术语豁免及三入口 advisory | `references/translation.md` |
-| 注释结构化与绑定、稳定 ref、上标/OCR 取证边界 | `references/notes.md` |
+| 注释结构化与绑定、稳定 ref、注号碰撞/孤注宿主、完整注文与代码字面量边界 | `references/notes.md` |
 | 六道关 QC（G0–G5）、blocking/advisory 处理 | `references/review.md` |
 | 交付前全量校验（qa 之后、交付之前，强制） | `references/delivery.zh.md` |
 | 证据范围、审计诚实性、索引/结构批量修复工具的安全契约（自己写审计或批量修复脚本前必读） | `references/quality-evidence.zh.md` |

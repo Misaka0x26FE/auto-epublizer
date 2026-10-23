@@ -142,7 +142,11 @@ def _substitute_note_markers(
             f'id="{rid}" href="{escape(href, quote=True)}">[{r.number}]</a></sup>'
         )
 
-    return _NOTE_MARKER_RE.sub(_sub, xhtml)
+    # 只替换文本节点；代码样例与标签属性中的同名字符串不是正文引用。
+    parts = re.split(r"(<code\b[^>]*>.*?</code>|<[^>]+>)", xhtml, flags=re.DOTALL | re.IGNORECASE)
+    return "".join(
+        part if i % 2 else _NOTE_MARKER_RE.sub(_sub, part) for i, part in enumerate(parts)
+    )
 
 
 def _render_notes_section(items: list[NoteItem]) -> str:

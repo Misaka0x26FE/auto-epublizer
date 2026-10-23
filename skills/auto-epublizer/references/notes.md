@@ -1,4 +1,4 @@
-<!-- i18n: source=notes.zh.md sha256=af457b246a443456c88f879c8d9d30438ebdd50c2d1d9381178c03ae15e511fc -->
+<!-- i18n: source=notes.zh.md sha256=7d8185f3a4ec910fbc258cf9433405a46318be86101ffd505976749988398f91 -->
 > **English** | [中文](notes.zh.md)
 
 # Note Structuring and Binding (phase N)
@@ -77,14 +77,21 @@ has notes but zero semantic nodes, has partial omissions, or mismatches content.
    deterministically per scope (same number inside a scope is legal, one note keeps one
    number). Renumbering by reference order would shift every later note up by one whenever
    the original has a gap or an uncited note, breaking the match with the printed book. A note
-   that is never referenced is hosted in **its own source unit** (when the scope id is not a
-   unit) or in the unit matching the scope — never in the first unit of the book. If the
+   that is never referenced uses **its own source-location unit** first, then a valid scope
+   unit only if no location unit exists; without either, building fails rather than guessing
+   the first chapter. Symbol-number allocation reserves all printed numeric labels in the scope;
+   normalized collisions such as `01`/`1` are rejected at registration pending source review.
+   Markers inside fenced or inline code are literals, not registration requirements. If the
    build finds an unregistered marker or a reference that did not make it into
    the product, it errors out and **never drops it silently**.
 
 9. **`qa`** (product gate): independently parses the final XHTML and reconciles reference
    anchors/href/aside/backlinks/content item by item; `released_reason=notes_open` blocks
    release; tampering/omission/mismatch are located to a concrete `ref_id`/`note_id`.
+   After removing the actual display label and semantic backlinks, normalized note content
+   must match completely; neither added prose nor truncated substrings pass. Visible
+   figcaptions of standalone images participate in text comparison; media resources are
+   still checked independently.
 
 ## JSON contract (N2)
 
