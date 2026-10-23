@@ -118,6 +118,14 @@ def test_registered_note_does_not_rewrite_same_marker_inside_code() -> None:
     assert body.count("[^ref-000001]") == 2
 
 
+@pytest.mark.parametrize("data", [{}, {"inventory": "present", "notes": []}])
+def test_invalid_but_parseable_note_inventory_is_not_absence(tmp_path: Path, data: dict) -> None:
+    store = _workspace(tmp_path)
+    (store.structured_dir / "notes.json").write_text(json.dumps(data))
+    with pytest.raises(orch.OrchestrationError, match="源注文|登记"):
+        orch.build(store)
+
+
 def test_nav_exclusion_keeps_spine_and_does_not_hide_other_missing_entries(tmp_path: Path) -> None:
     import re
 

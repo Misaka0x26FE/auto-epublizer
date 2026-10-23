@@ -999,11 +999,18 @@ def _assert_no_unregistered_notes(store: RunStore, pub: Any) -> None:
             data = notes_mod.read_notes_json(npath)
         except notes_mod.NotesError as exc:
             raise OrchestrationError(f"源注文清单不可读：{exc}") from exc
-        if data.get("inventory") == "present" and data.get("notes"):
+        if data.get("notes") or data.get("references"):
             raise OrchestrationError(
                 "structured/notes.json 有已核证的源注文，但 publication.json.notes 为空："
                 "须跑 notes register（注文门不得静默跳过）"
             )
+        errors = notes_mod.validate_source_notes(
+            data,
+            source_sha256=pub.meta.source_sha256,
+            unit_ids={u.id for u in pub.units},
+        )
+        if errors or data.get("inventory") != "none":
+            raise OrchestrationError("源注文清单未通过登记契约：" + "；".join(errors))
     for unit in pub.units:
         rel = (unit.meta or {}).get("rel_path")
         if not rel:

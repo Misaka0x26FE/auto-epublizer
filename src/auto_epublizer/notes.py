@@ -218,7 +218,7 @@ def validate_source_notes(
         scope = str(n.get("scope_id") or "")
         if not scope:
             errors.append(f"{where}.scope_id 不得为空（须经来源确认的章/节）")
-        label = str(n.get("source_label") or "")
+        label = str(n.get("source_label") or "").strip()
         if not label:
             errors.append(f"{where}.source_label 不得为空（原书显示号）")
         # 渲染数字号会转成整数；01/1、全角数字与 ASCII 不得变成同一显示号。
