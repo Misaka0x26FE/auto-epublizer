@@ -1,4 +1,4 @@
-<!-- i18n: source=workflow.zh.md sha256=047e8945d38b4f38246882c7295c7a3ea07bc0ab7209518e14c2dde2e532fdaa -->
+<!-- i18n: source=workflow.zh.md sha256=3073869712a30d5ed01db6156e7fbabfd549812cadd76cb79d6a0384f94dac21 -->
 > **English** | [中文](workflow.zh.md)
 
 # Workflow (stage routing + command overview)
@@ -223,6 +223,21 @@ auto-epublizer status --all [--json] [--workspace <work-root>]
 # cross-book ledger (markdown): machine-recomputable columns + blank domain/summary to fill
 auto-epublizer ledger [-o <ledger.md>] [--workspace <work-root>]
 ```
+
+## Machine-interface boundaries (#50)
+
+Not every command supports `--json`; do not append it mechanically to arbitrary commands:
+
+| Command | Machine-readable interface |
+|---|---|
+| `doctor`, `status` (including `--all`), `notes status`, `knowledge status` | Explicit `--json`; parse stdout as JSON |
+| `qa` | Read workspace `report.json`, then check freshness with `status --json`; exit 0 means execution finished, not released |
+| `build`, `import`, `g0`, `meta` | Follow actual help, reject nonzero exits, then read applicable state through `status --json` / `report.json`; rerun QA after later edits |
+| `ledger` | Markdown; use `-o` for a file and `status --all --json` for progress decisions, not colored summaries |
+
+`publication.json` is read-only state evidence for agents, not a manual state-advancement
+interface. `report.json` establishes machine contracts only for its bound inputs; verify
+freshness and scope. Successful execution does not prove semantic acceptance.
 
 ## State machine and `status --json`
 

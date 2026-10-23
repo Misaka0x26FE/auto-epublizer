@@ -21,6 +21,9 @@ clean 后才 fetch/只快进；错误分支/来源或 ahead/divergent 就停止�
 2. **源身份以 `publication.json.meta.source_sha256` 为准**，不认文件名。
 3. `workspaces/<slug>/source/` 只读；`publication.json` **禁止手编**（状态只经 CLI 命令推进）。
 4. **数字一律重算**：单元数/词数/进度由 `status --all` / `ledger` 生成，禁止手维护。
+5. **机器接口按命令能力选**：`doctor`/`status`（含 `--all`）/`notes status`/`knowledge status`
+   支持 `--json`；`qa` 后读 `report.json` 并用 `status --json` 核时效。`build`/`qa`/`ledger`/
+   `g0`/`import`/`meta` 不可盲加 `--json`；不解析彩色摘要。退出 0 不等于 `released=true`。
 
 ## 流转
 

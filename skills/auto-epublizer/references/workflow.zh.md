@@ -197,6 +197,20 @@ auto-epublizer status --all [--json] [--workspace <work-root>]
 auto-epublizer ledger [-o <ledger.md>] [--workspace <work-root>]
 ```
 
+## 机器接口边界（#50）
+
+不是所有命令都有 `--json`，不要把该选项机械追加到任意子命令：
+
+| 命令 | 机器读取方式 |
+|---|---|
+| `doctor`、`status`（含 `--all`）、`notes status`、`knowledge status` | 显式 `--json`，stdout 解析 JSON |
+| `qa` | 运行后读工作区 `report.json`，再用 `status --json` 确认报告未 stale；退出 0 仅表示执行结束，不代表 released |
+| `build`、`import`、`g0`、`meta` | 按真实帮助调用；检查非零退出码，再通过 `status --json` / `report.json` 读取适用状态；后续修改后重跑 QA |
+| `ledger` | Markdown，需文件时用 `-o`；进度机器决策用 `status --all --json`，不解析彩色摘要 |
+
+`publication.json` 是只读状态依据，不是给 agent 手工推进状态的接口。`report.json` 只代表
+其绑定输入的机械门禁，必须同时核时效和适用范围；代码执行成功不证明语义验收完成。
+
 ## 状态机与 `status --json`
 
 单元状态机：`pending → split → analyzed → translated → aligned → reviewed → built`。

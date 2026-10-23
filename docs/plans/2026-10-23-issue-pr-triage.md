@@ -57,7 +57,7 @@
 - [x] **A4 #55 与导航独立审计**（依赖 A1；中，图像与导航可分两次实施）：`qa/audit.py`、`build/__init__.py` 及现有 provenance 消费者。
   验收：多 figure、空 alt、同字节多路径准确定位；合法纯数字图号不误挡；nav=no 保正文且不掩盖其他目录缺失；NCX plain label 保留真实目标锚点。
   验证：实际构建并篡改小型 EPUB，独立解析 XML；资源门继续拒绝包外/越界资源。
-- [ ] **A5 集成与合并建议**（依赖 A2–A4）：全套 pytest、Ruff、format、i18n 和真实无桌面 CLI/EPUBCheck 正负 smoke。
+- [x] **A5 集成与合并建议**（依赖 A2–A4）：全套 pytest、Ruff、format、i18n 和真实无桌面 CLI/EPUBCheck 正负 smoke。
   验收：记录实跑命令、退出码、跳过原因和未验证项；保留投稿者提交，先提交审查结论，不自动合并或关闭 #54–#56。
 
 **检查点 A**：每个发现有输入、实际行为、预期和最小修复；只有 diff 推论的条目仍标待复现。
@@ -65,9 +65,9 @@
 
 ### B. 清理历史状态与最小接口纠偏
 
-- [ ] **B1 #33–#40 / #41 证据对账**（可在 A 之后；小批逐条）：复用既有完成记录和相应测试；#34/#37 的真实书条件独立保留。
+- [x] **B1 #33–#40 / #41 证据对账**（可在 A 之后；小批逐条）：复用既有完成记录和相应测试；#34/#37 的真实书条件独立保留。
   验收：每条明确“代码完成/部分完成/待私有材料/产品决策”；只提出有证据的结单建议，不制造重复实现。
-- [ ] **B2 #50 命令能力矩阵**（无代码依赖；小）：核对 cli 帮助、work-root 模板和 workflow 说明。
+- [x] **B2 #50 命令能力矩阵**（无代码依赖；小）：核对 cli 帮助、work-root 模板和 workflow 说明。
   验收：调用示例均为实际支持命令；机器读取 status/doctor 的 --json 或 report 等既有权威产物，禁用对彩色摘要的决策解析；不直接写 publication 状态。
   验证：离线 CLI help/示例回归和 i18n/link 检查。若用户选择给 qa/ledger 增 --json，先定字段、stdout/stderr 和失败退出码，再单独实现。
 
@@ -126,3 +126,46 @@
 - 第一轮全套 **869 passed / 1 skipped，445.76 秒**（最后补加代码渲染/nav 测试之前）；此前 120 秒基线运行超时，不能写成通过。最终代码全套仍须在 A5/ship 回填。
 - 真实无桌面 CLI：通过 init→notes register→meta→import --reviewed→g0→build→qa→status；EPUBCheck **5.2.1** 实跑返回 0、零 error、g4=pass、released=true/ok、stale=false。给同一成品注文追加伪造文字后，qa 为 released=false/notes_open，定位 `E_NOTES_CONTENT_MISMATCH`。合成现场位于 `/tmp/opencode/aep-cli-smoke-ylo5mcsi`；非真实书或阅读器验收。
 - 所有 A 改动同步 notes/translation/qa 与 SKILL 路由中英文；i18n check/links 均 OK。B 的机器接口矩阵正在另批整理。
+- 最终 A 全套 **875 passed / 1 skipped，326.88 秒**；唯一跳过 `test_processing_tools.py:70` 需要真实 RapidOCR，本机 doctor 明确该工具不可用。Ruff check/format 均通过（332 文件）；不把 OCR 跳过算成功。
+- 后续补充语法合法但契约破损的 notes.json（`{}` / present+空 notes）两例 **2 failed**，修成必须通过源清单契约，不能当无注；相关 PR59/T12/notes/i18n **128 passed**。补修将随最终 ship 全套再次复验；不回退此前已完成项。
+- A 主要补修保存点为 `8fd76d3`；保留 PR59 投稿历史。只在本地隔离分支集成，尚未远端关闭条目或覆盖真实工作区。
+
+## 7. B 批证据对账（不远端结单）
+
+`tests/test_import.py`、`test_status_all.py`、`test_glossary.py`、`test_review.py`、
+`test_licensing.py`、`test_cli_contract.py`、`test_work_root_tools.py` 本轮合计 **129 passed**。
+不是重新实现历史功能，而是核实已完成代码与开放 issue 的差距。
+
+| 条目 | 当前可核验证据 | 剩余与结单建议 |
+|---|---|---|
+| #33 | stdout/-o 单行 ledger、工具树模板排除和合法 template 名工作区回归通过 | 工具缺陷可建议结单；不把历史用户文件损坏追认为已修复 |
+| #34 | 上标/括号候选、缺号疑点和数字负例通过，语义引用门另有 notes 测试 | 特定原书源侧 45% 数字口径不当作本轮实测；私有验收缺材料仍开放跟踪 |
+| #35 | 新增/当前 open 分离、历史 resolved 与重复导入回归通过 | 工具部分可建议结单；保留追加账本，不要求重裁 resolved |
+| #36 | utf-8-sig/BOM 等价、显式 --terms 缺文件写前失败、零条可见回归通过 | 工具部分可建议结单；cwd-relative 路径契约保持，不实现含糊 fallback |
+| #37 | notes 登记/导入/成品门及 A 的漏门补修验证 | 代码不等于历史书迁移；登记集合外源漏注继续由 #58/私有源清点处理 |
+| #38 | 既有版面候选正负例已在 A 首轮全套通过 | 仍为 advisory，不采纳所有缺句号一律 error；全范围来源/残留证据由 D 接续 |
+| #39 | min_src_chars、空译独立、三个 G0 调用链阈值回归通过 | 代码降噪已实现；A 的严重短译门是额外核证入口，不整体升格比例阈值 |
+| #40 | 当前全源码许可头、SPDX/构建身份测试通过；有效制作指纹见既有 fingerprint 测试 | 代码部分已实现；不加遥测、不作法律保证，PyPI 发布不在本轮默认执行 |
+| #41 | 本地旧计划已有实施记录，新计划分批记录当轮证据 | 线上正文旧快照不能代表现状；保留总体单与真实书待办，缺认证不冒充已回填远端 |
+| #50 | CliRunner 实际 --help 核对 10 条：doctor/status/notes status/knowledge status 有 --json，其余 qa/build/ledger/g0/import/meta 没有 | 选文档方案：workflow 中英与工作根模板明确机器接口矩阵，不强行增加 CLI 参数或解析彩色输出 |
+
+`qa` 退出 0 仅表示执行结束，不代表 released；机器读 report.json 并核 status 的 fresh/stale。
+这一区分在模板和中英 workflow 中明确，且不授权 agent 手编 publication 状态。
+
+## 8. 后续接口实现决策（实现前固定）
+
+- C 参考分支已定位：投稿 `6a65147`（元数据/声明）与 `eae80c0`（导航），基线 `2d84670`。
+  保留作者提交后在当前主线复核，不盲套旧 provenance 的 basename/正则匹配。
+  新增生成模型字段只接受公开署名字段，不采集密钥或机器路径；`None` 与 `[]` 的显示
+  必须有明确区别，元数据变更沿用 A 已补的摘要失效链。
+- D1 拟扩展现有 `evidence` 命令组：只读 JSON 报告，不覆写 report/state/events；逐项
+  `pass/fail/unknown/manual`，输入摘要、规则版本、scope 与样本分母齐全。外部 sources
+  未给出记 unknown，源目录结构/译名/源页可读性保持 manual，不用启发式出语义通过。
+- D2 只导出当前真实可得的 raw 页/块坐标、字体、已有 column 和源 TOC；无坐标或栏号
+  明确 null，不伪造。候选关联返回全部匹配或歧义，不静默选第一条；相邻页须记录两端页号，
+  缺页不冒充连续页。残留扫描覆盖语义注文和后置区，代码字面量继续排除。
+- D3 采用显式修复计划，而不是索引音译器：精确旧/新字符串、文件基线哈希、单元及源证据、
+  逐项批准、规则版本；禁止正则全局替换和修改 source/publication。默认 dry-run 完全只读。
+  实际应用先生成全量候选并验证，再创建持久备份与事务日志；捕获写失败全量回滚。
+  强制中断若留下未决日志，CLI 必须拒绝继续正常处理，显式 recovery 在验证当前文件仍为
+  计划旧/新版本后恢复备份；有他人新改动则拒绝覆盖。不得宣称多文件瞬时原子可见。
