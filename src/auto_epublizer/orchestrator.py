@@ -619,6 +619,20 @@ def quality_evidence(
     )
 
 
+def repair_apply(store: RunStore, plan: dict[str, Any], *, apply: bool = False) -> dict[str, Any]:
+    """路由显式批准修复；默认只读。"""
+    from .safe_repair import apply_plan
+
+    return apply_plan(store, plan, apply=apply)
+
+
+def repair_recover(store: RunStore) -> dict[str, Any]:
+    """路由未决事务恢复。"""
+    from .safe_repair import recover
+
+    return recover(store)
+
+
 def source_evidence(store: RunStore) -> dict[str, Any]:
     """只读导出页/栏/块、源 TOC 与源注候选定位。"""
     from .preprocess.source_evidence import collect_source_evidence

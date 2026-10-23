@@ -22,6 +22,8 @@ console = Console()
 # 证据导出子命令组（确定性、零 token）
 evidence_app = typer.Typer(help="证据导出（确定性、零 token）")
 app.add_typer(evidence_app, name="evidence")
+repair_app = typer.Typer(help="显式批准的精确修复（默认只读预检）")
+app.add_typer(repair_app, name="repair")
 
 # 注释结构化与绑定子命令组（N 阶段：候选盘点 / 登记 / 状态，确定性）
 notes_app = typer.Typer(help="注释结构化与绑定（候选盘点 / 登记 / 状态）")
@@ -67,12 +69,19 @@ def _find_workspace(base: Path) -> Path:
     return candidates[0].parent
 
 
-def _store_from(workspace: str | None, cfg) -> RunStore:
+def _store_from(workspace: str | None, cfg, *, recovery: bool = False) -> RunStore:
     base = Path(workspace) if workspace else Path(cfg.paths.workspaces_dir)
     ws = _find_workspace(base)
     store = RunStore(ws)
     if not store.exists():
         raise typer.BadParameter(f"工作区未初始化：{ws}")
+    if not recovery:
+        from .safe_repair import assert_no_pending
+
+        try:
+            assert_no_pending(store)
+        except (ValueError, OSError) as exc:
+            raise typer.BadParameter(str(exc)) from None
     return store
 
 
@@ -219,6 +228,40 @@ def work_root(
     console.print(f"[green]长期工作区已生成：[/green]{result['dir']}")
     console.print(f"  新建 {len(result['created'])} 项；跳过 {len(result['skipped'])} 项")
     console.print(f"  各组件功能与用法见 {result['dir']}/README.md（下一步把待处理源放入 inbox/）")
+
+
+@repair_app.command("apply")
+def repair_apply_cmd(
+    plan: str = typer.Argument(..., help="逐项批准的精确替换 JSON 计划"),
+    workspace: str | None = typer.Option(None, "--workspace", help="工作区目录"),
+    apply: bool = typer.Option(False, "--apply", help="实际写入；默认只读 dry-run"),
+    config: str | None = typer.Option(None, "--config", help="配置文件路径"),
+) -> None:
+    """整组预检后才可写入；不自动推进出版状态。"""
+    store = _store_from(workspace, load_config(config or _CONFIG_PATH))
+    try:
+        data = orch.repair_apply(
+            store, json.loads(Path(plan).read_text(encoding="utf-8")), apply=apply
+        )
+    except (ValueError, OSError) as exc:
+        console.print(f"修复失败：{exc}")
+        raise typer.Exit(1) from None
+    _emit_json(json.dumps(data, ensure_ascii=False, indent=2))
+
+
+@repair_app.command("recover")
+def repair_recover_cmd(
+    workspace: str | None = typer.Option(None, "--workspace", help="工作区目录"),
+    config: str | None = typer.Option(None, "--config", help="配置文件路径"),
+) -> None:
+    """显式回滚未决修复；他人新改动一律拒绝覆盖。"""
+    store = _store_from(workspace, load_config(config or _CONFIG_PATH), recovery=True)
+    try:
+        data = orch.repair_recover(store)
+    except (ValueError, OSError) as exc:
+        console.print(f"恢复失败：{exc}")
+        raise typer.Exit(1) from None
+    _emit_json(json.dumps(data, ensure_ascii=False, indent=2))
 
 
 @evidence_app.command("source")

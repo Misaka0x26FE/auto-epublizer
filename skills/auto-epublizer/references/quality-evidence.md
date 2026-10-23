@@ -1,4 +1,4 @@
-<!-- i18n: source=quality-evidence.zh.md sha256=8948a0a51b0a841c40968872089cccdf7ec1874aac82c133f3b79c837c041cf1 -->
+<!-- i18n: source=quality-evidence.zh.md sha256=eadad71e143e1a2608668b8273526fa67a88f291cdfe5ab8ccab5cec91c5d282 -->
 > **English** | [中文](quality-evidence.zh.md)
 
 # Evidence and safe-repair contract
@@ -61,6 +61,54 @@ spelling for lookup. A filled mapping or the presence of Chinese is not semantic
 Transliteration, aliases and source errata remain agent decisions, never automatic judgements.
 
 ## 3. Minimum repair-tool contract
+
+### Implemented exact-repair interface
+
+```bash
+auto-epublizer repair apply approved.json --workspace <dir>          # read-only preflight
+auto-epublizer repair apply approved.json --workspace <dir> --apply  # explicit writes
+auto-epublizer repair recover --workspace <dir>                     # roll back pending group
+```
+
+Success emits JSON; failure exits 1. Unknown fields are rejected. Plan shape (use actual SHA-256):
+
+```json
+{
+  "schema_version": "1", "rule_version": "safe-repair-1",
+  "source_sha256": "<registered and actual source SHA-256>",
+  "edits": [{
+    "unit": "ch01", "path": "translation/body/ch01.md",
+    "sha256": "<original file SHA-256>",
+    "old": "旧译名", "new": "新译名", "approved": true,
+    "evidence": {"path": "source/book.pdf", "sha256": "<evidence SHA-256>", "page": 7}
+  }]
+}
+```
+
+Targets are limited to registered units' structured/translation Markdown and translation/align
+JSONL, never source, publication, glossary/manual tables or EPUB. Each file permits one
+nonempty unique exact replacement; for multiple edits first create one unique larger literal
+manually, never a global regex. Translation candidates must have consistent md/align.
+In-memory group preflight checks source fidelity, alignment completeness and md/align drift,
+conservatively protecting note/insert markers, links, numbers, code and heading levels;
+existing Latin words cannot be removed. Legitimate edits outside these limits need independent
+handling and audit, not weaker checks. Evidence page numbers record approval grounds, not
+proof that the tool read the source page.
+
+Before writes, all old/new bytes and hashes are persisted in
+`preprocessing/repair-transactions/<plan-sha256>.json`, then files are replaced individually.
+Files and directory entries are fsynced before applied is recorded. Ordinary write failures
+roll back the group; forced interruption leaves pending. Normal workspace CLI commands
+refuse pending transactions; explicit recover first prechecks the entire group against
+old/new versions. Third-party changes or bad backups reject recovery without overwriting.
+Retain logs; never delete them to bypass guards. Replaying an applied plan checks target
+versions and returns already_applied. Locks only coordinate cooperating processes, not
+arbitrary editors; multi-file visibility is not instantaneously atomic. Windows lacks POSIX
+directory fsync.
+
+This does not advance publication state or patch EPUB files. After applying, re-run import
+(`--force` for reviewed/built units) or notes register/restructure as applicable, then build,
+qa and independent delivery audit.
 
 1. Each plan item identifies unit/source location, exact old/new text, evidence file/pages,
    approval state, original file SHA-256 and tool/rule version. Candidates are not approvals.

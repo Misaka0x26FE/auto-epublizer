@@ -68,7 +68,7 @@ CLI 无法探测），据此选 ingest 路由（见 `references/ingest.md`）。
 | 注释结构化与绑定、稳定 ref、注号碰撞/孤注宿主、完整注文与代码字面量边界 | `references/notes.md` |
 | 六道关 QC（G0–G5）、blocking/advisory 处理 | `references/review.md` |
 | 交付前全量校验（qa 之后、交付之前，强制） | `references/delivery.zh.md` |
-| `evidence report/source --json` 只读对账与页栏定位、证据范围及批量修复安全契约 | `references/quality-evidence.zh.md` |
+| `evidence report/source --json` 只读证据；`repair apply/recover` 批准修复及未决恢复 | `references/quality-evidence.zh.md` |
 | EPUB 封装、代码/raw HTML、SVG/媒体身份、软件指纹、制作页署名与 nav/NCX 入口 | `references/build.md` |
 | epubcheck + 解包审计、正文/注文独立对账、注释分段疑点 advisory、报告失效 | `references/qa.md` |
 | 文体档案（novel/academic/paper/poetry/newspaper）应用 | `references/style.md` |

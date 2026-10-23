@@ -45,6 +45,46 @@ raw/facts 未提供的信息不从文件名或字体阈值猜测；源注是否�
 
 ## 3. 修复工具的最低契约
 
+### 已实现的精确修复入口
+
+```bash
+auto-epublizer repair apply approved.json --workspace <dir>          # 只读预检
+auto-epublizer repair apply approved.json --workspace <dir> --apply  # 明确写入
+auto-epublizer repair recover --workspace <dir>                     # 回滚未决组
+```
+
+三个入口成功输出 JSON、失败退出 1。计划严格拒绝未知列，结构如下（摘要必须是真实 SHA-256）：
+
+```json
+{
+  "schema_version": "1", "rule_version": "safe-repair-1",
+  "source_sha256": "<registered and actual source SHA-256>",
+  "edits": [{
+    "unit": "ch01", "path": "translation/body/ch01.md",
+    "sha256": "<original file SHA-256>",
+    "old": "旧译名", "new": "新译名", "approved": true,
+    "evidence": {"path": "source/book.pdf", "sha256": "<evidence SHA-256>", "page": 7}
+  }]
+}
+```
+
+目标仅限当前单元登记的 structured/translation Markdown 及 translation/align JSONL；
+不接收 source、publication、术语/人工表或 EPUB。每文件一条非空、唯一精确替换，
+多处修改须先人工形成唯一的大字串，不做全局正则替换。译文须提交一致的 md/align。
+整组内存预检源保真、align 完整性和 md/align 漂移，保守保护注码、插入标记、链接、
+数字、代码及标题层级；原文拉丁词不得删除。合法但超出此边界的编辑需独立处理和审计，
+不放宽此工具来迁就。源证据页码只记录批准依据，不证明工具已阅读源页。
+
+实际写入先在 `preprocessing/repair-transactions/<plan-sha256>.json` 持久化全部旧/新字节
+及摘要，再逐件替换，文件及目录 fsync 后才登记 applied。普通写失败整组回滚；强制中断
+保留 pending。普通工作区 CLI 拒绝未决事务，只有显式 recover 可恢复；恢复先整组核验
+当前仅含旧/新版本，出现他人新改动或备份损坏则拒绝，绝不覆盖。保留日志，不手删绕过。
+已应用计划重跑核目标版本后返回 already_applied。锁仅协调遵守工作区锁的进程；不保证
+任意外部编辑器隔离，不声称多文件瞬时原子。Windows 不提供 POSIX 目录 fsync。
+
+入口不推进 publication 状态、不手补 EPUB。应用后按范围重新 import（已 reviewed/built
+用 --force）或 notes register/restructure，再 build、qa 及独立交付审计。
+
 1. 输入计划逐项含：单元/源位置、原字串、拟改字串、证据文件及页码、批准状态、
    原文件 SHA-256、工具/规则版本。机器候选和已批准条目分开。
 2. 不覆盖已有人工表。未知列、重复键、缺译、歧义、未批准项、基线变化明确拒绝，

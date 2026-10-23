@@ -7,7 +7,7 @@ metadata:
   suite: auto-epublizer
   workspace_model: publication.json
 ---
-<!-- i18n: source=SKILL.zh.md sha256=d4d41146c7dfcb2e23694a4cdbfcd24e3fa6e5630690af52adee2e848ab91488 -->
+<!-- i18n: source=SKILL.zh.md sha256=f7373240bf62278017ef3d282574aae98182b17556e5a5dcbf836ff05ec1a017 -->
 > **English** | [中文](SKILL.zh.md)
 
 # auto-epublizer
@@ -81,7 +81,7 @@ work-root rather than accidentally calling a global namesake. Read only the curr
 | Note structuring/binding, stable refs, label collisions/orphan hosts, complete notes and code-literal boundaries | `references/notes.md` |
 | Six-gate QC (G0–G5), blocking/advisory handling | `references/review.md` |
 | Pre-delivery full validation (after qa, before delivery; mandatory) | `references/delivery.md` |
-| `evidence report/source --json` read-only reconciliation and page/column locations, evidence scope and safe bulk-repair contracts | `references/quality-evidence.md` |
+| `evidence report/source --json` read-only evidence; `repair apply/recover` approved repairs and pending recovery | `references/quality-evidence.md` |
 | EPUB packaging, code/raw HTML, SVG/media identity, software fingerprint, production credits and nav/NCX entry | `references/build.md` |
 | epubcheck + unpack audit, independent body/note reconciliation, segmentation advisory, report invalidation | `references/qa.md` |
 | Genre profile (novel/academic/paper/poetry/newspaper) application | `references/style.md` |
