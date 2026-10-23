@@ -20,6 +20,7 @@ from auto_translator.translation.align import read_align
 
 from .build import slug_file
 from .media_paths import epub_member_path
+from .preprocess.source_evidence import collect_source_evidence
 from .qa.artifacts import report_state
 from .qa.notes_audit import _norm_md, audit_notes_epub
 from .qa.provenance import audit_provenance
@@ -103,6 +104,47 @@ def _package_documents(zf: zipfile.ZipFile) -> tuple[str, list[str]]:
     ]
 
 
+def _residue_census(zf: zipfile.ZipFile) -> dict[str, Any]:
+    """全包可见文字残留线索，含注文/未列 spine 文档，不扫描代码字面量。"""
+    candidates: list[dict[str, Any]] = []
+    documents = 0
+    errors = []
+    for member in sorted(zf.namelist()):
+        if Path(member).suffix.lower() not in {".xhtml", ".html"}:
+            continue
+        documents += 1
+        try:
+            root = ET.fromstring(zf.read(member))
+        except ET.ParseError as exc:
+            errors.append({"member": member, "error": str(exc)})
+            continue
+
+        def walk(node: ET.Element, scope: str, member: str = member) -> None:
+            tag = node.tag.rsplit("}", 1)[-1]
+            if tag in {"head", "code", "pre", "style", "script"}:
+                return
+            if set(node.get(_EPUB + "type", "").split()) & {"footnote", "endnote"}:
+                scope = "semantic_note"
+            texts = [(node.text or "", "text")]
+            for child in node:
+                walk(child, scope)
+                texts.append((child.tail or "", "tail"))
+            for text, position in texts:
+                if "¬" in text or "$$" in text:
+                    candidates.append(
+                        {
+                            "member": member,
+                            "scope": scope,
+                            "tag": tag,
+                            "position": position,
+                            "text": text[:200],
+                        }
+                    )
+
+        walk(root, "document")
+    return {"documents_scanned": documents, "candidates": candidates, "parse_errors": errors}
+
+
 def collect_quality_evidence(
     store: RunStore,
     entries: list[dict[str, Any]],
@@ -149,6 +191,16 @@ def collect_quality_evidence(
         actual=external_hash,
     )
     epub_hash = digest(epub, "epub")
+    source_snapshot = collect_source_evidence(store)
+    hashes["source_evidence"] = source_snapshot["input_digest"]
+    add(
+        "source_layout",
+        "manual" if source_snapshot["blocks"] else "unknown",
+        "raw page/column locations and source TOC; not semantic acceptance",
+        input_digest=source_snapshot["input_digest"],
+        blocks=len(source_snapshot["blocks"]),
+        source_toc=source_snapshot["source_toc"],
+    )
     digest(store.publication_path, "publication")
     digest(store.report_path, "qa_report")
     for name in (
@@ -183,6 +235,15 @@ def collect_quality_evidence(
         if not epub_hash:
             raise ValueError("缺少实际 EPUB 文件")
         with zipfile.ZipFile(epub) as zf:
+            census = _residue_census(zf)
+            add(
+                "product_residue",
+                "fail"
+                if census["parse_errors"]
+                else ("manual" if census["candidates"] else "pass"),
+                "all package XHTML, including semantic notes and non-spine/backmatter; code excluded",
+                **census,
+            )
             opf_path, spine = _package_documents(zf)
             for entry in entries:
                 uid = str(entry["id"])

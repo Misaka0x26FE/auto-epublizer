@@ -30,13 +30,14 @@ from auto_common.workspace import RunStore, read_json
 _TERMINAL = ".!?…。！？؛۔"
 
 
-def _page_lines(path: Path) -> tuple[int, list[str]] | None:
+def _page_lines(path: Path) -> tuple[int | None, list[str]] | None:
     """读单页 raw json → (page_idx, 非空文本行)。非 ``type=text`` 块跳过。"""
     try:
         data = read_json(path)
     except (OSError, ValueError):
         return None
-    page_no = int(data.get("page_idx") or 0)
+    value = data.get("page_idx")
+    page_no = value if type(value) is int and value > 0 else None
     lines: list[str] = []
     for block in data.get("blocks") or []:
         if (block.get("type") or "") != "text":
@@ -69,16 +70,17 @@ def _norm(s: str) -> str:
     return re.sub(r"\s+", "", s or "")
 
 
-def _locate(unit_blocks: list[tuple[str, list[str]]], line: str) -> tuple[str | None, int | None]:
-    """把一行文本回溯到 (unit_id, 块号 1 基)；找不到返回 (None, None)。"""
+def _locations(unit_blocks: list[tuple[str, list[str]]], line: str) -> list[dict[str, Any]]:
+    """列出全部匹配位置；重复页眉/重复句不得静默采用第一个。"""
     needle = _norm(line)
     if not needle:
-        return None, None
-    for unit_id, blocks in unit_blocks:
-        for idx, block in enumerate(blocks, start=1):
-            if needle in _norm(block):
-                return unit_id, idx
-    return None, None
+        return []
+    return [
+        {"unit": unit, "block": index}
+        for unit, blocks in unit_blocks
+        for index, block in enumerate(blocks, start=1)
+        if needle in _norm(block)
+    ]
 
 
 def _is_candidate(prev_line: str) -> bool:
@@ -93,28 +95,36 @@ def collect_breaks(store: RunStore) -> list[dict[str, Any]]:
     if not raw.is_dir():
         return []
     per_page = [r for p in sorted(raw.glob("page-*.json")) if (r := _page_lines(p)) is not None]
-    per_page.sort(key=lambda t: t[0])
+    per_page.sort(key=lambda t: t[0] or 0)
     unit_blocks = _unit_blocks(store)
     breaks: list[dict[str, Any]] = []
     for i in range(len(per_page) - 1):
         page_no, lines = per_page[i]
-        _next_no, next_lines = per_page[i + 1]
+        next_no, next_lines = per_page[i + 1]
+        consecutive = page_no is not None and next_no is not None and next_no == page_no + 1
         prev_line = lines[-1]
         next_line = next_lines[0]
-        unit, prev_block = _locate(unit_blocks, prev_line)
-        if unit is None:
-            unit, prev_block = _locate(unit_blocks, next_line)
-        _next_unit, next_block = _locate(unit_blocks, next_line)
+        prev_locations = _locations(unit_blocks, prev_line)
+        next_locations = _locations(unit_blocks, next_line)
+        prev = prev_locations[0] if len(prev_locations) == 1 else {}
+        following = next_locations[0] if len(next_locations) == 1 else {}
+        unit = prev.get("unit") or (following.get("unit") if not prev_locations else None)
         breaks.append(
             {
                 "unit": unit,
                 "page": page_no,
+                "next_page": next_no,
+                "consecutive": consecutive,
                 "kind": "page_boundary",
                 "prev_line": prev_line[:200],
                 "next_line": next_line[:200],
-                "prev_block": prev_block,
-                "next_block": next_block,
-                "candidate": _is_candidate(prev_line),
+                "prev_block": prev.get("block"),
+                "next_block": following.get("block"),
+                "prev_unit": prev.get("unit"),
+                "next_unit": following.get("unit"),
+                "prev_locations": prev_locations,
+                "next_locations": next_locations,
+                "candidate": consecutive and _is_candidate(prev_line),
             }
         )
     return breaks

@@ -86,7 +86,7 @@
 
 - [x] **D1 只读证据报告设计**（依赖 A 的统一证据语义；中）：确认是否扩展现有 evidence 命令；不预设新数据库或第二套发布状态。
   验收：每项绑定当前 source/结构/译文/成品摘要，区分 pass/fail/unknown/manual；未取得外部 sources 记 unknown；逐单元正文、完整注文、目录与副本按实际对象对账。
-- [ ] **D2 来源候选与全范围覆盖**（依赖 D1；按 PDF/EPUB/注释各拆小批）：先核实已有 pages/raw/breaks/notes-candidates 可提供哪些证据，再增缺口。
+- [x] **D2 来源候选与全范围覆盖**（依赖 D1；按 PDF/EPUB/注释各拆小批）：先核实已有 pages/raw/breaks/notes-candidates 可提供哪些证据，再增缺口。
   验收：合成双栏/跨页样本保留真实可得 page/bbox/font/column/TOC；源注清点独立于已登记集合；残留普查包含 aside 与后置单元。跳号/栏界/页眉只出候选，不自动合并删除或补造注文。
 - [ ] **D3 安全修复协议**（依赖 D1，接口获确认后再实施）：基线摘要、source/target 身份、批准清单、只读 dry-run、全量预检、冲突拒绝、备份和幂等；先讨论多文件写失败的恢复策略，不能把逐文件原子替换当整体事务。
   验证：合成失败注入覆盖预检失败无写入、应用中断可恢复、重跑不重复包裹；不引入自动音译或自动语义裁决。
@@ -188,6 +188,14 @@
   `/tmp/opencode/aep-cli-smoke-9dxsoxvb`；并非实书/阅读器验收。
 
 ## 10. D 批实施记录
+
+- D2：新增只读 `evidence source --json`，保留 raw 页/栏/坐标/字体、源 TOC 与全部
+  候选匹配；重复位置明确 ambiguous，缺字段 null，代码不作注释候选。页边界含两端页号
+  和全部 structured 定位，缺页或缺页号不当续文。全包残留普查含语义 aside 与非 spine
+  后置文件；¬/$$ 只列 manual，不代替源注清点或语义裁决。
+- D2 首组 **4 failed** 后通过；另补缺页号被误当 0→1 连续的 **1 failed** 并修复。
+  重复定位/缺坐标/源 TOC 保留及受影响 notes/evidence/i18n/架构合计 **83 passed**；
+  Ruff check/format 通过（338 文件）。双语说明及 SKILL 路由同步。
 
 - D1：新增 `evidence report --json`，只读文件快照且不调用 QA/渲染器来构造正文期望；
   复用独立 Markdown 可见文字规范化、实际 XML、源对照保真和现有独立注释/资源门。

@@ -1,4 +1,4 @@
-<!-- i18n: source=quality-evidence.zh.md sha256=d80b24523056342d869bc5640364d94f7fe88f84a059a2ee321228ba2e4f6e4c -->
+<!-- i18n: source=quality-evidence.zh.md sha256=8948a0a51b0a841c40968872089cccdf7ec1874aac82c133f3b79c837c041cf1 -->
 > **English** | [中文](quality-evidence.zh.md)
 
 # Evidence and safe-repair contract
@@ -18,6 +18,19 @@ semantics still need source review. Unprovided external sources/copy lists remai
 an explicitly expected missing copy fails. There is no released field: this does not
 replace QA, source-note inventory or semantic acceptance. Output goes to stdout; choose
 a new file yourself if retaining it.
+
+`auto-epublizer evidence source --workspace <dir> --json` exports raw page blocks,
+actually available page/bbox/font_size/column values, the source TOC from facts, unit
+roles and independent source-note candidates without writing anything. Missing precision
+is null. All repeated raw_matches are retained as ambiguous, never reduced to the first
+location; code literals are not note candidates. Boundaries include both page numbers
+and all unit/block locations; missing or nonconsecutive pages never claim continuation.
+Missing raw/facts information is not guessed from filenames or font thresholds; source
+note completeness still requires independent page-by-page review.
+
+The report's product_residue scans every package XHTML/HTML document, including semantic
+asides and non-spine backmatter, excluding code/pre literals. The ¬/$$ patterns only
+produce manual candidates, never automatic edits or definitive defect judgements.
 
 ## 1. Identify what was actually proved
 

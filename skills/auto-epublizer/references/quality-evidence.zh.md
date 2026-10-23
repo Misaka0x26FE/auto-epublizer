@@ -14,6 +14,15 @@ report/state/events。JSON 含规则版本、输入摘要、每项 scope、`pass
 不提供外部源件或预期副本时记 unknown；显式副本缺失即 fail。该报告没有 released 字段，
 不能替代 QA、源注清点或语义验收。报告默认 stdout，调用方若保存应自己选择新文件。
 
+`auto-epublizer evidence source --workspace <dir> --json` 只读导出原始页块、真实可得的
+page/bbox/font_size/column、facts 中源 TOC、单元角色及独立源注候选。缺失精度为 null，
+重复匹配全部列入 raw_matches 并标 ambiguous，不取首个位置；代码字面量不作注释候选。
+页边界同时列两端页号与全部单元/块定位，缺页号或不连续时不宣称续文候选。
+raw/facts 未提供的信息不从文件名或字体阈值猜测；源注是否齐全仍须逐页人工核证。
+
+`evidence report` 的 product_residue 扫描全包 XHTML/HTML（含语义 aside 和非 spine
+后置文件），排除 code/pre 的字面量；¬/$$ 只列 manual 候选，不自动改写或定性错误。
+
 ## 1. 分清证明对象
 
 - `qa released` 证明已知机器契约；不证明全译、译名正确、索引栏序正确、源书无漏注。

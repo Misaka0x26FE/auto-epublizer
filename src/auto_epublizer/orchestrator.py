@@ -619,6 +619,15 @@ def quality_evidence(
     )
 
 
+def source_evidence(store: RunStore) -> dict[str, Any]:
+    """只读导出页/栏/块、源 TOC 与源注候选定位。"""
+    from .preprocess.source_evidence import collect_source_evidence
+    from .quality_evidence import validate_workspace_paths
+
+    validate_workspace_paths(store)
+    return collect_source_evidence(store)
+
+
 def evidence_breaks(store: RunStore, *, output: str | None = None) -> dict[str, Any]:
     """产出页边界证据 ``preprocessing/breaks.jsonl``（issue #14 / #10-B3）。
 

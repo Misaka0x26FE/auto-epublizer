@@ -86,7 +86,16 @@ def extract_candidates(md_by_unit: dict[str, str]) -> list[dict[str, Any]]:
         )
 
     for unit, md in sorted(md_by_unit.items()):
-        for lineno, line in enumerate((md or "").splitlines(), start=1):
+        visible = "".join(
+            "".join(
+                "".join("\n" if c == "\n" else " " for c in text) if code else text
+                for code, text in inline_code_chunks(chunk)
+            )
+            if kind == "text"
+            else "".join("\n" if c == "\n" else " " for c in chunk)
+            for kind, chunk in markdown_chunks(md or "")
+        )
+        for lineno, line in enumerate(visible.splitlines(), start=1):
             stripped = line.strip()
             if not stripped:
                 continue

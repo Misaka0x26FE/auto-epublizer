@@ -221,6 +221,26 @@ def work_root(
     console.print(f"  各组件功能与用法见 {result['dir']}/README.md（下一步把待处理源放入 inbox/）")
 
 
+@evidence_app.command("source")
+def evidence_source_cmd(
+    workspace: str | None = typer.Option(None, "--workspace", help="工作区目录"),
+    json_output: bool = typer.Option(False, "--json", help="输出只读源证据 JSON"),
+    config: str | None = typer.Option(None, "--config", help="配置文件路径"),
+) -> None:
+    """保留原始页/栏/块和源 TOC；只给候选，不自动合并或删改。"""
+    store = _store_from(workspace, load_config(config or _CONFIG_PATH))
+    try:
+        data = orch.source_evidence(store)
+    except (ValueError, OSError, orch.OrchestrationError) as exc:
+        raise typer.Exit(f"源证据读取失败：{exc}") from None
+    if json_output:
+        _emit_json(json.dumps(data, ensure_ascii=False, indent=2))
+    else:
+        console.print(
+            f"源证据：{len(data['blocks'])} 块，{len(data['note_candidates'])} 注释候选；须人工核证"
+        )
+
+
 @evidence_app.command("report")
 def evidence_report_cmd(
     workspace: str | None = typer.Option(None, "--workspace", help="工作区目录"),
