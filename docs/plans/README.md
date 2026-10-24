@@ -19,7 +19,7 @@
 
 | 文档 | 状态 | 内容 |
 |---|---|---|
-| [2026-10-23-issue-pr-triage.md](2026-10-23-issue-pr-triage.md) | 实施中 | 开放 18 issue / PR59 盘点；优先独立审查 #54–#56，历史状态对账、制作页补全及 #57/#58 证据工具分阶段计划 |
+| [2026-10-23-issue-pr-triage.md](2026-10-23-issue-pr-triage.md) | 已实施（`f4d6c24`） | PR59 独立审查补修、历史对账、制作页和证据/安全修复接口已交付；保留投稿历史，实书语义核证另列；恢复及推送证据见 §11 |
 | [preprocessing-plan.md](preprocessing-plan.md) | 已被 v2 取代 | 预处理 v1（分类识别 + 分层理解 + 补充环节） |
 | [preprocessing-plan-v2.md](preprocessing-plan-v2.md) | 已完成 | 预处理 v2（能力边界确认 + 计划 A OCR 路由 / B 网络搜索 / C PDF 内容提取） |
 | [2026-09-04-skills-inserts-guidance.md](2026-09-04-skills-inserts-guidance.md) | 已完成 | skills 缺口：inserts 补全与判读指引（translation/qa + 审计源切换） |

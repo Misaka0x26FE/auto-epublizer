@@ -1,6 +1,6 @@
 # 2026-10-23 Issue / PR 盘点与修复计划
 
-状态：实施中（用户已通过 goal 授权修复、更新计划并推送）。初始盘点及基线记录见 §1；各阶段按实际证据回写，尚未合并 PR 或关闭 issue。
+状态：已实施（代码保存至 `f4d6c24`，各批提交和验证见 §6–11）；已推送隔离修复分支，最终交付证据见 §11。初始盘点及基线保留，未远端合并 PR 或关闭 issue，真实书人工核证不在本轮通用工具交付内。
 
 ## 1. 快照与证据边界
 
@@ -228,6 +228,17 @@
 - 恢复后重新核实 Python 导入来自恢复目录，EPUBCheck **5.2.1** 实际可用；Ruff 全仓
   check/format 再通过（340 文件）。重建 `/tmp/opencode/aep-recovered-smoke.py` 并重跑
   全套及独立子进程 CLI 产品验收，以新现场输出作为本次最终证据。
+- 恢复后的实际 CLI 现场 `/tmp/opencode/aep-recovered-smoke-fkx4ssyx`：正例
+  released=true/ok、checker=0、g4_audit=pass；源/副本证据无 fail，report/source
+  和 repair dry-run 文件字节快照不变。repair 明确应用→幂等→报告 stale→import --force→
+  build/qa 重新放行链通过。伪造注文负例 notes_open/E_NOTES_CONTENT_MISMATCH，
+  evidence 同样退出1。制作页出版/模型署名与 nav/NCX 两入口实际核验通过。
+- 恢复保存点 `bb6e45c7209a2cc82b9d4b39d2561567fabe9e5b` 已推送至 GitHub/Gitee 的
+  `fix/issue-triage-20261023`，两端 ls-remote 均匹配；最终收尾文档将继续快进到同一分支。
+- 恢复后全套再验：`env PYTHONPATH=src /home/misaka0x26fe/github/auto-epublizer/.venv/bin/python
+  -m pytest -q` → **926 passed / 1 skipped，324.07s**；唯一跳过为真实 RapidOCR 缺依赖。
+  全仓 Ruff check、format --check 通过（340 文件），收尾文档修改后 i18n **12 passed**，
+  `git diff --check` 无问题。本轮修复清单 A–D 全部勾选，实书人工边界不计已验收。
 
 ### 目标—产物核对表
 
