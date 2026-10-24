@@ -215,3 +215,34 @@
   未产生第二份 released 状态，报告绑定当前输入哈希和规则版本。
 - D1 公共入口先 **4 failed**，再补伪造 align src 反例 **1 failed**；实现后 evidence/
   CLI/i18n/架构组 **29 passed**，含文件字节快照证明只读、缺副本/截短/伪源拒绝。
+
+## 11. 交付核验与工作区恢复（2026-10-24）
+
+- 原 `/tmp/opencode` 工作区被清空，但共享 Git 对象/分支仍完整；`f4d6c24` 可读取。
+  从该提交恢复到 `/tmp/opencode/aep-triage-recovered-20261024`，本地分支
+  `fix/issue-triage-recovered-20261024`。恢复初始树与 f4d6c24 完全一致，PR59 head
+  `9e57d9f` 仍为祖先；未重写作者或本轮提交历史，未修改主 checkout。
+- 清空前全套完成 **926 passed / 1 skipped，317.85s**；实际 CLI/EPUBCheck5.2.1 正例
+  released/fresh，repair 干跑/批准应用/幂等/失效/重新登记构建放行链通过，伪造注文
+  notes_open。原临时样本已消失，此处仅保留历史命令回执，不冒充当前仍有原样本。
+- 恢复后重新核实 Python 导入来自恢复目录，EPUBCheck **5.2.1** 实际可用；Ruff 全仓
+  check/format 再通过（340 文件）。重建 `/tmp/opencode/aep-recovered-smoke.py` 并重跑
+  全套及独立子进程 CLI 产品验收，以新现场输出作为本次最终证据。
+
+### 目标—产物核对表
+
+| 要求 | 实际产物与证据 |
+|---|---|
+| PR59 完整审查、硬门/失效链/注号/注宿主/字面量补修 | §6、8fd76d3/9ec11ae；test_pr59_review、test_notes、test_t12_gates；保留投稿祖先 |
+| 历史 #33–#40/#41 对账、#50 真实机器接口 | §7、d911ced；10 命令 help 与129回归；双语 workflow、work-root 模板 |
+| C 制作页公开署名、未知/未用区分、两目录入口 | §9、a03afca/32d3664（保留作者 f6ed57f/406de54）；production_metadata/navigation、fingerprint/provenance 测试 |
+| D1 只读完整证据，区分未知与人工 | 7297984、quality_evidence.py；test_quality_evidence 的字节快照/截短/伪src/缺副本反例 |
+| D2 页栏/TOC 全定位、独立候选、全包残留 | c34cf34、preprocess/source_evidence.py；test_source_evidence 的双栏、缺页、歧义、aside/非spine覆盖 |
+| D3 精确批准、全量预检、持久备份、回滚恢复 | f4d6c24、safe_repair.py；test_safe_repair 的18条只读/失败注入/中断/冲突/幂等测试 |
+| 双语 CLI/工作区/QC 契约、架构约束 | AGENTS/spec/SKILL 与 quality-evidence/build/workflow 中英；test_i18n、test_architecture_boundaries，零新依赖/LLM调用 |
+| 全套、真实 CLI/EPUBCheck 正负验收 | 本节记录命令和现场回执；未将 GUI/真实书语义判断纳入机械通过 |
+| 更新计划和索引、提交推送并核远端 SHA | 本计划与 docs/plans/README.md；最终提交及远端 SHA 在完成后登记 |
+
+真实书源页、译名、索引栏序/页码及未登记源注清点仍为人工边界；未测阅读器 GUI，
+既有真实 RapidOCR 测试缺依赖的跳过不计完成。没有修改用户书工作区、上传书稿/凭证，
+没有远端关闭 issue/合并 PR，也不把代码完成说成 #41/#57/#58 所有实书工作完成。
