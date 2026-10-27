@@ -1,4 +1,4 @@
-<!-- i18n: source=2026-10-27-scanned-academic-false-green.zh.md sha256=ff1a22d87f726d04cb7981847376b7f468b8728f62aca3fc1d951f66e50f6237 -->
+<!-- i18n: source=2026-10-27-scanned-academic-false-green.zh.md sha256=a2e411b8b68dec549106b2609891b44814038a437f37d53cbeb5a82d7cbe3855 -->
 > **English** | [中文](2026-10-27-scanned-academic-false-green.zh.md)
 
 # Scanned academic books: mechanical green is not content acceptance
@@ -10,7 +10,8 @@ and versioning a 21-unit scanned academic book. No manuscript or user materials 
 included. See the complete matrix in
 [field report #69](https://github.com/Misaka0x26FE/auto-epublizer/issues/69) and the
 review-shadowing defect in [#68](https://github.com/Misaka0x26FE/auto-epublizer/issues/68).
-The inspected baseline is main `a3aee9e`.
+Initial inspection used local `a3aee9e`; the examples below were rerun against
+upstream main `ef06f25` before submission.
 
 **Status: lessons and proposals submitted, not code defects fixed or the original book
 semantically reaccepted.** Distinguish existing capabilities, workarounds, operator

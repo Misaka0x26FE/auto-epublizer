@@ -8,7 +8,7 @@
 不包含书籍正文或用户材料。完整问题矩阵见
 [现场报告 #69](https://github.com/Misaka0x26FE/auto-epublizer/issues/69)，
 审校覆盖缺陷见 [#68](https://github.com/Misaka0x26FE/auto-epublizer/issues/68)。
-核查基线为 main `a3aee9e`。
+初始核查为本地 `a3aee9e`；提交前已在上游 main `ef06f25` 重跑下列复现。
 
 **状态：经验与方案提交，不是代码缺口已修复，也不是原书已完成重新语义验收。**
 既有工具能力、现场绕行、操作失败和待开发建议必须分开。
