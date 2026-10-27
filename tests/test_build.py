@@ -906,6 +906,21 @@ def test_ol_numbering_fidelity_footnote_style() -> None:
     assert "<ol><li>一则</li><li>二则</li></ol>" in out
 
 
+def test_ol_single_item_is_paragraph() -> None:
+    """单项块不是列表：章末注的一条 `1. 注文…` 必须按注文段落输出，不带 <ol> 样式。
+
+    现场（596 页法文扫描件，1,975 条章末注）：每条注自成一块时恰好满足「1 起连续」，
+    被渲染成 `<ol><li>`，与其余 `<p class="fnlist">` 注文不同款；写成句子要转义
+    `1\\. ` 才能避开，而转义必须同时写进 structured/、align/、translation/ 三处。
+    """
+    out = markdown_to_xhtml("1. 这一表述见于第六封信的一份草稿。\n")
+    assert "<ol>" not in out
+    assert '<p class="fnlist">1. 这一表述见于第六封信的一份草稿。</p>' in out
+    # 两项以上仍按真列表渲染
+    out = markdown_to_xhtml("1. 甲\n2. 乙\n")
+    assert "<ol><li>甲</li><li>乙</li></ol>" in out
+
+
 def test_build_epub_translator_creator_role(tmp_path: Path) -> None:
     """S2.1：translator 非空 → OPF 输出第二个 dc:creator（id=creator-trl）+ role trl；
     原作者带 creator-aut + role aut；translator 为空则整段不输出。"""

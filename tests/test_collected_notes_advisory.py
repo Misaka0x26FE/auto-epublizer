@@ -251,7 +251,10 @@ def test_production_conversion_does_not_count_unrendered_translation(tmp_path: P
 
 def test_flat_notes_inside_one_ordered_list_item_are_candidates(tmp_path: Path) -> None:
     markdown = " ".join(f"{number}. Note content." for number in range(1, 9))
-    result = audit_epub(_package(tmp_path, markdown), notes_context=_context(markdown))
+    # 形状由显式 body 给出：本用例考的是检测器对「一批注文挤在一个 <li> 里」的反应，
+    # 不是渲染器怎样从 markdown 生成该形状（单项块现在按段落输出，见 test_build.py）。
+    body = f"<ol><li>{markdown}</li></ol>"
+    result = audit_epub(_package(tmp_path, markdown, body=body), notes_context=_context(markdown))
     assert result.ok
     (finding,) = _warnings(result)
     assert finding.data["paragraph_count"] == 0

@@ -646,7 +646,10 @@ def markdown_to_xhtml(
             # 恰好与原编号一致）。其余（如校异/脚注式 `1) 2) 5)…`，数字是真实注号）：
             # <ol> 自动编号会整体重写为 1,2,3…，隔断的单条块甚至会全部显示为 1——
             # 必须保留原文数字、按普通段落输出。
-            if nums == list(range(1, len(nums) + 1)) and delims <= {".", "、"}:
+            # 单项块同样不是列表：章末注的一条 `1. 注文…` 恰好是「从 1 起连续」的唯一
+            # 元素，渲染成 <ol> 会让注号带上列表样式（且与 <p class="fnlist"> 的注文
+            # 段落不同款）。写成句子却要转义 `1\.` 才能避开，正是现场反复踩到的坑。
+            if len(nums) >= 2 and nums == list(range(1, len(nums) + 1)) and delims <= {".", "、"}:
                 lis = "".join(
                     f"<li>{_inline(escape(m.group(3).strip()))}</li>"  # type: ignore[union-attr]
                     for m in marks
