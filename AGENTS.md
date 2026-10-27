@@ -1,4 +1,4 @@
-<!-- i18n: source=AGENTS.zh.md sha256=8794933e13ceb6f60e42e3b8656a16f392a5cb03d1400a6f2e8b3449050082e1 -->
+<!-- i18n: source=AGENTS.zh.md sha256=3486f074d2cbd7dd3e3fcda78d1d1effe99e7d3fa038c8fbb408efc30d05e365 -->
 > **English** | [中文](AGENTS.zh.md)
 
 # auto-epublizer repository guide (for coding agents developing/maintaining this project)
@@ -165,6 +165,7 @@ auto-epublizer build          # translated EPUB → output/ (--theme selects the
 
 # 8. QA (G0 static validation + G4 audit + G5 release summary → report.json)
 auto-epublizer qa             # structure audit + epubcheck
+auto-epublizer pdf            # derived artifact: EPUB → print PDF (大 32 开, 五号 body, bookmarks; needs Chromium)
 auto-epublizer status --json  # inspect progress/state machine/artifact-state reconciliation (includes next_tasks machine pointer)
 auto-epublizer status --all   # multi-workspace overview (three-tier progress: released/built_not_released/preprocessing)
 auto-epublizer ledger         # cross-book ledger markdown (machine-recomputable columns + domain/summary to fill)

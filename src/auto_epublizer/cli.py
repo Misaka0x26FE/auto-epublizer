@@ -452,6 +452,59 @@ def build(
 
 
 @app.command()
+def pdf(
+    workspace: str | None = typer.Option(None, "--workspace", help="工作区目录"),
+    epub: str | None = typer.Option(
+        None, "--epub", help="待排版的 EPUB 路径（缺省取 output/<slug>.epub）"
+    ),
+    output: str | None = typer.Option(
+        None, "-o", "--output", help="输出 PDF 路径（缺省 output/<slug>.pdf）"
+    ),
+    size: str = typer.Option("a5", "--size", help="开本：a5（大 32 开，缺省）/32k/b5/16k"),
+    body_pt: float = typer.Option(10.5, "--body-pt", help="正文字号（pt；五号 = 10.5）"),
+    note_pt: float = typer.Option(8.5, "--note-pt", help="注文字号（pt；小五 = 8.5）"),
+    line_height: float = typer.Option(1.55, "--line-height", help="行距（倍数）"),
+    no_bookmarks: bool = typer.Option(False, "--no-bookmarks", help="不写 PDF 书签"),
+    json_out: bool = typer.Option(False, "--json", help="机器可读输出"),
+    config: str | None = typer.Option(None, "--config", help="配置文件路径"),
+) -> None:
+    """把已构建的 EPUB 排成印刷版 PDF（派生件：不入 qa 摘要、不替代 EPUB）。"""
+    from . import pdfexport
+
+    cfg = load_config(config or _CONFIG_PATH)
+    store = _store_from(workspace, cfg)
+    slug = store.load_publication().slug
+    source = Path(epub) if epub else store.output_dir / f"{slug}.epub"
+    if not source.is_file():
+        raise typer.Exit(f"未找到 EPUB：{source}")
+    target = Path(output) if output else store.output_dir / f"{slug}.pdf"
+    style = pdfexport.PrintStyle(
+        size=size, body_pt=body_pt, note_pt=note_pt, line_height=line_height
+    )
+    if size.lower() not in pdfexport.SIZES:
+        raise typer.Exit(f"未知开本：{size}（可选 {', '.join(pdfexport.SIZES)}）")
+    try:
+        result = pdfexport.render(source, target, style, bookmarks=not no_bookmarks)
+    except (RuntimeError, OSError) as exc:
+        raise typer.Exit(f"排版失败：{exc}") from None
+    payload = {
+        "pdf": str(result.out),
+        "pages": result.pages,
+        "sections": result.sections,
+        "bookmarks": result.bookmarks,
+        "size_mm": list(result.size_mm),
+    }
+    if json_out:
+        _emit_json(json.dumps(payload, ensure_ascii=False))
+        return
+    console.print(
+        f"[green]PDF 已生成：[/green]{result.out}"
+        f"[dim]（{result.size_mm[0]}×{result.size_mm[1]} mm，{result.pages} 页，"
+        f"{result.bookmarks} 条书签；派生件，EPUB 仍是交付格式）[/dim]"
+    )
+
+
+@app.command()
 def qa(
     workspace: str | None = typer.Option(None, "--workspace", help="工作区目录"),
     epub: str | None = typer.Option(None, "--epub", help="待检 EPUB 路径"),

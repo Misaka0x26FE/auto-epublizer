@@ -12,6 +12,24 @@ auto-epublizer build [-o <out.epub>] [--theme standard|compact|spacious] [--work
 
 - 从 `translation/<rel_path>` 读译文（缺省回退 `structured/`）。
 
+## 印刷版 PDF（`pdf` 命令）
+
+```bash
+auto-epublizer pdf [--workspace <dir>] [--size a5|32k|b5|16k] [--body-pt 10.5]
+                   [--note-pt 8.5] [--line-height 1.55] [-o output/<slug>.pdf] [--json]
+```
+
+- **从已构建的 EPUB 派生**：解包 → spine 串成一份 HTML（`@page` 开本 + 正文五号 + 注文小五 +
+  首行缩进 2 字 + 段间不留空）→ headless Chromium `--print-to-pdf` → PyMuPDF 加盖页脚页码与书签。
+- 缺省大 32 开 A5 148×210 mm、版心 18/16/20/16 mm；注文去掉回链箭头、注号与注文同行；
+  屏幕上的链接样式（蓝色/下划线）不进入印刷版。
+- 书签取自 `nav.xhtml`（`<ol>` 嵌套深度即层级），页码按渲染后正文逐条检索并保持单调递增；
+  长标题被换行截断时退回首 10 字匹配。
+- 元数据取 OPF 的 `dc:title` / `dc:creator`；`role="trl"` 是译者，不写入 author。
+- 依赖 `chromium` / `google-chrome`（可用 `AUTO_EPUBLIZER_CHROME` 指定路径）；找不到即报错，不静默降级。
+- **派生件边界**：PDF 不进 `qa` 的 artifacts 摘要、不替代 EPUB、不动状态机。重排 PDF 之后要重跑
+  `qa`，否则摘要覆盖 `output/` 会让报告一生成即被判过期。
+
 ## EPUB 3 组件
 
 | 文件 | 说明 |

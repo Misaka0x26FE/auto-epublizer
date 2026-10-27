@@ -123,6 +123,7 @@ auto-epublizer build          # 译文 EPUB → output/（--theme 选排版主�
 
 # 8. 质检（G0 静态校验 + G4 审计 + G5 汇总放行 → report.json）
 auto-epublizer qa             # 结构审计 + epubcheck（有注书另跑独立成品注释门；notes_open 阻断放行）
+auto-epublizer pdf            # 派生件：EPUB → 印刷版 PDF（大 32 开、五号正文、书签；需 Chromium）
 auto-epublizer status --json  # 查看进度/状态机/产物-状态对账（含 next_tasks 机器指针）
 auto-epublizer status --all   # 多工作区总览（三档进度：released/built_not_released/preprocessing）
 auto-epublizer ledger         # 跨书台账 markdown（机器可重算列 + 待填领域/摘要）

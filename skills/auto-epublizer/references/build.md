@@ -1,4 +1,4 @@
-<!-- i18n: source=build.zh.md sha256=067a98d78aea5da5362febd3df7031f54b43088085524f4341cbed60ac753a2d -->
+<!-- i18n: source=build.zh.md sha256=7e511c14640cec672488eea1bf99d4c80ba10114cbdc7ba119aad2ff4c0a7435 -->
 > **English** | [中文](build.zh.md)
 
 # Build (EPUB packaging)
@@ -12,6 +12,28 @@ auto-epublizer build [-o <out.epub>] [--theme standard|compact|spacious] [--work
 ```
 
 - Reads the translation from `translation/<rel_path>` (falls back to `structured/` by default).
+
+## Print PDF (`pdf` command)
+
+```bash
+auto-epublizer pdf [--workspace <dir>] [--size a5|32k|b5|16k] [--body-pt 10.5]
+                   [--note-pt 8.5] [--line-height 1.55] [-o output/<slug>.pdf] [--json]
+```
+
+- **Derived from the built EPUB**: unpack → concatenate the spine into one HTML (`@page` trim size +
+  五号 body + 小五 notes + 2-em indent + no paragraph gaps) → headless Chromium `--print-to-pdf` →
+  PyMuPDF stamps the folios and the outline.
+- Defaults: 大 32 开 A5 148×210 mm with 18/16/20/16 mm margins; notes lose the back-link arrow and
+  put the number inline; screen link styling (colour, underline) never reaches print.
+- Bookmarks come from `nav.xhtml` (`<ol>` nesting depth is the level); pages are found by scanning the
+  rendered text in bookmark order and stay monotonic, with a 10-character fallback for wrapped titles.
+- Metadata comes from the OPF `dc:title` / `dc:creator`; `role="trl"` is the translator and is not
+  written to `author`.
+- Needs `chromium` / `google-chrome` (`AUTO_EPUBLIZER_CHROME` overrides the path); a missing browser is
+  an error, never a silent downgrade.
+- **Derived-artifact boundary**: the PDF is not part of the `qa` artifact digest, does not replace the
+  EPUB and does not move the state machine. Re-run `qa` after re-rendering, or the digest (which covers
+  `output/`) marks the report stale the moment it is written.
 
 ## EPUB 3 components
 
