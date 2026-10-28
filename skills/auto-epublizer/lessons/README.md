@@ -1,4 +1,4 @@
-<!-- i18n: source=README.zh.md sha256=b477cca5c8b3e5ce6aadd6632fee3df5cabbb7db384189bb9be5dcccf92761fa -->
+<!-- i18n: source=README.zh.md sha256=3d8eeece0c381b939fba4f37fdc0b033ec48e902dcfab783c3c60874b6576e53 -->
 > **English** | [中文](README.zh.md)
 
 # Lessons (distilled field experience)
@@ -32,6 +32,7 @@ downstream agents to directly consult and handle when they encounter the same ty
 
 | Document | Topic | Status |
 |---|---|---|
+| [2026-10-27-scanned-academic-false-green.md](2026-10-27-scanned-academic-false-green.md) | 18 mechanical false-green cases in scanned academic books: two-column people lists, source-note inventory, review shadowing, no padding or placeholder repairs | Lessons and proposed development (#68/#69), not code fixes or renewed book acceptance |
 | [2026-09-05-baka-tsuki-html-figures.md](2026-09-05-baka-tsuki-html-figures.md) | Baka-Tsuki source-site HTML illustration paragraph structure (three lines figure>a>img) fidelity and restoration in ingest/build | fixed (1766e7a etc.) + experience retained |
 | [2026-09-05-scanned-pdf-mineru-first.md](2026-09-05-scanned-pdf-mineru-first.md) | Scanned PDF: MinerU first priority (line-break/illustration recognition), traditional OCR recognizes only characters and needs the agent to read page by page as fallback | landed (ingest/mineru.py) + experience retained |
 | [2026-09-05-scanned-pdf-operations.md](2026-09-05-scanned-pdf-operations.md) | Scanned-file operations: >200 pages batch/merge, **do not script the splitting (the agent splits manually)**, single-unit build loses nav, fenced code blocks lack support | experience retained (DouBao four-round measurement) |
