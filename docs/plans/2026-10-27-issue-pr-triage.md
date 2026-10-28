@@ -370,3 +370,15 @@ uv run --offline --no-sync python scripts/i18n.py --links   # OK
   账本级 + 合成回归，不宣称原书已修复。
 - PDF 只在本机 Chromium 实测；缺浏览器环境按契约报错，不把 skip 当成功。
 - E3 字符级/双栏证据只给设计，未采集；#34 的字符级高度/字号证据仍缺。
+
+### 7.5 推送与远端状态（2026-10-28）
+
+- 提交 `1f0c87f`（35 文件，+3504/−37）推送到 `origin` 的两个地址（GitHub + Gitee），
+  并以快进方式落到两端 `main`；随后合并 PR70（文档 lesson）得到 `10597f1`，两端 `main`
+  均为 `10597f1`（`git ls-remote` 与 GitHub API 核对一致）。
+- PR：#66、#67 的实现已被 `1f0c87f` 取代，评论说明后关闭；#70（扫描学术书 lesson）
+  合并进 main。
+- issue：#68、#65、#61、#60、#62、#63 已附证据结单；#34、#37、#40、#41、#57、#58、
+  #64、#69、#71、#72 保持开放（真实书稿/阅读器验收、产品与法律决定、经验跟踪类）。
+- 推送前最终验证仍为：pytest `975 passed, 1 skipped`；ruff check / format --check、
+  i18n `--check`/`--links`、`git diff --check` 全通过。
