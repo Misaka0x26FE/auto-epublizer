@@ -1,4 +1,4 @@
-<!-- i18n: source=workflow.zh.md sha256=3073869712a30d5ed01db6156e7fbabfd549812cadd76cb79d6a0384f94dac21 -->
+<!-- i18n: source=workflow.zh.md sha256=e8f4ca2c7344cfa70efcf75793ebc241f33842f8f00eec4878c5757474b85636 -->
 > **English** | [中文](workflow.zh.md)
 
 # Workflow (stage routing + command overview)
@@ -209,8 +209,18 @@ auto-epublizer notes status [--json] [--workspace <dir>]          # summary / st
 # build (translation missing falls back to source; --theme selects the layout theme)
 auto-epublizer build [--theme standard|compact|spacious] [-o <out.epub>] [--workspace <dir>]
 
+# derived print PDF (not in the QA digest; the EPUB stays the delivery format)
+auto-epublizer pdf [--size a5|32k|b5|16k] [--body-pt 10.5] [--note-pt 8.5] [--json] [--workspace <dir>]
+
+# read-only evidence (deterministic, zero-token; releases nothing, changes no state)
+auto-epublizer evidence source [--json] [--workspace <dir>]
+auto-epublizer evidence partition [--json] [--workspace <dir>]   # per-line source partition: destination/duplicates/block ranges
+auto-epublizer evidence breaks [-o <jsonl>] [--workspace <dir>]
+auto-epublizer evidence report [--json] [--epub <path>] [--workspace <dir>]
+
 # QA (epubcheck zero errors + unpack audit + provenance audit + G5 release decision)
 auto-epublizer qa [--epub <path>] [--workspace <dir>]
+#   release follows the reviews/ ledger (v2: scope/lineage/itemized closure evidence); a local clean review closes no other scope
 
 # conversion only, no translation
 auto-epublizer convert <input> [--theme standard|compact|spacious] [-o <out.epub>] [--workspace <dir>]
@@ -230,7 +240,7 @@ Not every command supports `--json`; do not append it mechanically to arbitrary 
 
 | Command | Machine-readable interface |
 |---|---|
-| `doctor`, `status` (including `--all`), `notes status`, `knowledge status` | Explicit `--json`; parse stdout as JSON |
+| `doctor`, `status` (including `--all`), `notes status`, `knowledge status`, `evidence source/partition/report`, `pdf` | Explicit `--json`; parse stdout as JSON |
 | `qa` | Read workspace `report.json`, then check freshness with `status --json`; exit 0 means execution finished, not released |
 | `build`, `import`, `g0`, `meta` | Follow actual help, reject nonzero exits, then read applicable state through `status --json` / `report.json`; rerun QA after later edits |
 | `ledger` | Markdown; use `-o` for a file and `status --all --json` for progress decisions, not colored summaries |

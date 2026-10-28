@@ -126,3 +126,125 @@ def test_repeated_boundary_has_all_locations_not_a_guessed_first(tmp_path: Path)
     row = orch.source_evidence(store)["boundaries"][0]
     assert len(row["prev_locations"]) == 2
     assert row["prev_block"] is None and row["prev_unit"] is None
+
+
+# ── 源分区账本（#62/#58）：逐行去向、重复对次、拆合区间 ──────────────────
+
+
+def _write_structured(store, text: str) -> None:
+    unit = store.load_publication().units[0]
+    (store.structured_dir / unit.meta["rel_path"]).write_text(text, encoding="utf-8")
+
+
+def _raw_page(raw, page: int, lines: list[str]) -> None:
+    (raw / f"page-{page:03}.json").write_text(
+        json.dumps(
+            {"page_idx": page, "blocks": [{"type": "text", "text": "\n".join(lines)}]},
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+
+
+def test_partition_reports_a_lost_line_per_occurrence(tmp_path: Path) -> None:
+    store, raw = _ws(tmp_path)
+    _write_structured(store, "# Chapter\n\nKept line.\n")
+    _raw_page(raw, 1, ["Kept line.", "Lost line."])
+    data = orch.source_partition(store)
+    assert data["status"] == "ok"
+    assert data["counts"] == {"body": 1, "note": 0, "noise": 0, "unresolved": 1}
+    assert data["complete"] is False
+    assert [row["text"] for row in data["entries"] if row["destination"] == "unresolved"] == [
+        "Lost line."
+    ]
+    assert data["blocks"][0]["coverage"] == 0.5
+
+
+def test_partition_matches_duplicate_lines_in_order(tmp_path: Path) -> None:
+    """同一文本出现两次：逐次对位，不能合并成集合，也不能只认第一次。"""
+    store, raw = _ws(tmp_path)
+    _write_structured(store, "# Chapter\n\nRepeat.\n")
+    _raw_page(raw, 1, ["Repeat.", "Repeat."])
+    data = orch.source_partition(store)
+    assert data["counts"]["body"] == 1 and data["counts"]["unresolved"] == 1
+    (duplicate,) = data["duplicates"]
+    assert duplicate["occurrences"] == 2 and len(duplicate["destinations"]) == 1
+
+
+def test_partition_distinguishes_equal_size_replacement(tmp_path: Path) -> None:
+    store, raw = _ws(tmp_path)
+    _write_structured(store, "# Chapter\n\nAlpha.\nGamma.\n")
+    _raw_page(raw, 1, ["Alpha.", "Beta."])
+    data = orch.source_partition(store)
+    assert data["counts"]["unresolved"] == 1
+    assert [row["text"] for row in data["entries"] if row["destination"] == "unresolved"] == [
+        "Beta."
+    ]
+    assert [row["text"] for row in data["destination_extra"]] == ["Chapter", "Gamma."]
+
+
+def test_partition_maps_split_and_merged_blocks_to_ranges(tmp_path: Path) -> None:
+    store, raw = _ws(tmp_path)
+    _write_structured(store, "# Chapter\n\nA line.\nB line.\n")
+    _raw_page(raw, 1, ["A line.", "B line."])
+    data = orch.source_partition(store)
+    assert data["complete"] is True
+    block = data["blocks"][0]
+    assert block["coverage"] == 1.0
+    (part,) = block["parts"]
+    assert part["source_lines"] == [1, 2]
+    assert part["start_line"] < part["end_line"]
+
+
+def test_partition_noise_requires_catalog_approval(tmp_path: Path) -> None:
+    store, raw = _ws(tmp_path)
+    _write_structured(store, "# Chapter\n\nBody line.\n")
+    _raw_page(raw, 1, ["Body line.", "Printed running head"])
+    # 未登记 → 视为未决（不自动判噪声）
+    data = orch.source_partition(store)
+    assert data["counts"]["noise"] == 0 and data["counts"]["unresolved"] == 1
+    # catalog 明确 excluded + 理由 → 已批准噪声
+    (store.preprocessing_dir / "catalog.csv").write_text(
+        "item,kind,status,locator,unit_id,note\n"
+        "Printed running head,physical,excluded,page 1,,印刷页眉\n",
+        encoding="utf-8",
+    )
+    data = orch.source_partition(store)
+    assert data["counts"]["noise"] == 1 and data["counts"]["unresolved"] == 0
+    assert data["complete"] is True
+
+
+def test_partition_without_raw_is_unknown_and_read_only(tmp_path: Path) -> None:
+    store, raw = _ws(tmp_path)
+    (raw / "page-001.json").write_text(
+        json.dumps({"page_idx": 1, "blocks": [{"type": "text", "text": "A line."}]}),
+        encoding="utf-8",
+    )
+    before = {p: p.read_bytes() for p in store.dir.rglob("*") if p.is_file()}
+    orch.source_partition(store)
+    assert all(p.read_bytes() == value for p, value in before.items())
+    assert set(before) == {p for p in store.dir.rglob("*") if p.is_file()}
+
+    for path in raw.glob("page-*.json"):
+        path.unlink()
+    data = orch.source_partition(store)
+    assert data["status"] == "unknown" and data["reason"] == "raw_missing"
+    assert data["complete"] is False
+
+
+def test_partition_cli_json_and_exit_code(tmp_path: Path) -> None:
+    store, raw = _ws(tmp_path)
+    _write_structured(store, "# Chapter\n\nKept line.\n")
+    _raw_page(raw, 1, ["Kept line.", "Lost line."])
+    result = CliRunner().invoke(
+        app, ["evidence", "partition", "--workspace", str(store.dir), "--json"]
+    )
+    assert result.exit_code == 1
+    data = json.loads(result.stdout)
+    assert data["counts"]["unresolved"] == 1
+
+    _raw_page(raw, 1, ["Kept line."])
+    result = CliRunner().invoke(
+        app, ["evidence", "partition", "--workspace", str(store.dir), "--json"]
+    )
+    assert result.exit_code == 0, result.output

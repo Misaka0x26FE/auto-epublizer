@@ -40,6 +40,7 @@ auto-epublizer qa [--epub <path>] [--workspace <dir>]
 | 内容文档缺 lang / h1 数量不为 1 | `W_NO_LANG` / `W_H1_COUNT`（告警） |
 | 标题跳级（h1→h3 等） | `E_HEADING_SKIP` |
 | HTML 注释残留 / markdown 标记残留（`![` `**` `:::` `{.` `[^`） | `E_RESIDUE` / `W_RESIDUE`（error/告警） |
+| 未转换的数学定界符 `$$…$$` 或成行裸 `$`（OCR 行间公式，issue #65） | `W_RESIDUE`（候选；代码/`pre`/MathML 不算，agent 核证后删包裹） |
 | DC 元数据缺失（creator/date/publisher/rights） | `W_META_INCOMPLETE`（告警） |
 | 内部锚点无法解析（含脚注 noteref→footnote） | `E_ANCHOR` |
 | 脚注 aside 缺回链或回链不可解析 | `E_FN_BACKLINK` |
@@ -100,7 +101,12 @@ agent 按文件/段索引回 `structured/raw/` 与原页逐注核证边界、续
   `notes register` 时**硬失败**（注文门不得静默跳过）
 - 未决术语冲突清零（`glossary_conflicts_open == 0`；未清零 → `glossary_conflict_open`——
   回 analysis/glossary_conflicts.jsonl 裁决写回 glossary.csv 后重跑 qa）
-- 审校 `g2_confirmed == 0` 或全部已修订
+- 审校有效问题集合清零：`reviews/` 账本（`review/ledger.py`）的
+  `review_effective_open == 0`、`review_unknown == 0`、`review_inconsistent` 为空。
+  v2 `result.json` 按 scope/血缘/逐项 `closed_by`+`evidence` 结案——**局部 clean 不关闭
+  其他范围**；旧格式只写计数时记为 `opaque:<review_id>:<n>` 未结项，多份旧格式既不
+  相加也不只取最新（记 `review_unknown`）。无任何审校记录时按旧计数
+  `g2_confirmed == 0` 或全部已修订兼容
 - 溯源完整（postprocessing-spec §5）：`provenance_coverage ≈ 1.0`（无翻译产物时为
   null，不适用）、`units_missing == 0`、`units_order_ok`、`media_lost == 0`、
   `toc_flat == false`、`inserts_missing_files == 0`（插图/表格/公式可回溯原始地址且文件在，
@@ -110,8 +116,8 @@ agent 按文件/段索引回 `structured/raw/` 与原页逐注核证边界、续
   （成品实际包含 ↔ 译文正文/对照表）
 
 > **报告时效**：`report.json` 记录生成时的 `artifacts_digest`（源哈希 + 各单元
-> structured/translation/align + 注释文件 + 最新审校 result + 成品字节）。之后改过
-> 译文/对照表/审校/注释或成品，`status`/`status_all`/`ledger` 即把报告标为过期
+> structured/translation/align + 注释文件 + **全部**审校 result + 成品字节）。之后改过
+> 译文/对照表/审校（含更早的未结项）/注释或成品，`status`/`status_all`/`ledger` 即把报告标为过期
 > （`report_stale`，进度降为 `built_not_released`）；须重跑 `build`/`qa` 才恢复。
 > 重跑 qa 时旧成品与当前产物不一致也会被 coverage/drift/注释内容核对拒绝。
 >
@@ -127,6 +133,8 @@ agent 按文件/段索引回 `structured/raw/` 与原页逐注核证边界、续
 > 的交付审计清单**（独立对账 + 人工抽查 + 写交付记录），两者都完成才算交付。
 
 `released` 为 False 时看 `released_reason` 判定原因：
+`review_inconsistent`（缺父/成环/父记录不在更早目录/输入摘要不符/结案缺证据/虚增 patched）/
+`review_unknown`（范围内未处置继承问题、或多份旧格式待重登）/
 `unresolved_confirmed`（G2 确认未修订）/ `structure_open`（含 align 缺失/空对照表）/
 `notes_open`（有注书成品注释门未清零）/ `audit_failed` / `provenance_incomplete`
 （溯源不完整：看 `provenance_findings` 里的 E_UNIT_MISSING/E_UNIT_ORDER/E_MEDIA_LOST/

@@ -22,7 +22,15 @@ from .build import build_epub, collect_media, subheading_anchors
 from .build.html import render_document, slug_file
 from .ingest import load_document
 from .preprocess.artifacts import read_catalog, read_repairs
-from .qa import artifacts_digest, audit_epub, audit_notes_epub, generate_report, run_epubcheck
+from .qa import (
+    artifacts_digest,
+    audit_epub,
+    audit_notes_epub,
+    generate_report,
+    latest_review_payload,
+    review_ledger,
+    run_epubcheck,
+)
 from .qa.artifacts import report_state
 from .qa.provenance import audit_provenance
 from .structure import rebuild_structure, skip_empty_unit, unit_heading, write_structured
@@ -536,6 +544,32 @@ def _render_and_pack(
             raise OrchestrationError(
                 "以下单元的注释引用未进入成品（不得静默丢弃）：" + "、".join(dropped[:8])
             )
+    # 扫描封面（issue #63）：只有 agent 确认过的封面才登记；首页图不自动当封面。
+    from .preprocess.cover import read_confirmed_cover
+
+    unit_cover_media = cover_media
+    try:
+        confirmed_cover = read_confirmed_cover(store)
+    except ValueError as exc:
+        raise OrchestrationError(str(exc)) from None
+    if confirmed_cover is not None:
+        if unit_cover_media and unit_cover_media != confirmed_cover["epub_path"]:
+            store.log_event(
+                "cover_conflict",
+                unit=unit_cover_media,
+                confirmed=confirmed_cover["epub_path"],
+            )
+        if cover_media is None:
+            cover_media = confirmed_cover["epub_path"]
+            media[cover_media] = confirmed_cover["data"]
+            store.log_event(
+                "cover_confirmed_used",
+                file=confirmed_cover["file"],
+                evidence=confirmed_cover["evidence"],
+            )
+    if any(e.get("kind") == "cover" for e in entries) and cover_media is None:
+        # 声明了 cover 单元但没有可用图片：可定位提示，不造空封面。
+        store.log_event("cover_without_image")
     if media_dropped:
         # 构建期静默丢弃留痕（交付审计 S1.3）：主对账由 provenance E_MEDIA_EPUB_LOST 兜底
         store.log_event("media_dropped", refs=media_dropped)
@@ -635,11 +669,23 @@ def repair_recover(store: RunStore) -> dict[str, Any]:
 
 def source_evidence(store: RunStore) -> dict[str, Any]:
     """只读导出页/栏/块、源 TOC 与源注候选定位。"""
+    from .preprocess.cover import collect_cover_candidates
     from .preprocess.source_evidence import collect_source_evidence
     from .quality_evidence import validate_workspace_paths
 
     validate_workspace_paths(store)
-    return collect_source_evidence(store)
+    data = collect_source_evidence(store)
+    data["cover_candidates"] = collect_cover_candidates(store)
+    return data
+
+
+def source_partition(store: RunStore) -> dict[str, Any]:
+    """源分区账本（issue #62/#58，只读）：每一行原文的去向与重复对位。"""
+    from .preprocess.partition import collect_partition
+    from .quality_evidence import validate_workspace_paths
+
+    validate_workspace_paths(store)
+    return collect_partition(store)
 
 
 def evidence_breaks(store: RunStore, *, output: str | None = None) -> dict[str, Any]:
@@ -710,13 +756,8 @@ def build(
 
 
 def _latest_review_result(store: RunStore) -> dict[str, Any] | None:
-    """读取最新一次审校运行的 result.json（目录名按时间戳可排序）。"""
-    if not store.reviews_dir.is_dir():
-        return None
-    candidates = sorted(store.reviews_dir.glob("review-*/result.json"))
-    if not candidates:
-        return None
-    return read_json(candidates[-1])
+    """最新一次审校的 result.json（展示用；放行判定见 ``review_ledger``）。"""
+    return latest_review_payload(store)
 
 
 def _unit_doc_flags(store: RunStore, rel_path: str) -> list[Any]:
@@ -1740,7 +1781,8 @@ def qa(
             if str(entry["id"]) in render_inputs
         },
     )
-    review_result = _latest_review_result(store)
+    review_result = latest_review_payload(store)
+    ledger = review_ledger(store)
     g0_flags = _collect_g0_flags(store, config)
     toc_missing = _toc_missing_from_facts(store, entries)
     total_sentences = sum(len(read_align(store.unit_align_path(u.id))) for u in pub.units)
@@ -1776,6 +1818,7 @@ def qa(
         repairs_total=len(repairs or []),
         repairs_unresolved=repairs_unresolved,
         notes_audit=notes_audit_dict,
+        review_ledger=ledger.to_dict(),
     )
     if repairs_unresolved:
         report.provenance_findings.append(
@@ -2216,6 +2259,8 @@ def render_ledger(rows: list[dict[str, Any]]) -> str:
 
 
 def status(store: RunStore, *, as_json: bool = False) -> dict[str, Any]:
+    from .preprocess.cover import cover_status
+
     pub = store.load_publication()
     units_out: list[dict[str, Any]] = []
     stale: list[dict[str, str]] = []
@@ -2283,6 +2328,23 @@ def status(store: RunStore, *, as_json: bool = False) -> dict[str, Any]:
     notes_state = notes_status(store)
     if notes_state["stale"]:
         stale.append({"id": "notes", "status": "stale", "reason": "notes_changed_since_register"})
+    # 审校账本（issue #68）：与 qa 同一份有效问题快照（不是最新一份 result.json）
+    ledger = review_ledger(store)
+    review_state = {
+        "contract": ledger.contract,
+        "records": ledger.records,
+        "review_id": ledger.review_id,
+        "open": ledger.open,
+        "unknown": ledger.unknown,
+        "inconsistent": list(ledger.inconsistent),
+        "blocking": ledger.blocking,
+    }
+    if ledger.inconsistent:
+        stale.append({"id": "review", "status": "inconsistent", "reason": "review_inconsistent"})
+    elif ledger.unknown:
+        stale.append({"id": "review", "status": "unknown", "reason": "review_unknown"})
+    elif ledger.open:
+        stale.append({"id": "review", "status": "open", "reason": "review_open"})
     data = {
         "slug": pub.slug,
         "title": pub.meta.title,
@@ -2293,6 +2355,8 @@ def status(store: RunStore, *, as_json: bool = False) -> dict[str, Any]:
         "preprocessing_complete": preprocessing_complete,
         "catalog": catalog,
         "notes": notes_state,
+        "cover": cover_status(store),
+        "review": review_state,
         "report": report_info,
         "stale": stale,
         "next_tasks": _derive_next_tasks(

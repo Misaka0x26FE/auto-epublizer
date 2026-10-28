@@ -1,4 +1,4 @@
-<!-- i18n: source=quality-control.zh.md sha256=93bf143b7ec9fe0e9df539f022e9c1ccd1f620ba538f8fdeb9abdb5f86c5becb -->
+<!-- i18n: source=quality-control.zh.md sha256=ea48473cf859686651f7cbae1225cb51d2798093d7a377790dbc48db71a6e7d8 -->
 > **English** | [中文](quality-control.zh.md)
 
 # Quality-Control Process Design (auto-epublizer)
@@ -223,7 +223,11 @@ for the workflow and boundaries.
   ```
 - Release checklist verification: product naming (`<slug>.epub`, `W_NAMING`), metadata (all DC items present), cover, copyright attribution, license.
 - **Release conditions** (aligned with docs/postprocessing-spec.md §5 and `qa/report.py::generate_report`):
-  `g2_confirmed == 0` or all revised (`g3_patched`);
+  `g2_confirmed == 0` or all revised (`g3_patched`) — the **legacy count**; when a v2 review
+  ledger exists, the effective issue set decides instead: `review_effective_open == 0`,
+  `review_unknown == 0` and no `review_inconsistent` (a local clean review does not close
+  other scopes; missing parent, cycles or mismatched input digests never release — see
+  `auto_translator/review/ledger.py` and `report.review_contract`);
   **`g0_terminology_open == 0`** (non-exempt hits must be verified and cleared individually; reasoned per-unit `terminology_exempt` flags are nonblocking, otherwise `released_reason=terminology_open`);
   **`g0_structure_open == 0`** (marker/footnote conservation violations; `structure_open`);
   **`glossary_conflicts_open == 0`** (undecided terminology conflicts; `glossary_conflict_open` — no release before the arbitration is written back to glossary.csv);

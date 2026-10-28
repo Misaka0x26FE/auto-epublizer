@@ -250,8 +250,14 @@ def test_production_conversion_does_not_count_unrendered_translation(tmp_path: P
 
 
 def test_flat_notes_inside_one_ordered_list_item_are_candidates(tmp_path: Path) -> None:
+    """检测器独立能力：单条 `<li>` 里摊平多条注文仍是候选。
+
+    用显式 HTML 夹具，不依赖 Markdown 渲染形状——#61 之后单条 `1. …` 渲染为段落
+    （非单项列表），若借用渲染结果会让本检测口随渲染规则漂移。
+    """
     markdown = " ".join(f"{number}. Note content." for number in range(1, 9))
-    result = audit_epub(_package(tmp_path, markdown), notes_context=_context(markdown))
+    body = f"<ol><li>{markdown}</li></ol>"
+    result = audit_epub(_package(tmp_path, markdown, body=body), notes_context=_context(markdown))
     assert result.ok
     (finding,) = _warnings(result)
     assert finding.data["paragraph_count"] == 0

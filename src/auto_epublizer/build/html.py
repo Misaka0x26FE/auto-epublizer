@@ -646,7 +646,10 @@ def markdown_to_xhtml(
             # 恰好与原编号一致）。其余（如校异/脚注式 `1) 2) 5)…`，数字是真实注号）：
             # <ol> 自动编号会整体重写为 1,2,3…，隔断的单条块甚至会全部显示为 1——
             # 必须保留原文数字、按普通段落输出。
-            if nums == list(range(1, len(nums) + 1)) and delims <= {".", "、"}:
+            # 单条块（issue #61 / PR66）：`<ol>` 会给它加上列表样式（缩进/悬挂/项目符号），
+            # 而书末注文的单条 `1. …` 是注文段落，不是单元素列表；两条以上才按列表渲染。
+            # 取舍与兼容性说明见 docs/epub-template-spec.zh.md。
+            if len(nums) >= 2 and nums == list(range(1, len(nums) + 1)) and delims <= {".", "、"}:
                 lis = "".join(
                     f"<li>{_inline(escape(m.group(3).strip()))}</li>"  # type: ignore[union-attr]
                     for m in marks

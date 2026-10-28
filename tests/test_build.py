@@ -906,6 +906,30 @@ def test_ol_numbering_fidelity_footnote_style() -> None:
     assert "<ol><li>一则</li><li>二则</li></ol>" in out
 
 
+def test_single_numbered_block_is_paragraph_not_list() -> None:
+    """回归 #61：单条 `1. …` 块是注文段落，不得渲染成单项 `<ol>`。
+
+    `<ol>` 会给它加上列表缩进/悬挂样式，而书末注文的单条注文本来就是正文段落；
+    两条以上连续编号才是列表（阅读器呈现与同文本段落一致，取舍见
+    docs/epub-template-spec.zh.md）。源数字必须保留。
+    """
+    out = markdown_to_xhtml("1. 第一条注文的内容。\n")
+    assert "<ol>" not in out
+    assert '<p class="fnlist">1. 第一条注文的内容。</p>' in out
+
+    # 单项块 + 普通段落：注文仍是原样段落，不被并入列表
+    out = markdown_to_xhtml("1. 第一条注文的内容。\n\n正文继续。\n")
+    assert "<ol>" not in out and "1. 第一条注文的内容。" in out
+
+    # 代码围栏里的 `1.` 不参与列表判定
+    out = markdown_to_xhtml("```\n1. 代码里的编号\n```\n")
+    assert "<ol>" not in out
+
+    # 两条以上连续编号仍是真列表
+    out = markdown_to_xhtml("1. 甲\n2. 乙\n")
+    assert "<ol><li>甲</li><li>乙</li></ol>" in out
+
+
 def test_build_epub_translator_creator_role(tmp_path: Path) -> None:
     """S2.1：translator 非空 → OPF 输出第二个 dc:creator（id=creator-trl）+ role trl；
     原作者带 creator-aut + role aut；translator 为空则整段不输出。"""

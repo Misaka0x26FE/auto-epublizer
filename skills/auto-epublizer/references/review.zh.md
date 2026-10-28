@@ -49,6 +49,37 @@ reviews/review-<ts>/
 若你的修订改动了 `translation/`+`align/`，先重新 `import`（回到 aligned）再
 `import --reviewed`。
 
+### 跨审校账本（`schema_version: 2`，issue #68）
+
+只写上面那组计数（旧格式）时，qa 会把它记成 `opaque:<review_id>:<n>` 未结项：**局部
+clean 不会关闭全书的未结问题**，多份旧格式也不能相加或只取最新。要让 qa 认账，在
+`result.json` 里写 v2 契约：
+
+```json
+{
+  "schema_version": 2,
+  "review_id": "review-2026-10-27T10-00-00",
+  "scope": "units",
+  "units": ["ch01", "ch02"],
+  "parent_reviews": ["review-2026-10-26T10-00-00"],
+  "inputs_digest": {"ch01": "<sha256>", "*": "<sha256>"},
+  "issues": [{"issue_id": "ch01-001", "unit": "ch01", "detail": "误译", "status": "open"}],
+  "dispositions": [
+    {"issue_id": "ch01-001", "status": "patched",
+     "closed_by": "patch-0007", "evidence": "align/ch01.jsonl#seq=42"}
+  ],
+  "g1_candidates": 1, "g2_confirmed": 1, "g3_patched": 1,
+  "termination": "clean_confirmed", "rounds": 2
+}
+```
+
+规则（全部保守）：无 `parent_reviews` 的记录是独立根，不能结别人的问题；覆盖某单元
+却没处置继承未结项 → `unknown`；结案必须给 `closed_by` + `evidence`；`g3_patched`
+大于逐项结案数是虚增；缺父/成环/父记录不在更早目录/`inputs_digest` 不符 → 不一致，
+qa 不放行。`inputs_digest` 可用 `python -c` 调
+`auto_epublizer.qa.review_inputs_digest(store)` 生成（结构化/译文/对照表字节摘要）。
+旧格式未结项可在新记录里逐项点名（`opaque:<review_id>:<n>`）结清。
+
 ## termination（收敛终态）
 
 | 值 | 含义 | 下一步 |

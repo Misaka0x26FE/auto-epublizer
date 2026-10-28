@@ -1,4 +1,4 @@
-<!-- i18n: source=AGENTS.zh.md sha256=8794933e13ceb6f60e42e3b8656a16f392a5cb03d1400a6f2e8b3449050082e1 -->
+<!-- i18n: source=AGENTS.zh.md sha256=013698092216d79c9020415c0c4c6cfe155fd8bc0c646913e40a6d3e645f626f -->
 > **English** | [中文](AGENTS.zh.md)
 
 # auto-epublizer repository guide (for coding agents developing/maintaining this project)
@@ -128,6 +128,12 @@ auto-epublizer knowledge status                 # statistics + git state (--json
 #     boundary re-splits/merges also write preprocessing/structure.csv and register it (S3)
 auto-epublizer restructure [--workspace <dir>]   # register rebuilt unit structure (unchanged ids keep state)
 auto-epublizer evidence breaks   # export page-boundary evidence → preprocessing/breaks.jsonl (for judging page/line-split fragments; locates evidence only, no semantic merge)
+auto-epublizer evidence partition  # per-line source partition ledger (read-only): destination, duplicate pairing, block ranges; --json for machines
+auto-epublizer evidence source   # raw page/column/block/TOC/note candidates + scanned cover candidates (read-only)
+auto-epublizer evidence report   # read-only redo of product/external-source/copy evidence (pass/fail/unknown/manual)
+# Scanned cover: cover_candidates from evidence source --json are candidates only; the agent
+# verifies and writes preprocessing/cover.json ({"file": "structured/raw/media/…", "evidence": "…"}),
+# and only then does build register cover-image — the first page image is never assumed to be the cover
 
 # 4.7 Source-note verification, separation and registration (mandatory for books with notes; see references/notes.md):
 #     notes candidates exports candidates → the agent reviews the source item by item
@@ -162,9 +168,13 @@ auto-epublizer knowledge import --workspace .   # cross-book same-key different-
 
 # 7. Package output
 auto-epublizer build          # translated EPUB → output/ (--theme selects the layout theme)
+auto-epublizer pdf            # derived print PDF → output/ (not in the QA digest; --size/--body-pt/--note-pt/--json)
 
 # 8. QA (G0 static validation + G4 audit + G5 release summary → report.json)
 auto-epublizer qa             # structure audit + epubcheck
+#    Release is decided by the review ledger (review/ledger.py): v2 result.json scope/lineage and
+#    itemized closure evidence; a local clean review does not close other scopes; missing parent,
+#    cycles or mismatched input digests never release
 auto-epublizer status --json  # inspect progress/state machine/artifact-state reconciliation (includes next_tasks machine pointer)
 auto-epublizer status --all   # multi-workspace overview (three-tier progress: released/built_not_released/preprocessing)
 auto-epublizer ledger         # cross-book ledger markdown (machine-recomputable columns + domain/summary to fill)

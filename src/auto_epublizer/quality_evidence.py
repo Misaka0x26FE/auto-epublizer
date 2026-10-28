@@ -179,6 +179,20 @@ def collect_quality_evidence(
         actual=source_hash,
         registered=pub.meta.source_sha256,
     )
+    # 审校账本（issue #68）：与 qa 同一份有效问题快照；无记录时 unknown，不冒充已审校。
+    from auto_translator.review.ledger import build_ledger, load_review_records
+
+    ledger = build_ledger(load_review_records(store.reviews_dir))
+    add(
+        "review_ledger",
+        "unknown" if ledger.contract == "none" else ("fail" if ledger.blocking else "pass"),
+        "review records → effective issue set",
+        contract=ledger.contract,
+        records=ledger.records,
+        open=ledger.open,
+        unknown=ledger.unknown,
+        inconsistent=list(ledger.inconsistent),
+    )
     external_hash = (
         digest(external_source, "external_source") if external_source is not None else None
     )

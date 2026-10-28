@@ -182,8 +182,18 @@ auto-epublizer notes status [--json] [--workspace <dir>]          # 摘要 / sta
 # 封装（译文缺省回退源文；--theme 选排版主题）
 auto-epublizer build [--theme standard|compact|spacious] [-o <out.epub>] [--workspace <dir>]
 
+# 派生印刷版 PDF（不入 qa 摘要；EPUB 仍是交付格式）
+auto-epublizer pdf [--size a5|32k|b5|16k] [--body-pt 10.5] [--note-pt 8.5] [--json] [--workspace <dir>]
+
+# 只读证据（确定性、零 token；不放行、不改状态）
+auto-epublizer evidence source [--json] [--workspace <dir>]
+auto-epublizer evidence partition [--json] [--workspace <dir>]   # 源行分区账本：逐行去向/重复对次/跨块区间
+auto-epublizer evidence breaks [-o <jsonl>] [--workspace <dir>]
+auto-epublizer evidence report [--json] [--epub <path>] [--workspace <dir>]
+
 # 质检（epubcheck 零 error + 解包审计 + 溯源审计 + G5 放行判定）
 auto-epublizer qa [--epub <path>] [--workspace <dir>]
+#   审校放行看 reviews/ 账本（v2：scope/血缘/逐项结案证据）；局部 clean 不关闭其他范围
 
 # 仅转换不翻译
 auto-epublizer convert <input> [--theme standard|compact|spacious] [-o <out.epub>] [--workspace <dir>]
@@ -203,7 +213,7 @@ auto-epublizer ledger [-o <ledger.md>] [--workspace <work-root>]
 
 | 命令 | 机器读取方式 |
 |---|---|
-| `doctor`、`status`（含 `--all`）、`notes status`、`knowledge status` | 显式 `--json`，stdout 解析 JSON |
+| `doctor`、`status`（含 `--all`）、`notes status`、`knowledge status`、`evidence source/partition/report`、`pdf` | 显式 `--json`，stdout 解析 JSON |
 | `qa` | 运行后读工作区 `report.json`，再用 `status --json` 确认报告未 stale；退出 0 仅表示执行结束，不代表 released |
 | `build`、`import`、`g0`、`meta` | 按真实帮助调用；检查非零退出码，再通过 `status --json` / `report.json` 读取适用状态；后续修改后重跑 QA |
 | `ledger` | Markdown，需文件时用 `-o`；进度机器决策用 `status --all --json`，不解析彩色摘要 |

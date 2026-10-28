@@ -73,6 +73,11 @@ OPF 的 `aep:render-mode` 记录本次实际构建入口：`source`（纯源文�
   无具体字体名/颜色/字号（audit 会拦：`E_THEME_FONT`/`E_THEME_COLOR`）。
 - **封面**：cover 单元的首个图片自动成为 `cover-image`（`<meta name="cover">` +
   spine `linear="no"`）；无封面源图时 audit 提示 `W_NO_COVER`（provenance）。
+  **扫描件封面**（#63）不自动取第 1 页图：`evidence source --json` 的 `cover_candidates`
+  只是候选（页号/块号/魔数格式/字节摘要）；agent 核证后写
+  `preprocessing/cover.json`（`{"file": "structured/raw/media/…", "evidence": "…"}`，两项必填），
+  build 才按既有 cover-image 路径登记（媒体字节原样）；声明 cover 单元却无可解析图片 →
+  `events.jsonl` 记 `cover_without_image`，`status --json` 的 `cover.missing=true`。
 - **注释**：标准 EPUB `noteref` + `footnote`/`endnote` 语义、完整内容、可解析链接与回链、资源身份和有效登记绑定均为强制离线核证项（见 `references/notes.md`）。是否弹窗由阅读器实现和用户设置决定；始终保留可读注释区及往返跳转 fallback。
 - **目录层级**：源文标题层级（`level`）→ nav 嵌套 `<ol>` + NCX 嵌套 navPoint；
   **单元内子标题锚点**（2026-09-29 起）：单元内 h2+ 标题自动获得稳定 id
@@ -89,7 +94,30 @@ OPF 的 `aep:render-mode` 记录本次实际构建入口：`source`（纯源文�
   有序列表仅当**编号从 1 起连续递增且用 `. `/`、` 分隔**时才渲染为 `<ol>`（此时自动编号恰与原编号一致）；
   其余 `N.`/`N、`/`N)` 起首的块——如校勘本异文注 `1) 2) 5)…`（数字是真实注号）——
   一律按普通段落输出并**保留原文数字**（`p.fnlist`），不得被 `<ol>` 自动编号改写。
+  **单条编号块**（只有一行 `1. …`）同样按段落输出：书末注文的单条注文不是单项列表，
+  `<ol>` 会给它加上列表缩进/悬挂样式（#61；取舍见 `docs/epub-template-spec.zh.md`）。
 - **表格**：md 管道表（`| a | b |` + 分隔行）与 pandoc 简单/网格表（成排 `---` 列界）
   渲染为 `<table class="data">`（`th`/`td` + 功能性边框）；单元格文字正常翻译，
   结构保持不变。**翻译时不要改动列界与分隔线**（G0 表格形状守恒）。
 - 原图优先+补充层为后续扩展点。
+
+## 印刷版 PDF（`pdf`，派生件）
+
+```bash
+auto-epublizer pdf --workspace <dir> [--epub <path>] [-o <out.pdf>] \
+  [--size a5|32k|b5|16k] [--body-pt 10.5] [--note-pt 8.5] [--line-height 1.55] \
+  [--no-bookmarks] [--json]
+```
+
+- **定位**：EPUB 仍是交付格式；PDF 是每次从 EPUB 重新生成的派生件，不手改、不回写。
+  `artifacts_digest` **不遍历 `output/`**，所以重排 PDF 不需要重跑 `qa`，也不会让报告过期。
+- **输入**：缺省取 `output/<slug>.epub`；包文档只经 `META-INF/container.xml` 定位；解包拒绝
+  绝对路径、`..` 与符号链接；spine 文档缺失直接报中文错误，不静默少页。
+- **资源**：每章按章节目录重定位 `src`/`href`（子目录章节的 `../media/x.png` 不会错配）；
+  远程/包外引用丢弃并在 `notes` 留痕；`script`/`on*` 一律移除。
+- **书签**：只读 OPF 的 `properties="nav"` 且只取 `epub:type="toc"`；区段起始页由不可见
+  定位标记确定（映射后 redaction 清除），片段级条目在区段页范围内找标题；找不到写
+  `notes` 明确「未定位」，不用页码单调冒充正确。OPF3 `meta refines` 的译者不进 author。
+- **参数**：正文 4–24 pt、注文 4–20 pt、行距 1.0–3.0；非有限/越界直接拒绝。输出与输入
+  同路径拒绝；Chromium 缺失/超时（240 s）/非零退出/产物非 PDF 都是中文错误，失败不留下
+  半成品，也不破坏既有旧 PDF。

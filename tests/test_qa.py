@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 import zipfile
 from pathlib import Path
 
@@ -668,6 +669,67 @@ def test_audit_backslash_escape_residue(tmp_path: Path) -> None:
 
     # 脱转义后的成品、以及路径里的反斜杠形态，都不该误报
     for clean in ("(1) 法国继续承认责任。", "p. cm.", "听见[一年后]的巨响"):
+        codes = {f.code for f in audit_epub(_inject(clean)).findings}
+        assert "W_RESIDUE" not in codes, clean
+
+
+def test_audit_bare_dollar_delimiters_are_candidates(tmp_path: Path) -> None:
+    """回归 #65：成品裸 `$$…$$` / 成行 `$` 要有候选提示，但不升格硬错。
+
+    OCR 把行间公式写成 Markdown 数学定界符，渲染层不识别时读者会看到裸 `$`；
+    旧 `_MD_RESIDUE` 不含该形态、epubcheck 也不报。判定为 warning 候选，
+    合法代码、价格与 MathML 公式不得被误报。
+    """
+    out = _make_epub(tmp_path)
+
+    def _inject(fragment: str, tag: str = "h1") -> Path:
+        target = out.with_name(f"inject-dollar-{abs(hash(fragment))}.epub")
+        with zipfile.ZipFile(out) as zin, zipfile.ZipFile(target, "w") as zout:
+            for item in zin.infolist():
+                data = zin.read(item.filename)
+                if item.filename.endswith("front-preface.xhtml"):
+                    text = data.decode("utf-8")
+                    text = re.sub(
+                        rf"<{tag}>.*?</{tag}>",
+                        lambda _m: f"<{tag}>{fragment}</{tag}>",
+                        text,
+                        count=1,
+                        flags=re.DOTALL,
+                    )
+                    data = text.encode("utf-8")
+                zout.writestr(item, data)
+        return target
+
+    for leaked in (
+        "$$E = mc^2$$",
+        "$<em>$</em>行间公式",
+        "首行\n$\nE = mc^2\n$\n末行",
+    ):
+        codes = {f.code for f in audit_epub(_inject(leaked)).findings}
+        assert "W_RESIDUE" in codes, leaked
+
+    # aside（后置文件/注文）同样要覆盖：注文一般在 <aside epub:type="footnote"> 里
+    aside = out.with_name("inject-dollar-aside.epub")
+    with zipfile.ZipFile(out) as zin, zipfile.ZipFile(aside, "w") as zout:
+        for item in zin.infolist():
+            data = zin.read(item.filename)
+            if item.filename.endswith("back-index.xhtml"):
+                text = data.decode("utf-8").replace(
+                    "</body>",
+                    '<aside epub:type="footnote"><p>$$\\int_0^1 x\\,dx$$</p></aside></body>',
+                    1,
+                )
+                data = text.encode("utf-8")
+            zout.writestr(item, data)
+    codes = {f.code for f in audit_epub(aside).findings}
+    assert "W_RESIDUE" in codes
+
+    # 负例：真实代码块、单个美元价格、MathML 公式
+    for clean in (
+        "<pre><code>$$x$$</code></pre>",
+        "价格从 $5 涨到 $9",
+        '<span class="math">x</span>',
+    ):
         codes = {f.code for f in audit_epub(_inject(clean)).findings}
         assert "W_RESIDUE" not in codes, clean
 

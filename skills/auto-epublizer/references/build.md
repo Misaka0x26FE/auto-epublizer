@@ -1,4 +1,4 @@
-<!-- i18n: source=build.zh.md sha256=067a98d78aea5da5362febd3df7031f54b43088085524f4341cbed60ac753a2d -->
+<!-- i18n: source=build.zh.md sha256=957595e000e1056d4e1e4d28702dbcb0be100ccfb5a293b24dfebf1e67bb493e -->
 > **English** | [中文](build.zh.md)
 
 # Build (EPUB packaging)
@@ -90,6 +90,12 @@ OPF `aep:render-mode` records the actual build entry: `source` (source only) or 
   no specific font names/colors/font sizes (audit blocks them: `E_THEME_FONT`/`E_THEME_COLOR`).
 - **Cover**: the first image of the cover unit automatically becomes `cover-image` (`<meta name="cover">` +
   spine `linear="no"`); when there is no cover source image, audit warns `W_NO_COVER` (provenance).
+  A **scanned cover** (#63) is never taken from page 1 automatically: `evidence source --json` lists
+  `cover_candidates` (page/block/magic format/byte digest) as candidates only; after the agent verifies
+  one and writes `preprocessing/cover.json` (`{"file": "structured/raw/media/…", "evidence": "…"}`, both
+  required), build registers it through the existing cover-image path (media bytes unchanged). A declared
+  cover unit without a resolvable image logs `cover_without_image` in `events.jsonl` and sets
+  `cover.missing=true` in `status --json`.
 - **Notes**: standard EPUB `noteref` + `footnote`/`endnote` semantics, complete content, resolvable links and backlinks, resource identity, and current registration binding are mandatory offline checks (see `references/notes.md`). Reader implementation and user settings determine whether a popup appears; readable note areas and round-trip navigation remain the fallback.
 - **TOC hierarchy**: source heading levels (`level`) → nested nav `<ol>` + nested NCX navPoint;
   **in-unit sub-heading anchors** (since 2026-09-29): in-unit h2+ headings automatically get stable ids
@@ -109,7 +115,37 @@ OPF `aep:render-mode` records the actual build entry: `source` (source only) or 
   (native auto-numbering then matches the source numbers); all other `N.`/`N、`/`N)` blocks —
   e.g. critical-edition apparatus notes `1) 2) 5)…` whose numbers are real note ids — render
   as literal paragraphs with the numbers preserved (`p.fnlist`), never renumbered by `<ol>`.
+  A **single numbered block** (one line `1. …`) is also a paragraph: a lone endnote is not a
+  one-item list, and `<ol>` would add list indentation/hanging style (#61; rationale in
+  `docs/epub-template-spec.md`).
 - **Tables**: md pipe tables (`| a | b |` + separator row) and pandoc simple/grid tables (rows of `---` column boundaries)
   are rendered as `<table class="data">` (`th`/`td` + functional borders); cell text is translated normally,
   structure stays unchanged. **Do not change column boundaries and separator lines during translation** (G0 table shape conservation).
 - Original image first + supplementary layer is a future extension point.
+
+## Print PDF (`pdf`, derived artifact)
+
+```bash
+auto-epublizer pdf --workspace <dir> [--epub <path>] [-o <out.pdf>] \
+  [--size a5|32k|b5|16k] [--body-pt 10.5] [--note-pt 8.5] [--line-height 1.55] \
+  [--no-bookmarks] [--json]
+```
+
+- **Position**: the EPUB remains the delivery format; the PDF is regenerated from it on every
+  run, never edited or written back. `artifacts_digest` does **not** walk `output/`, so
+  re-rendering the PDF neither requires re-running `qa` nor invalidates the report.
+- **Input**: defaults to `output/<slug>.epub`; the package document is located only through
+  `META-INF/container.xml`; extraction rejects absolute paths, `..` and symlinks; a missing
+  spine document is a Chinese error, not a silently shorter book.
+- **Resources**: `src`/`href` are relocated per chapter directory (a subdirectory chapter's
+  `../media/x.png` cannot be mismatched); remote/out-of-package references are dropped and
+  recorded in `notes`; `script`/`on*` are always removed.
+- **Bookmarks**: only the OPF item with `properties="nav"` and only the `epub:type="toc"` nav;
+  section start pages come from invisible locator marks (redacted after mapping), fragment
+  entries search the title inside the section page range, and an unlocated entry is recorded
+  in `notes` instead of pretending that monotonic page numbers are correctness. OPF3
+  `meta refines` translators never become the author.
+- **Parameters**: body 4–24 pt, notes 4–20 pt, line height 1.0–3.0; non-finite or out-of-range
+  values are rejected. Output equal to input is rejected; a missing Chromium, timeout (240 s),
+  non-zero exit or a non-PDF product are Chinese errors; failures leave no partial product and
+  never damage an existing PDF.

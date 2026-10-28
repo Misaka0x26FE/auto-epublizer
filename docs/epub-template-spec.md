@@ -1,4 +1,4 @@
-<!-- i18n: source=epub-template-spec.zh.md sha256=c4e2c484c6c72a6b85b5a825b325e800e265b9d120b0cc593a25ce0b755297bc -->
+<!-- i18n: source=epub-template-spec.zh.md sha256=c3e5b3ec14fd8c3b69266a08f0b26fb5e7c53e5996e89acddd26dc30b9271791 -->
 > **English** | [中文](epub-template-spec.zh.md)
 
 # EPUB File Spec: Unstyled Standard Template + Limited Themes
@@ -62,7 +62,7 @@ style-independent. Completed ✅ / to be added ⬜:
 | Cover `cover-image` | ✅ | `properties="cover-image"` + `<meta name="cover">` + spine `linear="no"` |
 | Cover/TOC page `linear="no"` | ✅ | the cover unit content document does not enter the body reading order |
 | TOC anchors | ✅ | unit-level nesting + **in-unit sub-heading anchors** (`file.xhtml#anchor`, stable `{unit_id}-h{n}` ids) |
-| Semantic tags | ✅ | quotes `blockquote`, verse blocks `p.verse`, `- ` lists `ul` retain semantics (P2); `<ol>` only for markers consecutive from 1 with `. `/`、` — other `N)`/`N.`/`N、` blocks (critical-apparatus notes) keep their literal numbers (`p.fnlist`), never renumbered |
+| Semantic tags | ✅ | quotes `blockquote`, verse blocks `p.verse`, `- ` lists `ul` retain semantics (P2); `<ol>` only for markers consecutive from 1 with `. `/`、`, **at least two items** — other `N)`/`N.`/`N、` blocks (critical-apparatus notes) keep their literal numbers (`p.fnlist`), never renumbered. A lone `1. …` is a note paragraph, not a one-item list: `<ol>` adds list indentation/hanging style while readers present the same text identically (#61 trade-off) |
 
 ## 4. Presentation Layer (Unstyled Default Template)
 

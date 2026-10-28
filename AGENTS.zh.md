@@ -92,6 +92,12 @@ auto-epublizer knowledge status                 # 统计 + git 状态（--json �
 #     单元边界重切/合并另写 preprocessing/structure.csv 后登记（S3）
 auto-epublizer restructure [--workspace <dir>]   # 登记重建的单元结构（同 id 未变保留状态）
 auto-epublizer evidence breaks   # 导出页边界证据 → preprocessing/breaks.jsonl（判读跨页/断行碎片；只定位证据，不做语义合并）
+auto-epublizer evidence partition  # 源行分区账本（只读）：逐行去向/重复对次/跨块区间，--json 供机器读
+auto-epublizer evidence source   # 原始页/栏/块/TOC/注文候选 + 扫描封面候选（只读）
+auto-epublizer evidence report   # 成品/外部源/副本的只读重做证据（pass/fail/unknown/manual）
+# 扫描件封面：evidence source --json 里的 cover_candidates 只是候选；agent 核证后写
+# preprocessing/cover.json（{"file": "structured/raw/media/…", "evidence": "…"}），build 才登记
+# cover-image；未确认不自动把首页图当封面
 
 # 4.7 源注核证、抽离与登记（有注书必做；详见 references/notes.md）：notes candidates 导出候选 →
 #     agent 回看源件逐条核证（disposition=note|not_note）→ 写 structured/notes.json 与正文
@@ -120,9 +126,12 @@ auto-epublizer knowledge import --workspace .   # 跨书同键异译外置到统
 
 # 7. 封装输出
 auto-epublizer build          # 译文 EPUB → output/（--theme 选排版主题）
+auto-epublizer pdf            # 派生印刷版 PDF → output/（不入 qa 摘要；--size/--body-pt/--note-pt/--json）
 
 # 8. 质检（G0 静态校验 + G4 审计 + G5 汇总放行 → report.json）
 auto-epublizer qa             # 结构审计 + epubcheck（有注书另跑独立成品注释门；notes_open 阻断放行）
+#    审校放行按 reviews/ 账本（review/ledger.py）判定：v2 result.json 的 scope/血缘/逐项
+#    结案证据；局部 clean 不关闭其他范围；缺父/成环/输入摘要不符不放行
 auto-epublizer status --json  # 查看进度/状态机/产物-状态对账（含 next_tasks 机器指针）
 auto-epublizer status --all   # 多工作区总览（三档进度：released/built_not_released/preprocessing）
 auto-epublizer ledger         # 跨书台账 markdown（机器可重算列 + 待填领域/摘要）

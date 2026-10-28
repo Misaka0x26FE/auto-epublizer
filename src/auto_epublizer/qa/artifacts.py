@@ -3,7 +3,8 @@
 """报告失效证据链（B2）：产物摘要与「旧报告不再代表当前产物」的判定。
 
 ``report.json`` 记录生成时刻的 ``artifacts_digest``（源哈希 + 每单元
-structured/translation/align 内容 + 注释文件 + 最新审校 result.json + 成品 EPUB 字节）
+structured/translation/align 内容 + 注释文件 + **全部**审校 result.json（有效的放行
+判定另见 ``review_ledger``）+ 成品 EPUB 字节）
 与 ``artifacts_epub``（实际被审计的成品路径）。
 
 任何一处产物变化 → 摘要不再匹配 → ``status``/``status_all``/``ledger`` 把旧报告的
@@ -26,12 +27,77 @@ def _file_sha256(path: Path) -> str:
 
 
 def latest_review_result_path(store: Any) -> Path | None:
-    """最新一次审校的 result.json（目录名时间戳可排序；无则 None）。"""
+    """最新一次审校的 result.json（目录名时间戳可排序；无则 None）。
+
+    仅用于**展示**（摘要里的 ``review_id``）；放行判定走 ``review_ledger``，
+    不再假定「最新一份」代表全部历史问题（issue #68）。
+    """
     reviews = store.reviews_dir
     if not reviews.is_dir():
         return None
     candidates = sorted(reviews.glob("review-*/result.json"))
     return candidates[-1] if candidates else None
+
+
+def review_result_paths(store: Any) -> list[Path]:
+    """全部审校 ``result.json``（按目录名排序；放行输入的全集）。"""
+    reviews = store.reviews_dir
+    if not reviews.is_dir():
+        return []
+    return sorted(reviews.glob("review-*/result.json"))
+
+
+def read_review_payloads(store: Any) -> list[tuple[str, dict[str, Any]]]:
+    """读取全部审校结果 → [(review_id, payload)]；坏 JSON 视为空记录。"""
+    out: list[tuple[str, dict[str, Any]]] = []
+    for path in review_result_paths(store):
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            payload = {}
+        out.append((path.parent.name, payload if isinstance(payload, dict) else {}))
+    return out
+
+
+def latest_review_payload(store: Any) -> dict[str, Any] | None:
+    """最新一份审校 result.json 的原始内容（只作展示计数；无则 None）。"""
+    payloads = read_review_payloads(store)
+    return payloads[-1][1] if payloads else None
+
+
+def review_ledger(store: Any) -> Any:
+    """跨审校有效问题账本（qa/status/evidence 共用的唯一判定快照）。"""
+    from auto_translator.review.ledger import build_ledger, load_review_records
+
+    return build_ledger(load_review_records(store.reviews_dir))
+
+
+def review_inputs_digest(store: Any) -> dict[str, str]:
+    """当前审校输入的逐单元摘要（写进 v2 ``result.json`` 的 ``inputs_digest``）。
+
+    覆盖 structured / translation / align 三类文件的字节；另有 ``"*"`` 为全工作区摘要。
+    记录写明摘要后，qa 才能判断「结案依据的输入」与「提出问题时的输入」是否同一份。
+    """
+    pub = store.load_publication()
+    h_all = hashlib.sha256()
+    out: dict[str, str] = {}
+    for unit in pub.units:
+        rel = (unit.meta or {}).get("rel_path") or ""
+        h = hashlib.sha256()
+        for kind, path in (
+            ("structured", store.structured_dir / rel if rel else None),
+            ("translation", store.translation_dir / rel if rel else None),
+            ("align", store.unit_align_path(unit.id)),
+        ):
+            h.update(f"{kind}:".encode())
+            if path is not None and path.is_file():
+                h.update(_file_sha256(path).encode())
+            h.update(b"\n")
+        digest = h.hexdigest()
+        out[unit.id] = digest
+        h_all.update(f"{unit.id}:{digest}\n".encode())
+    out["*"] = h_all.hexdigest()
+    return out
 
 
 def _resolve_epub_path(store: Any, epub_path: str | Path | None) -> Path:
@@ -127,10 +193,14 @@ def artifacts_digest(store: Any, *, epub_path: str | Path | None = None) -> str:
                 exists = insert_file_exists(raw_dir, record.file)
                 h.update(f"insertfile:{record.id}:".encode())
                 h.update(b"1\n" if exists else b"0\n")
-    review_path = latest_review_result_path(store)
+    review_paths = review_result_paths(store)
     h.update(b"review:")
-    if review_path is not None:
-        h.update(_file_sha256(review_path).encode())
+    # 摘要**全部**审校记录（issue #68）：只摘要最新一份时，改动更早的未结项不会使
+    # 报告过期，等于允许「旧问题被静默改写」。文件名参与摘要，改名也算变化。
+    for path in review_paths:
+        h.update(f"{path.parent.name}:".encode())
+        h.update(_file_sha256(path).encode())
+        h.update(b"\n")
     h.update(b"\n")
     epub = _resolve_epub_path(store, epub_path)
     h.update(b"epub:")

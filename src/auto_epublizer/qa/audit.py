@@ -112,6 +112,11 @@ _MEASURE_AFTER = (
 # 合法的段落收束（含引号/括号收尾与省略号）
 _PARA_END_OK = "。！？…!?;；”’\"'」』）)】〕》>"
 
+# 成品裸数学定界符（issue #65）：`$$` 成对出现，或单独成行的 `$`（OCR 把行间公式
+# 拆成两行）。扫描件里这两种形态几乎都不是给读者看的文本。
+_DOLLAR_PAIR_RE = re.compile(r"(?<!\$)\$\$(?!\$)")
+_DOLLAR_LINE_RE = re.compile(r"^[ \t]*\$[ \t]*$", re.MULTILINE)
+
 # Collected-notes candidates (#46), deliberately conservative and never identity evidence.
 _NOTE_NUMBER = re.compile(r"(?<![\w.])[0-9]{1,3}\.\s")
 _NOTES_MIN_CANDIDATES = 8
@@ -278,6 +283,25 @@ def _collected_notes_candidates(
             "请对照 structured/raw/ 和原页逐注核证，不自动切段、不据此阻断；独立 N 门不变",
             data=data,
         )
+
+
+def _dollar_delimiter_candidates(result: AuditResult, name: str, content: str) -> None:
+    """成品裸 ``$$``/成行 ``$`` 定界符候选（issue #65）。
+
+    扫描件 OCR 常把行间公式写成 ``$$ … $$``；渲染层不识别 Markdown 数学定界符时，
+    读者会看到裸美元符号，而旧的 ``_MD_RESIDUE`` 表不含该项、epubcheck 也不报。
+    这里只给 **warning 候选**：合法 MathML 公式不含 ``$``，但正文引用价格/代码/货币
+    符号仍可能出现，是否删除包裹由 agent 核证，不自动改写、不升格硬错。
+    代码/``pre`` 由 ``_NonCodeMarkup`` 剥离；跨行内标签（``$<em>$</em>``）拼接后可见。
+    """
+    prose = _NonCodeMarkup()
+    prose.feed(content)
+    # 行内标签透明化：`$<em>$</em>` 在成品里就是两个相邻的定界符。
+    text = _HTML_TAG_RE.sub("", "".join(prose.parts))
+    if _DOLLAR_PAIR_RE.search(text):
+        result.add("warning", "W_RESIDUE", f"成品含未转换的数学定界符 $$（候选）：{name}")
+    elif _DOLLAR_LINE_RE.search(text):
+        result.add("warning", "W_RESIDUE", f"成品含成行的裸 $ 定界符（候选）：{name}")
 
 
 def _layout_candidates(result: AuditResult, name: str, content: str) -> None:
@@ -669,7 +693,8 @@ def audit_epub(
         for name in names:
             if not name.endswith(".xhtml") or name.endswith(("nav.xhtml", "landmarks.xhtml")):
                 continue
-            content = strip_fingerprint_comments(zf.read(name).decode("utf-8"))
+            raw = strip_fingerprint_comments(zf.read(name).decode("utf-8"))
+            content = raw
             if "<!--" in content:
                 result.add("error", "E_RESIDUE", f"HTML 注释残留：{name}")
             prose = _NonCodeMarkup()
@@ -679,6 +704,7 @@ def audit_epub(
                 if pattern.search(content):
                     result.add("warning", "W_RESIDUE", f"markdown 标记残留（{label}）：{name}")
                     break
+            _dollar_delimiter_candidates(result, name, raw)
 
         # 9b. 版面型候选（issue #38）：warning 级、供 agent 核证；不阻断、不自动改写
         for name in names:

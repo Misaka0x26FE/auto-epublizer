@@ -19,6 +19,7 @@
 
 | 文档 | 状态 | 内容 |
 |---|---|---|
+| [2026-10-27-issue-pr-triage.md](2026-10-27-issue-pr-triage.md) | 已实施（未提交/未合并 PR；§6 工作树已被清理，§7 为 2026-10-28 重做记录） | #68 审校账本、#65 `$$` 候选、PR66 单项列表、PR67 PDF D1–D3、#62/#58 源分区、#63 扫描封面；证据与未验证范围见 §7 |
 | [2026-10-23-issue-pr-triage.md](2026-10-23-issue-pr-triage.md) | 已实施（`f4d6c24`） | PR59 独立审查补修、历史对账、制作页和证据/安全修复接口已交付；保留投稿历史，实书语义核证另列；恢复及推送证据见 §11 |
 | [preprocessing-plan.md](preprocessing-plan.md) | 已被 v2 取代 | 预处理 v1（分类识别 + 分层理解 + 补充环节） |
 | [preprocessing-plan-v2.md](preprocessing-plan-v2.md) | 已完成 | 预处理 v2（能力边界确认 + 计划 A OCR 路由 / B 网络搜索 / C PDF 内容提取） |

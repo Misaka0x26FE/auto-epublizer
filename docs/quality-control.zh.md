@@ -206,7 +206,10 @@ agent 据此回 raw 与原页逐注核证；候选数不是真实注数。字号
 - 发布清单核对：成品命名（`<slug>.epub`，`W_NAMING`）、元数据（DC 项齐全）、
   封面、版权署名、许可。
 - **放行条件**（对齐 docs/postprocessing-spec.md §5 与 `qa/report.py::generate_report`）：
-  `g2_confirmed == 0` 或全部已修订（`g3_patched`）；
+  `g2_confirmed == 0` 或全部已修订（`g3_patched`）——**旧格式计数**；v2 审校账本存在时
+  改看有效问题集合：`review_effective_open == 0` 且 `review_unknown == 0` 且
+  `review_inconsistent` 为空（局部 clean 不关闭其他范围；缺父/成环/输入摘要不符不放行，
+  见 `auto_translator/review/ledger.py` 与 `report.review_contract`）；
   **`g0_terminology_open == 0`**（未豁免术语命中须逐条核证清零；
   有理由的单元级 `terminology_exempt` 不计阻断项，否则 `released_reason=terminology_open`）；
   **`g0_structure_open == 0`**（标记/脚注守恒违例；`structure_open`）；

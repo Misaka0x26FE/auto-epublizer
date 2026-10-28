@@ -48,6 +48,14 @@ class QaResult:
     epub_media_missing: int = 0
     epub_footnotes_missing: int = 0
     epub_coverage: float | None = None
+    # 审校账本（issue #68）：跨审校有效问题集合；只按最新一份计数会漏掉旧未结项。
+    # contract=none（无审校记录）时保留旧的 g2<=g3 计数兼容；
+    # v2/legacy 契约下一律以账本为准（open/unknown/inconsistent 全零才放行）。
+    review_contract: str = ""
+    review_effective_open: int = 0
+    review_unknown: int = 0
+    review_inconsistent: list[str] = field(default_factory=list)
+    review_issues: list[dict[str, Any]] = field(default_factory=list)
     # 语义整备（S2）：修复留痕计数（unresolved 仅 W 级提示，不阻断）
     repairs_total: int = 0
     repairs_unresolved: int = 0
@@ -79,11 +87,14 @@ def generate_report(
     repairs_total: int = 0,
     repairs_unresolved: int = 0,
     notes_audit: dict[str, Any] | None = None,
+    review_ledger: dict[str, Any] | None = None,
 ) -> QaResult:
     """聚合 G0–G4 + 溯源审计生成放行报告。
 
     ``review`` 是最新一次审校的 result.json（g1_candidates/g2_confirmed/g3_patched/
-    termination/rounds）；``g0_flags`` 是 G0 静态校验告警；``total_sentences`` 是全部
+    termination/rounds，仅作展示计数）；``review_ledger`` 是跨审校有效问题账本
+    （``auto_translator.review.ledger.build_ledger`` 的 ``to_dict``），放行判定以它为准。
+    ``g0_flags`` 是 G0 静态校验告警；``total_sentences`` 是全部
     align 句数（用于差错率分母）；``provenance`` 是溯源审计结果
     （qa/provenance.py）；``toc_missing`` 是 facts 源 TOC 对账缺失标题；
     ``glossary_conflicts_open`` 是术语冲突未裁决条数（glossary_conflicts.jsonl
@@ -165,6 +176,15 @@ def generate_report(
     # **G0 结构违例（marker/footnote/table/fidelity）与未决术语冲突同属硬门**：
     # 标记丢失=插图/脚注在成品中丢失；冲突未裁决=同一术语两种译法并存到成品。
     confirmed_resolved = g2_confirmed == 0 or g2_confirmed <= g3_patched
+    # 审校账本（issue #68）：v2/legacy 契约下不再看单份计数，而看有效问题集合。
+    ledger = review_ledger or {}
+    review_contract = str(ledger.get("contract") or "")
+    review_effective_open = int(ledger.get("open") or 0)
+    review_unknown = int(ledger.get("unknown") or 0)
+    review_inconsistent = [str(item) for item in ledger.get("inconsistent") or []]
+    review_issues = [dict(item) for item in ledger.get("issues") or []]
+    if review_contract in ("v2", "legacy"):
+        confirmed_resolved = not (review_effective_open or review_unknown or review_inconsistent)
     released = (
         confirmed_resolved
         and g0_terminology_open == 0
@@ -183,6 +203,10 @@ def generate_report(
         reason = "glossary_conflict_open"
     elif g0_structure_open:
         reason = "structure_open"
+    elif review_inconsistent:
+        reason = "review_inconsistent"
+    elif review_unknown:
+        reason = "review_unknown"
     elif not confirmed_resolved:
         reason = "unresolved_confirmed"
     elif not notes_ok:
@@ -255,4 +279,9 @@ def generate_report(
         notes_missing=notes_missing,
         notes_findings=notes_findings,
         provenance_findings=prov_findings,
+        review_contract=review_contract,
+        review_effective_open=review_effective_open,
+        review_unknown=review_unknown,
+        review_inconsistent=review_inconsistent,
+        review_issues=review_issues,
     )

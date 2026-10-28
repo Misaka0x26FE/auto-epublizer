@@ -10,7 +10,14 @@
 
 from __future__ import annotations
 
-from .artifacts import artifacts_digest, latest_review_result_path, report_state
+from .artifacts import (
+    artifacts_digest,
+    latest_review_payload,
+    latest_review_result_path,
+    report_state,
+    review_inputs_digest,
+    review_ledger,
+)
 from .audit import AuditFinding, AuditResult, audit_epub
 from .epubcheck import EpubcheckResult, run_epubcheck
 from .notes_audit import NotesAuditResult, audit_notes_epub
@@ -30,6 +37,9 @@ __all__ = [
     "audit_provenance",
     "generate_report",
     "latest_review_result_path",
+    "latest_review_payload",
     "report_state",
+    "review_inputs_digest",
+    "review_ledger",
     "run_epubcheck",
 ]

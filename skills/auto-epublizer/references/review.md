@@ -1,4 +1,4 @@
-<!-- i18n: source=review.zh.md sha256=8a1a1b8d6404f25796d002cc9b98bd71397adab4893a101c543095be4425af13 -->
+<!-- i18n: source=review.zh.md sha256=88b3ba64d9c46524d5b37ab3112cae908dc957efcd7ab165964c04a3ff8dc68b -->
 > **English** | [中文](review.zh.md)
 
 # Review (six-gate QC operational guide)
@@ -53,6 +53,39 @@ After the review passes (`termination == "clean_confirmed"`), use
 (idempotent; units already reviewed/built skip re-import). If your revision changed
 `translation/` + `align/`, first re-`import` (back to aligned) and then
 `import --reviewed`.
+
+### Cross-review ledger (`schema_version: 2`, issue #68)
+
+With only the counts above (legacy format), qa records them as `opaque:<review_id>:<n>`
+open items: a **local clean review does not close book-wide open issues**, and several
+legacy records are neither summed nor reduced to the latest one. To be recognized, write
+the v2 contract in `result.json`:
+
+```json
+{
+  "schema_version": 2,
+  "review_id": "review-2026-10-27T10-00-00",
+  "scope": "units",
+  "units": ["ch01", "ch02"],
+  "parent_reviews": ["review-2026-10-26T10-00-00"],
+  "inputs_digest": {"ch01": "<sha256>", "*": "<sha256>"},
+  "issues": [{"issue_id": "ch01-001", "unit": "ch01", "detail": "mistranslation", "status": "open"}],
+  "dispositions": [
+    {"issue_id": "ch01-001", "status": "patched",
+     "closed_by": "patch-0007", "evidence": "align/ch01.jsonl#seq=42"}
+  ],
+  "g1_candidates": 1, "g2_confirmed": 1, "g3_patched": 1,
+  "termination": "clean_confirmed", "rounds": 2
+}
+```
+
+Rules (all conservative): a record without `parent_reviews` is an independent root and
+cannot close someone else's issues; a record that covers a unit but does not dispose the
+inherited open issue → `unknown`; closure requires `closed_by` + `evidence`; `g3_patched`
+above itemized closures is inflated; missing parent, cycles, parent not earlier by
+directory name, or mismatched `inputs_digest` → inconsistent, and qa does not release.
+Generate `inputs_digest` with `auto_epublizer.qa.review_inputs_digest(store)`. Legacy open
+items can be closed explicitly by naming `opaque:<review_id>:<n>` in a new record.
 
 ## termination (convergence end state)
 

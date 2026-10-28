@@ -1,4 +1,4 @@
-<!-- i18n: source=qa.zh.md sha256=866560a5b7592081cedead8d1915d14006c98cc2b4bbad3d625ee0fd6b9bbbf2 -->
+<!-- i18n: source=qa.zh.md sha256=89c0b0aa3273cc391409588097e9f656e39dff8174ddde84b2ef07933fb37128 -->
 > **English** | [中文](qa.zh.md)
 
 # QA (epubcheck + unpack audit)
@@ -43,6 +43,7 @@ Standard EPUB note acceptance is mandatory offline: independently verify current
 | content document missing lang / h1 count not 1 | `W_NO_LANG` / `W_H1_COUNT` (warning) |
 | heading level skip (h1→h3 etc.) | `E_HEADING_SKIP` |
 | HTML comment residue / markdown marker residue (`![` `**` `:::` `{.` `[^`) | `E_RESIDUE` / `W_RESIDUE` (error/warning) |
+| Unconverted math delimiters `$$…$$` or a bare `$` on its own line (OCR display math, issue #65) | `W_RESIDUE` candidate; code/`pre`/MathML excluded, the agent verifies and removes the wrapper |
 | DC metadata missing (creator/date/publisher/rights) | `W_META_INCOMPLETE` (warning) |
 | internal anchor unresolvable (including footnote noteref→footnote) | `E_ANCHOR` |
 | footnote aside missing backlink or backlink unresolvable | `E_FN_BACKLINK` |
@@ -116,7 +117,13 @@ media, href/backlink hard gate is unchanged.
 - Unresolved terminology conflicts cleared (`glossary_conflicts_open == 0`; if not
   cleared → `glossary_conflict_open` — go back to analysis/glossary_conflicts.jsonl,
   arbitrate and write back to glossary.csv, then rerun qa)
-- Review `g2_confirmed == 0` or all revised
+- Effective review issue set cleared: the `reviews/` ledger (`review/ledger.py`) reports
+  `review_effective_open == 0`, `review_unknown == 0` and no `review_inconsistent`.
+  A v2 `result.json` closes issues by scope/lineage plus itemized `closed_by`+`evidence` —
+  a **local clean review closes no other scope**; legacy count-only records become
+  `opaque:<review_id>:<n>` open items, and several legacy records are neither summed nor
+  reduced to the latest (`review_unknown`). With no review records at all, the legacy
+  `g2_confirmed == 0` / all revised counts remain the compatible rule
 - Complete provenance (postprocessing-spec §5): `provenance_coverage ≈ 1.0` (null when
   there is no translation artifact, not applicable), `units_missing == 0`,
   `units_order_ok`, `media_lost == 0`, `toc_flat == false`,
@@ -155,6 +162,9 @@ with that heading. Preserve literal table `# 1` and inline-code `# comment`, not
 them or declare them residue.
 
 When `released` is False, look at `released_reason` to determine the cause:
+`review_inconsistent` (missing parent, cycle, parent not earlier, input digest mismatch,
+closure without evidence, inflated patched count) / `review_unknown` (inherited issue left
+undisposed inside scope, or several legacy records awaiting re-registration) /
 `unresolved_confirmed` (G2 confirmed but unrevised) / `structure_open` (includes empty or
 missing alignment on registered units) / `notes_open` (product note gate not cleared for a
 book with notes) / `audit_failed` /
