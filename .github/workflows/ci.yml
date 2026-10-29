@@ -30,6 +30,13 @@ jobs:
           distribution: temurin
           java-version: "21"
 
+      # 印刷 PDF 的端到端测试会真实渲染中文；缺 CJK 字体时 Chromium 输出缺字，
+      # 文本抽取会得到 NUL（不是 PDF 管线的回归）。
+      - name: Install CJK fonts for print-PDF rendering
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends fonts-noto-cjk
+
       # 外部工具版本固定：跳过条件只在工具确实缺失时成立，CI 里用强制开关把
       # “静默跳过”变成失败（tests/test_external_tools_required.py）。
       - name: Install pinned pandoc
