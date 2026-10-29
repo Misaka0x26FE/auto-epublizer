@@ -115,6 +115,9 @@ Pandoc AST 导入试点、性质测试和固定外部工具 CI。保留单 LLM�
   `ruff format --check`、`scripts/i18n.py --check` 全部通过。
 - 真实外部工具：EPUBCheck 5.2.1（Java 21，`--quiet --json -`）与 Pandoc 3.1.3 的集成
   测试**实际执行**（非 stub）；`AUTO_EPUBLIZER_REQUIRE_EXTERNAL=1` 下工具缺失即失败。
+- GitHub Actions（`.github/workflows/ci.yml`，run 40827116263）绿：固定 pandoc 3.1.3 /
+  EPUBCheck 5.2.1 / Java 21 / uv 0.11.32，真实外部工具集成测试实际执行；
+  印刷 PDF 端到端测试在 CI 需 CJK 字体（已加入字体安装步骤）。
 - RapidOCR 3.10 真实推理在隔离 venv 验证（Python 3.13 + onnxruntime 1.31.1，PP-OCRv6
   模型，返回 `txts/boxes/scores`，结构化读取器正确换算出 PDF 点坐标与段落块）；
   CI 不装 OCR extra，体积/模型下载成本不进入常规流水线。
