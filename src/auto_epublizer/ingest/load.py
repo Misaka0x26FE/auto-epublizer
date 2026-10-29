@@ -62,6 +62,7 @@ def load_document(
     mineru_language: str = "ch",
     mineru_batch_pages: int = 200,
     rtl: str = "auto",
+    pandoc_ast: bool = False,
     progress: Callable[[int, int], None] | None = None,
 ) -> SourceDocument:
     """按扩展名读取源文件并归一化为 SourceDocument。
@@ -69,7 +70,8 @@ def load_document(
     - ``ocr_backend``：pymupdf 路径下扫描页的 OCR 后端（None 则报错提示走 OCR）；
     - ``mineru_client``：提供时 PDF 走 MinerU 外部解析（扫描件最优先路径），
       版面/换行/插图/表格/公式由 MinerU 识别，优先级高于 pymupdf+OCR；
-    - ``rtl``：PDF 文字层 RTL 处理（``auto``/``on``/``off``），见 ``ingest/rtl.py``。
+    - ``rtl``：PDF 文字层 RTL 处理（``auto``/``on``/``off``），见 ``ingest/rtl.py``；
+    - ``pandoc_ast``：DOCX/HTML/EPUB 导入后追加 JSON AST 结构对账（试点）。
     """
     path = Path(source_path)
     ext = path.suffix.lower()
@@ -121,7 +123,7 @@ def load_document(
     # 非 PDF 走 pandoc
     fmt = _PANDOC_FORMATS[ext]
     try:
-        return read_pandoc(path, fmt=fmt, media_dir=media)
+        return read_pandoc(path, fmt=fmt, media_dir=media, ast_check=pandoc_ast)
     except PandocError as e:
         raise IngestError(str(e)) from e
 

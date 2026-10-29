@@ -14,18 +14,21 @@
 | pyyaml | 配置解析 | MIT |
 | lxml | XML 处理 | BSD-3-Clause |
 | pymupdf | PDF 文字层抽取 | AGPL-3.0（兼容，可同许可引入） |
+| markdown-it-py | 通用 Markdown token 解析（出版扩展仍自实现） | MIT |
 
 ## 可选依赖（[ocr] extra）
 
 | 包 | 用途 | 许可证 |
 |---|---|---|
-| rapidocr-onnxruntime | 离线 OCR | Apache-2.0 |
+| rapidocr | 离线 OCR（默认 3.x 引擎适配） | Apache-2.0 |
+| onnxruntime | RapidOCR 推理运行时 | MIT |
 
 ## 开发依赖
 
 | 包 | 用途 | 许可证 |
 |---|---|---|
 | pytest | 测试 | MIT |
+| hypothesis | 性质测试 | MPL-2.0 |
 | ruff | lint / 格式 | MIT |
 | hatchling | 构建后端 | MIT |
 

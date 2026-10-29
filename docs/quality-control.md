@@ -1,4 +1,4 @@
-<!-- i18n: source=quality-control.zh.md sha256=ea48473cf859686651f7cbae1225cb51d2798093d7a377790dbc48db71a6e7d8 -->
+<!-- i18n: source=quality-control.zh.md sha256=42ccf98abd7b7893e3e1b7e0eb8a8ac47911b24cca7623482fd525fd2d3f402c -->
 > **English** | [中文](quality-control.zh.md)
 
 # Quality-Control Process Design (auto-epublizer)
@@ -144,7 +144,13 @@ Autofix (optional): first write a recoverable index `reviews/<ts>/autofix/index.
 
 ### G4 EPUB Structural QA (after build, local)
 
-- `epubcheck` actually executes with `returncode == 0` and `errors == 0`. When caching the jar in `~/.cache`, retain the complete distribution's adjacent `lib`; headless Java is sufficient, with no GUI required. Jar presence, Java startup, or a legacy `ran` field does not prove success; process failure/FATAL must not count as zero errors.
+- `epubcheck` actually runs with `--quiet --json -` and the result is read from the **structured
+  JSON report**: `checker.nFatal/nError/nWarning` plus per-message ID/severity/location go into
+  `epubcheck.diagnostics` in `report.json`. Release requires `returncode == 0` and `errors == 0`;
+  a missing report, malformed JSON, invalid fields, or a non-zero exit fails closed (counted as an
+  error, never as zero errors). When caching the jar in `~/.cache`, retain the complete
+  distribution's adjacent `lib`; headless Java is sufficient, with no GUI required. Jar presence,
+  Java startup, or a legacy `ran` field does not prove success.
 - Item-by-item unpack audit (`qa/audit.py`, already implemented):
   - `mimetype` first, uncompressed, content exactly `application/epub+zip`;
   - `META-INF/container.xml` well-formed, pointing to the OPF;

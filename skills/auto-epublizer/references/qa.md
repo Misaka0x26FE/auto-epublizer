@@ -1,4 +1,4 @@
-<!-- i18n: source=qa.zh.md sha256=89c0b0aa3273cc391409588097e9f656e39dff8174ddde84b2ef07933fb37128 -->
+<!-- i18n: source=qa.zh.md sha256=2814923a51caf72018efcc6af22cc19d3476334419a1ca0adb5137097791f67c -->
 > **English** | [中文](qa.zh.md)
 
 # QA (epubcheck + unpack audit)

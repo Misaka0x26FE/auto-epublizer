@@ -38,7 +38,7 @@ _TOOLS = {
         "RapidOCR",
         "https://github.com/RapidAI/RapidOCR",
         "Apache-2.0",
-        "rapidocr-onnxruntime",
+        "rapidocr|rapidocr-onnxruntime",
     ),
     "httpx": ("HTTPX", "https://github.com/encode/httpx", "BSD-3-Clause", "httpx"),
     "mineru": ("MinerU API", "https://mineru.net/", None, None),
@@ -61,8 +61,11 @@ def used_tool(key: str) -> dict[str, str | None]:
     if key == "python":
         version = platform.python_version()
     elif distribution:
-        with contextlib.suppress(metadata.PackageNotFoundError):
-            version = metadata.version(distribution)
+        # `a|b`：新版分发优先，旧包回落；都没装时保持 None（不伪造版本）。
+        for candidate in distribution.split("|"):
+            with contextlib.suppress(metadata.PackageNotFoundError):
+                version = metadata.version(candidate)
+                break
     elif key in ("pandoc", "calibre"):
         command = "pandoc" if key == "pandoc" else "ebook-convert"
         try:

@@ -88,6 +88,10 @@ OPF 的 `aep:render-mode` 记录本次实际构建入口：`source`（纯源文�
   `dtb:depth` 为投影后实际深度（含锚点）；
   **制作信息页**（无 copyright 单元时生成）作为顶层条目置于目录首位（深度 1，不参与源文
   层级投影），与 NCX `playOrder`（自 1 起连续）同序。
+- **Markdown 解析**：通用行内/块级语法由 `markdown-it-py` 的 token 解析（嵌套强调、
+  引用式链接、嵌套列表、带括号图片路径），项目特有的 Pandoc 锚点、原注号、诗行、表格、
+  脚注与 raw HTML 仍走专用分支；代码跨度**逐字保留**（含换行与强调符号），不交给
+  通用解析改写。
 - **图片**：只缩不放大居中 + 断页（`page-break-inside: avoid`）；独立图段（alt 非空）→
   `figure+figcaption` 图注。
 - **语义标签**：引用 `>` → `blockquote`；诗行块 `|` → `p.verse`；`- ` → `ul`；

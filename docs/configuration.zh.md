@@ -28,12 +28,17 @@ qc:
 # ── PDF 解析 ────────────────────────────────────────────────
 pdf:
   backend: auto           # auto | pymupdf | mineru（auto=扫描件且 MINERU_API_KEY 存在时优先 MinerU）
-  ocr: auto               # auto | off | 强制 rapidocr
+  ocr: auto               # auto | off | 强制 rapidocr（新版 rapidocr 3.x，缺失时回落 1.x）
   page_dpi: 300           # 页渲染分辨率（OCR 兜底）
   mineru_effort: medium   # 未接线（MinerU v4 API 无此参数）；保留兼容旧配置
   mineru_model: pipeline  # pipeline（默认，确定性、零幻觉）| vlm（高精度，内部为 VLM）
   mineru_language: ch     # MinerU OCR 语言（PaddleOCR 语言码：ch/en/ja/…）
   mineru_batch_pages: 200 # >此页数自动分批（MinerU 单文件 ≤200 页限制；≤0 关闭）
+
+# ── Pandoc 导入（DOCX/HTML/EPUB）────────────────────────────
+pandoc:
+  ast_check: false        # 试点：额外跑 `pandoc -t json` 做结构对账，标题/段落计数与
+                          # 丢失块写入 meta["ast_check"]；工作区仍是可编辑的 Markdown
 
 # ── 术语表 ──────────────────────────────────────────────────
 glossary:

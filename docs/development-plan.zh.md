@@ -137,7 +137,7 @@ C8（QC）→ C9/C10（封装+审计）→ C12（CLI 贯穿）。
 
 | # | 事项 | 说明 |
 |---|---|---|
-| O1 | `pyproject.toml` | uv 管理；依赖：typer/pydantic/rich/httpx/pymupdf/rapidocr-onnxruntime/lxml/pyyaml；dev：pytest/ruff |
+| O1 | `pyproject.toml` | uv 管理；依赖：typer/pydantic/rich/httpx/pymupdf/rapidocr（3.x）/lxml/pyyaml；dev：pytest/ruff |
 | O2 | Ruff 规则 | 目标 Python 3.12；行宽、E/W/F/I；中文 prompt 忽略 E501 |
 | O3 | `config.example.yaml` | 对齐 docs/configuration.md 的完整 schema |
 | O4 | 测试策略 | 全部离线：FakeClient/mock，不调真实 LLM/网络；数据写 tempfile；`test_architecture_boundaries.py` 固定依赖边界 |

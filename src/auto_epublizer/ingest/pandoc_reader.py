@@ -158,14 +158,24 @@ def read_pandoc(
     *,
     fmt: str,
     media_dir: str | Path | None = None,
+    ast_check: bool = False,
 ) -> SourceDocument:
-    """用 pandoc 读取 HTML/DOCX/EPUB，返回结构化的 Document。"""
+    """用 pandoc 读取 HTML/DOCX/EPUB，返回结构化的 Document。
+
+    ``ast_check=True`` 时额外跑一次 JSON AST 对账（``ingest/pandoc_ast.py``），把标题/
+    段落计数与缺口写入 ``meta["ast_check"]``；工作区仍是 Markdown，AST 只做核验。
+    """
     content = normalize_media_refs(run_pandoc(path, media_dir=media_dir), media_dir)
     units = parse_markdown_units(content)
+    meta: dict[str, object] = {"via": "pandoc", "processing_tools": [used_tool("pandoc")]}
+    if ast_check:
+        from .pandoc_ast import ast_check as run_ast_check
+
+        meta["ast_check"] = run_ast_check(path, units)
     return SourceDocument(
         title=os.path.splitext(os.path.basename(str(path)))[0],
         source_path=os.path.abspath(str(path)),
         fmt=fmt,
         units=units,
-        meta={"via": "pandoc", "processing_tools": [used_tool("pandoc")]},
+        meta=meta,
     )

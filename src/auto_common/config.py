@@ -57,6 +57,11 @@ class PDFConfig(BaseModel):
     rtl: str = "auto"
 
 
+class PandocConfig(BaseModel):
+    # Pandoc JSON AST 对账试点：额外跑一次 `pandoc -t json`，只记录结构差异，不阻断导入。
+    ast_check: bool = False
+
+
 class GlossaryConfig(BaseModel):
     storage: str = "csv"
     scope: str = "chapter"
@@ -83,6 +88,7 @@ class Config(BaseModel):
     language: LanguageConfig = Field(default_factory=LanguageConfig)
     qc: QCConfig = Field(default_factory=QCConfig)
     pdf: PDFConfig = Field(default_factory=PDFConfig)
+    pandoc: PandocConfig = Field(default_factory=PandocConfig)
     glossary: GlossaryConfig = Field(default_factory=GlossaryConfig)
     paths: PathsConfig = Field(default_factory=PathsConfig)
     output: OutputConfig = Field(default_factory=OutputConfig)

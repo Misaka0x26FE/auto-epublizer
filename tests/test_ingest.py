@@ -183,7 +183,10 @@ def test_rapidocr_available_is_a_capability_probe() -> None:
 
     from auto_epublizer.ingest.ocr import rapidocr_available
 
-    assert rapidocr_available() is (importlib.util.find_spec("rapidocr_onnxruntime") is not None)
+    expected = any(
+        importlib.util.find_spec(name) is not None for name in ("rapidocr", "rapidocr_onnxruntime")
+    )
+    assert rapidocr_available() is expected
 
 
 def test_normalize_to_workspace(tmp_path: Path) -> None:

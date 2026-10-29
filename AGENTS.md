@@ -1,4 +1,4 @@
-<!-- i18n: source=AGENTS.zh.md sha256=013698092216d79c9020415c0c4c6cfe155fd8bc0c646913e40a6d3e645f626f -->
+<!-- i18n: source=AGENTS.zh.md sha256=5388bbd618e5b8c154580f0ed3df584e4b06d3d90869f98b2f2aab1b6e7cd231 -->
 > **English** | [中文](AGENTS.zh.md)
 
 # auto-epublizer repository guide (for coding agents developing/maintaining this project)
@@ -470,9 +470,9 @@ multi-column/bookmark chaptering) is in
    are finally arbitrated; the Fixer edits only the shadow overlay; the next blind round
    does not receive the previous explanation; consecutive clean confirmations or max_rounds
    convergence; oscillation detection (digest SHA-256 cycle).
-5. **EPUB structure QA**: epubcheck zero errors + item-by-item unpack audit (mimetype
-   first, manifest/spine/nav parse, cover, lang, one h1 per chapter, bidirectional footnote
-   links, no leftovers).
+5. **EPUB structure QA**: epubcheck (`--quiet --json -`, structured diagnostics) zero errors +
+   item-by-item unpack audit (mimetype first, manifest/spine/nav parse, cover, lang, one h1 per
+   chapter, bidirectional footnote links, no leftovers).
 5b. **Product note gate (books with notes, phase N)**: independently parse the final XHTML —
    each registered reference has exactly one noteref anchor whose href points at a real
    aside, note content matches the translated note, backlinks cover every reference, and
@@ -524,10 +524,16 @@ multi-column/bookmark chaptering) is in
 
 ```bash
 uv sync                      # install
-uv run pytest -q             # full test suite (offline, deterministic, fast; no real books)
+uv run pytest -q             # full suite (offline, deterministic, fast; external tools skip when absent)
 uv run ruff check .
 uv run ruff format --check .
+uv run python scripts/i18n.py --check   # English/Chinese twin stamps are current
 ```
+
+CI (`.github/workflows/ci.yml`) pins pandoc 3.1.3 / EPUBCheck 5.2.1 / Java 21 / uv and sets
+`AUTO_EPUBLIZER_REQUIRE_EXTERNAL=1`: when pandoc or the epubcheck jar is missing,
+`tests/test_external_tools_required.py` **fails instead of skipping**, so the real external-tool
+integration tests always run.
 
 When fixing a defect, first add the smallest failing regression test; test data goes in
 `tempfile` and must not depend on real books outside the repository.

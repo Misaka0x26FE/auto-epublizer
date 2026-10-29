@@ -48,13 +48,15 @@ def _probe_tool(name: str, impact: str, hint: str) -> Capability:
 
 
 def _probe_import(module: str, name: str, impact: str, hint: str) -> Capability:
-    spec = importlib.util.find_spec(module)
+    """探测一个或多个候选模块（``rapidocr`` 新版优先，旧包回落）。"""
+    candidates = [part.strip() for part in module.split("|")]
+    found = next((m for m in candidates if importlib.util.find_spec(m) is not None), None)
     return Capability(
         name=name,
-        available=spec is not None,
+        available=found is not None,
         impact=impact,
         hint=hint,
-        detail=module,
+        detail=found or " | ".join(candidates),
     )
 
 
@@ -137,7 +139,7 @@ def collect_capabilities(config: Config, *, ping: bool = False) -> list[Capabili
         ),
         _probe_import("pymupdf", "pymupdf", "PDF 文字层按页切片不可用", "uv sync（自带依赖）"),
         _probe_import(
-            "rapidocr_onnxruntime",
+            "rapidocr|rapidocr_onnxruntime",
             "rapidocr",
             "扫描 PDF 无法离线 OCR",
             "uv sync --extra ocr",

@@ -126,6 +126,9 @@ def _norm_md_text(text: str) -> str:
     text = _IMG_RE.sub("", text)  # HTML 图片同样留空（媒体由专用核对负责）
     text = re.sub(r"</?svg\b[^>]*>", "", text, flags=re.IGNORECASE)
     text = re.sub(r"\[([^\]]*)\]\([^)]*\)", r"\1", text)  # 链接留标签
+    # CommonMark 自动链接 `<http://…>` / `<user@example.com>`：渲染成 <a> 后只剩
+    # 标签文字，尖括号不印出；比对侧须同样去掉尖括号，否则含 URL 的注文必然误报。
+    text = _MD_AUTOLINK_RE.sub(r"\1", text)
     # pandoc 反斜杠转义（`\[` `\]` `\.` …）：渲染器在最后一步脱去反斜杠，
     # 比对侧必须同口径（否则含转义的注文必然误报「内容不符」）。
     text = _MD_ESCAPED_PUNCT_RE.sub(r"\1", text)
@@ -151,6 +154,11 @@ _MD_ESCAPED_PUNCT_RE = re.compile(r"\\([!\"#$%&'()*+,\-./:;<=>?@\[\\\]^_`{|}~])"
 # 粗体/斜体：只脱**配对**标记（裸 `_` 与裸反引号是字面量，不能连坐删除）
 _MD_BOLD_RE = re.compile(r"\*\*((?:[^*]|\\\*)+)\*\*")
 _MD_ITALIC_RE = re.compile(r"(?<!\*)\*([^*]+)\*(?!\*)")
+# CommonMark 自动链接：绝对 URI（带 scheme）或邮箱；渲染后尖括号不保留。
+_MD_AUTOLINK_RE = re.compile(
+    r"<((?:[A-Za-z][A-Za-z0-9+.\-]{1,31}:[^<>\s]*)"
+    r"|(?:[^\s<>@]+@[^\s<>@]+\.[^\s<>@]+))>"
+)
 _PLACEHOLDER_IMG_RE = re.compile(r'original-image-src="([^"]+)"')
 
 

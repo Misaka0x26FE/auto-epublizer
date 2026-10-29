@@ -16,7 +16,10 @@ auto-epublizer qa [--epub <path>] [--workspace <dir>]
 ## epubcheck
 
 - 用配置中的完整发行包 JAR（默认 `~/.cache/epubcheck.jar`）校验；必须保留相邻 `lib/` 依赖目录，不能只复制 JAR。Java headless 运行时足够，无需桌面。
-  进程必须成功退出且无 ERROR/FATAL 才可放行；固定英文诊断便于稳定计数，启动异常与未识别的非零退出仍阻断，并保留退出码与诊断。
+  实际命令是 `java -jar <jar> <epub> --locale en --quiet --json -`（`--quiet` 防止进度信息
+  混进 JSON）；读取结构化报告，`checker.nFatal/nError/nWarning` 与逐条 `messages`
+  （ID/severity/location）写入 `report.json` 的 `epubcheck.diagnostics`。
+  报告缺失、JSON 损坏、字段非法或非零退出都 fail closed（记为 error）。
 - jar 缺失时 `available=False`、`ran=False`、`errors=-1`，`passed=False`（未验证 ≠ 合格）。
 - 报告 `epubcheck.returncode` 保存实际退出值，未执行为 null，未知不得补成 0。缺此证据的旧 released 报告会标记 stale、进度降为未放行，须重新 QA，不手改历史 released。
 

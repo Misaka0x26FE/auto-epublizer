@@ -746,7 +746,7 @@ def test_notes_gate_supports_multi_paragraph_note(tmp_path: Path) -> None:
 
 
 def test_notes_gate_accepts_entity_escaped_punctuation(tmp_path: Path) -> None:
-    """注文含撇号：渲染为 ``&#x27;``，内容核对须按实体反转义后比对（不得误报截断）。"""
+    """注文含撇号：成品保留撇号（字面或数字实体），内容核对须反转义后比对（不得误报截断）。"""
     from auto_epublizer.qa import audit_notes_epub
 
     store, digest = _two_chapter_ws(tmp_path)
@@ -761,7 +761,9 @@ def test_notes_gate_accepts_entity_escaped_punctuation(tmp_path: Path) -> None:
     orch.import_translations(store)
     epub = orch.build(store)
     ch01 = _read_epub(epub, "ch01.xhtml")
-    assert "&#x27;" in ch01, "撇号应被渲染为数字实体"
+    assert "Anthropology's Politics" in ch01 or "Anthropology&#x27;s Politics" in ch01, (
+        "撇号须原样或经实体保留"
+    )
     ctx = notes_mod.read_notes_json(notes_mod.source_notes_path(store))
     tgt = notes_mod.read_notes_json(notes_mod.translation_notes_path(store))
     result = audit_notes_epub(

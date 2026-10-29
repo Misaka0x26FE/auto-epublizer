@@ -33,7 +33,7 @@ from .images import (
 )
 from .inserts import InsertRecord, InsertSource, next_insert_id, write_inserts
 from .models import KIND_HEADING, KIND_TEXT, SourceDocument, SourceSegment, SourceUnit
-from .ocr import OcrBackend, RapidOcrBackend
+from .ocr import OcrBackend, OcrLine, RapidOcrBackend
 from .reading_order import sort_reading_order
 from .rtl import detect_book_rtl, normalize_and_reorder
 from .tables import extract_tables
@@ -457,6 +457,93 @@ def _page_extras(
     return sort_reading_order([*content, *table_blocks, *img_blocks])
 
 
+def _backend_lines(backend: OcrBackend, image_path: str) -> list[OcrLine]:
+    """优先结构化接口；仅重写 ``ocr_image`` 的自定义后端按字面文本处理。
+
+    子类只覆盖 ``ocr_image``（测试替身、接入自有引擎）时不能被基类的引擎实现顶掉，
+    否则自定义后端会被静默绕过。
+    """
+    lines_impl = getattr(backend, "ocr_lines", None)
+    text_impl = getattr(backend, "ocr_image", None)
+    overridden = (
+        isinstance(backend, RapidOcrBackend)
+        and callable(text_impl)
+        and type(backend).ocr_image is not RapidOcrBackend.ocr_image
+    )
+    if callable(lines_impl) and not overridden:
+        return list(lines_impl(image_path))
+    if callable(text_impl):
+        return [OcrLine(text_impl(image_path))]
+    return list(lines_impl(image_path))
+
+
+def _group_ocr_lines(lines: list[OcrLine], *, scale: float, source: str) -> list[dict]:
+    """按行距把 OCR 行合并成段落块，坐标由渲染图像素换算为 PDF 点。
+
+    阈值取行高中位数的 0.6 倍：同一段落内行距通常小于半行，段间空行明显更大。
+    无坐标的行不参与合并（单独成块），读取器不虚构几何。
+    """
+    located = [line for line in lines if line.bbox is not None]
+    if not located:
+        text = "\n".join(line.text for line in lines).strip()
+        return [{"type": "text", "bbox": None, "text": text, "ocr": True}] if text else []
+
+    heights = sorted(bbox[3] - bbox[1] for bbox in (line.bbox for line in located))
+    threshold = heights[len(heights) // 2] * 0.6
+
+    groups: list[list[OcrLine]] = []
+    for line in located:
+        previous = groups[-1][-1] if groups else None
+        if previous is None or not _same_paragraph(previous.bbox, line.bbox, threshold):
+            groups.append([line])
+        else:
+            groups[-1].append(line)
+
+    blocks: list[dict] = []
+    for group in groups:
+        boxes = [line.bbox for line in group if line.bbox is not None]
+        scores = [line.confidence for line in group if line.confidence is not None]
+        block = {
+            "type": "text",
+            "bbox": [round(v * scale, 4) for v in _union(boxes)],
+            "text": "\n".join(line.text for line in group).strip(),
+            "ocr": True,
+            "ocr_lines": len(group),
+            "ocr_source": source,
+        }
+        if scores:
+            block["ocr_confidence"] = round(sum(scores) / len(scores), 4)
+        if block["text"]:
+            blocks.append(block)
+    return blocks
+
+
+def _union(
+    boxes: list[tuple[float, float, float, float]],
+) -> tuple[float, float, float, float]:
+    return (
+        min(b[0] for b in boxes),
+        min(b[1] for b in boxes),
+        max(b[2] for b in boxes),
+        max(b[3] for b in boxes),
+    )
+
+
+def _same_paragraph(
+    previous: tuple[float, float, float, float] | None,
+    current: tuple[float, float, float, float] | None,
+    threshold: float,
+) -> bool:
+    """行距小于阈值且左右有重叠 → 同一段落（分栏/表格换列另起一块）。"""
+    if previous is None or current is None:
+        return False
+    if current[1] - previous[3] > threshold:
+        return False
+    overlap = min(previous[2], current[2]) - max(previous[0], current[0])
+    narrower = min(previous[2] - previous[0], current[2] - current[0])
+    return overlap > 0 and overlap >= 0.2 * narrower
+
+
 def _ocr_page(
     page: fitz.Page, backend: OcrBackend, *, dpi: int, render_dir: Path | None
 ) -> list[dict]:
@@ -464,6 +551,8 @@ def _ocr_page(
 
     渲染图落 ``render_dir``（有 raw_dir 时持久化到 ``structured/raw/pages/pNNN.png``，
     供 agent 逐页阅读 OCR 产物、看图补换行/找插图——传统 OCR 只识别字符）。
+    结构化后端返回的每行坐标按 ``72/dpi`` 换算为 PDF 页面点，并保留置信度；
+    只有 ``ocr_image`` 的后端退化为单块、无坐标。
     """
     if render_dir is None:
         return []
@@ -471,10 +560,10 @@ def _ocr_page(
     render_dir.mkdir(parents=True, exist_ok=True)
     img_path = render_dir / f"p{page.number + 1:03d}.png"
     pix.save(str(img_path))
-    text = backend.ocr_image(str(img_path))
-    if not text.strip():
+    lines = _backend_lines(backend, str(img_path))
+    if not any(line.text.strip() for line in lines):
         return []
-    return [{"type": "text", "bbox": None, "text": text.strip(), "ocr": True}]
+    return _group_ocr_lines(lines, scale=72.0 / dpi, source=str(img_path))
 
 
 def _resolve_rtl(doc: fitz.Document, rtl: str) -> bool:
@@ -595,6 +684,10 @@ def read_pdf(
                 if block.get("insert_id"):
                     meta["insert_id"] = block["insert_id"]
                     meta["insert_type"] = block["type"]
+                if block.get("ocr_confidence") is not None:
+                    meta["ocr_confidence"] = block["ocr_confidence"]
+                if block.get("ocr_source"):
+                    meta["ocr_source"] = block["ocr_source"]
                 segments.append(
                     SourceSegment(
                         index=idx,

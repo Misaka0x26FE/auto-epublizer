@@ -16,8 +16,12 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from html import escape
+from html import escape, unescape
 from typing import Any
+
+from markdown_it import MarkdownIt
+from markdown_it.rules_inline import StateInline
+from markdown_it.token import Token
 
 from auto_common.markdown import (
     CODE_SPAN_RE,
@@ -28,12 +32,10 @@ from auto_common.markdown import (
 )
 
 _HEADING_RE = re.compile(r"^(#{1,6})\s+(.*)$")
-_IMG_RE = re.compile(r"!\[([^\]]*)\]\(([^)]+)\)")
 # pandoc 的「缩略图链接图片」语法：
 #   [[![alt](src){attrs}](href "title"){.mw-file-description}]{typeof="mw:File"}
 # 归一为标准 markdown 图片（src 保留），避免内层 <img> 被外层链接二次转义。
 _PANDOC_LINKED_IMG = re.compile(r"\[\[!\[([^\]]*)\]\(([^)]+)\)[^\]]*\]\([^)]*\)[^\]]*\]\{[^}]*\}")
-_LINK_RE = re.compile(r"\[([^\]]+)\]\(([^)]+)\)")
 # 正文导航锚点：[]{#page_15}（ingest 保留的源 <a id>）→ 空锚点元素，供内部链接跳转。
 # 两处放宽，均不放开 id 字符集：
 #   ① `#` 允许缺省：抽取器会丢属性里的井号，源侧并存 `[]{#GBS.0014.04}` 与
@@ -47,14 +49,12 @@ _ANCHOR_INLINE_RE = re.compile(r"\[\][ \t]*\{#?([\w:.-]+)\}")
 _EMPTY_ATTR_RE = re.compile(r"\{[ \t]*\[[ \t]*\][ \t]*\}")
 # 标题上的 id 属性：``标题 {#ch01}`` → (标题, ch01)
 _HEADING_ID_RE = re.compile(r"\s*\{#([\w:.-]+)\}\s*$")
-_BOLD_RE = re.compile(r"\*\*((?:[^*]|\\\*)+)\*\*")
-_ITALIC_RE = re.compile(r"(?<!\*)\*([^*]+)\*(?!\*)")
 # pandoc 反斜杠转义：`\(` / `\.` / `\[` / `\*` / `\\` → 字面标点（转义符本身不输出）。
 # 缺失时源里的出版方编辑插入 `\[一年后……\]`、CIP 行 `p\. cm.`、编号 `\(1\)`
 # 会带着**可见反斜杠**进成品（四本书合计 1000+ 处；audit 的 W_RESIDUE
 # 不检查该形态，故此前从未告警）。
-# 可转义集按 pandoc 规则取 ASCII 标点全集；落点须在链接/锚点/强调替换**之后**
-# ——先脱转义会让 `\[x\](u)` 被 `_LINK_RE` 误判成链接。
+# 可转义集按 pandoc 规则取 ASCII 标点全集；行内渲染由 `_inline` 的 token 解析器
+# 统一处理，这里只服务 `plain_label` 的纯文本降级。
 _ESCAPED_PUNCT_RE = re.compile(r"\\([!\"#$%&'()*+,\-./:;<=>?@\[\\\]^_`{|}~])")
 # 代码段内的反斜杠是字面内容（与 pandoc 一致），须跳过不脱转义
 _CODE_SPAN_SPLIT_RE = re.compile(r"(`[^`]+`)")
@@ -361,52 +361,130 @@ def _unescape_punct(text: str) -> str:
     return "".join(p if i % 2 else _ESCAPED_PUNCT_RE.sub(r"\1", p) for i, p in enumerate(parts))
 
 
-def _inline(text: str) -> str:
-    """先隔离显示代码，再解释其余行内 Markdown；调用方已做 XML 转义。"""
+def _protect_code(text: str) -> tuple[str, list[str]]:
+    """把行内代码换成占位符，返回 (待解析文本, 逐一对应的 <code> 元素)。
+
+    markdown-it 按 CommonMark 把代码跨度里的换行折成空格并重新转义内容；
+    出版契约要求代码**逐字**保留（pandoc 转出的多行行内代码、代码里的强调
+    符号都不能被改写），故先隔离，渲染后再放回占位符位置。
+    """
     codes: list[str] = []
-    protected: list[str] = []
-    for code, part in inline_code_chunks(text):
-        if code:
-            match = CODE_SPAN_RE.fullmatch(part)
-            assert match is not None
-            protected.append(f"\x00{len(codes)}\x00")
-            codes.append(f"<code>{match.group(2)}</code>")
-        else:
-            protected.append(part)
-    rendered = _inline_text("".join(protected))
-    return re.sub(r"\x00(\d+)\x00", lambda m: codes[int(m[1])], rendered)
+    parts: list[str] = []
+    for is_code, part in inline_code_chunks(text):
+        if not is_code:
+            parts.append(part)
+            continue
+        match = CODE_SPAN_RE.fullmatch(part)
+        codes.append(f"<code>{escape(match[2] if match else part)}</code>")
+        parts.append(f"{_CODE_SENTINEL}{len(codes) - 1}{_CODE_SENTINEL}")
+    return "".join(parts), codes
 
 
-def _inline_text(text: str) -> str:
-    """非代码行内 Markdown；危险 URL 降级为纯文本。"""
-
-    def _img(m: re.Match[str]) -> str:
-        return _render_img(m.group(1), m.group(2))
-
-    def _link(m: re.Match[str]) -> str:
-        label, href = m.group(1), m.group(2).strip()
-        if _DANGEROUS_URL.match(href):
-            return label
-        # 注意：_inline 的所有调用方传入的文本已先经 escape()，label 不得再次转义，
-        # 否则 &quot; 等实体会被二次转义成 &amp;quot; 直接显示给读者。
-        return f'<a href="{escape(href, quote=True)}">{label}</a>'
-
-    # 正文导航锚点 []{#id} / []{id} → <a id="id"></a>（id 已由白名单正则约束，无需转义）
-    text = _ANCHOR_INLINE_RE.sub(r'<a id="\1"></a>', text)
-    # 空属性块 `{[]}`：pandoc 转出噪声，属性表里只裹着一个空 span（Pentagon Papers
-    # 142 处，源侧形态 `{[]}[]{#GBS.0682.04}`）。锚点已被上一行取出，包裹它的
-    # 属性壳没有任何信息，留着就以字面 `{[]}` 印给读者。
-    text = _EMPTY_ATTR_RE.sub("", text)
-    text = _IMG_RE.sub(_img, text)
-    text = _LINK_RE.sub(_link, text)
-    text = _BOLD_RE.sub(r"<strong>\1</strong>", text)
-    text = _ITALIC_RE.sub(r"<em>\1</em>", text)
-    text = _unescape_punct(text)
-    return text
+def _restore_code(rendered: str, codes: list[str]) -> str:
+    """把占位符还原成代码元素；无代码跨度时原样返回。"""
+    if not codes:
+        return rendered
+    pattern = f"{_CODE_SENTINEL}(\\d+){_CODE_SENTINEL}"
+    return re.sub(pattern, lambda m: codes[int(m[1])], rendered)
 
 
-# 图注段落：整段仅一张图且 alt 非空 → figure + figcaption（postprocessing-spec P1）
-_IMG_ONLY_BLOCK = re.compile(r"^!\[([^\]]+)\]\(([^)]+)\)\s*$")
+def _inline(text: str) -> str:
+    """显示代码按字面保留，其余行内语法交给 token 解析器（调用方已转义）。"""
+    protected, codes = _protect_code(unescape(text))
+    return _restore_code(_markdown_parser().renderInline(protected), codes)
+
+
+# 私用区字符：正文不会出现，故可安全充当代码跨度的占位标记。
+_CODE_SENTINEL = "\ue000"
+
+
+def _publication_inline(state: StateInline, silent: bool) -> bool:
+    """出版扩展：Pandoc 锚点与空属性块；普通 Markdown 仍由标准规则处理。"""
+    tail = state.src[state.pos :]
+    anchor = _ANCHOR_INLINE_RE.match(tail)
+    empty = _EMPTY_ATTR_RE.match(tail)
+    match = anchor or empty
+    if match is None:
+        return False
+    if not silent:
+        token = state.push("publication_anchor", "", 0)
+        token.content = anchor[1] if anchor else ""
+    state.pos += match.end()
+    return True
+
+
+_PARSER: MarkdownIt | None = None
+
+
+def _markdown_parser() -> MarkdownIt:
+    """通用 CommonMark + 表格（进程内复用；env 由每次调用各自持有）。"""
+    global _PARSER
+    if _PARSER is None:
+        _PARSER = _build_parser()
+    return _PARSER
+
+
+def _build_parser() -> MarkdownIt:
+    """通用 CommonMark + 表格；显式 raw HTML 仍由出版适配层处理。"""
+    parser = MarkdownIt("commonmark", {"html": False, "xhtmlOut": True}).enable("table")
+    # 工作区只允许 ATX 标题；禁止把正文下划线猜成新标题。
+    parser.disable("lheading")
+    parser.inline.ruler.before("text", "publication_inline", _publication_inline)
+
+    def anchor(renderer, tokens, idx, options, env):
+        value = tokens[idx].content
+        return f'<a id="{escape(value, quote=True)}"></a>' if value else ""
+
+    def image(renderer, tokens, idx, options, env):
+        token = tokens[idx]
+        alt = renderer.renderInlineAsText(token.children or [], options, env)
+        return _render_img(escape(alt, quote=True), escape(token.attrGet("src") or "", quote=True))
+
+    def compact(renderer, tokens, idx, options, env):
+        return renderer.renderToken(tokens, idx, options, env).rstrip("\n")
+
+    def paragraph_close(renderer, tokens, idx, options, env):
+        result = renderer.renderToken(tokens, idx, options, env)
+        if idx + 1 < len(tokens) and tokens[idx + 1].type == "blockquote_close":
+            return result.rstrip("\n")
+        return result
+
+    parser.add_render_rule("publication_anchor", anchor)
+    parser.add_render_rule("image", image)
+    for name in ("blockquote", "bullet_list", "ordered_list", "list_item"):
+        for suffix in ("open", "close"):
+            parser.add_render_rule(f"{name}_{suffix}", compact)
+    parser.add_render_rule("paragraph_close", paragraph_close)
+    return parser
+
+
+def _render_standard(md: str, env: dict[str, Any]) -> str:
+    """由 token 结构保留嵌套列表、链接与图片，图片段落沿用出版样式。"""
+    parser = _markdown_parser()
+    protected, codes = _protect_code(md)
+    tokens = parser.parse(protected, env)
+    for index, token in enumerate(tokens):
+        if token.type == "table_open":
+            token.attrSet("class", "data")
+        if token.type != "paragraph_open" or token.hidden:
+            continue
+        children = tokens[index + 1].children or []
+        if len(children) == 1 and children[0].type == "image" and children[0].content:
+            # 图注段落：整段仅一张图且 alt 非空 → figure + figcaption（alt 即图注）
+            token.tag = "figure"
+            token.attrSet("class", "imgfig")
+            tokens[index + 2].tag = "figure"
+            caption = escape(
+                parser.renderer.renderInlineAsText(children[0].children or [], parser.options, env)
+            )
+            # caption 已是转义后的纯文本，不再按 Markdown 解析。
+            cap = Token("html_inline", "", 0)
+            cap.content = f"<figcaption>{caption}</figcaption>"
+            children.append(cap)
+        elif any(child.type == "image" for child in children):
+            token.attrSet("class", "imgp")
+    return _restore_code(parser.renderer.render(tokens, parser.options, env), codes).rstrip()
+
 
 # pandoc 原始 HTML：`` ```{=html} … ``` `` 围栏块，以及行内 `` `X`{=html} ``。
 # 缺这一层时 `<div>` / `<svg>` 会被 escape 成 ``&lt;div&gt;`` 原样印给读者
@@ -587,11 +665,37 @@ def markdown_to_xhtml(
                 fn_items.append((fn_state.number(unit_id, label), text))
         fn_items.sort(key=lambda t: t[0])
     out: list[str] = []
+    env: dict[str, Any] = {}
+    _markdown_parser().parse(md, env)  # 引用式链接的定义跨块可见。
+    standard: list[str] = []
+
+    def flush_standard() -> None:
+        if standard:
+            rendered = _render_standard("\n\n".join(standard), env)
+            if rendered:
+                out.append(rendered)
+            standard.clear()
+
     hcount = 0  # level≥2 标题计数（与 subheading_anchors 同规则，保证 nav 锚点不悬空）
     for block in _iter_blocks(md):
         if not block.strip():
             continue
         opening = fence_info(block.splitlines()[0])
+        lines = block.splitlines()
+        non_empty = [line for line in lines if line.strip()]
+        # 仅出版扩展保留专门处理；其余整段送入成熟解析器，避免拍平列表。
+        special = (
+            opening is not None
+            or _raw_html_block(block) is not None
+            or any(_TABLE_DASH_ROW.match(line) for line in lines)
+            or all(_VERSE_LINE.match(line) for line in non_empty)
+            or all(_OL_LINE.match(line) for line in non_empty)
+            or _HEADING_RE.match(lines[0]) is not None
+        )
+        if not special:
+            standard.append(block)
+            continue
+        flush_standard()
         if opening is not None and not _RAW_HTML_FENCE.fullmatch(opening[1]):
             out.append(f"<pre><code>{escape(fence_body(block))}</code></pre>")
             continue
@@ -602,14 +706,6 @@ def markdown_to_xhtml(
         table = _maybe_render_table(block)
         if table is not None:
             out.append(table)
-            continue
-        m_img = _IMG_ONLY_BLOCK.match(block.strip())
-        if m_img:
-            # 图注段落：figure + figcaption（alt 即图注）
-            out.append(
-                f'<figure class="imgfig">{_render_img(escape(m_img.group(1), quote=True), escape(m_img.group(2), quote=True))}'
-                f"<figcaption>{escape(m_img.group(1))}</figcaption></figure>"
-            )
             continue
         lines = block.splitlines()
         non_empty = [line for line in lines if line.strip()]
@@ -679,6 +775,7 @@ def markdown_to_xhtml(
                 # 图片段落：不加首行缩进、居中（class=imgp 由 style.css 控制）
                 rendered = rendered.replace("<p>", '<p class="imgp">', 1)
             out.append(rendered)
+    flush_standard()
     body = "\n".join(out)
     if fn_state is not None and fn_defs:
         body = _substitute_noterefs(body, unit_id, fn_defs, fn_state)

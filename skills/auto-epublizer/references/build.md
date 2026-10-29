@@ -1,4 +1,4 @@
-<!-- i18n: source=build.zh.md sha256=957595e000e1056d4e1e4d28702dbcb0be100ccfb5a293b24dfebf1e67bb493e -->
+<!-- i18n: source=build.zh.md sha256=5fff34d349df1c5a2dba17377bd03df86531c6e0626191efc2c4479bb5855ba1 -->
 > **English** | [中文](build.zh.md)
 
 # Build (EPUB packaging)
@@ -108,6 +108,11 @@ OPF `aep:render-mode` records the actual build entry: `source` (source only) or 
   the **production-information page** (generated when there is no copyright unit) enters as the first top-level
   entry (depth 1; it does not take part in source-level projection), in the same order as the NCX `playOrder`
   (consecutive from 1).
+- **Markdown parsing**: general inline/block syntax is parsed by `markdown-it-py` tokens (nested
+  emphasis, reference links, nested lists, image paths with parentheses), while project-specific
+  Pandoc anchors, original note numbers, verse lines, tables, footnotes and raw HTML keep their
+  dedicated branches. Code spans stay **verbatim** (including line breaks and emphasis markers)
+  and are never rewritten by the general parser.
 - **Images**: only shrink, never enlarge, centered + page-break (`page-break-inside: avoid`); standalone image paragraphs (non-empty alt) →
   `figure+figcaption` captions.
 - **Semantic tags**: quote `>` → `blockquote`; verse block `|` → `p.verse`; `- ` → `ul`;

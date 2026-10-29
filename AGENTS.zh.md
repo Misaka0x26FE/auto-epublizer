@@ -358,7 +358,8 @@ skills 的能力-路由决策表选择 ingest 路由（pandoc / 按页切片 / �
 2. **逐批审校 Agent（cheap）**：missing/added/mistranslation/terminology/pronoun；宁缺毋滥；JSON 协议末尾必须 `reviewed_segments` + `complete:true`，违例整批重试。
 3. **证据取证 Agent Loop（strong）**：候选先取证再裁决，禁止假设未取得的上下文；术语库与影子修订都是待核验材料。
 4. **冲突仲裁 + 影子修订 + 盲复审**：跨块矛盾终局仲裁；Fixer 只在影子 overlay 改；下一轮盲审不传旧说明；连续 clean 确认或 max_rounds 收敛；振荡检测（摘要 SHA-256 循环）。
-5. **EPUB 结构 QA**：epubcheck 零 error + 解包逐项审计（mimetype 首位、manifest/spine/nav 解析、封面、lang、每章一个 h1、脚注双向跳转、无残留）。
+5. **EPUB 结构 QA**：epubcheck（`--quiet --json -`，结构化诊断）零 error + 解包逐项审计
+   （mimetype 首位、manifest/spine/nav 解析、封面、lang、每章一个 h1、脚注双向跳转、无残留）。
 5b. **成品注释门（有注书，N 阶段）**：独立解析最终 XHTML——每条已登记引用恰好一个
    noteref 锚点且 href 指向真实 aside、注文内容与译注一致、回链覆盖每条引用、
    `inventory=none` 零对零；未语义化/部分遗漏/错配 → `released_reason=notes_open`
@@ -397,10 +398,15 @@ skills 的能力-路由决策表选择 ingest 路由（pandoc / 按页切片 / �
 
 ```bash
 uv sync                      # 安装
-uv run pytest -q             # 全量测试（离线、确定、快速，不依赖真实书籍）
+uv run pytest -q             # 全量测试（离线、确定、快速，不依赖真实书籍；外部工具缺失即 skip）
 uv run ruff check .
 uv run ruff format --check .
+uv run python scripts/i18n.py --check   # 中英文档孪生戳一致
 ```
+
+CI（`.github/workflows/ci.yml`）固定 pandoc 3.1.3 / EPUBCheck 5.2.1 / Java 21 / uv 版本，
+并设置 `AUTO_EPUBLIZER_REQUIRE_EXTERNAL=1`：pandoc 与 epubcheck jar 缺失时
+`tests/test_external_tools_required.py` **失败而不是 skip**，真实外部工具集成测试必跑。
 
 修复缺陷先添加能失败的最小回归测试；测试数据写 `tempfile`，不依赖仓库外的真实书籍。
 

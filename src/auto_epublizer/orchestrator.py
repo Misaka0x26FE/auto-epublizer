@@ -103,7 +103,7 @@ def _ocr_backend_if_needed(store: RunStore, config: Config | None = None):
         if ocr_setting == "auto":
             return None
         raise OrchestrationError(
-            "pdf.ocr 要求启用 OCR，但未安装 rapidocr-onnxruntime（uv sync --extra ocr）"
+            "pdf.ocr 要求启用 OCR，但未安装 rapidocr / rapidocr-onnxruntime（uv sync --extra ocr）"
         )
     return RapidOcrBackend()
 
@@ -167,6 +167,7 @@ def prepare_structure(
         mineru_language=cfg.pdf.mineru_language,
         mineru_batch_pages=cfg.pdf.mineru_batch_pages,
         rtl=cfg.pdf.rtl,
+        pandoc_ast=cfg.pandoc.ast_check,
         progress=progress,
     )
     pub = store.load_publication()

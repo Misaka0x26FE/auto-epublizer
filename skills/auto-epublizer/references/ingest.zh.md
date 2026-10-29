@@ -45,8 +45,10 @@ agent 在 plan.md 记录最终路由与依据（含「是否已询问用户 Mine
 传统 OCR（tesseract/ocrmypdf/rapidocr）只保证**字符**识别；换行（段落边界）与插图
 需要 agent 逐页阅读补齐：
 
-1. **读 OCR 产物**：`structured/raw/page-NNN.json` 每页的 `ocr:true` 文本块——OCR 文本
-   无段落信息（常连成整页一串），你需要按语义重断段落/换行；
+1. **读 OCR 产物**：`structured/raw/page-NNN.json` 每页的 `ocr:true` 文本块。结构化后端
+   按行距合并成段，块内保留 `bbox`（PDF 点）、`ocr_confidence`（均值）、`ocr_lines`（行数）
+   与 `ocr_source`（渲染图）；只有字符的旧后端退化为单块、无坐标（不虚构几何）。仍需
+   按语义复核段落/换行；
 2. **看页图找插图**：init 已把扫描页渲染图持久化到 `structured/raw/pages/pNNN.png`——
    逐页看图（multimodal 自报），找出插图位置；
 3. **提取插图**：对含插图的页，用 shell（pymupdf）按 bbox 裁图落
@@ -143,7 +145,8 @@ structured/raw/
   每天有免费高优先级页数额度；>200 页自动按 `pdf.mineru_batch_pages`（默认 200）
   切批顺序解析后合并（全局页序连续、图片名防撞、块完整拼接），网络失败会以
   中文错误明确报出。
-- OCR 引擎懒加载：文字层 PDF 不付模型加载成本；`init` 遇扫描页自动调 RapidOCR。
+- OCR 引擎懒加载：文字层 PDF 不付模型加载成本；`init` 遇扫描页自动调 RapidOCR
+  （优先新版 `rapidocr`，缺失时回落 `rapidocr_onnxruntime`）。
 - 难页视觉兜底是你的能力（multimodal 自报）：可自行渲染难页看图理解，结果按页写回
   `structured/raw/page-NNN.json`（`ocr:true`）。
 - **批量改写后抽查**：对 `structured/` 做批量清洗/OCR 修正后，抽首/中/尾代表页与

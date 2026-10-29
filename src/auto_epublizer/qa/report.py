@@ -245,6 +245,7 @@ def generate_report(
             "errors": epubcheck.errors,
             "warnings": epubcheck.warnings,
             "messages": epubcheck.messages or [],
+            "diagnostics": epubcheck.diagnostics,
         },
         g4_audit=g4_audit,
         g4_epubcheck_errors=epubcheck.errors if epubcheck.ran else -1,

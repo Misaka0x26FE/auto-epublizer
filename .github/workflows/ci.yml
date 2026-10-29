@@ -1,0 +1,70 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+env:
+  PANDOC_VERSION: "3.1.3"
+  EPUBCHECK_VERSION: "5.2.1"
+  UV_VERSION: "0.11.32"
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      # 外部工具版本固定：跳过条件只在工具确实缺失时成立，CI 里用强制开关把
+      # “静默跳过”变成失败（tests/test_external_tools_required.py）。
+      - name: Install pinned pandoc
+        run: |
+          curl -fsSL -o /tmp/pandoc.deb \
+            "https://github.com/jgm/pandoc/releases/download/${PANDOC_VERSION}/pandoc-${PANDOC_VERSION}-1-amd64.deb"
+          sudo dpkg -i /tmp/pandoc.deb
+          pandoc --version | head -1
+
+      - name: Install pinned epubcheck
+        run: |
+          curl -fsSL -o /tmp/epubcheck.zip \
+            "https://github.com/w3c/epubcheck/releases/download/v${EPUBCHECK_VERSION}/epubcheck-${EPUBCHECK_VERSION}.zip"
+          unzip -q /tmp/epubcheck.zip -d /tmp/epubcheck
+          mkdir -p "$HOME/.cache"
+          cp "/tmp/epubcheck/epubcheck-${EPUBCHECK_VERSION}/epubcheck.jar" "$HOME/.cache/epubcheck.jar"
+          java -jar "$HOME/.cache/epubcheck.jar" --version
+
+      - name: Install dependencies
+        run: uv sync --frozen --group dev
+
+      - name: Require real external tools (no silent skip)
+        env:
+          AUTO_EPUBLIZER_REQUIRE_EXTERNAL: "1"
+        run: uv run pytest -q tests/test_external_tools_required.py tests/test_external_tools.py tests/test_pandoc_ast.py
+
+      - name: Lint and format
+        run: |
+          uv run ruff check .
+          uv run ruff format --check .
+
+      - name: Docs i18n consistency
+        run: uv run python scripts/i18n.py --check
+
+      - name: Test suite
+        env:
+          AUTO_EPUBLIZER_REQUIRE_EXTERNAL: "1"
+        run: uv run pytest -q

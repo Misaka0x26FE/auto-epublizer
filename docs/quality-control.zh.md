@@ -131,7 +131,12 @@ Autofix（可选）：先写可恢复索引 `reviews/<ts>/autofix/index.json`，
 
 ### G4 EPUB 结构 QA（build 后，本地）
 
-- `epubcheck` 实际执行且 `returncode == 0`、`errors == 0`。jar 缓存于 `~/.cache` 时须保留完整发行包相邻的 `lib`；headless Java 足够，无需 GUI。仅 jar 存在、Java 启动或旧 `ran` 字段不证明通过；进程失败/FATAL 不得当作零错误。
+- `epubcheck` 以 `--quiet --json -` 实际执行，读取**结构化 JSON 报告**：`checker.nFatal/nError/nWarning`
+  与逐条 `messages`（ID/严重程度/位置）都进 `report.json` 的 `epubcheck.diagnostics`。
+  `returncode == 0` 且 `errors == 0` 才放行；报告缺失、JSON 损坏、字段非法或非零退出
+  一律 fail closed（记为 error，不得当作零错误）。jar 缓存于 `~/.cache` 时须保留完整
+  发行包相邻的 `lib`；headless Java 足够，无需 GUI。仅 jar 存在、Java 启动或旧 `ran`
+  字段不证明通过。
 - 解包逐项审计（`qa/audit.py`，已实现）：
   - `mimetype` 首位、未压缩、内容恰为 `application/epub+zip`；
   - `META-INF/container.xml` 良构、指向 OPF；

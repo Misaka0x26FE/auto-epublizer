@@ -1,4 +1,4 @@
-<!-- i18n: source=development-plan.zh.md sha256=2ba2589d507f3bc013fe44feb7bf998690d13ecb1c70f1a3a8db49f263f314a2 -->
+<!-- i18n: source=development-plan.zh.md sha256=d564e9a480527ae938b69079a19aa6d80a1147ead93513fa2a0c16c207356617 -->
 > **English** | [中文](development-plan.zh.md)
 
 # auto-epublizer Project Development Plan
@@ -140,7 +140,7 @@ C8 (QC) → C9/C10 (packaging + audit) → C12 (CLI threading through).
 
 | # | Item | Description |
 |---|---|---|
-| O1 | `pyproject.toml` | uv-managed; dependencies: typer/pydantic/rich/httpx/pymupdf/rapidocr-onnxruntime/lxml/pyyaml; dev: pytest/ruff |
+| O1 | `pyproject.toml` | uv-managed; dependencies: typer/pydantic/rich/httpx/pymupdf/rapidocr (3.x)/lxml/pyyaml; dev: pytest/ruff |
 | O2 | Ruff rules | target Python 3.12; line width, E/W/F/I; ignore E501 for Chinese prompts |
 | O3 | `config.example.yaml` | aligned with the complete schema of docs/configuration.md |
 | O4 | Testing strategy | all offline: FakeClient/mock, no real LLM/network calls; data written to tempfile; `test_architecture_boundaries.py` fixes the dependency boundaries |

@@ -1,4 +1,4 @@
-<!-- i18n: source=ingest.zh.md sha256=7e1dbd04de567cc5ae27e2e623ec1676157f3c69e98fa2a89d60e71957a7b747 -->
+<!-- i18n: source=ingest.zh.md sha256=54af2b3362a2b24be34700d29de08f06c09d15d66be64162cd2b52e96d9288ec -->
 > **English** | [中文](ingest.zh.md)
 
 # Ingest (file parsing)
@@ -56,7 +56,11 @@ line breaks (paragraph boundaries) and illustrations need the agent's page-by-pa
 to fill in:
 
 1. **Read the OCR artifacts**: the `ocr:true` text blocks of each page in
-   `structured/raw/page-NNN.json` — OCR text has no paragraph information (often joined
+   `structured/raw/page-NNN.json`. Structured backends merge lines into paragraphs and keep
+   `bbox` (PDF points), `ocr_confidence` (mean), `ocr_lines` (line count) and `ocr_source`
+   (rendered page image) per block; text-only legacy backends degrade to one coordinate-less
+   block (geometry is never invented). Still re-check paragraphs/line breaks semantically. OCR
+   text has no paragraph information (often joined
    into one long string for the whole page); you need to re-break paragraphs/line breaks
    according to semantics;
 2. **Look at page images to find illustrations**: init has already persisted the rendered
@@ -187,7 +191,8 @@ file, see "inserts completion" in `references/translation.md`.
   merged (global page order continuous, image names collision-proof, blocks completely
   concatenated), and network failures are clearly reported with a Chinese error.
 - OCR engine lazy loading: text-layer PDFs do not pay the model-loading cost; `init`
-  automatically calls RapidOCR when encountering scanned pages.
+  automatically calls RapidOCR when encountering scanned pages (new `rapidocr` first,
+  falling back to `rapidocr_onnxruntime`).
 - Difficult-page visual fallback is your capability (multimodal self-report): you may
   render difficult pages yourself and look at them to understand, writing the result back
   page by page to `structured/raw/page-NNN.json` (`ocr:true`).

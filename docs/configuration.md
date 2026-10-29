@@ -1,4 +1,4 @@
-<!-- i18n: source=configuration.zh.md sha256=f0d74cacf38b2eb8b0c641ffe934d3940961e32a93583c55fa05c5f57b7bd1c0 -->
+<!-- i18n: source=configuration.zh.md sha256=0d17fbd4d9b44dbca835c483359c7cb3b3f57346385c373ae9a33ee5e1bac9b1 -->
 > **English** | [中文](configuration.zh.md)
 
 # Configuration reference (target `config.yaml` schema)
@@ -32,12 +32,18 @@ qc:
 # ── PDF parsing ──────────────────────────────────────────────
 pdf:
   backend: auto           # auto | pymupdf | mineru (auto=prefer MinerU when it is a scan and MINERU_API_KEY exists)
-  ocr: auto               # auto | off | force rapidocr
+  ocr: auto               # auto | off | force rapidocr (rapidocr 3.x, falls back to 1.x)
   page_dpi: 300           # page render resolution (OCR fallback)
   mineru_effort: medium   # not wired (the MinerU v4 API has no such parameter); kept for compatibility with old configs
   mineru_model: pipeline  # pipeline (default, deterministic, zero hallucination) | vlm (high precision, internally a VLM)
   mineru_language: ch     # MinerU OCR language (PaddleOCR language code: ch/en/ja/…)
   mineru_batch_pages: 200 # automatically batch above this page count (MinerU single-file ≤200 pages limit; ≤0 disables)
+
+# ── Pandoc import (DOCX/HTML/EPUB) ──────────────────────────
+pandoc:
+  ast_check: false        # pilot: additionally run `pandoc -t json` and reconcile structure;
+                          # heading/paragraph counts and dropped blocks go to meta["ast_check"];
+                          # the workspace stays editable Markdown
 
 # ── glossary ─────────────────────────────────────────────────
 glossary:
