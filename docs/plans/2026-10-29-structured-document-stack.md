@@ -1,6 +1,6 @@
 # 结构化文档技术栈升级
 
-状态：已实施；基线 `96c73d1`，分支 `feat/structured-document-stack`。
+状态：已完成（`ad1461f`，已推送 GitHub/Gitee `main`）；基线 `96c73d1`。
 
 ## 目标与边界
 
