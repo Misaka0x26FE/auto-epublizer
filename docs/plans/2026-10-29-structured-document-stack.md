@@ -121,6 +121,12 @@ Pandoc AST 导入试点、性质测试和固定外部工具 CI。保留单 LLM�
 - RapidOCR 3.10 真实推理在隔离 venv 验证（Python 3.13 + onnxruntime 1.31.1，PP-OCRv6
   模型，返回 `txts/boxes/scores`，结构化读取器正确换算出 PDF 点坐标与段落块）；
   CI 不装 OCR extra，体积/模型下载成本不进入常规流水线。
+- 独立复核：干净克隆 `0795d4c` 全量 1009 passed / 3 skipped；手写冒烟脚本 29 项覆盖渲染、
+  epubcheck 好/坏包、坏 JSON、OCR 坐标/置信度、AST 对账。复核发现并修复一个真实缺陷：
+  混合后端下**无坐标 OCR 行会被丢弃**——现按原顺序保留为独立无坐标块（不借用相邻坐标），
+  回归见 `test_coordinate_less_line_keeps_text_between_located_blocks`；修复后全量
+  1010 passed / 3 skipped，CLI 端到端（init→import→build→qa）`released=True`、
+  独立 epubcheck 0 error/0 warning、`report.epubcheck.diagnostics` 为空数组。
 - 已知边界：扫描件段落边界仍建议 agent 逐页复核；`ast_check` 只报计数与缺失块，不自动
   修复；Docling 仍为未验证候选。
 

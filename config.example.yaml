@@ -29,6 +29,11 @@ pdf:
   mineru_language: ch     # MinerU OCR 语言（PaddleOCR 语言码：ch/en/ja/…）
   rtl: auto               # PDF 文字层 RTL 处理：auto（自动判定）| on | off
 
+# ── Pandoc 导入（DOCX/HTML/EPUB）────────────────────────────
+pandoc:
+  ast_check: false        # 试点：额外跑 `pandoc -t json` 做结构对账，标题/段落计数与
+                          # 丢失块写入 meta["ast_check"]；工作区仍是可编辑的 Markdown
+
 # ── 术语表 ──────────────────────────────────────────────────
 glossary:
   storage: csv            # csv（默认，权威存储）；sqlite 未实现（预留）

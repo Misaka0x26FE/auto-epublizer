@@ -483,24 +483,21 @@ def _group_ocr_lines(lines: list[OcrLine], *, scale: float, source: str) -> list
     阈值取行高中位数的 0.6 倍：同一段落内行距通常小于半行，段间空行明显更大。
     无坐标的行不参与合并（单独成块），读取器不虚构几何。
     """
-    located = [line for line in lines if line.bbox is not None]
+    located = [line for line in lines if line.bbox is not None and line.text.strip()]
     if not located:
+        # 纯文本后端（无任何坐标）：沿用旧的单块结果，不虚构几何。
         text = "\n".join(line.text for line in lines).strip()
         return [{"type": "text", "bbox": None, "text": text, "ocr": True}] if text else []
 
     heights = sorted(bbox[3] - bbox[1] for bbox in (line.bbox for line in located))
     threshold = heights[len(heights) // 2] * 0.6
 
-    groups: list[list[OcrLine]] = []
-    for line in located:
-        previous = groups[-1][-1] if groups else None
-        if previous is None or not _same_paragraph(previous.bbox, line.bbox, threshold):
-            groups.append([line])
-        else:
-            groups[-1].append(line)
-
     blocks: list[dict] = []
-    for group in groups:
+    group: list[OcrLine] = []
+
+    def flush() -> None:
+        if not group:
+            return
         boxes = [line.bbox for line in group if line.bbox is not None]
         scores = [line.confidence for line in group if line.confidence is not None]
         block = {
@@ -515,6 +512,30 @@ def _group_ocr_lines(lines: list[OcrLine], *, scale: float, source: str) -> list
             block["ocr_confidence"] = round(sum(scores) / len(scores), 4)
         if block["text"]:
             blocks.append(block)
+        group.clear()
+
+    for line in lines:
+        if not line.text.strip():
+            continue
+        if line.bbox is None:
+            # 无坐标行不得与有坐标行混排：按原顺序单独成块，保留文本与置信度。
+            flush()
+            block = {
+                "type": "text",
+                "bbox": None,
+                "text": line.text.strip(),
+                "ocr": True,
+                "ocr_lines": 1,
+                "ocr_source": source,
+            }
+            if line.confidence is not None:
+                block["ocr_confidence"] = line.confidence
+            blocks.append(block)
+            continue
+        if group and not _same_paragraph(group[-1].bbox, line.bbox, threshold):
+            flush()
+        group.append(line)
+    flush()
     return blocks
 
 

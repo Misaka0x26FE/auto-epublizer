@@ -14,6 +14,11 @@ from auto_epublizer.ingest.ocr import OcrLine, RapidOcrBackend, lines_from_engin
 from auto_epublizer.ingest.pdf_reader import read_pdf
 
 
+def _page_blocks(raw: Path) -> list[dict]:
+    page = json.loads((raw / "page-001.json").read_text(encoding="utf-8"))
+    return page["blocks"]
+
+
 def _blank_pdf(path: Path) -> Path:
     with pymupdf.open() as doc:
         doc.new_page()
@@ -47,6 +52,28 @@ def test_ocr_lines_become_blocks_with_page_coordinates(tmp_path: Path) -> None:
     assert blocks[0]["ocr_lines"] == 2
     assert blocks[0]["ocr_source"].endswith("pages/p001.png")
     assert blocks[1]["bbox"] == pytest.approx([7.2, 216.0, 79.2, 230.4], abs=1e-6)
+
+
+def test_coordinate_less_line_keeps_text_between_located_blocks(tmp_path: Path) -> None:
+    """混合后端：无坐标行不得被丢弃，也不得冒用相邻行的坐标。"""
+
+    class _MixedBackend:
+        def ocr_lines(self, image_path: str) -> list[OcrLine]:
+            return [
+                OcrLine("located one", (10.0, 20.0, 110.0, 40.0), 0.9),
+                OcrLine("no geometry", None, 0.4),
+                OcrLine("located two", (10.0, 300.0, 110.0, 320.0), 0.8),
+            ]
+
+    source = _blank_pdf(tmp_path / "scan.pdf")
+    raw = tmp_path / "raw"
+    read_pdf(source, raw_dir=raw, ocr_backend=_MixedBackend(), page_dpi=100)
+
+    blocks = [b for b in _page_blocks(raw) if b.get("ocr")]
+    assert [b["text"] for b in blocks] == ["located one", "no geometry", "located two"]
+    assert blocks[1]["bbox"] is None
+    assert blocks[1]["ocr_confidence"] == pytest.approx(0.4)
+    assert blocks[0]["bbox"] == pytest.approx([7.2, 14.4, 79.2, 28.8], abs=1e-6)
 
 
 def test_plain_text_backend_keeps_previous_single_block(tmp_path: Path) -> None:
