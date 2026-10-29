@@ -45,7 +45,10 @@ jobs:
             "https://github.com/w3c/epubcheck/releases/download/v${EPUBCHECK_VERSION}/epubcheck-${EPUBCHECK_VERSION}.zip"
           unzip -q /tmp/epubcheck.zip -d /tmp/epubcheck
           mkdir -p "$HOME/.cache"
-          cp "/tmp/epubcheck/epubcheck-${EPUBCHECK_VERSION}/epubcheck.jar" "$HOME/.cache/epubcheck.jar"
+          # 5.x 的 jar 不是 fat jar：校验与运行都要求相邻 lib/ 依赖目录。
+          cp -r "/tmp/epubcheck/epubcheck-${EPUBCHECK_VERSION}" "$HOME/.cache/epubcheck-${EPUBCHECK_VERSION}"
+          cp "$HOME/.cache/epubcheck-${EPUBCHECK_VERSION}/epubcheck.jar" "$HOME/.cache/epubcheck.jar"
+          ln -sfn "$HOME/.cache/epubcheck-${EPUBCHECK_VERSION}/lib" "$HOME/.cache/lib"
           java -jar "$HOME/.cache/epubcheck.jar" --version
 
       - name: Install dependencies
