@@ -223,6 +223,28 @@ Pandoc AST 试点、性质测试与 CI）。方式：先按 `ocr delegate previe
   `structured/raw/pandoc-ast-check.json`（headings=2 / paragraphs=2 / missing=0）；
   同工作区用关闭配置 `preprocess --force` 重建后该文件被删除。
 
+### 逐文件结论（审查清单）
+
+| 文件 | 结论 |
+|---|---|
+| `build/html.py` | 缺陷 1/2/5；已修复并回归 |
+| `build/__init__.py`（媒体收集） | 缺陷 3；已修复并回归 |
+| `ingest/ocr.py` | 结构化行、双引擎归一（3.x `txts/boxes/scores`、1.x 元组）与 `[0,1]` 置信度过滤核对通过；真实引擎不在 CI（边界） |
+| `ingest/pdf_reader.py` | 缺陷 7；行距合并/坐标换算/混合后端顺序核对通过 |
+| `ingest/pandoc_ast.py` | 缺陷 6（`Div`、重复段落、报告边界）；已修复并回归 |
+| `ingest/pandoc_reader.py`、`ingest/load.py`、`orchestrator.py` | `pandoc.ast_check` 接线（config → load → read_pandoc → meta）核对通过 |
+| `qa/epubcheck.py` | JSON 严格解析、`checker` 计数取大、坏 JSON/非零退出 fail-closed 核对通过 |
+| `qa/report.py`、`qa/notes_audit.py` | `diagnostics` 透传、自动链接/转义同口径核对通过 |
+| `qa/provenance.py` | 缺陷 4；已修复并回归 |
+| `structure/rebuild.py` | 缺陷 6 的报告落盘/清理；已补齐并回归 |
+| `doctor.py`、`fingerprint.py` | 新旧包名回落探测与版本归属核对通过（未装包时不伪造版本） |
+| `auto_common/config.py` | `PandocConfig` 默认值与装配核对通过 |
+| `pyproject.toml`、`.github/workflows/ci.yml` | 依赖/版本固定、CJK 字体、`AUTO_EPUBLIZER_REQUIRE_EXTERNAL=1` 必需工具门核对通过；本次未触发远端 CI，本地以同一开关执行 |
+
+排除项：`tests/*`（只核对断言是否覆盖契约，不逐行审阅测试实现）、`docs/*` 与
+`skills/*`（按需核对口径）、`uv.lock`、`THIRD_PARTY_LICENSES.md`、`AGENTS*.md`、
+`docs/plans/README.md`（索引行）。
+
 ### 本次未覆盖
 
 - AST 探针不校验结构（见缺陷 8），「正文被误判成标题」只要文字仍在就不会报出。
