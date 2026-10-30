@@ -5,9 +5,14 @@
 工作区仍然以 ``pandoc -t markdown`` 的 Markdown 为可编辑真相（agent 要能读、能改），
 AST **不替代** Markdown，只在导入时多跑一次 ``-t json``：
 
-- 取标题层级与块序列，核对 Markdown 分单元没有吞段、并段或把正文误判成标题；
-- 结果写入 ``SourceDocument.meta["ast_check"]``，agent/审计可据此判断是否需要
+- 取标题层级与块序列，核对 Markdown 分单元没有吞段、并段或重复段落少一份；
+- 结果写入 ``SourceDocument.meta["ast_check"]``，由 ``write_structured`` 落到
+  ``structured/raw/pandoc-ast-check.json``（工作区可审计），agent 可据此判断是否需要
   ``preprocess --force`` 重建或逐块修复。
+
+边界：这是**文本覆盖探针**，不是结构验证。它按源序消费 AST 的可见词序列，只回答
+「这一块的文字是否还在工作区里、且顺序没被打乱」；不校验标题层级、段落边界或块顺序，
+因此「正文被误判成标题」只要文字仍在就不会报出。
 
 试点默认关闭（``pandoc.ast_check: true`` 打开）：多一次 pandoc 进程，长文档有成本。
 """
@@ -124,7 +129,10 @@ def ast_blocks(ast: dict[str, Any]) -> list[dict[str, Any]]:
                 items_value = value[1] if kind == "OrderedList" and len(value) > 1 else value
                 for item in items_value if isinstance(items_value, list) else []:
                     walk(item)
-            elif kind in {"BlockQuote", "Div"}:
+            elif kind == "Div":
+                # Div 的 c 是 [属性, blocks]：正文在第二项；遍历属性表等于整段隐身。
+                walk(value[1] if isinstance(value, list) and len(value) > 1 else value)
+            elif kind == "BlockQuote":
                 walk(value)
             elif kind == "Table":
                 blocks.append({"kind": "table", "level": 0, "text": ""})
@@ -142,27 +150,46 @@ def _tokens(text: str) -> list[str]:
     return _WORD.findall(text)
 
 
-def _contains_in_order(haystack: list[str], needle: list[str]) -> bool:
-    """needle 是否为 haystack 的有序子序列（对 Markdown 强调标记不敏感）。"""
+def _match_end(haystack: list[str], needle: list[str], start: int = 0) -> int | None:
+    """needle 是否为 haystack[start:] 的有序子序列；返回匹配结束后的位置。
+
+    按源序**消费**词序列：同一段落出现两次时，第二次必须消费到新的词，不能复用第一次
+    已匹配的词（否则「整段被吞一次」会被误判为通过）。
+    """
     if not needle:
-        return True
-    it = iter(haystack)
-    return all(token in it for token in needle)
+        return start
+    pos = start
+    for token in needle:
+        try:
+            pos = haystack.index(token, pos) + 1
+        except ValueError:
+            return None
+    return pos
 
 
 def compare_with_units(ast: dict[str, Any], units: list[SourceUnit]) -> dict[str, Any]:
     """AST 与 Markdown 分单元对账：块计数与丢失块。
 
     比较按**词序列**而非字面串：Markdown 工作区保留 ``**强调**``/``*斜体*`` 标记，
-    字面比较会把带格式的段落误判为丢失；词序列子序列检查能发现整段被吞、被并、
-    或标题被当成正文，又不挑剔标记写法。
+    字面比较会把带格式的段落误判为丢失；按源序消费的子序列检查能发现整段被吞、被并、
+    重复段落少了一份，又不挑剔标记写法。
+
+    这是**文本覆盖探针**，不是结构验证：它不校验标题层级、段落边界或块顺序是否与 AST
+    一致，也不能证明「正文被误判成标题」——那种缺陷只要文字仍在工作区就不会被报出。
     """
     blocks = ast_blocks(ast)
     expected = [b for b in blocks if _tokens(b["text"])]
     actual_words = [
         word for unit in units for segment in unit.segments for word in _tokens(segment.source)
     ]
-    missing = [b for b in expected if not _contains_in_order(actual_words, _tokens(b["text"]))]
+    missing: list[dict[str, Any]] = []
+    cursor = 0
+    for block in expected:
+        end = _match_end(actual_words, _tokens(block["text"]), cursor)
+        if end is None:
+            missing.append(block)
+        else:
+            cursor = end
     return {
         "headings": sum(1 for b in blocks if b["kind"] == "heading"),
         "paragraphs": sum(1 for b in blocks if b["kind"] == "paragraph"),

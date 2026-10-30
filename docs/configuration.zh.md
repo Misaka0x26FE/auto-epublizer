@@ -37,8 +37,10 @@ pdf:
 
 # ── Pandoc 导入（DOCX/HTML/EPUB）────────────────────────────
 pandoc:
-  ast_check: false        # 试点：额外跑 `pandoc -t json` 做结构对账，标题/段落计数与
-                          # 丢失块写入 meta["ast_check"]；工作区仍是可编辑的 Markdown
+  ast_check: false        # 试点：额外跑 `pandoc -t json` 做文本覆盖对账（按源序消费词
+                          # 序列，只查丢失块，不校验标题层级/段落边界）；结果写入
+                          # meta["ast_check"] 与 structured/raw/pandoc-ast-check.json；
+                          # 工作区仍是可编辑的 Markdown
 
 # ── 术语表 ──────────────────────────────────────────────────
 glossary:

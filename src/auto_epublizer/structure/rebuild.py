@@ -4,6 +4,8 @@
 
 from __future__ import annotations
 
+import json
+import os
 import re
 
 from auto_common.workspace import Publication, RunStore
@@ -120,3 +122,24 @@ def write_structured(store: RunStore, doc: SourceDocument, entries: list[dict]) 
             _render_markdown(unit.title, unit.segments, unit.meta.get("heading_id")),
             encoding="utf-8",
         )
+    _write_ast_report(store, doc)
+
+
+def _write_ast_report(store: RunStore, doc: SourceDocument) -> None:
+    """把 Pandoc AST 对账结果落到 structured/raw/，并清理过期的旧报告。
+
+    只在内存 meta 里留结果时，CLI 的 ``init`` 路径读完就丢，agent 后续无从复核；
+    关闭试点重建时必须删除旧文件，否则上次的「通过」会变成过期证据。
+    """
+    target = store.structured_dir / "raw" / "pandoc-ast-check.json"
+    report = doc.meta.get("ast_check")
+    if not isinstance(report, dict):
+        target.unlink(missing_ok=True)
+        return
+    target.parent.mkdir(parents=True, exist_ok=True)
+    tmp = target.with_name(target.name + ".tmp")
+    tmp.write_text(
+        json.dumps(report, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    os.replace(tmp, target)

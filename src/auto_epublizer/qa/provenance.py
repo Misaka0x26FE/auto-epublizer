@@ -263,7 +263,18 @@ def _probe_missing(md_text: str, doc_text_norm: str) -> tuple[list[str], int]:
     与 build 共用 ``markdown_to_xhtml``，变换（标记清理/内联/表格/verse）天然一致；
     跳过标题行与脚注定义块；注码展示和注文由独立注释门核对，不作正文覆盖证据。
     """
-    from ..build.html import markdown_to_xhtml
+    from ..build.html import _markdown_parser, markdown_to_xhtml
+
+    # 引用式链接的定义是全文档级的：逐段渲染必须共享同一 env，否则 `[标签][ref]`
+    # 在探针里留成字面量（成品里已是链接文字），每段都被误判为「成品缺失」。
+    env: dict[str, Any] = {}
+    _markdown_parser().parse(md_text or "", env)
+    # 旧记法脚注定义 `[^7]: 注体` 在 CommonMark 里也是合法链接定义；它在成品里由
+    # 脚注通道消费，探针不能把 `[^7]` 解成普通链接，否则会多出 `^7` 文字。
+    references = env.get("references")
+    if isinstance(references, dict):
+        for key in [k for k in references if str(k).startswith("^")]:
+            references.pop(key, None)
 
     missing: list[str] = []
     total = 0
@@ -284,7 +295,7 @@ def _probe_missing(md_text: str, doc_text_norm: str) -> tuple[list[str], int]:
         )
         # 期望只移除非代码引用标记，保留相邻正文；不从实际产物推断注码编号。
         # 成品侧则按 XHTML 节点语义排除 noteref/footnote/endnote。
-        rendered = _prose_text(markdown_to_xhtml(block), strip_markers=True)
+        rendered = _prose_text(markdown_to_xhtml(block, env=env), strip_markers=True)
         probe = re.sub(r"\s+", "", rendered)
         if not probe:
             continue

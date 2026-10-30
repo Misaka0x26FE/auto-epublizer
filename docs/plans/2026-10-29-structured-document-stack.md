@@ -34,8 +34,9 @@ Pandoc AST 导入试点、性质测试和固定外部工具 CI。保留单 LLM�
 
 - 通用行内/块级语法改用 `markdown-it-py` 4.2（`commonmark` + `table`，禁用把正文下划线
   猜成标题的 `lheading`）；出版扩展保留专用处理：
-  - `_protect_code`：代码跨度先换占位符，`<code>` 内容**逐字**保留（含换行、`*`、`#`、
-    `[]{#id}`）；markdown-it 默认会把代码内换行折成空格，故不交给它改写。
+  - `literal_code`：注册在标准 `backticks` 之前的行内 token 规则，`<code>` 内容**逐字**
+    保留（含换行、`*`、`#`、`[]{#id}`）；markdown-it 默认会把代码内换行折成空格，故不交给
+    它改写。代码是 token 而不是文本占位符（2026-10-30 复核改法，见文末审查）。
   - `_publication_inline`：`[]{#id}` → 空锚点、`{[]}` 空属性块丢弃；普通 Markdown 交回
     标准规则。
   - 块分流：围栏、raw HTML、管道/网格表、诗行、有序列表、ATX 标题走既有专用分支；
@@ -70,21 +71,28 @@ Pandoc AST 导入试点、性质测试和固定外部工具 CI。保留单 LLM�
 ### 4. Pandoc JSON AST 试点（`ingest/pandoc_ast.py`）
 
 - opt-in：`pandoc.ast_check: true`（默认关闭，多一次 pandoc 进程）。
-- `run_pandoc_ast` + `ast_blocks` 拍平标题/段落/代码块；`compare_with_units` 按**词序列
-  子序列**对账（对 `**强调**` 等标记不敏感），计数与缺失块写入
-  `SourceDocument.meta["ast_check"]`。
+- `run_pandoc_ast` + `ast_blocks` 拍平标题/段落/代码块（`Div` 取 `c[1]` 的 blocks）；
+  `compare_with_units` 按源序**消费**词序列对账（对 `**强调**` 等标记不敏感，重复段落须
+  各消费一次），计数与缺失块写入 `SourceDocument.meta["ast_check"]`，并由
+  `write_structured` 落到 `structured/raw/pandoc-ast-check.json`（关闭试点时删除旧报告）。
+- 它是**文本覆盖探针**：只回答「AST 里的可见文字是否还在工作区、顺序是否被打乱」，
+  不校验标题层级、段落边界或块顺序。
 - 工作区仍是 `pandoc -t markdown` 的 Markdown（agent 可编辑），AST 只做核验，不替换、
   不丢行内格式；缺口由 agent 判断是否 `preprocess --force` 或逐块修复。
 
 ### 5. 测试与 CI
 
 - `tests/test_markdown_tokens.py`：嵌套强调、引用链接、嵌套列表、带括号图片、代码内注号、
-  多行行内代码逐字、自动链接、图注。
+  多行行内代码逐字、自动链接、图注；代码进 alt/图注只贡献文字、私用区字符不与代码碰撞、
+  链接地址里的反引号不是代码、出版专用块共享 `env` 解析引用式链接。
 - `tests/test_epubcheck_json.py`：位置保留、六类坏报告、空报告 + 退出码、FATAL。
 - `tests/test_ocr_structure.py`：坐标换算/段落合并/置信度/来源、纯文本后端退化、
   segment meta、两种引擎结果解析、结构化优先。
-- `tests/test_pandoc_ast.py`：合成 AST 拍平/引用、缺失块检出、真实 DOCX `ast_check`
-  对账且 Markdown 标记保留、真实 AST 合法 JSON。
+- `tests/test_pandoc_ast.py`：合成 AST 拍平/引用、缺失块检出、`Div` 正文、重复段落
+  逐次消费、报告落盘与关闭后清理、真实 DOCX `ast_check` 对账且 Markdown 标记保留、
+  真实 AST 合法 JSON。
+- `tests/test_build.py` / `tests/test_provenance.py`：alt 含行内代码时媒体照常收集、
+  行内代码里的图片语法不被收集、成品段落探针按整篇 `env` 解析引用式链接。
 - `tests/test_markdown_properties.py`：Hypothesis 任意文本渲染良构 + 确定性、代码跨度
   逐字、标题不被吞。
 - `.github/workflows/ci.yml`：固定 pandoc 3.1.3、EPUBCheck 5.2.1、Java 21、uv 0.11.32；
@@ -127,10 +135,99 @@ Pandoc AST 导入试点、性质测试和固定外部工具 CI。保留单 LLM�
   回归见 `test_coordinate_less_line_keeps_text_between_located_blocks`；修复后全量
   1010 passed / 3 skipped，CLI 端到端（init→import→build→qa）`released=True`、
   独立 epubcheck 0 error/0 warning、`report.epubcheck.diagnostics` 为空数组。
-- 已知边界：扫描件段落边界仍建议 agent 逐页复核；`ast_check` 只报计数与缺失块，不自动
-  修复；Docling 仍为未验证候选。
+- 已知边界：扫描件段落边界仍建议 agent 逐页复核；`ast_check` 只报计数与缺失块（文本
+  覆盖探针，不校验结构），不自动修复；Docling 仍为未验证候选。
 
 ## 证据与决策（立项时）
 
 - 前轮已实测四组手写渲染缺陷；环境中 markdown-it-py 是 Rich 的间接依赖。
 - 最新远端较原工作树多 29 个提交，含新审校门和 PDF 导出；本任务基于最新远端。
+
+## 审查与修复（2026-10-30）
+
+审查对象：`96c73d1..951b849` 的本轮升级（markdown-it 渲染、EPUBCheck JSON、OCR 结构化、
+Pandoc AST 试点、性质测试与 CI）。方式：先按 `ocr delegate preview` 圈定 16 个可审文件
+（其余 26 个测试/文档文件按需核对断言），逐文件读实现 → 写最小反例 → 先失败再修复；
+最后用真实 CLI 端到端复核。共确认 7 类缺陷，全部有失败回归测试与修复。
+
+### 缺陷与修复
+
+1. **代码占位符污染图片 alt / 图注，并与正文私用区字符碰撞**（`build/html.py`）。
+   `_protect_code` 把代码换成 `U+E000<序号>U+E000`，但 alt/figcaption 经
+   `renderInlineAsText` 先把占位符当文字取出，渲染后再把 `<code>` 塞回属性，得到
+   `alt="<code>x &lt; y</code>"`（XML 非法）；正文出现 `U+E000` 时占位符正则命中正文，
+   `codes[int(...)]` 直接 `IndexError`；链接地址里的反引号也先被抽成代码，href 变成
+   `%EE%80%80…`。回归：`test_code_in_image_alt_is_text_not_markup`、
+   `test_private_use_text_cannot_collide_with_code`、
+   `test_backticks_in_link_destination_are_not_code`。修复：改注册 markdown-it 行内规则
+   `literal_code`（`before("backticks")`），代码是 token 而不是文本占位符；alt/图注走
+   `_inline_text` 只取文字；删除 `_CODE_SENTINEL`/`_protect_code`/`_restore_code`。
+
+2. **出版专用块不共享 `env`，引用式链接失效**（`build/html.py`）。
+   标题、诗行、引用、表格、有序列表分支各自调用 `_inline()`，未传 `env`（默认空字典），
+   文档级 `[标签][ref]` 定义不可见，原样漏进成品。回归：四参数化用例
+   `test_reference_links_resolve_in_publication_blocks`。修复：`_inline(text, env)` 贯穿
+   全部分支；`markdown_to_xhtml` 显式接受预置 `env`。
+
+3. **alt 含行内代码时媒体被静默漏收**（`build/__init__.py`）。
+   `![图注 `a & b`](media/pic.png)` 不进 EPUB，`dropped` 也为空，只在 qa 报
+   `E_IMG_SRC` / `E_MEDIA_EPUB_LOST`。根因是 `collect_media` 先按 `inline_code_chunks`
+   切文本再匹配图片，alt 里的代码把 `![` 与 `](…)` 切到两个片段。回归：
+   `test_collect_media_image_with_code_in_alt`。修复：文本块内先整体匹配媒体引用，只跳过
+   起点落在行内代码跨度内的匹配。
+
+4. **成品段落探针与 build 口径不一致，误报段落丢失**（`qa/provenance.py`）。
+   `_probe_missing` 逐段渲染 `markdown_to_xhtml(block)`，没有整篇 `env`，`[标签][ref]`
+   在探针里留成字面量，成品里已是链接文字 → `E_EPUB_PARA_LOST` 误报（CLI 复核时
+   `epub_coverage=0.333`）。回归：`test_probe_renders_reference_links_with_document_env`。
+   修复：整篇 md 预解析出 `env` 再逐段渲染；同时剔除 `^` 前缀的链接定义——旧记法脚注
+   定义 `[^7]: …` 在 CommonMark 里也是合法链接定义，不能把 `[^7]` 解成普通链接
+   （既有 `test_provenance_legacy_note_numbers_are_not_labels` 守住该回归）。
+
+5. **nav/`<title>` 泄漏 `[ref]`**（`build/html.py`）。`plain_label` 只剥内联链接语法，
+   标题里的引用式链接把 `[ref]` 带进目录与页面标题。回归：
+   `test_reference_link_in_heading_keeps_only_visible_label`。修复：先按
+   `_LABEL_REF_LINK` 剥掉引用标签。
+
+6. **Pandoc AST 对账两处漏检 + 报告不落盘**（`ingest/pandoc_ast.py`、
+   `structure/rebuild.py`）。`Div` 只遍历 `c` 的属性表，正文整段隐身；重复段落用
+   `it = iter(haystack)` 子序列判定，只要出现过一次就通过；报告只写
+   `SourceDocument.meta`，CLI 的 `init` 路径读完即丢。回归：
+   `test_div_contents_are_checked`、`test_repeated_paragraph_requires_each_occurrence`、
+   `test_ast_report_survives_workspace_ingest_and_is_removed_when_disabled`。修复：
+   `Div` 取 `c[1]`；`_match_end` 按源序消费词序列；`write_structured` 原子写
+   `structured/raw/pandoc-ast-check.json`，关闭试点重建时删除旧报告。
+
+7. **无坐标 OCR 丢失行数/来源/置信度**（`ingest/pdf_reader.py`）。纯无坐标路径返回
+   `{type,bbox,text,ocr}`，与「不虚构几何、但保留证据」的契约不符。回归：
+   `test_unlocated_structured_lines_keep_confidence_and_source`（既有
+   `test_plain_text_backend_keeps_previous_single_block` 期望同步更新）。修复：单块输出
+   同样带 `ocr_lines`/`ocr_source` 与置信度均值（无置信度时不写该字段）。
+
+8. **文档口径纠正**：原实施记录称 AST 能发现「正文被误判成标题」，实际它只是**文本
+   覆盖探针**（按源序消费可见词序列，不校验标题层级、段落边界、块顺序）。已同步修正
+   本文件、模块 docstring、`docs/configuration*.md` 与 `config.example.yaml`，并补上
+   结果文件位置。
+
+### 验证（2026-10-30）
+
+- 全量：`AUTO_EPUBLIZER_REQUIRE_EXTERNAL=1 uv run pytest -q` → **1026 passed / 1 skipped**
+  （真实 pandoc 与 EPUBCheck 集成测试实际执行）。
+- 静态：`ruff check`、`ruff format --check`、`scripts/i18n.py --check` 全部通过。
+- CLI 端到端（新工作区，`/tmp/opencode/review-stack-e2e.py`）：
+  `init → 手写 translation+align → import --reviewed → build → qa`，2 个单元全部
+  `reviewed`（无「跳过」），`released=True`、`g4_epubcheck_errors=0`、
+  `epubcheck.returncode=0`、`diagnostics=[]`；成品断言 `<code>x &lt; y</code>`、
+  `alt="图注含代码 a &amp; b"`，标题/表格/有序列表/引用/诗行里的引用式链接均为 `<a>`。
+- AST 报告 CLI 复核：`pandoc.ast_check: true` 的 `init` 生成
+  `structured/raw/pandoc-ast-check.json`（headings=2 / paragraphs=2 / missing=0）；
+  同工作区用关闭配置 `preprocess --force` 重建后该文件被删除。
+
+### 本次未覆盖
+
+- AST 探针不校验结构（见缺陷 8），「正文被误判成标题」只要文字仍在就不会报出。
+- 扫描件段落边界仍需 agent 逐页复核；RapidOCR 真实推理不在 CI（体积/模型下载成本）。
+- 测试与文档逐行内容不在本次审查清单内，只核对其断言是否覆盖既有契约；CI workflow
+  只核对固定版本与「必需工具缺失即失败」的门。
+- 契约未变：单 LLM、可编辑 Markdown 工作区、注释/媒体/Pandoc 扩展/XHTML-EPUB 保真、
+  确定性 ZIP。

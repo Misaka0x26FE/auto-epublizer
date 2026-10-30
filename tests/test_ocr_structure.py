@@ -87,7 +87,13 @@ def test_plain_text_backend_keeps_previous_single_block(tmp_path: Path) -> None:
     read_pdf(source, raw_dir=raw, ocr_backend=_TextOnly())
     page = json.loads((raw / "page-001.json").read_text(encoding="utf-8"))
     blocks = [b for b in page["blocks"] if b.get("ocr")]
-    assert blocks == [{"type": "text", "bbox": None, "text": "plain ocr text", "ocr": True}]
+    assert len(blocks) == 1
+    block = blocks[0]
+    assert block["text"] == "plain ocr text"
+    assert block["bbox"] is None
+    assert block["ocr_lines"] == 1
+    assert block["ocr_source"].endswith("pages/p001.png")
+    assert "ocr_confidence" not in block
 
 
 def test_segments_carry_ocr_confidence_and_geometry(tmp_path: Path) -> None:
@@ -131,3 +137,24 @@ def test_rapidocr_backend_prefers_structured_lines(monkeypatch: pytest.MonkeyPat
     lines = backend.ocr_lines("ignored.png")
     assert lines == [OcrLine("page line", (0.0, 0.0, 10.0, 8.0), pytest.approx(0.75))]
     assert backend.ocr_image("ignored.png") == "page line"
+
+
+def test_unlocated_structured_lines_keep_confidence_and_source(tmp_path: Path) -> None:
+    """无坐标的结构化行仍须带行数、来源与置信度均值：证据不能因缺几何而丢失。"""
+
+    class _NoGeometry:
+        def ocr_lines(self, image_path: str) -> list[OcrLine]:
+            return [OcrLine("first line", None, 0.5), OcrLine("second line", None, 0.7)]
+
+    source = _blank_pdf(tmp_path / "scan.pdf")
+    raw = tmp_path / "raw"
+    read_pdf(source, raw_dir=raw, ocr_backend=_NoGeometry(), page_dpi=100)
+
+    blocks = [b for b in _page_blocks(raw) if b.get("ocr")]
+    assert len(blocks) == 1
+    block = blocks[0]
+    assert block["text"] == "first line\nsecond line"
+    assert block["bbox"] is None
+    assert block["ocr_lines"] == 2
+    assert block["ocr_source"].endswith("pages/p001.png")
+    assert block["ocr_confidence"] == pytest.approx(0.6)

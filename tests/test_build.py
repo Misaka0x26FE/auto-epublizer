@@ -1155,3 +1155,22 @@ def test_nav_label_strips_calibre_toc_attribute() -> None:
     out = _render_nav_items(nodes)
     assert "引言</a>" in out
     assert "calibre_toc" not in out
+
+
+def test_collect_media_image_with_code_in_alt(tmp_path: Path) -> None:
+    """alt 里的行内代码不得把图片语法切成两半，否则媒体被静默漏收（0 dropped）。"""
+    from auto_epublizer.build import collect_media
+
+    media_root = tmp_path / "raw" / "media"
+    media_root.mkdir(parents=True)
+    (media_root / "pic.png").write_bytes(b"PICBYTES")
+
+    out, files, dropped = collect_media("![图注 `a & b`](media/pic.png)", media_root)
+    assert files == [("media/pic.png", b"PICBYTES")]
+    assert dropped == []
+    assert out == "![图注 `a & b`](media/pic.png)"
+
+    # 行内代码里的图片语法仍不得被当成资源
+    out2, files2, dropped2 = collect_media("`![x](media/pic.png)`", media_root)
+    assert files2 == [] and dropped2 == []
+    assert "`![x](media/pic.png)`" in out2

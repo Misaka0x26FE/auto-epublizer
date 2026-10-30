@@ -20,7 +20,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import quote, unquote, urlsplit
 
-from auto_common.markdown import inline_code_chunks, markdown_chunks
+from auto_common.markdown import CODE_SPAN_RE, markdown_chunks
 from auto_common.workspace import Publication
 
 from ..fingerprint import (
@@ -680,17 +680,32 @@ def collect_media(
         href = _collect(source.group(2))
         return f"![{source.group(1)}]({href})" if href else ""
 
+    def _rewrite_text(chunk: str) -> str:
+        """文本块里的媒体引用逐处改写；行内代码里的 ``![…](…)`` 保持字面。
+
+        不能先把文本按代码跨度切开再匹配：图片 alt 里的行内代码（``![图 `a`](x.png)``）
+        会把 ``![`` 与 ``](x.png)`` 分到两个片段，匹配不到等于静默漏收媒体（dropped 也为空）。
+        """
+        code_spans = [
+            (match.start(), match.end())
+            for match in CODE_SPAN_RE.finditer(chunk)
+            if not re.match(r"\s*\{\s*=\s*html\s*\}", chunk[match.end() :])
+        ]
+        pieces: list[str] = []
+        cursor = 0
+        for match in _MEDIA_REF.finditer(chunk):
+            if any(start <= match.start() < end for start, end in code_spans):
+                continue
+            pieces.append(chunk[cursor : match.start()])
+            pieces.append(_sub(match))
+            cursor = match.end()
+        pieces.append(chunk[cursor:])
+        return "".join(pieces)
+
     rewritten = "".join(
         chunk
         if kind == "code"
-        else (
-            _MEDIA_REF.sub(_sub, chunk)
-            if kind == "raw"
-            else "".join(
-                part if code else _MEDIA_REF.sub(_sub, part)
-                for code, part in inline_code_chunks(chunk)
-            )
-        )
+        else (_MEDIA_REF.sub(_sub, chunk) if kind == "raw" else _rewrite_text(chunk))
         for kind, chunk in markdown_chunks(md_text)
     )
     return rewritten, list(seen.items()), dropped

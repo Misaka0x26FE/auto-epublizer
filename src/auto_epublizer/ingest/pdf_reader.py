@@ -485,9 +485,23 @@ def _group_ocr_lines(lines: list[OcrLine], *, scale: float, source: str) -> list
     """
     located = [line for line in lines if line.bbox is not None and line.text.strip()]
     if not located:
-        # 纯文本后端（无任何坐标）：沿用旧的单块结果，不虚构几何。
-        text = "\n".join(line.text for line in lines).strip()
-        return [{"type": "text", "bbox": None, "text": text, "ocr": True}] if text else []
+        # 纯文本后端（无任何坐标）：单块输出，不虚构几何；行数/来源/置信度仍要留证。
+        kept = [line for line in lines if line.text.strip()]
+        text = "\n".join(line.text for line in kept).strip()
+        if not text:
+            return []
+        scores = [line.confidence for line in kept if line.confidence is not None]
+        block = {
+            "type": "text",
+            "bbox": None,
+            "text": text,
+            "ocr": True,
+            "ocr_lines": len(kept),
+            "ocr_source": source,
+        }
+        if scores:
+            block["ocr_confidence"] = round(sum(scores) / len(scores), 4)
+        return [block]
 
     heights = sorted(bbox[3] - bbox[1] for bbox in (line.bbox for line in located))
     threshold = heights[len(heights) // 2] * 0.6

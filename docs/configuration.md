@@ -1,4 +1,4 @@
-<!-- i18n: source=configuration.zh.md sha256=0d17fbd4d9b44dbca835c483359c7cb3b3f57346385c373ae9a33ee5e1bac9b1 -->
+<!-- i18n: source=configuration.zh.md sha256=5a3502e7d88cf3b69b64c62d55cc7c467cba2896695001a650a84eadfafa8af2 -->
 > **English** | [中文](configuration.zh.md)
 
 # Configuration reference (target `config.yaml` schema)
@@ -41,8 +41,10 @@ pdf:
 
 # ── Pandoc import (DOCX/HTML/EPUB) ──────────────────────────
 pandoc:
-  ast_check: false        # pilot: additionally run `pandoc -t json` and reconcile structure;
-                          # heading/paragraph counts and dropped blocks go to meta["ast_check"];
+  ast_check: false        # pilot: additionally run `pandoc -t json` for a text-coverage check
+                          # (consumes the word sequence in source order; reports dropped blocks
+                          # only, never heading levels or paragraph boundaries); results go to
+                          # meta["ast_check"] and structured/raw/pandoc-ast-check.json;
                           # the workspace stays editable Markdown
 
 # ── glossary ─────────────────────────────────────────────────

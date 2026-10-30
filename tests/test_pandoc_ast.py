@@ -155,3 +155,73 @@ def test_real_ast_is_valid_json_with_blocks(tmp_path: Path) -> None:
     ast = run_pandoc_ast(source)
     assert isinstance(ast.get("blocks"), list)
     json.dumps(ast)
+
+
+def test_div_contents_are_checked() -> None:
+    """Div 的正文在 c[1]，不能只遍历属性表导致整段隐身。"""
+    ast = {
+        "blocks": [
+            {
+                "t": "Div",
+                "c": [["", [], []], [{"t": "Para", "c": [_str("div body")]}]],
+            }
+        ]
+    }
+    units = [
+        SourceUnit(
+            id="u001",
+            title="T",
+            segments=[SourceSegment(index=0, source="unrelated", kind=KIND_TEXT)],
+        )
+    ]
+    result = compare_with_units(ast, units)
+    assert result["missing_count"] == 1
+    assert result["missing"][0]["text"] == "div body"
+
+
+def test_repeated_paragraph_requires_each_occurrence() -> None:
+    """同一段落出现两次时，工作区只保留一次不能被判为通过。"""
+    para = {"t": "Para", "c": [_str("same words")]}
+    ast = {"blocks": [para, para]}
+    units = [
+        SourceUnit(
+            id="u001",
+            title="T",
+            segments=[SourceSegment(index=0, source="same words", kind=KIND_TEXT)],
+        )
+    ]
+    result = compare_with_units(ast, units)
+    assert result["missing_count"] == 1
+
+
+def test_ast_report_survives_workspace_ingest_and_is_removed_when_disabled(tmp_path: Path) -> None:
+    """AST 报告必须落到 structured/raw/，关闭试点时删除旧报告（不留过期通过证据）。"""
+    from auto_common.workspace import RunStore
+    from auto_epublizer.ingest.models import SourceDocument
+    from auto_epublizer.structure.rebuild import write_structured
+
+    doc = SourceDocument(
+        title="Book",
+        source_path=str(tmp_path / "book.docx"),
+        fmt="docx",
+        units=[
+            SourceUnit(
+                id="u001",
+                title="Book",
+                segments=[SourceSegment(index=0, source="# Book\n\nBody.", kind=KIND_TEXT)],
+            )
+        ],
+        meta={"via": "pandoc", "ast_check": {"headings": 1, "missing_count": 0}},
+    )
+    entries = [{"_index": 0, "id": "u001", "rel_path": "body/001.md"}]
+    store = RunStore(tmp_path / "ws")
+    write_structured(store, doc, entries)
+    report = store.structured_dir / "raw" / "pandoc-ast-check.json"
+    assert json.loads(report.read_text(encoding="utf-8")) == {
+        "headings": 1,
+        "missing_count": 0,
+    }
+
+    doc.meta.pop("ast_check")
+    write_structured(store, doc, entries)
+    assert not report.exists()

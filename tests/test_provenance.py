@@ -860,3 +860,15 @@ def test_provenance_detects_lost_body_without_heading_blank_line(tmp_path: Path)
     )
     result = audit_provenance(store, entries, bad)
     assert "E_EPUB_PARA_LOST" in {f["code"] for f in result.findings}
+
+
+def test_probe_renders_reference_links_with_document_env():
+    """成品段落探针必须与 build 同口径解析引用式链接，否则每段都误报丢失。"""
+    from auto_epublizer.build.html import markdown_to_xhtml
+    from auto_epublizer.qa.provenance import _probe_missing, _prose_text
+
+    md = "见 [手册][ref]\n\n| 列 | 值 |\n|---|---|\n| 见 [手册][ref] | 1 |\n\n[ref]: https://example.org/manual"
+    doc = re.sub(r"\s+", "", _prose_text(markdown_to_xhtml(md), strip_markers=True))
+    missing, total = _probe_missing(md, doc)
+    assert total == 2
+    assert missing == []

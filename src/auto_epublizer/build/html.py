@@ -339,6 +339,8 @@ _LABEL_ANCHOR = re.compile(r"\{[^{}]*\}")  # 裸 {…} 属性块（含 {#id}）
 # `[]` 与 `{` 之间允许空格（抽取噪声 `[] {#id}`，Pentagon Papers 29 处）
 _LABEL_INLINE_ATTR = re.compile(r"\[([^\]]*)\][ \t]*\{[^{}]*\}")
 _LABEL_IMG = re.compile(r"!\[([^\]]*)\]\([^)]*\)")  # 图片 → 取 alt
+# 引用式链接 `[标签][ref]` / `[标签][]`：标签才是可见文本，`[ref]` 不留进 nav/标题。
+_LABEL_REF_LINK = re.compile(r"\[([^\]]*)\]\[[^\]]*\]")
 _LABEL_LINK = re.compile(r"\[([^\]]*)\]\([^)]*\)")  # 链接 → 取标签文本
 _LABEL_EMPH = re.compile(r"(\*{1,3}|_{1,3})(.+?)\1", re.S)
 _LABEL_CODE = re.compile(r"`([^`]*)`")
@@ -347,6 +349,7 @@ _LABEL_CODE = re.compile(r"`([^`]*)`")
 def plain_label(text: str) -> str:
     """把标题/条目标题降为纯文本（用于 nav 标签等不渲染 markdown 的场合）。"""
     out = _LABEL_IMG.sub(r"\1", text or "")
+    out = _LABEL_REF_LINK.sub(r"\1", out)
     out = _LABEL_LINK.sub(r"\1", out)
     out = _LABEL_CODE.sub(r"\1", out)
     out = _LABEL_INLINE_ATTR.sub(r"\1", out)
@@ -361,41 +364,44 @@ def _unescape_punct(text: str) -> str:
     return "".join(p if i % 2 else _ESCAPED_PUNCT_RE.sub(r"\1", p) for i, p in enumerate(parts))
 
 
-def _protect_code(text: str) -> tuple[str, list[str]]:
-    """把行内代码换成占位符，返回 (待解析文本, 逐一对应的 <code> 元素)。
+def _literal_code(state: StateInline, silent: bool) -> bool:
+    """行内代码按出版契约**逐字**保留（不折叠换行、不重新转义）。
 
-    markdown-it 按 CommonMark 把代码跨度里的换行折成空格并重新转义内容；
-    出版契约要求代码**逐字**保留（pandoc 转出的多行行内代码、代码里的强调
-    符号都不能被改写），故先隔离，渲染后再放回占位符位置。
+    CommonMark 会把代码跨度里的换行折成空格；pandoc 转出的多行行内代码、代码里的
+    强调符号都不能被改写。这里注册在标准 ``backticks`` 规则之前的 token 规则：
+    代码内容原样进入 token，渲染时只做一次 XML 转义。
+
+    代码跨度是 token 而不是文本占位符，正文里的任意字符（含私用区）都不会与它碰撞；
+    图片 alt/图注取 ``_inline_text`` 的纯文本，代码不会把 ``<code>`` 带进属性。
     """
-    codes: list[str] = []
+    match = CODE_SPAN_RE.match(state.src, state.pos)
+    if match is None:
+        return False
+    if re.match(r"\s*\{\s*=\s*html\s*\}", state.src[match.end() :]):
+        return False  # pandoc raw inline 由 _raw_html_block 处理，不是显示代码
+    if not silent:
+        token = state.push("literal_code", "code", 0)
+        token.content = match[2]
+    state.pos = match.end()
+    return True
+
+
+def _inline_text(tokens: list[Token]) -> str:
+    """行内 token 的纯文本降级（图片 alt、图注等不能承载标记的位置）。"""
     parts: list[str] = []
-    for is_code, part in inline_code_chunks(text):
-        if not is_code:
-            parts.append(part)
-            continue
-        match = CODE_SPAN_RE.fullmatch(part)
-        codes.append(f"<code>{escape(match[2] if match else part)}</code>")
-        parts.append(f"{_CODE_SENTINEL}{len(codes) - 1}{_CODE_SENTINEL}")
-    return "".join(parts), codes
+    for token in tokens:
+        if token.type in {"text", "literal_code", "code_inline"}:
+            parts.append(token.content)
+        elif token.type == "image":
+            parts.append(_inline_text(token.children or []))
+        elif token.type in {"softbreak", "hardbreak"}:
+            parts.append(" ")
+    return "".join(parts)
 
 
-def _restore_code(rendered: str, codes: list[str]) -> str:
-    """把占位符还原成代码元素；无代码跨度时原样返回。"""
-    if not codes:
-        return rendered
-    pattern = f"{_CODE_SENTINEL}(\\d+){_CODE_SENTINEL}"
-    return re.sub(pattern, lambda m: codes[int(m[1])], rendered)
-
-
-def _inline(text: str) -> str:
-    """显示代码按字面保留，其余行内语法交给 token 解析器（调用方已转义）。"""
-    protected, codes = _protect_code(unescape(text))
-    return _restore_code(_markdown_parser().renderInline(protected), codes)
-
-
-# 私用区字符：正文不会出现，故可安全充当代码跨度的占位标记。
-_CODE_SENTINEL = "\ue000"
+def _inline(text: str, env: dict[str, Any] | None = None) -> str:
+    """行内 markdown → XHTML（调用方已转义；代码跨度按字面保留）。"""
+    return _markdown_parser().renderInline(unescape(text), env)
 
 
 def _publication_inline(state: StateInline, silent: bool) -> bool:
@@ -429,15 +435,19 @@ def _build_parser() -> MarkdownIt:
     parser = MarkdownIt("commonmark", {"html": False, "xhtmlOut": True}).enable("table")
     # 工作区只允许 ATX 标题；禁止把正文下划线猜成新标题。
     parser.disable("lheading")
+    parser.inline.ruler.before("backticks", "literal_code", _literal_code)
     parser.inline.ruler.before("text", "publication_inline", _publication_inline)
 
     def anchor(renderer, tokens, idx, options, env):
         value = tokens[idx].content
         return f'<a id="{escape(value, quote=True)}"></a>' if value else ""
 
+    def code(renderer, tokens, idx, options, env):
+        return f"<code>{escape(tokens[idx].content)}</code>"
+
     def image(renderer, tokens, idx, options, env):
         token = tokens[idx]
-        alt = renderer.renderInlineAsText(token.children or [], options, env)
+        alt = _inline_text(token.children or [])
         return _render_img(escape(alt, quote=True), escape(token.attrGet("src") or "", quote=True))
 
     def compact(renderer, tokens, idx, options, env):
@@ -450,6 +460,7 @@ def _build_parser() -> MarkdownIt:
         return result
 
     parser.add_render_rule("publication_anchor", anchor)
+    parser.add_render_rule("literal_code", code)
     parser.add_render_rule("image", image)
     for name in ("blockquote", "bullet_list", "ordered_list", "list_item"):
         for suffix in ("open", "close"):
@@ -461,8 +472,7 @@ def _build_parser() -> MarkdownIt:
 def _render_standard(md: str, env: dict[str, Any]) -> str:
     """由 token 结构保留嵌套列表、链接与图片，图片段落沿用出版样式。"""
     parser = _markdown_parser()
-    protected, codes = _protect_code(md)
-    tokens = parser.parse(protected, env)
+    tokens = parser.parse(md, env)
     for index, token in enumerate(tokens):
         if token.type == "table_open":
             token.attrSet("class", "data")
@@ -474,16 +484,14 @@ def _render_standard(md: str, env: dict[str, Any]) -> str:
             token.tag = "figure"
             token.attrSet("class", "imgfig")
             tokens[index + 2].tag = "figure"
-            caption = escape(
-                parser.renderer.renderInlineAsText(children[0].children or [], parser.options, env)
-            )
+            caption = escape(_inline_text(children[0].children or []))
             # caption 已是转义后的纯文本，不再按 Markdown 解析。
             cap = Token("html_inline", "", 0)
             cap.content = f"<figcaption>{caption}</figcaption>"
             children.append(cap)
         elif any(child.type == "image" for child in children):
             token.attrSet("class", "imgp")
-    return _restore_code(parser.renderer.render(tokens, parser.options, env), codes).rstrip()
+    return parser.renderer.render(tokens, parser.options, env).rstrip()
 
 
 # pandoc 原始 HTML：`` ```{=html} … ``` `` 围栏块，以及行内 `` `X`{=html} ``。
@@ -529,15 +537,17 @@ def _split_pipe_row(line: str) -> list[str]:
     return [c.strip() for c in re.split(r"(?<!\\)\|", body)]
 
 
-def _render_pipe_table(lines: list[str]) -> str:
+def _render_pipe_table(lines: list[str], env: dict[str, Any]) -> str:
     """md 管道表 → XHTML table（首行为表头，第二行为分隔行）。"""
-    head = "".join(f"<th>{_inline(escape(c))}</th>" for c in _split_pipe_row(lines[0]))
+    head = "".join(f"<th>{_inline(escape(c), env)}</th>" for c in _split_pipe_row(lines[0]))
     rows = []
     for line in lines[2:]:
         if not line.strip() or "|" not in line:
             continue
         cells = _split_pipe_row(line)
-        rows.append("<tr>" + "".join(f"<td>{_inline(escape(c))}</td>" for c in cells) + "</tr>")
+        rows.append(
+            "<tr>" + "".join(f"<td>{_inline(escape(c), env)}</td>" for c in cells) + "</tr>"
+        )
     return (
         '<table class="data"><thead><tr>'
         + head
@@ -569,7 +579,7 @@ def _split_span_row(line: str, spans: list[tuple[int, int]]) -> list[str]:
     return cells
 
 
-def _render_simple_table(lines: list[str]) -> str | None:
+def _render_simple_table(lines: list[str], env: dict[str, Any]) -> str | None:
     """pandoc 简单/网格表 → XHTML table。
 
     列界由首个 ``---`` 行的各段起止列位置确定；``===`` 行前为表头（无则首行作表头）。
@@ -596,10 +606,10 @@ def _render_simple_table(lines: list[str]) -> str | None:
         body = [ln for _i, ln in content[1:]]
 
     def head_cells(line: str) -> str:
-        return "".join(f"<th>{_inline(escape(c))}</th>" for c in _split_span_row(line, spans))
+        return "".join(f"<th>{_inline(escape(c), env)}</th>" for c in _split_span_row(line, spans))
 
     def body_cells(line: str) -> str:
-        return "".join(f"<td>{_inline(escape(c))}</td>" for c in _split_span_row(line, spans))
+        return "".join(f"<td>{_inline(escape(c), env)}</td>" for c in _split_span_row(line, spans))
 
     return (
         '<table class="data"><thead>'
@@ -610,13 +620,13 @@ def _render_simple_table(lines: list[str]) -> str | None:
     )
 
 
-def _maybe_render_table(block: str) -> str | None:
+def _maybe_render_table(block: str, env: dict[str, Any]) -> str | None:
     """块级表格渲染：管道表或 pandoc 简单/网格表；非表格返回 None。"""
     lines = block.splitlines()
     if len(lines) >= 2 and "|" in lines[0] and _PIPE_SEP_ROW.match(lines[1]) and "|" in lines[1]:
-        return _render_pipe_table(lines)
+        return _render_pipe_table(lines, env)
     if any(_TABLE_DASH_ROW.match(ln) for ln in lines):
-        return _render_simple_table(lines)
+        return _render_simple_table(lines, env)
     return None
 
 
@@ -628,6 +638,7 @@ def markdown_to_xhtml(
     note_refs: dict[str, NoteRef] | None = None,
     note_items: list[NoteItem] | None = None,
     href_by_note: dict[str, str] | None = None,
+    env: dict[str, Any] | None = None,
 ) -> str:
     """把 markdown 正文转换为 XHTML 片段（h1–h6 / p / figure，文本统一转义）。
 
@@ -637,6 +648,9 @@ def markdown_to_xhtml(
     ``note_refs`` + ``note_items``（N 阶段）启用**结构化注释**：正文
     ``[^ref-…]`` → 标准 noteref（跨文件 href 由 ``href_by_note`` 给出），宿主单元
     末尾渲染完整注文（一注多引各自回链）。与旧记法互不干扰（标记前缀不同）。
+
+    ``env``：调用方预置的解析环境（如整篇 md 已有的引用式链接定义）。审计按段落
+    试探渲染时用它，保证 ``[标签][ref]`` 与成品口径一致；缺省时只解析本文本。
     """
     md = _clean_pandoc_markers(md)
     md = "".join(
@@ -665,7 +679,7 @@ def markdown_to_xhtml(
                 fn_items.append((fn_state.number(unit_id, label), text))
         fn_items.sort(key=lambda t: t[0])
     out: list[str] = []
-    env: dict[str, Any] = {}
+    env = env if env is not None else {}
     _markdown_parser().parse(md, env)  # 引用式链接的定义跨块可见。
     standard: list[str] = []
 
@@ -703,7 +717,7 @@ def markdown_to_xhtml(
         if raw_html is not None:
             out.append(raw_html)
             continue
-        table = _maybe_render_table(block)
+        table = _maybe_render_table(block, env)
         if table is not None:
             out.append(table)
             continue
@@ -716,20 +730,20 @@ def markdown_to_xhtml(
                 for line in non_empty
             ).strip()
             if inner:
-                out.append(f"<blockquote><p>{_inline(escape(inner))}</p></blockquote>")
+                out.append(f"<blockquote><p>{_inline(escape(inner), env)}</p></blockquote>")
                 continue
         if non_empty and all(_VERSE_LINE.match(line) for line in non_empty):
             vlines = [
                 (_VERSE_LINE.match(line).group(1) or "").strip()  # type: ignore[union-attr]
                 for line in non_empty
             ]
-            body = "<br/>".join(_inline(escape(v)) for v in vlines if v)
+            body = "<br/>".join(_inline(escape(v), env) for v in vlines if v)
             if body:
                 out.append(f'<p class="verse">{body}</p>')
                 continue
         if non_empty and all(_UL_LINE.match(line) for line in non_empty):
             lis = "".join(
-                f"<li>{_inline(escape(_UL_LINE.match(line).group(1).strip()))}</li>"  # type: ignore[union-attr]
+                f"<li>{_inline(escape(_UL_LINE.match(line).group(1).strip()), env)}</li>"  # type: ignore[union-attr]
                 for line in non_empty
             )
             out.append(f"<ul>{lis}</ul>")
@@ -747,12 +761,12 @@ def markdown_to_xhtml(
             # 取舍与兼容性说明见 docs/epub-template-spec.zh.md。
             if len(nums) >= 2 and nums == list(range(1, len(nums) + 1)) and delims <= {".", "、"}:
                 lis = "".join(
-                    f"<li>{_inline(escape(m.group(3).strip()))}</li>"  # type: ignore[union-attr]
+                    f"<li>{_inline(escape(m.group(3).strip()), env)}</li>"  # type: ignore[union-attr]
                     for m in marks
                 )
                 out.append(f"<ol>{lis}</ol>")
             else:
-                body = "<br/>".join(_inline(escape(line.strip())) for line in non_empty)
+                body = "<br/>".join(_inline(escape(line.strip()), env) for line in non_empty)
                 out.append(f'<p class="fnlist">{body}</p>')
             continue
         m = _HEADING_RE.match(lines[0])
@@ -765,12 +779,12 @@ def markdown_to_xhtml(
                 hcount += 1
                 hid = hid or f"{unit_id}-h{hcount}"
             id_attr = f' id="{hid}"' if hid else ""
-            out.append(f"<h{level}{id_attr}>{_inline(escape(heading))}</h{level}>")
+            out.append(f"<h{level}{id_attr}>{_inline(escape(heading), env)}</h{level}>")
             rest = "\n".join(lines[1:]).strip()
             if rest:
-                out.append(f"<p>{_inline(escape(rest))}</p>")
+                out.append(f"<p>{_inline(escape(rest), env)}</p>")
         else:
-            rendered = f"<p>{_inline(escape(block))}</p>"
+            rendered = f"<p>{_inline(escape(block), env)}</p>"
             if "<img" in rendered:
                 # 图片段落：不加首行缩进、居中（class=imgp 由 style.css 控制）
                 rendered = rendered.replace("<p>", '<p class="imgp">', 1)
