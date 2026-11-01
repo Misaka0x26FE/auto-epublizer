@@ -51,6 +51,7 @@ Python/Pydantic 描述构建运行时；其他工具仅使用成功解析时冻�
 | 标题层级 h1–h6 语义 + 无跳级 | ✅ | `E_HEADING_SKIP` 校验（P2） |
 | **脚注语义化** | ✅ | `noteref`/`footnote` + `[N]` 注码 + 章内独立编号 + 双向跳转（§6） |
 | 封面 `cover-image` | ✅ | `properties="cover-image"` + `<meta name="cover">` + spine `linear="no"` |
+| **无源封面时的生成封面** | ✅ | `cover` 写 `structured/raw/media/cover-generated.png` 并登记 `preprocessing/cover-generated.json`，build 据此写 `properties="cover-image"` + `<meta name="cover">`；已确认的 `preprocessing/cover.json` 永远优先；设计摘要变化时重绘；封面不进译文校验（不影响 G0/align/单元状态） |
 | 封面/目录页 `linear="no"` | ✅ | cover 单元内容文档不进正文阅读顺序 |
 | 目录锚点 | ✅ | 单元级嵌套 + **单元内子标题锚点**（`file.xhtml#anchor`，`{unit_id}-h{n}` 稳定 id） |
 | 语义标签 | ✅ | 引用 `blockquote`、诗行块 `p.verse`、`- ` 列表 `ul` 保留语义（P2）；`<ol>` 仅用于**编号从 1 起连续且用 `. `/`、` 分隔、且至少两条**的块——其余 `N)`/`N.`/`N、` 起首块（如校异注）保留原文数字（`p.fnlist`），不得被自动编号改写。单条 `1. …` 是注文段落而非单项列表：`<ol>` 会带来列表缩进/悬挂样式，而阅读器对同文本段落的呈现与注文场景一致（#61 取舍） |

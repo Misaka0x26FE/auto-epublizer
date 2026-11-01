@@ -24,20 +24,32 @@
 
 from __future__ import annotations
 
+import json
 import os
 import posixpath
 import re
 import shutil
 import subprocess
 import tempfile
+import time
 import zipfile
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
+from hashlib import sha256
+from html import escape, unescape
 from math import isfinite
 from pathlib import Path
 from string import Template
+from urllib.parse import quote, unquote, urlsplit
 from xml.etree import ElementTree as ET
+from xml.sax.saxutils import escape as xml_escape
 
 import pymupdf
+
+from auto_common.workspace import source_sha256
+
+from .pdftoc import canonical_href, inject_anchor_markers, is_toc_document, rewrite_toc
+from .pdftoc import member_href as _member_href
 
 BODY_RE = re.compile(r"<body[^>]*>(.*)</body>", re.S | re.I)
 ASIDE_RE = re.compile(r"<aside\b[^>]*>.*?</aside>", re.S | re.I)
@@ -54,6 +66,13 @@ _NS = {
     "opf": "http://www.idpf.org/2007/opf",
     "dc": "http://purl.org/dc/elements/1.1/",
     "container": "urn:oasis:names:tc:opendocument:xmlns:container",
+}
+
+_XMP_NS = {
+    "dc": "http://purl.org/dc/elements/1.1/",
+    "rdf": "http://www.w3.org/1999/02/22-rdf-syntax-ns#",
+    "xmp": "http://ns.adobe.com/xap/1.0/",
+    "aep": "https://github.com/Misaka0x26FE/auto-epublizer/ns/1.0/",
 }
 
 _CHROMIUM_CANDIDATES = (
@@ -81,7 +100,7 @@ DEFAULT_TIMEOUT = 240
 CSS_TEMPLATE = r"""/* 印刷版式：${page_note}，正文 ${body_pt} pt、注文 ${note_pt} pt，行距 ${line_height}，
    首行缩进 2 字、段间不留空——中文学术书（译著）惯例。 */
 @page { size: ${size_css}; margin: ${margins}; }
-@page :first { margin: 0; }
+${first_page}
 html, body { margin: 0; padding: 0; }
 body { font-family: "Noto Serif CJK SC", "Songti SC", serif; font-size: ${body_pt}pt;
        line-height: ${line_height}; text-align: justify; }
@@ -89,6 +108,10 @@ p { font-size: ${body_pt}pt; line-height: ${line_height}; text-indent: 2em; marg
     text-align: justify; }
 p.imgp, figure.imgfig { text-indent: 0; margin: 0.6em 0; }
 figure.imgfig figcaption { font-size: ${note_pt}pt; color: #444; }
+section.chapter img { max-width: 100%; max-height: ${image_height}mm; width: auto; height: auto; }
+figure.imgfig img, p.imgp img { display: block; margin: 0 auto; }
+h1 + figure.imgfig img, h2 + figure.imgfig img, h3 + figure.imgfig img {
+    max-height: ${heading_image_height}mm; }
 h1 { font-size: ${h1_pt}pt; line-height: 1.35; margin: 1.1em 0 0.9em; }
 h2 { font-size: ${h2_pt}pt; line-height: 1.4; margin: 1em 0 0.7em; }
 h3 { font-size: ${h3_pt}pt; line-height: 1.45; margin: 0.9em 0 0.5em; }
@@ -102,16 +125,23 @@ span.fnnum { font-weight: 600; }
 /* 印刷版不保留屏幕样式：链接同色无下划线，注码与正文同色 */
 a { color: inherit; text-decoration: none; }
 a[epub\:type~="noteref"], a[role="doc-noteref"] { color: inherit; }
-table.data { font-size: ${table_pt}pt; }
+table { font-size: ${table_pt}pt; width: 100%; max-width: 100%; table-layout: fixed; }
+table th, table td { overflow-wrap: anywhere; word-break: normal; }
+table p { font-size: inherit; text-indent: 0; }
 table.data th, table.data td { padding: 0.12em 0.4em; }
 section.chapter { page-break-after: always; }
 section.chapter:last-of-type { page-break-after: auto; }
-section.cover { page-break-after: always; width: 100%; height: 100vh; margin: 0; padding: 0; }
-section.cover img { width: 100%; height: 100%; object-fit: contain; }
+section.cover { page-break-after: auto; width: 100%; height: 100%; margin: 0; padding: 0;
+    display: flex; flex-direction: column; position: relative; min-height: 0; }
+body > section.cover { page-break-after: always; width: ${page_width}mm; height: ${cover_height}mm; }
+section.cover > section { flex: 1; min-height: 0; }
+section.cover img, section.cover svg { width: 100%; height: 100%; max-width: 100%; max-height: 100%; object-fit: contain; display: block; min-height: 0; }
+section.cover span.aepmark { position: absolute; top: 0; left: 0; }
 h1, h2, h3, h4 { page-break-after: avoid; }
 figure, table, aside { page-break-inside: avoid; }
 /* 定位标记：不可见但对 PDF 文本层可检索；映射完成后 redaction 清除 */
 span.aepmark { font-size: 1px; color: #ffffff; }
+span.aepmark.aepanchor { font-size: 0.1px; line-height: 0; }
 """
 
 
@@ -147,13 +177,32 @@ class PrintStyle:
         if not low <= float(self.line_height) <= high:
             raise ValueError(f"line_height 超出区间 {low:g}–{high:g}：{self.line_height}")
 
-    def css(self) -> str:
+    def css(self, *, cover: bool = True) -> str:
         width, height = self.page_size_mm()
         top, outer, bottom, inner = self.margins_mm
         return Template(CSS_TEMPLATE).substitute(
             page_note=f"{width}×{height} mm（{self.size}）",
             size_css=f"{width}mm {height}mm",
             margins=f"{top}mm {outer}mm {bottom}mm {inner}mm",
+            first_page="@page :first { margin: 0; }" if cover else "",
+            page_width=width,
+            page_height=height,
+            cover_height=height - 0.5,  # Chromium 纸张取整余量，防止整页图溢出几分之一毫米
+            image_height=round(
+                max(1, height - top - bottom - 4 - 3 * self.note_pt * self.line_height * 25.4 / 72),
+                2,
+            ),
+            heading_image_height=round(
+                max(
+                    1,
+                    height
+                    - top
+                    - bottom
+                    - 4
+                    - (3 * self.note_pt * self.line_height + self.body_pt * 1.8 * 3.35) * 25.4 / 72,
+                ),
+                2,
+            ),
             body_pt=self.body_pt,
             note_pt=self.note_pt,
             line_height=self.line_height,
@@ -174,6 +223,47 @@ class PdfResult:
     bookmarks: int
     size_mm: tuple[int, int]
     notes: list[str] = field(default_factory=list)
+    diagnostics: dict[str, object] = field(default_factory=dict)
+    toc: dict[str, object] = field(default_factory=dict)
+    metadata: dict[str, object] = field(default_factory=dict)
+    artifact: dict[str, object] = field(default_factory=dict)
+
+
+@dataclass
+class PrintEvidence:
+    toc_documents: list[dict] = field(default_factory=list)
+    anchors: dict[str, str] = field(default_factory=dict)
+    findings: list[dict] = field(default_factory=list)
+
+
+@dataclass(slots=True)
+class PublicationMetadata:
+    """OPF 出版元数据的显式视图；空字段保持空，不补造。"""
+
+    title: str = ""
+    authors: list[str] = field(default_factory=list)
+    translators: list[str] = field(default_factory=list)
+    publisher: str = ""
+    date: str = ""
+    rights: str = ""
+    language: str = ""
+    subjects: list[str] = field(default_factory=list)
+    description: str = ""
+    identifier: str = ""
+
+    def source(self) -> dict[str, object]:
+        return {
+            "title": self.title,
+            "authors": list(self.authors),
+            "translators": list(self.translators),
+            "publisher": self.publisher,
+            "date": self.date,
+            "rights": self.rights,
+            "language": self.language,
+            "subjects": list(self.subjects),
+            "description": self.description,
+            "identifier": self.identifier,
+        }
 
 
 @dataclass(slots=True)
@@ -187,6 +277,9 @@ class Package:
     manifest: dict[str, dict[str, str]]
     title: str
     author: str
+    cover_href: str | None = None
+    toc_hrefs: set[str] = field(default_factory=set)
+    metadata: PublicationMetadata = field(default_factory=PublicationMetadata)
 
 
 def find_chromium() -> str | None:
@@ -234,25 +327,135 @@ def _opf_path(work: Path) -> Path:
     for rootfile in root.iterfind(".//container:rootfile", _NS):
         full_path = rootfile.get("full-path")
         if full_path:
-            path = work / full_path
+            member = _member_href(full_path)
+            if member is None:
+                raise ValueError(f"包文档路径越界或非法：{full_path}")
+            path = work / member
+            if not path.resolve().is_relative_to(work.resolve()):
+                raise ValueError(f"包文档路径越界或非法：{full_path}")
             if path.is_file():
                 return path
     raise ValueError("container.xml 未指向存在的包文档")
 
 
-def _parse_opf(opf_path: Path) -> Package:
+def _landmark_hrefs(
+    opf: ET.Element, root: Path, manifest: dict[str, dict[str, str]], *, owner: str, role: str
+) -> set[str]:
+    declared: set[str] = set()
+    for ref in opf.iterfind(".//opf:guide/opf:reference", _NS):
+        if ref.get("type") == role:
+            href = _member_href(ref.get("href") or "", owner)
+            if href:
+                declared.add(href)
+    for item in manifest.values():
+        if "nav" not in item["properties"].split():
+            continue
+        path = root / item["href"]
+        if not path.is_file():
+            continue
+        try:
+            nav = ET.fromstring(path.read_bytes())
+        except ET.ParseError:
+            continue
+        for link in nav.iter():
+            if role in (link.get("{http://www.idpf.org/2007/ops}type") or "").split():
+                href = _member_href(link.get("href") or "", item["href"])
+                if href:
+                    declared.add(href)
+    return declared
+
+
+def _cover_spine(
+    opf: ET.Element,
+    root: Path,
+    manifest: dict[str, dict[str, str]],
+    *,
+    opf_owner: str = "",
+) -> tuple[list[tuple[str, str]], str | None]:
+    """印刷顺序：语义封面或登记封面图优先，其余仅保留线性正文。"""
+    cover_ids = {
+        key for key, item in manifest.items() if "cover-image" in item["properties"].split()
+    }
+    if not cover_ids:
+        cover_ids = {
+            el.get("content")
+            for el in opf.iterfind(".//opf:metadata/opf:meta", _NS)
+            if el.get("name") == "cover" and el.get("content") in manifest
+        }
+    if len(cover_ids) > 1:
+        raise ValueError("包文档存在多个封面图身份，须先核证唯一封面")
+    image_id = next(iter(cover_ids), None)
+    image_href = manifest[image_id]["href"] if image_id else None
+    epub_type = "{http://www.idpf.org/2007/ops}type"
+    declared = _landmark_hrefs(opf, root, manifest, owner=opf_owner, role="cover")
+    refs: list[tuple[str, str, bool]] = []
+    candidates: list[tuple[str, str]] = []
+    for ref in opf.iterfind(".//opf:spine/opf:itemref", _NS):
+        key = ref.get("idref") or ""
+        if key not in manifest:
+            raise ValueError(f"spine 引用未登记的 manifest id：{key}")
+        href = manifest[key]["href"]
+        nonlinear = (ref.get("linear") or "").lower() == "no"
+        refs.append((key, href, nonlinear))
+        path = root / href
+        if not path.is_file():
+            if href in declared:
+                candidates.append((key, href))
+            continue
+        try:
+            document = ET.fromstring(path.read_bytes())
+        except ET.ParseError:
+            continue
+        semantic = href in declared or any(
+            "cover" in (el.get(epub_type) or "").split() for el in document.iter()
+        )
+        images = [
+            _member_href(
+                el.get("src")
+                or el.get("href")
+                or el.get("{http://www.w3.org/1999/xlink}href")
+                or "",
+                href,
+            )
+            for el in document.iter()
+            if el.tag.rsplit("}", 1)[-1] in ("img", "image")
+        ]
+        has_prose = any(
+            el.tag.rsplit("}", 1)[-1] == "p" and "".join(el.itertext()).strip()
+            for el in document.iter()
+        )
+        if semantic or (
+            image_href
+            and image_href in images
+            and (nonlinear or (len(refs) == 1 and not has_prose))
+        ):
+            candidates.append((key, href))
+    if len(candidates) > 1:
+        raise ValueError("封面内容文档身份有歧义：" + "、".join(href for _, href in candidates))
+    cover = candidates[0] if candidates else ((image_id, image_href) if image_id else None)
+    spine = [(key, href) for key, href, nonlinear in refs if not nonlinear and (key, href) != cover]
+    if cover:
+        spine.insert(0, cover)
+    return spine, cover[1] if cover else None
+
+
+def _parse_opf(opf_path: Path, *, archive_root: Path | None = None) -> Package:
     """解析 OPF（命名空间感知）；spine 文档缺失/坏 XML 都是可预期错误。"""
     try:
         root = ET.fromstring(opf_path.read_bytes())
     except ET.ParseError as exc:
         raise ValueError(f"包文档不是合法 XML：{exc}") from None
+    archive_root = (archive_root or opf_path.parent).resolve()
+    if not opf_path.resolve().is_relative_to(archive_root):
+        raise ValueError("包文档路径越界")
+    owner = opf_path.resolve().relative_to(archive_root).as_posix()
     manifest: dict[str, dict[str, str]] = {}
     nav_href: str | None = None
     for item in root.iterfind(".//opf:manifest/opf:item", _NS):
         item_id = item.get("id") or ""
-        href = item.get("href") or ""
+        href = _member_href(item.get("href") or "", owner)
         if not item_id or not href:
-            continue
+            raise ValueError("manifest id/href 缺失或不是合法包内路径")
         properties = (item.get("properties") or "").split()
         manifest[item_id] = {
             "href": href,
@@ -261,29 +464,34 @@ def _parse_opf(opf_path: Path) -> Package:
         }
         if "nav" in properties and nav_href is None:
             nav_href = href
-    spine: list[tuple[str, str]] = []
-    for ref in root.iterfind(".//opf:spine/opf:itemref", _NS):
-        if (ref.get("linear") or "").lower() == "no":
-            continue
-        item_id = ref.get("idref") or ""
-        href = (manifest.get(item_id) or {}).get("href") or ""
-        if item_id and href:
-            spine.append((item_id, href))
+    spine, cover_href = _cover_spine(root, archive_root, manifest, opf_owner=owner)
     if not spine:
         raise ValueError("包文档 spine 为空，无内容可排版")
 
-    # 译者/作者：OPF3 的 role 可以在 meta refines 里
+    # 出版元数据：空字段保持空；译者单列，不混入作者
     roles: dict[str, str] = {}
     for meta in root.iterfind(".//opf:metadata/opf:meta", _NS):
         refines = meta.get("refines") or ""
         property_ = meta.get("property") or ""
         if property_ == "role" and refines.startswith("#"):
             roles[refines[1:]] = (meta.text or "").strip()
-    title = ""
-    title_el = root.find(".//dc:title", _NS)
-    if title_el is not None and (title_el.text or "").strip():
-        title = title_el.text.strip()
+
+    def dc_text(tag: str) -> str:
+        for element in root.iterfind(f".//dc:{tag}", _NS):
+            value = (element.text or "").strip()
+            if value:
+                return value
+        return ""
+
+    def dc_values(tag: str) -> list[str]:
+        return [
+            (element.text or "").strip()
+            for element in root.iterfind(f".//dc:{tag}", _NS)
+            if (element.text or "").strip()
+        ]
+
     authors: list[str] = []
+    translators: list[str] = []
     for creator in root.iterfind(".//dc:creator", _NS):
         name = (creator.text or "").strip()
         if not name:
@@ -291,16 +499,32 @@ def _parse_opf(opf_path: Path) -> Package:
         role = (creator.get(f"{{{_NS['opf']}}}role") or "").strip()
         role = role or roles.get(creator.get("id") or "", "")
         if role == "trl":  # 译者单列，不冒充作者
-            continue
-        authors.append(name)
+            translators.append(name)
+        else:
+            authors.append(name)
+    publication = PublicationMetadata(
+        title=dc_text("title"),
+        authors=authors,
+        translators=translators,
+        publisher=dc_text("publisher"),
+        date=dc_text("date"),
+        rights=dc_text("rights"),
+        language=dc_text("language"),
+        subjects=dc_values("subject"),
+        description=dc_text("description"),
+        identifier=dc_text("identifier"),
+    )
     return Package(
-        root=opf_path.parent,
+        root=archive_root,
         opf_dir=opf_path.parent,
         spine=spine,
         nav_href=nav_href,
         manifest=manifest,
-        title=title,
-        author="; ".join(authors),
+        title=publication.title,
+        author="; ".join(publication.authors),
+        cover_href=cover_href,
+        toc_hrefs=_landmark_hrefs(root, archive_root, manifest, owner=owner, role="toc"),
+        metadata=publication,
     )
 
 
@@ -323,7 +547,6 @@ def _strip_active(html: str) -> str:
 
 def _rewrite_resources(inner: str, chapter_href: str, root: Path, notes: list[str]) -> str:
     """把资源引用按**章节目录**重定位；远程/越界/缺失引用丢弃并记 notes。"""
-    chapter_dir = posixpath.dirname(chapter_href)
 
     def one_tag(tag_match: re.Match[str]) -> str:
         tag = tag_match.group(0)
@@ -335,40 +558,75 @@ def _rewrite_resources(inner: str, chapter_href: str, root: Path, notes: list[st
             if re.match(r"^[a-zA-Z][a-zA-Z0-9+.-]*:", value) or value.startswith("//"):
                 notes.append(f"丢弃远程资源引用：{chapter_href}:{value}")
                 return ""
-            joined = posixpath.normpath(posixpath.join(chapter_dir, value))
+            joined = _member_href(value, chapter_href)
+            if joined is None:
+                notes.append(f"丢弃包外/缺失资源：{chapter_href}:{value}")
+                return ""
             target = (root / joined).resolve()
             if not target.is_relative_to(root.resolve()) or not target.is_file():
                 notes.append(f"丢弃包外/缺失资源：{chapter_href}:{value}")
                 return ""
-            return f'{attr}="{joined}"'
+            fragment = urlsplit(value).fragment
+            uri = quote(joined, safe="/") + (f"#{fragment}" if fragment else "")
+            return f'{attr}="{escape(uri, quote=True)}"'
 
         return RES_ATTR_RE.sub(one_attr, tag)
 
     return RES_TAG_RE.sub(one_tag, inner)
 
 
-def build_print_html(package: Package, style: PrintStyle) -> tuple[Path, int]:
+def build_print_html(
+    package: Package,
+    style: PrintStyle,
+    *,
+    page_map: dict[str, int] | None = None,
+    evidence: PrintEvidence | None = None,
+    marker_prefix: str = "AEPMARK",
+) -> tuple[Path, int]:
     """把 spine 顺序拼成一份印刷 HTML；缺失 spine 文档直接报错（不静默跳过）。"""
     root = package.root
     parts: list[str] = []
     notes: list[str] = []
-    for index, (_item_id, href) in enumerate(package.spine, start=1):
+    evidence = evidence if evidence is not None else PrintEvidence()
+    outline = nav_entries(
+        package.root / package.nav_href if package.nav_href else None, owner_href=package.nav_href
+    )
+    for index, (item_id, href) in enumerate(package.spine, start=1):
         doc_path = root / href
         if not doc_path.is_file():
             raise ValueError(f"spine 文档缺失：{href}")
+        marker = f'<span class="aepmark">{_marker(index, prefix=marker_prefix)}</span>'
+        if href == package.cover_href and package.manifest[item_id]["media-type"].startswith(
+            "image/"
+        ):
+            parts.append(
+                f'<section class="cover">{marker}<img src="{escape(quote(href, safe="/"), quote=True)}" alt="封面"/></section>'
+            )
+            continue
         html = doc_path.read_text(encoding="utf-8")
         body = BODY_RE.search(html)
         if not body:
             raise ValueError(f"spine 文档没有 body：{href}")
         inner = _rewrite_resources(prepare_asides(body.group(1)), href, root, notes)
         inner = _strip_active(inner)
-        marker = f'<span class="aepmark">{_marker(index)}</span>'
-        if "cover" in href.lower():
-            image = IMG_RE.search(inner)
-            if image:
-                parts.append(f'<section class="cover">{marker}{image.group(0)}</section>')
-                continue
-            parts.append(f'<section class="cover">{marker}</section>')
+        title_match = TITLE_RE.search(html)
+        title = unescape(title_match.group(1)) if title_match else ""
+        if is_toc_document(inner, title=title, declared=href in package.toc_hrefs):
+            record = {"document": href, "updates": [], "findings": []}
+            if page_map is not None:
+                rewritten = rewrite_toc(inner, outline, page_map, owner_href=href)
+                inner = rewritten.html
+                record.update(updates=rewritten.updates, findings=rewritten.findings)
+                evidence.findings.extend(rewritten.findings)
+            evidence.toc_documents.append(record)
+        positioned = inject_anchor_markers(
+            inner, outline, owner_href=href, prefix=marker_prefix + "A"
+        )
+        inner = positioned.html
+        evidence.anchors.update(positioned.markers)
+        evidence.findings.extend(positioned.findings)
+        if href == package.cover_href:
+            parts.append(f'<section class="cover">{marker}{inner}</section>')
             continue
         parts.append(f'<section class="chapter">{marker}{inner}</section>')
     # 样式表：按包内声明选第一个 text/css（多章子目录也不做首章猜测）
@@ -376,10 +634,14 @@ def build_print_html(package: Package, style: PrintStyle) -> tuple[Path, int]:
         (item["href"] for item in package.manifest.values() if item["media-type"] == "text/css"),
         None,
     )
-    link = f'<link rel="stylesheet" type="text/css" href="{stylesheet}"/>' if stylesheet else ""
+    link = (
+        f'<link rel="stylesheet" type="text/css" href="{escape(quote(stylesheet, safe="/"), quote=True)}"/>'
+        if stylesheet
+        else ""
+    )
     html = (
         '<!DOCTYPE html>\n<html lang="zh-CN"><head><meta charset="utf-8"/>\n'
-        f"<title>{package.title}</title>\n{link}\n<style>{style.css()}</style>\n</head><body>\n"
+        f"<title>{escape(package.title)}</title>\n{link}\n<style>{style.css(cover=package.cover_href is not None)}</style>\n</head><body>\n"
         + "\n".join(parts)
         + "\n</body></html>"
     )
@@ -387,10 +649,14 @@ def build_print_html(package: Package, style: PrintStyle) -> tuple[Path, int]:
     target.write_text(html, encoding="utf-8")
     if notes:
         target.with_suffix(".notes.txt").write_text("\n".join(notes), encoding="utf-8")
+    else:
+        target.with_suffix(".notes.txt").unlink(missing_ok=True)
     return target, len(parts)
 
 
-def nav_entries(nav_path: Path | None) -> list[tuple[int, str, str]]:
+def nav_entries(
+    nav_path: Path | None, *, owner_href: str | None = None
+) -> list[tuple[int, str, str]]:
     """只解析 ``epub:type="toc"`` 的 nav；``<ol>`` 嵌套深度即书签层级（D2）。"""
     if nav_path is None or not nav_path.is_file():
         return []
@@ -421,7 +687,10 @@ def nav_entries(nav_path: Path | None) -> list[tuple[int, str, str]]:
                     if sub_tag == "a":
                         title = re.sub(r"\s+", " ", "".join(sub.itertext())).strip()
                         if title:
-                            entries.append((max(1, level), title, sub.get("href") or ""))
+                            href = sub.get("href") or ""
+                            if owner_href is not None:
+                                href = canonical_href(href, owner_href) or href
+                            entries.append((max(1, level), title, href))
                     elif sub_tag in ("ol", "ul"):
                         walk(sub, level + 1)
 
@@ -429,11 +698,13 @@ def nav_entries(nav_path: Path | None) -> list[tuple[int, str, str]]:
     return entries
 
 
-def _marker(index: int) -> str:
-    return f"AEPMARK{index:04d}"
+def _marker(index: int, *, prefix: str = "AEPMARK") -> str:
+    return f"{prefix}{index:04d}"
 
 
-def _section_pages(doc: pymupdf.Document, sections: int) -> dict[int, int]:
+def _section_pages(
+    doc: pymupdf.Document, sections: int, *, prefix: str = "AEPMARK"
+) -> dict[int, int]:
     """按不可见标记定位每个区段的起始页（标记写入 HTML，PDF 文本层可检索）。"""
     pages: dict[int, int] = {}
     for index in range(doc.page_count):
@@ -441,14 +712,37 @@ def _section_pages(doc: pymupdf.Document, sections: int) -> dict[int, int]:
         for number in range(1, sections + 1):
             if number in pages:
                 continue
-            if _marker(number) in re.sub(r"\s+", "", text):
+            if _marker(number, prefix=prefix) in re.sub(r"\s+", "", text):
                 pages[number] = index + 1
     return pages
 
 
-def _clear_markers(doc: pymupdf.Document, sections: int) -> None:
-    """映射完成后 redaction 清除定位标记（D2：标记不留进成品）。"""
-    needles = [_marker(number) for number in range(1, sections + 1)]
+def _anchor_pages(
+    doc: pymupdf.Document, markers: dict[str, str]
+) -> tuple[dict[str, int], list[dict]]:
+    hits: dict[str, list[int]] = {identity: [] for identity in markers}
+    for page in doc:
+        text = re.sub(r"\s+", "", page.get_text())
+        for identity, marker in markers.items():
+            hits[identity].extend([page.number + 1] * text.count(marker))
+    pages = {identity: found[0] for identity, found in hits.items() if len(found) == 1}
+    findings = [
+        {"level": "error", "code": "E_PDF_ANCHOR_UNLOCATED", "href": identity, "pages": found}
+        for identity, found in hits.items()
+        if len(found) != 1
+    ]
+    return pages, findings
+
+
+def _clear_markers(
+    doc: pymupdf.Document,
+    sections: int,
+    *,
+    extra: list[str] | None = None,
+    prefix: str = "AEPMARK",
+) -> None:
+    """映射完成后 redaction 清除本次定位标记（D2：标记不留进成品）。"""
+    needles = [_marker(number, prefix=prefix) for number in range(1, sections + 1)] + (extra or [])
     for index in range(doc.page_count):
         page = doc[index]
         hits: list[pymupdf.Rect] = []
@@ -457,8 +751,8 @@ def _clear_markers(doc: pymupdf.Document, sections: int) -> None:
         if not hits:
             continue
         for rect in hits:
-            page.add_redact_annot(rect)
-        page.apply_redactions()
+            page.add_redact_annot(rect, fill=False)
+        page.apply_redactions(images=0, graphics=0)
 
 
 def attach_outline(
@@ -469,6 +763,7 @@ def attach_outline(
     section_pages: dict[int, int],
     notes: list[str],
     cover: bool,
+    target_pages: dict[str, int] | None = None,
 ) -> list[list[object]]:
     """nav 条目 → PDF 书签；文档级条目用区段起始页，片段级在区段页内找标题。"""
     href_to_section = {
@@ -476,8 +771,8 @@ def attach_outline(
     }
     toc: list[list[object]] = [[1, "封面", 1]] if cover else []
     for level, title, href in entries:
-        path, _, fragment = href.partition("#")
-        target = posixpath.normpath(path or "")
+        fragment = unquote(urlsplit(href).fragment)
+        target = _member_href(href)
         section = href_to_section.get(target)
         if section is None:
             notes.append(f"书签未定位（章节不在 spine）：{title} → {href}")
@@ -488,24 +783,20 @@ def attach_outline(
             continue
         page = start
         if fragment:
-            next_start = section_pages.get(section + 1, doc.page_count + 1)
-            needle = re.sub(r"\s+", "", title)[:20]
-            found = None
-            for candidate in range(start - 1, min(next_start - 1, doc.page_count)):
-                if needle and needle in re.sub(r"\s+", "", doc[candidate].get_text()):
-                    found = candidate + 1
-                    break
+            found = (target_pages or {}).get(canonical_href(href))
             if found is None:
-                notes.append(f"书签未定位（区段内无标题文本，用区段起始页）：{title} → {href}")
-            else:
-                page = found
+                notes.append(
+                    f"书签未定位（缺少真实 fragment 位置，不猜区段起始页）：{title} → {href}"
+                )
+                continue
+            page = found
         toc.append([level, title, page])
     return toc
 
 
-def stamp_folios(doc: pymupdf.Document, *, font_size: float = 9) -> None:
+def stamp_folios(doc: pymupdf.Document, *, font_size: float = 9, cover: bool = True) -> None:
     """Number every page but the cover, centred in the bottom margin."""
-    for index in range(1, doc.page_count):
+    for index in range(1 if cover else 0, doc.page_count):
         page = doc[index]
         page.insert_text(
             (page.rect.width / 2 - 6, page.rect.height - 18),
@@ -516,6 +807,299 @@ def stamp_folios(doc: pymupdf.Document, *, font_size: float = 9) -> None:
         )
 
 
+def _render_chromium(target: Path, raw: Path, browser: str, timeout: float) -> None:
+    if timeout <= 0:
+        raise RuntimeError("排版超时：多遍渲染已耗尽总时间预算")
+    command = [
+        browser,
+        "--headless=new",
+        "--disable-gpu",
+        "--no-sandbox",
+        "--no-pdf-header-footer",
+        "--virtual-time-budget=30000",
+        f"--print-to-pdf={raw}",
+        target.as_uri(),
+    ]
+    try:
+        completed = subprocess.run(command, capture_output=True, timeout=timeout)
+    except subprocess.TimeoutExpired:
+        raise RuntimeError("排版超时：Chromium 未在限时内产出 PDF") from None
+    except OSError as exc:
+        raise RuntimeError(f"无法启动浏览器排版：{exc}") from None
+    if completed.returncode != 0:
+        detail = completed.stderr.decode("utf-8", "replace").strip().splitlines()
+        raise RuntimeError(
+            f"Chromium 排版失败（退出码 {completed.returncode}）：{detail[-1] if detail else ''}"
+        )
+    if not raw.is_file() or raw.stat().st_size == 0:
+        raise RuntimeError("Chromium 未产出 PDF（进程成功但没有文件）")
+    if raw.read_bytes()[:5] != b"%PDF-":
+        raise RuntimeError("Chromium 产物不是 PDF")
+
+
+def _publish_pdf(staged: Path, out: Path) -> None:
+    """完成全部后处理后才同目录原子替换，失败只清理本次唯一临时件。"""
+    temporary: Path | None = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            dir=out.parent, prefix=f".{out.name}.", suffix=".part", delete=False
+        ) as handle:
+            temporary = Path(handle.name)
+            with staged.open("rb") as source:
+                shutil.copyfileobj(source, handle)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary, out)
+    finally:
+        if temporary is not None:
+            temporary.unlink(missing_ok=True)
+
+
+def _xmp_alt(tag: str, value: str) -> str:
+    return (
+        f'<dc:{tag}><rdf:Alt><rdf:li xml:lang="x-default">'
+        f"{xml_escape(value)}</rdf:li></rdf:Alt></dc:{tag}>"
+    )
+
+
+def _xmp_seq(tag: str, values: list[str], *, prefix: str = "dc") -> str:
+    if not values:
+        return ""
+    items = "".join(f"<rdf:li>{xml_escape(value)}</rdf:li>" for value in values)
+    return f"<{prefix}:{tag}><rdf:Seq>{items}</rdf:Seq></{prefix}:{tag}>"
+
+
+def _xmp_bag(tag: str, values: list[str], *, prefix: str = "dc") -> str:
+    if not values:
+        return ""
+    items = "".join(f"<rdf:li>{xml_escape(value)}</rdf:li>" for value in values)
+    return f"<{prefix}:{tag}><rdf:Bag>{items}</rdf:Bag></{prefix}:{tag}>"
+
+
+def _build_xmp(meta: PublicationMetadata, generated_at: str) -> str:
+    """完整出版信息进 XMP；Info 只承担标准短字段，权利声明不截断。"""
+    fields = [
+        _xmp_alt("title", meta.title) if meta.title else "",
+        _xmp_seq("creator", meta.authors),
+        _xmp_seq("contributor", meta.translators),
+        _xmp_seq("translators", meta.translators, prefix="aep"),
+        _xmp_bag("publisher", [meta.publisher]) if meta.publisher else "",
+        _xmp_seq("date", [meta.date]) if meta.date else "",
+        _xmp_alt("rights", meta.rights) if meta.rights else "",
+        _xmp_bag("language", [meta.language]) if meta.language else "",
+        _xmp_alt("description", meta.description) if meta.description else "",
+        _xmp_bag("subject", meta.subjects),
+        _xmp_bag("identifier", [meta.identifier]) if meta.identifier else "",
+        f"<xmp:CreateDate>{xml_escape(generated_at)}</xmp:CreateDate>",
+        f"<xmp:MetadataDate>{xml_escape(generated_at)}</xmp:MetadataDate>",
+        "<xmp:CreatorTool>auto-epublizer</xmp:CreatorTool>",
+        "<pdf:Producer>auto-epublizer</pdf:Producer>",
+    ]
+    body = "\n   ".join(field for field in fields if field)
+    return (
+        '<?xpacket begin="\ufeff" id="W5M0MpCehiHzreSzNTczkc9d"?>\n'
+        '<x:xmpmeta xmlns:x="adobe:ns:meta/">\n'
+        ' <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">\n'
+        '  <rdf:Description rdf:about="" '
+        'xmlns:dc="http://purl.org/dc/elements/1.1/" '
+        'xmlns:xmp="http://ns.adobe.com/xap/1.0/" '
+        'xmlns:pdf="http://ns.adobe.com/pdf/1.3/" '
+        'xmlns:aep="https://github.com/Misaka0x26FE/auto-epublizer/ns/1.0/">\n'
+        f"   {body}\n"
+        "  </rdf:Description>\n"
+        " </rdf:RDF>\n"
+        "</x:xmpmeta>\n"
+        '<?xpacket end="w"?>'
+    )
+
+
+def _read_xmp(xml: str) -> dict[str, object]:
+    """读回已写入的 XMP；解析失败不回退成“已保全”猜测。"""
+    empty: dict[str, object] = {
+        "title": "",
+        "creators": [],
+        "translators": [],
+        "publishers": [],
+        "dates": [],
+        "rights": "",
+        "languages": [],
+        "subjects": [],
+        "description": "",
+        "identifiers": [],
+        "create_date": "",
+    }
+    try:
+        root = ET.fromstring(xml)
+    except ET.ParseError:
+        return empty
+
+    def values(path: str) -> list[str]:
+        return [
+            element.text or ""
+            for element in root.iterfind(path, _XMP_NS)
+            if (element.text or "").strip()
+        ]
+
+    def first(path: str) -> str:
+        found = values(path)
+        return found[0] if found else ""
+
+    return {
+        "title": first(".//dc:title//rdf:li"),
+        "creators": values(".//dc:creator//rdf:li"),
+        "translators": values(".//aep:translators//rdf:li"),
+        "publishers": values(".//dc:publisher//rdf:li"),
+        "dates": values(".//dc:date//rdf:li"),
+        "rights": first(".//dc:rights//rdf:li"),
+        "languages": values(".//dc:language//rdf:li"),
+        "subjects": values(".//dc:subject//rdf:li"),
+        "description": first(".//dc:description//rdf:li"),
+        "identifiers": values(".//dc:identifier//rdf:li"),
+        "create_date": first(".//xmp:CreateDate"),
+    }
+
+
+def _pdf_date(moment: datetime) -> str:
+    return moment.strftime("D:%Y%m%d%H%M%S+00'00'")
+
+
+def _apply_publication_metadata(
+    doc: pymupdf.Document, meta: PublicationMetadata, generated_at: str
+) -> dict[str, object]:
+    """写 Info 短字段 + 完整 XMP，并读回实际值作为证据。"""
+    info: dict[str, str] = {}
+    if meta.title:
+        info["title"] = meta.title
+    if meta.authors:
+        info["author"] = "; ".join(meta.authors)
+    if meta.description:
+        info["subject"] = meta.description
+    if meta.subjects:
+        info["keywords"] = "; ".join(meta.subjects)
+    moment = datetime.fromisoformat(generated_at.replace("Z", "+00:00"))
+    info.update(
+        creator="auto-epublizer",
+        producer="auto-epublizer",
+        creationDate=_pdf_date(moment),
+        modDate=_pdf_date(moment),
+    )
+    xmp = _build_xmp(meta, generated_at)
+    doc.set_metadata(info)
+    doc.set_xml_metadata(xmp)
+    return {
+        "source": meta.source(),
+        "generated_at": generated_at,
+        "info_written": info,
+        "info_readback": {key: doc.metadata.get(key, "") for key in info},
+        "xmp_sha256": sha256(xmp.encode("utf-8")).hexdigest(),
+        "xmp_readback": _read_xmp(doc.get_xml_metadata()),
+        "info_mapping": {
+            "title": "dc:title",
+            "author": "dc:creator（作者，分号连接；译者不入作者）",
+            "subject": "dc:description（无描述时留空）",
+            "keywords": "dc:subject（分号连接）",
+            "creationDate": "生成时间（不是 dc:date 出版日期）",
+            "modDate": "生成时间",
+            "creator": "auto-epublizer",
+            "producer": "auto-epublizer",
+        },
+        "xmp_mapping": {
+            "title": "dc:title",
+            "creators": "dc:creator",
+            "translators": "aep:translators",
+            "publishers": "dc:publisher",
+            "dates": "dc:date",
+            "rights": "dc:rights（完整原文，不截断）",
+            "languages": "dc:language",
+            "subjects": "dc:subject",
+            "description": "dc:description",
+            "identifiers": "dc:identifier",
+            "create_date": "xmp:CreateDate（生成时间）",
+        },
+    }
+
+
+MANIFEST_SCHEMA = "auto-epublizer/pdf-artifact/v1"
+
+
+def manifest_path(pdf: str | Path) -> Path:
+    path = Path(pdf)
+    return path.with_name(path.name + ".manifest.json")
+
+
+def _write_manifest(path: Path, payload: dict[str, object]) -> None:
+    temporary: Path | None = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            "w",
+            dir=path.parent,
+            prefix=f".{path.name}.",
+            suffix=".tmp",
+            delete=False,
+            encoding="utf-8",
+        ) as handle:
+            temporary = Path(handle.name)
+            json.dump(payload, handle, ensure_ascii=False, indent=2)
+            handle.write("\n")
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary, path)
+    finally:
+        if temporary is not None:
+            temporary.unlink(missing_ok=True)
+
+
+def verify_pdf_artifact(pdf: str | Path) -> dict[str, object]:
+    """按派生件清单核对 PDF/源 EPUB 字节；清单缺失或字节改动明确失败。"""
+    path = Path(pdf)
+    sidecar = manifest_path(path)
+    try:
+        manifest = json.loads(sidecar.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        return {
+            "ok": False,
+            "pdf": str(path),
+            "manifest": str(sidecar),
+            "error": f"派生清单不可读：{exc}",
+            "checks": [],
+        }
+    checks: list[dict[str, object]] = []
+
+    def check(name: str, expected: object, actual: object) -> None:
+        checks.append(
+            {"name": name, "ok": expected == actual, "expected": expected, "actual": actual}
+        )
+
+    check("schema", MANIFEST_SCHEMA, manifest.get("schema"))
+    if not path.is_file():
+        checks.append({"name": "pdf_present", "ok": False, "expected": True, "actual": False})
+    else:
+        data = path.read_bytes()
+        check("pdf_sha256", (manifest.get("pdf") or {}).get("sha256"), sha256(data).hexdigest())
+        check("pdf_bytes", (manifest.get("pdf") or {}).get("bytes"), len(data))
+        try:
+            with pymupdf.open(path) as doc:
+                check("pdf_pages", (manifest.get("pdf") or {}).get("pages"), doc.page_count)
+        except Exception as exc:  # PyMuPDF 对损坏件抛多种异常
+            checks.append(
+                {"name": "pdf_readable", "ok": False, "expected": True, "actual": str(exc)}
+            )
+    epub = Path(str((manifest.get("epub") or {}).get("path") or ""))
+    if epub.is_file():
+        check("epub_sha256", (manifest.get("epub") or {}).get("sha256"), source_sha256(epub))
+        check("epub_bytes", (manifest.get("epub") or {}).get("bytes"), epub.stat().st_size)
+    else:
+        checks.append(
+            {"name": "epub_present", "ok": False, "expected": str(epub), "actual": "missing"}
+        )
+    return {
+        "ok": all(bool(item["ok"]) for item in checks),
+        "pdf": str(path),
+        "manifest": str(sidecar),
+        "checks": checks,
+    }
+
+
 def render(
     epub: Path,
     out: Path,
@@ -524,10 +1108,12 @@ def render(
     bookmarks: bool = True,
     chromium: str | None = None,
     timeout: int = DEFAULT_TIMEOUT,
+    strict: bool = False,
 ) -> PdfResult:
     """Render ``epub`` to ``out``; 失败抛 ``ValueError``/``RuntimeError``（中文信息）。"""
     style = style or PrintStyle()
     style.validate()
+    generated_at = datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")
     epub = Path(epub)
     out = Path(out)
     if out.resolve() == epub.resolve():
@@ -540,6 +1126,7 @@ def render(
         )
     out.parent.mkdir(parents=True, exist_ok=True)
     notes: list[str] = []
+    deadline = time.monotonic() + timeout
     with tempfile.TemporaryDirectory(prefix="aep-pdf-") as tmp:
         work = Path(tmp)
         try:
@@ -547,70 +1134,154 @@ def render(
                 _safe_extract(archive, work)
         except zipfile.BadZipFile as exc:
             raise ValueError(f"不是有效的 EPUB/ZIP：{exc}") from None
-        package = _parse_opf(_opf_path(work))
-        target, sections = build_print_html(package, style)
+        package = _parse_opf(_opf_path(work), archive_root=work)
+        marker_prefix = "AEPPOS" + source_sha256(epub)[:16].upper()
+        for item in package.manifest.values():
+            path = package.root / item["href"]
+            if not path.is_file() or item["media-type"] not in {
+                "application/xhtml+xml",
+                "text/html",
+                "image/svg+xml",
+                "text/css",
+            }:
+                continue
+            if marker_prefix in unescape(path.read_text(encoding="utf-8", errors="replace")):
+                marker_prefix += "X"
+        previous: dict[str, int] | None = None
+        seen: list[dict[str, int]] = []
+        for round_no in range(1, 4):
+            evidence = PrintEvidence()
+            target, sections = build_print_html(
+                package,
+                style,
+                page_map=previous,
+                evidence=evidence,
+                marker_prefix=marker_prefix,
+            )
+            raw = work / f"raw-{round_no}.pdf"
+            _render_chromium(target, raw, browser, deadline - time.monotonic())
+            with pymupdf.open(raw) as located:
+                section_pages = _section_pages(located, sections, prefix=marker_prefix)
+                target_pages = {
+                    quote(href, safe="/"): section_pages[index]
+                    for index, (_, href) in enumerate(package.spine, start=1)
+                    if index in section_pages
+                }
+                anchor_pages, anchor_findings = _anchor_pages(located, evidence.anchors)
+                target_pages.update(anchor_pages)
+                evidence.findings.extend(anchor_findings)
+            if not evidence.toc_documents or (previous is not None and previous == target_pages):
+                break
+            if round_no == 3 or target_pages in seen:
+                raise ValueError(
+                    "E_PDF_TOC_UNSTABLE：目录页码在最多三遍排版内未收敛，旧 PDF 保持不变"
+                )
+            seen.append(target_pages)
+            previous = target_pages
         notes_path = target.with_suffix(".notes.txt")
         if notes_path.is_file():
             notes.extend(notes_path.read_text(encoding="utf-8").splitlines())
-        raw = work / "raw.pdf"
-        command = [
-            browser,
-            "--headless=new",
-            "--disable-gpu",
-            "--no-sandbox",
-            "--no-pdf-header-footer",
-            "--virtual-time-budget=30000",
-            f"--print-to-pdf={raw}",
-            target.as_uri(),
-        ]
-        try:
-            completed = subprocess.run(command, capture_output=True, timeout=timeout)
-        except subprocess.TimeoutExpired:
-            raise RuntimeError(f"排版超时（{timeout} s）：Chromium 未在限时内产出 PDF") from None
-        except OSError as exc:
-            raise RuntimeError(f"无法启动浏览器排版：{exc}") from None
-        if completed.returncode != 0:
-            detail = completed.stderr.decode("utf-8", "replace").strip().splitlines()
-            tail = detail[-1] if detail else ""
-            raise RuntimeError(f"Chromium 排版失败（退出码 {completed.returncode}）：{tail}")
-        if not raw.is_file() or raw.stat().st_size == 0:
-            raise RuntimeError("Chromium 未产出 PDF（进程成功但没有文件）")
-        if raw.read_bytes()[:5] != b"%PDF-":
-            raise RuntimeError("Chromium 产物不是 PDF")
-        # 先写临时件再原子替换：失败不留下伪成功，也不破坏已有旧成品。
-        staged = out.with_name(f".{out.name}.part")
-        try:
-            shutil.copyfile(raw, staged)
-            os.replace(staged, out)
-        finally:
-            staged.unlink(missing_ok=True)
-        metadata = {"title": package.title, "author": package.author}
-        spine = package.spine
-        outline = nav_entries(package.root / package.nav_href if package.nav_href else None)
+        from .pdfdiagnostics import collect_font_samples, diagnose_pdf
 
-    cover = bool(package.spine and "cover" in package.spine[0][1].lower())
-    doc = pymupdf.open(out)
-    section_pages = _section_pages(doc, sections)
-    _clear_markers(doc, sections)
-    stamp_folios(doc)
-    written = 0
-    if bookmarks:
-        toc = attach_outline(
-            doc,
-            outline,
-            spine=spine,
-            section_pages=section_pages,
-            notes=notes,
-            cover=cover,
+        with pymupdf.open(raw) as check:
+            diagnostics = diagnose_pdf(
+                check,
+                samples=collect_font_samples(target.read_text(encoding="utf-8")),
+                body_pt=style.body_pt,
+                note_pt=style.note_pt,
+                size_mm=style.page_size_mm(),
+                margins_mm=style.margins_mm,
+                cover=package.cover_href is not None,
+                marker_values={
+                    _marker(index, prefix=marker_prefix) for index in range(1, sections + 1)
+                }
+                | set(evidence.anchors.values()),
+            )
+        for finding in diagnostics["findings"]:
+            notes.append(f"排版诊断 {finding['code']}：{finding}")
+        for finding in evidence.findings:
+            notes.append(f"目录/锚点诊断 {finding['code']}：{finding}")
+        all_findings = diagnostics["findings"] + evidence.findings
+        if strict and any(f["level"] == "error" for f in all_findings):
+            codes = sorted({f["code"] for f in all_findings if f["level"] == "error"})
+            raise ValueError("严格排版检查未通过：" + "、".join(codes))
+        outline = nav_entries(
+            package.root / package.nav_href if package.nav_href else None,
+            owner_href=package.nav_href,
         )
-        doc.set_toc(toc)
-        written = len(toc)
-    merged = {k: v for k, v in (doc.metadata or {}).items() if k in {"title", "author"}}
-    merged.update({k: v for k, v in metadata.items() if v})
-    doc.set_metadata(merged)
-    doc.saveIncr()
-    pages = doc.page_count
-    doc.close()
+
+        cover = package.cover_href is not None
+        with pymupdf.open(raw) as doc:
+            _clear_markers(
+                doc,
+                sections,
+                extra=list(evidence.anchors.values()),
+                prefix=marker_prefix,
+            )
+            stamp_folios(doc, cover=cover)
+            written = 0
+            if bookmarks:
+                toc = attach_outline(
+                    doc,
+                    outline,
+                    spine=package.spine,
+                    section_pages=section_pages,
+                    notes=notes,
+                    cover=cover,
+                    target_pages=target_pages,
+                )
+                doc.set_toc(toc)
+                written = len(toc)
+            metadata_report = _apply_publication_metadata(doc, package.metadata, generated_at)
+            pages = doc.page_count
+            staged = work / "final.pdf"
+            doc.save(staged, garbage=4, deflate=True)
+        _publish_pdf(staged, out)
+
+    pdf_bytes = out.stat().st_size
+    pdf_digest = source_sha256(out)
+    epub_bytes = epub.stat().st_size
+    epub_digest = source_sha256(epub)
+    artifact = {
+        "schema": MANIFEST_SCHEMA,
+        "generated_at": generated_at,
+        "epub": {
+            "path": str(epub.resolve()),
+            "name": epub.name,
+            "sha256": epub_digest,
+            "bytes": epub_bytes,
+        },
+        "pdf": {
+            "path": str(out.resolve()),
+            "name": out.name,
+            "sha256": pdf_digest,
+            "bytes": pdf_bytes,
+            "pages": pages,
+        },
+        "parameters": {
+            "size": style.size,
+            "size_mm": list(style.page_size_mm()),
+            "margins_mm": list(style.margins_mm),
+            "body_pt": style.body_pt,
+            "note_pt": style.note_pt,
+            "line_height": style.line_height,
+            "bookmarks": bookmarks,
+            "strict": strict,
+        },
+        "metadata": metadata_report,
+        "diagnostics": {
+            "status": diagnostics.get("status"),
+            "overflow_count": diagnostics.get("overflow_count"),
+            "overflow_pages": diagnostics.get("overflow_pages"),
+        },
+        "toc": {
+            "converged": True,
+            "rounds": round_no,
+            "documents": evidence.toc_documents,
+            "findings": evidence.findings,
+        },
+    }
+    _write_manifest(manifest_path(out), artifact)
     return PdfResult(
         out=out,
         pages=pages,
@@ -618,4 +1289,14 @@ def render(
         bookmarks=written,
         size_mm=style.page_size_mm(),
         notes=notes,
+        diagnostics=diagnostics,
+        toc={
+            "converged": True,
+            "rounds": round_no,
+            "documents": evidence.toc_documents,
+            "findings": evidence.findings,
+            "target_pages": target_pages,
+        },
+        metadata=metadata_report,
+        artifact=artifact,
     )

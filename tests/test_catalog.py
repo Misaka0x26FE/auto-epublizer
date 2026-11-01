@@ -30,6 +30,49 @@ def test_read_catalog_none_when_missing(tmp_path: Path) -> None:
     assert orch.read_catalog(store) is None
 
 
+def test_catalog_blank_and_full_page_image_are_explicit(tmp_path: Path) -> None:
+    store = _workspace(tmp_path)
+    _write_catalog(
+        store,
+        [
+            "Map,image,included,PDF p28,ch01,整页地图",
+            "Blank scan,blank,excluded,PDF p29,,已查看源页图确认为空白",
+            "Possible blank,blank,unresolved,PDF p30,,待回源",
+        ],
+    )
+    rows = orch.read_catalog(store)
+    assert rows[0]["kind"] == "figure"
+    assert rows[1]["kind"] == "blank"
+    assert orch.status(store)["catalog"]["unresolved"] == 1
+    _write_catalog(store, ["Blank,blank,physical,PDF p29,,"])
+    with pytest.raises(ArtifactContractError, match="note"):
+        orch.read_catalog(store)
+
+
+def test_repair_evidence_cannot_escape_through_symlink(tmp_path: Path) -> None:
+    import json
+
+    store = _workspace(tmp_path)
+    outside = tmp_path / "outside.txt"
+    outside.write_text("unrelated evidence", encoding="utf-8")
+    (store.preprocessing_dir / "escape.txt").symlink_to(outside)
+    (store.preprocessing_dir / "repairs.jsonl").write_text(
+        json.dumps(
+            {
+                "unit": "ch01",
+                "kind": "ocr_char",
+                "status": "done",
+                "summary": "修复",
+                "evidence": "preprocessing/escape.txt",
+            }
+        ),
+        encoding="utf-8",
+    )
+    with pytest.raises(ArtifactContractError, match="工作区相对路径") as exc:
+        orch.read_repairs(store)
+    assert exc.value.field == "evidence"
+
+
 def test_read_catalog_valid_and_contract_errors(tmp_path: Path) -> None:
     store = _workspace(tmp_path)
     _write_catalog(

@@ -21,6 +21,29 @@ from auto_common.workspace import RunStore
 class ArtifactContractError(ValueError):
     """预处理产物违反已登记契约（可预期用户错误；中文提示带行号/列名）。"""
 
+    def __init__(
+        self,
+        message: str,
+        *,
+        artifact: str | None = None,
+        line: int | None = None,
+        field: str | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.artifact = artifact
+        self.line = line
+        self.field = field
+
+    def to_dict(self) -> dict[str, Any]:
+        """稳定错误协议；机器字段由校验点提供，不反向解析消息。"""
+        return {
+            "code": "E_ARTIFACT_CONTRACT",
+            "message": str(self),
+            "artifact": self.artifact,
+            "line": self.line,
+            "field": self.field,
+        }
+
 
 def read_style_exemptions(
     store: RunStore,
@@ -128,40 +151,87 @@ def read_repairs(store: RunStore) -> list[dict[str, Any]] | None:
         try:
             row = json.loads(line)
         except json.JSONDecodeError as e:
-            raise ArtifactContractError(f"repairs.jsonl 第 {lineno} 行不是合法 JSON：{e}") from None
+            raise ArtifactContractError(
+                f"repairs.jsonl 第 {lineno} 行不是合法 JSON：{e}",
+                artifact="repairs.jsonl",
+                line=lineno,
+            ) from None
         if not isinstance(row, dict):
-            raise ArtifactContractError(f"repairs.jsonl 第 {lineno} 行必须是 JSON 对象")
+            raise ArtifactContractError(
+                f"repairs.jsonl 第 {lineno} 行必须是 JSON 对象",
+                artifact="repairs.jsonl",
+                line=lineno,
+            )
         unit = str(row.get("unit") or "")
         kind = str(row.get("kind") or "")
         status = str(row.get("status") or "")
         summary = str(row.get("summary") or "").strip()
         if not unit:
-            raise ArtifactContractError(f"repairs.jsonl 第 {lineno} 行 unit 必填")
+            raise ArtifactContractError(
+                f"repairs.jsonl 第 {lineno} 行 unit 必填",
+                artifact="repairs.jsonl",
+                line=lineno,
+                field="unit",
+            )
         # 结构重建可能删除单元（issue #23）：引用了已消失单元的历史行**不阻断 qa**，
         # 标记 unit_missing 交由 qa 出 warning（done 是已完成的历史动作，unresolved 也
         # 只降级提示，避免整条流水线中断）。
         unit_missing = unit not in unit_ids
         if kind not in kinds:
-            raise ArtifactContractError(f"repairs.jsonl 第 {lineno} 行 kind 非法：{kind!r}")
+            raise ArtifactContractError(
+                f"repairs.jsonl 第 {lineno} 行 kind 非法：{kind!r}",
+                artifact="repairs.jsonl",
+                line=lineno,
+                field="kind",
+            )
         if status not in statuses:
-            raise ArtifactContractError(f"repairs.jsonl 第 {lineno} 行 status 非法：{status!r}")
+            raise ArtifactContractError(
+                f"repairs.jsonl 第 {lineno} 行 status 非法：{status!r}",
+                artifact="repairs.jsonl",
+                line=lineno,
+                field="status",
+            )
         if not summary:
-            raise ArtifactContractError(f"repairs.jsonl 第 {lineno} 行 summary 必填")
+            raise ArtifactContractError(
+                f"repairs.jsonl 第 {lineno} 行 summary 必填",
+                artifact="repairs.jsonl",
+                line=lineno,
+                field="summary",
+            )
         evidence = row.get("evidence")
         if evidence:
             ev = Path(str(evidence))
-            if ev.is_absolute() or ".." in ev.parts or not (store.dir / ev).is_file():
+            if (
+                ev.is_absolute()
+                or ".." in ev.parts
+                or not (store.dir / ev).resolve().is_relative_to(store.dir.resolve())
+                or not (store.dir / ev).is_file()
+            ):
                 raise ArtifactContractError(
-                    f"repairs.jsonl 第 {lineno} 行 evidence 不存在或非法：{evidence!r}"
+                    f"repairs.jsonl 第 {lineno} 行 evidence 不存在或非法：{evidence!r}；"
+                    "请使用工作区相对路径（示例：structured/body/ch01.md）",
+                    artifact="repairs.jsonl",
+                    line=lineno,
+                    field="evidence",
                 )
         pages = row.get("pages")
         if pages is not None and (
             not isinstance(pages, list) or not all(isinstance(p, int) for p in pages)
         ):
-            raise ArtifactContractError(f"repairs.jsonl 第 {lineno} 行 pages 必须是整数数组")
+            raise ArtifactContractError(
+                f"repairs.jsonl 第 {lineno} 行 pages 必须是整数数组",
+                artifact="repairs.jsonl",
+                line=lineno,
+                field="pages",
+            )
         count = row.get("count")
         if count is not None and not isinstance(count, int):
-            raise ArtifactContractError(f"repairs.jsonl 第 {lineno} 行 count 必须是整数")
+            raise ArtifactContractError(
+                f"repairs.jsonl 第 {lineno} 行 count 必须是整数",
+                artifact="repairs.jsonl",
+                line=lineno,
+                field="count",
+            )
         row = {**row, "unit_missing": True} if unit_missing else row
         rows.append(row)
     return rows
@@ -172,7 +242,7 @@ def read_catalog(store: RunStore) -> list[dict[str, Any]] | None:
 
     文件不存在 → None（全部检查跳过，零破坏）。列契约：
     ``item,kind,status,locator,unit_id,note``——kind ∈ toc|figure|table|footnote|
-    section|physical；status ∈ included|physical|excluded|unresolved|absent；
+    section|physical|blank（image 输入规范化为 figure）；status ∈ included|physical|excluded|unresolved|absent；
     included 行 unit_id 必填；excluded/absent 行 note 必填理由。
     ``absent`` = 源件本身不含该内容（如题注所指插图不在源包里）——既非「有意排除」，
     也非「未决」，因此不阻断放行（现场报告 #8：缺图只能记 unresolved 或谎称 excluded）。
@@ -183,7 +253,7 @@ def read_catalog(store: RunStore) -> list[dict[str, Any]] | None:
     path = store.preprocessing_dir / "catalog.csv"
     if not path.is_file():
         return None
-    kinds = {"toc", "figure", "table", "footnote", "section", "physical"}
+    kinds = {"toc", "figure", "table", "footnote", "section", "physical", "blank"}
     statuses = {"included", "physical", "excluded", "unresolved", "absent"}
     required = ["item", "kind", "status", "locator", "unit_id", "note"]
     rows: list[dict[str, Any]] = []
@@ -191,21 +261,67 @@ def read_catalog(store: RunStore) -> list[dict[str, Any]] | None:
         reader = csv.DictReader(f)
         if reader.fieldnames is None or not set(required).issubset(reader.fieldnames):
             raise ArtifactContractError(
-                f"catalog.csv 列契约不符（要求 {','.join(required)}）：{path}"
+                f"catalog.csv 列契约不符（要求 {','.join(required)}）：{path}",
+                artifact="catalog.csv",
+                line=1,
             )
         for i, row in enumerate(reader, start=2):
+            row = {
+                k: (v or "").strip() if isinstance(v, str) or v is None else v
+                for k, v in row.items()
+            }
+            if row.get("kind") == "image":
+                row["kind"] = "figure"
             if not (row.get("item") or "").strip():
-                raise ArtifactContractError(f"catalog.csv 第 {i} 行：item 为空")
+                raise ArtifactContractError(
+                    f"catalog.csv 第 {i} 行：item 为空",
+                    artifact="catalog.csv",
+                    line=i,
+                    field="item",
+                )
             if (row.get("kind") or "") not in kinds:
                 raise ArtifactContractError(
-                    f"catalog.csv 第 {i} 行：kind 非法（{row.get('kind')}）"
+                    f"catalog.csv 第 {i} 行：kind 非法（{row.get('kind')}）；合法值：{','.join(sorted(kinds))}（image 亦可）",
+                    artifact="catalog.csv",
+                    line=i,
+                    field="kind",
                 )
             status_val = row.get("status") or ""
             if status_val not in statuses:
-                raise ArtifactContractError(f"catalog.csv 第 {i} 行：status 非法（{status_val}）")
+                raise ArtifactContractError(
+                    f"catalog.csv 第 {i} 行：status 非法（{status_val}）",
+                    artifact="catalog.csv",
+                    line=i,
+                    field="status",
+                )
             if status_val == "included" and not (row.get("unit_id") or "").strip():
-                raise ArtifactContractError(f"catalog.csv 第 {i} 行：included 项缺 unit_id")
+                raise ArtifactContractError(
+                    f"catalog.csv 第 {i} 行：included 项缺 unit_id",
+                    artifact="catalog.csv",
+                    line=i,
+                    field="unit_id",
+                )
             if status_val in ("excluded", "absent") and not (row.get("note") or "").strip():
-                raise ArtifactContractError(f"catalog.csv 第 {i} 行：{status_val} 项 note 必填理由")
+                raise ArtifactContractError(
+                    f"catalog.csv 第 {i} 行：{status_val} 项 note 必填理由",
+                    artifact="catalog.csv",
+                    line=i,
+                    field="note",
+                )
+            if row.get("kind") == "blank":
+                if not row.get("locator"):
+                    raise ArtifactContractError(
+                        f"catalog.csv 第 {i} 行：blank 的 locator 必填源页位置",
+                        artifact="catalog.csv",
+                        line=i,
+                        field="locator",
+                    )
+                if status_val != "unresolved" and not row.get("note"):
+                    raise ArtifactContractError(
+                        f"catalog.csv 第 {i} 行：blank 的 note 必填源页核证依据（OCR 无文字不等于空白页）",
+                        artifact="catalog.csv",
+                        line=i,
+                        field="note",
+                    )
             rows.append({k: (row.get(k) or "").strip() for k in required})
     return rows

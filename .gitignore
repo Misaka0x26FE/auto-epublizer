@@ -24,3 +24,6 @@ workspace-*/
 .DS_Store
 *.tmp
 PDFs/
+
+# 本地工具产物
+.playwright-mcp/

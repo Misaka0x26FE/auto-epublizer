@@ -1,4 +1,4 @@
-<!-- i18n: source=build.zh.md sha256=5fff34d349df1c5a2dba17377bd03df86531c6e0626191efc2c4479bb5855ba1 -->
+<!-- i18n: source=build.zh.md sha256=17df60b37e6ca8b8da1b80f367cd0d9e4ae229f61616e0c0679c8e8039eb9ed5 -->
 > **English** | [中文](build.zh.md)
 
 # Build (EPUB packaging)
@@ -130,10 +130,22 @@ OPF `aep:render-mode` records the actual build entry: `source` (source only) or 
 
 ## Print PDF (`pdf`, derived artifact)
 
+Cover identity comes from package cover landmarks/semantics or an exact match to the registered cover-image resource, including nonlinear cover documents. An image-only registration produces a separate print cover page; other nonlinear appendices are not included automatically. Ambiguous cover identities fail rather than guessing from a filename containing cover or duplicating the cover. SVG graphics and existing cover text are retained.
+
+The cover occupies absolute page 1 without a folio. Without a cover, the first body page is numbered 1 and keeps its normal margins. Cover geometry uses millimetres rather than 100vh, with a 0.5mm paper-rounding allowance to keep images inside the actual page.
+
+Plate image height is budgeted from page size, top/bottom margins, and caption font/line height; images immediately after headings also reserve heading space. Short captions stay with their images; overlong captions may continue without drawing the image twice. Legitimate repeated references to the same source image remain repeated: resource deduplication is not a presentation audit.
+
+Marker removal removes only positioning text, preserving underlying raster pixels and vector graphics. Resource URLs are decoded once and re-encoded for the browser so filename characters such as `#` are not mistaken for fragments.
+
+Tables are constrained to the text area; cells may wrap, and table paragraphs inherit the table font rather than shrinking fonts arbitrarily by column count. JSON `diagnostics` separately reports requested/observed body and note sizes, source/matched character counts and distributions. Source paragraph prefixes bind PDF spans; the character-weighted mode requires at least 24 normalized matched characters and a 60% modal share. Ambiguous body/note prefixes, insufficient samples and unmatched text remain unknown, not a body-font guess from the whole-document median.
+
+A measured font deviation above 5%, paper-size deviation above 1pt, or text/raster bounds more than 2pt outside the text area produces findings and notes. Overflow examples are capped at 100, with full counts/page sets retained. `--strict` exits nonzero on confirmed errors and preserves the previous PDF. Unknown font measurements remain unknown, not a claim of success. Diagnostics do not replace manual completeness, vector-graphic, table-semantic or glyph-readability acceptance.
+
 ```bash
 auto-epublizer pdf --workspace <dir> [--epub <path>] [-o <out.pdf>] \
   [--size a5|32k|b5|16k] [--body-pt 10.5] [--note-pt 8.5] [--line-height 1.55] \
-  [--no-bookmarks] [--json]
+  [--no-bookmarks] [--strict] [--json]
 ```
 
 - **Position**: the EPUB remains the delivery format; the PDF is regenerated from it on every
@@ -145,11 +157,9 @@ auto-epublizer pdf --workspace <dir> [--epub <path>] [-o <out.pdf>] \
 - **Resources**: `src`/`href` are relocated per chapter directory (a subdirectory chapter's
   `../media/x.png` cannot be mismatched); remote/out-of-package references are dropped and
   recorded in `notes`; `script`/`on*` are always removed.
-- **Bookmarks**: only the OPF item with `properties="nav"` and only the `epub:type="toc"` nav;
-  section start pages come from invisible locator marks (redacted after mapping), fragment
-  entries search the title inside the section page range, and an unlocated entry is recorded
-  in `notes` instead of pretending that monotonic page numbers are correctness. OPF3
-  `meta refines` translators never become the author.
+- **Bookmarks and TOC pages**: only the OPF item with `properties="nav"` and only the `epub:type="toc"` nav. Section start pages come from invisible locator marks (redacted after mapping); TOC rows and fragment bookmarks bind by full `href#fragment` identity to an anchor injected at the real id and use absolute page numbers from the final PDF, never a page-wide title substring or the section start page. TOC rewriting converges in at most three renders. Unlocated rows keep the source number but are explicitly labelled "original page, unlocated" in the product and reported as an error; non-convergence reports `E_PDF_TOC_UNSTABLE`. OPF3 `meta refines` translators never become the author.
+- **Publication metadata**: `dc:publisher`, `dc:date`, `dc:rights`, `dc:language`, `dc:subject`, `dc:description`, `dc:identifier` are written verbatim to XMP (`dc:rights` is not truncated). Authors go to `dc:creator` and translators to `aep:translators`. Info carries only standard short fields: `/Title`←`dc:title`, `/Author`←authors (semicolon-joined, translators excluded), `/Subject`←description, `/Keywords`←subjects; `/CreationDate` and `/ModDate` are the **generation time**, not the `dc:date` publication date. Empty fields stay empty rather than being invented.
+- **Artifact manifest**: every successful render writes `<pdf>.manifest.json` (schema, source EPUB/PDF sha256 and byte counts, PDF pages, actual parameters, Info/XMP read-back, TOC and diagnostics summaries). `pdf --json` returns the same `artifact`. `auto-epublizer pdf-verify --pdf <path> [--json]` recomputes the EPUB and PDF bytes and exits nonzero when the PDF changed, the manifest is corrupt, or the source is missing. Both PDF and manifest live under `output/` and remain outside the EPUB `artifacts_digest`: re-rendering does not change report state; the derived manifest carries the reconciliation.
 - **Parameters**: body 4–24 pt, notes 4–20 pt, line height 1.0–3.0; non-finite or out-of-range
   values are rejected. Output equal to input is rejected; a missing Chromium, timeout (240 s),
   non-zero exit or a non-PDF product are Chinese errors; failures leave no partial product and

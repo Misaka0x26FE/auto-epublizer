@@ -56,6 +56,19 @@ paths:
                           #   https://github.com/Misaka0x26FE/auto-epublizer-knowledge.git
                           # 覆盖：--remote > 环境变量 AUTO_EPUBLIZER_REMOTE > 本项 > 默认
 
+# ── 生成式封面（没有源封面的书）──────────────────────────────
+cover:
+  enabled: true           # cover 命令可用；false=连显式生成也拒绝
+  style: magadan          # 目前只有 magadan（off=构建期不取用生成封面）
+  palette: indigo         # indigo|blue|maroon|purple|crimson|brown|green|ink
+  size: a5                # 与 pdf --size 同一组：a5|32k|b5|16k
+  dpi: 300                # PNG 分辨率（72–1200）
+  imprint: "马加丹汉化组"  # 底部署名；空串=不画署名行
+  imprint_font: ""        # 行书字体文件；空=自动发现（志莽行书/马善政/…）
+  font_serif: ""          # 中文宋体文件；空=自动发现（思源宋体/宋体）
+  font_latin: ""          # 拉丁衬线文件；空=自动发现（Nimbus Roman/Times）
+  auto_sync: true         # 构建期发现封面设计摘要过期时自动重绘
+
 # ── 输出 ─────────────────────────────────────────────────────
 output:
   about_page: true        # 未接线（预留；"关于此翻译"页未实现）
@@ -64,6 +77,32 @@ output:
   nav_depth: 3            # 目录最大嵌套深度（1–6，docs/epub-template-spec.md §3 投影）
                           # 超深单元不进 nav/NCX，但保留在 spine 阅读顺序与锚点中
 ```
+
+## 生成式封面
+
+`cover` 给**没有可用源封面**的书（纯文本/Markdown 源，或扫描件首页图从未被确认）出一套
+**Magadan 版式**的排版封面。纯确定性排版（PyMuPDF，无 LLM、无浏览器）：文字来自
+`publication.json` 元数据与可选的、由 agent 手写的 `preprocessing/cover-spec.json`，
+成品登记在 `preprocessing/cover-generated.json`。
+
+```bash
+auto-epublizer cover --workspace <ws> [--palette maroon] [--size a5] [--dpi 300] [--pdf] [--json]
+auto-epublizer cover --workspace <ws> --remove
+```
+
+必须知道的三条：
+
+- **源封面永远优先**：`preprocessing/cover.json` 已确认时不会使用生成封面；未确认的
+  首页图也不会被当成封面。
+- **构建期只同步，不新建**：没有登记时 build 不会添加任何封面；有登记时才写
+  `properties="cover-image"` + `<meta name="cover">`，且只在设计摘要变化时重绘
+  （`auto_sync`）。
+- **不做语义猜测**：缺副书名/国籍/角色就空着或写中性表述，CLI 绝不从 `description`
+  里切句子。
+- **字体是发现的，降级是明说的**：中文字体必需；缺拉丁衬线或行书署名时降级并写明
+  （`doctor` 的 `cover-fonts` 一行）。
+
+完整版式比例、色板、设计稿 schema 与故障排查：`skills/auto-epublizer/references/cover.zh.md`。
 
 ## 统一术语库 / 知识库
 

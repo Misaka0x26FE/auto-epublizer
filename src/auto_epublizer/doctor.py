@@ -96,6 +96,39 @@ def probe_mineru() -> Capability:
     )
 
 
+def probe_cover_fonts(config: Config) -> Capability:
+    """生成封面（Magadan 版式）的字体可用性：中文字体必需，拉丁/行书缺失仅降级。"""
+    from .cover import CoverError, find_fonts
+
+    try:
+        fonts = find_fonts(
+            cjk=config.cover.font_serif,
+            latin=config.cover.font_latin,
+            script=config.cover.imprint_font,
+        )
+    except CoverError as exc:
+        return Capability(
+            name="cover-fonts",
+            available=False,
+            impact="cover 命令无法生成封面（缺中文字体）",
+            hint="apt-get install fonts-noto-cjk，或在配置 cover.font_serif 指定 .otf/.ttf",
+            detail=str(exc),
+        )
+    detail = (
+        f"cjk={fonts.cjk.name} latin={fonts.latin.name if fonts.latin else '缺失'} "
+        f"script={fonts.script.name if fonts.script else '缺失'}"
+    )
+    if fonts.missing:
+        detail += "（缺失项按降级排版：拉丁→中文字体，行书→宋体）"
+    return Capability(
+        name="cover-fonts",
+        available=True,
+        impact="—",
+        hint="想要毛笔署名：安装志莽行书（OFL）或配置 cover.imprint_font",
+        detail=detail,
+    )
+
+
 def probe_network(timeout: float = 5.0) -> Capability:
     """外部网络可达性（--ping 才执行；多 host 任一可达即判有网络）。"""
     import httpx
@@ -146,6 +179,7 @@ def collect_capabilities(config: Config, *, ping: bool = False) -> list[Capabili
         ),
         _probe_import("lxml", "lxml", "HTML 预处理能力受限", "uv sync（自带依赖）"),
         probe_epubcheck(config),
+        probe_cover_fonts(config),
         probe_mineru(),
     ]
     if ping:

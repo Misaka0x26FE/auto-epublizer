@@ -84,6 +84,26 @@ class OutputConfig(BaseModel):
     nav_depth: int = Field(3, ge=1, le=6)  # 目录最大嵌套深度（epub-template-spec §3 投影）
 
 
+class CoverConfig(BaseModel):
+    """生成式书封（Magadan 版式）设置；只影响「没有源封面」的书。
+
+    ``imprint`` 是底部署名（译制组/出版方），空串=不画署名行。
+    字体留空即按系统字体发现（思源宋体 / Nimbus Roman / 志莽行书一类），
+    显式给路径时以路径为准。
+    """
+
+    enabled: bool = True  # cover 命令可用；关掉则连显式生成一并拒绝
+    style: str = "magadan"
+    palette: str = "indigo"
+    size: str = "a5"  # 与 pdf --size 同一组开本
+    dpi: int = Field(300, ge=72, le=1200)
+    imprint: str = "马加丹汉化组"
+    imprint_font: str = ""  # 行书字体文件；空=自动发现
+    font_serif: str = ""  # 中文宋体；空=自动发现
+    font_latin: str = ""  # 拉丁衬线；空=自动发现
+    auto_sync: bool = True  # 构建期发现设计摘要过期时自动重绘（内容同步）
+
+
 class Config(BaseModel):
     language: LanguageConfig = Field(default_factory=LanguageConfig)
     qc: QCConfig = Field(default_factory=QCConfig)
@@ -92,6 +112,7 @@ class Config(BaseModel):
     glossary: GlossaryConfig = Field(default_factory=GlossaryConfig)
     paths: PathsConfig = Field(default_factory=PathsConfig)
     output: OutputConfig = Field(default_factory=OutputConfig)
+    cover: CoverConfig = Field(default_factory=CoverConfig)
 
     def snapshot(self) -> dict[str, Any]:
         return self.model_dump(mode="json")

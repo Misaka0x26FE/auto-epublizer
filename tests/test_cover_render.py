@@ -1,0 +1,296 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# Copyright (C) 2026 Misaka0x26FE
+"""生成式书封（Magadan 版式）：设计解析、排版对版、构建接线。
+
+对版断言用「墨迹位置」而不是像素比对：版式比例的权威来源是参考样张的实测，
+这里守住的就是那几组比例（色带、书名群起点、右边界、署名）不被无意改掉。
+渲染依赖系统 CJK 字体（CI 装 fonts-noto-cjk）；无字体环境跳过渲染类断言，
+但仍验证纯逻辑（设计解析/校验/登记/撤销）。
+"""
+
+from __future__ import annotations
+
+import json
+import zipfile
+from pathlib import Path
+
+import pytest
+from typer.testing import CliRunner
+
+from auto_common.config import Config
+from auto_common.workspace.models import Publication, PublicationMeta
+from auto_epublizer import cover as cv
+from auto_epublizer import orchestrator as orch
+from auto_epublizer.cli import app
+
+runner = CliRunner()
+
+
+# ---------------------------------------------------------------- 工具
+def _workspace(tmp_path: Path):
+    src = tmp_path / "book.md"
+    src.write_text("# 第一章\n\n正文。\n", encoding="utf-8")
+    return orch.init(str(src), workspace_dir=str(tmp_path / "ws"))
+
+
+def _pub(**meta) -> Publication:
+    payload = {"title": "Reordering of Meaningful Worlds", "title_translated": "重构意义世界"}
+    payload.update(meta)
+    return Publication(slug="demo", meta=PublicationMeta(**payload))
+
+
+def _ink_rows(png: bytes, *, x_from: float = 0.03, x_to: float = 0.885) -> tuple[list, int, int]:
+    """按行统计深色像素，返回 (行区间列表, 宽, 高)；纯 pymupdf 读图，无额外依赖。"""
+    import pymupdf
+
+    doc = pymupdf.open(stream=png, filetype="png")
+    pix = doc[0].get_pixmap(dpi=72)
+    width, height, n = pix.width, pix.height, pix.n
+    samples = pix.samples
+    x0, x1 = int(width * x_from), int(width * x_to)
+    runs: list[tuple[int, int]] = []
+    current: list[int] | None = None
+    for y in range(height):
+        row = samples[y * pix.stride : y * pix.stride + width * n]
+        dark = any(row[x * n] < 128 for x in range(x0, x1))
+        if dark:
+            current = [y, y] if current is None else [current[0], y]
+        elif current is not None:
+            if current[1] - current[0] >= 4:
+                runs.append((current[0], current[1]))
+            current = None
+    if current is not None:
+        runs.append((current[0], current[1]))
+    return runs, width, height
+
+
+def _fonts_or_skip() -> cv.Fonts:
+    try:
+        return cv.find_fonts()
+    except cv.CoverError:  # 无 CJK 字体的环境：渲染类断言跳过
+        pytest.skip("系统缺中文字体，跳过渲染断言")
+
+
+# ---------------------------------------------------------------- 设计解析
+def test_spec_uses_translated_title_and_source_title() -> None:
+    spec = cv.resolve_spec(
+        _pub(creator="朱莉娅 · 尤尔丘克", translator="OpenCode"), Config(), spec_file={}
+    )
+    assert spec.title == ["重构意义世界"]
+    assert spec.original_title == ["Reordering of Meaningful Worlds"]
+    assert spec.credits == ["朱莉娅 · 尤尔丘克 著", "OpenCode 译"]
+    assert spec.palette == "indigo"
+    assert spec.imprint == "马加丹汉化组"
+
+
+def test_spec_does_not_invent_text_from_description() -> None:
+    """没有副书名就是没有：不从 description 里切句子。"""
+    pub = _pub(description="这是一段很长的内容简介，不该出现在封面上。")
+    spec = cv.resolve_spec(pub, Config(), spec_file={})
+    assert spec.subtitle == []
+    assert spec.original_subtitle == []
+
+
+def test_spec_original_title_dropped_when_identical() -> None:
+    pub = Publication(slug="d", meta=PublicationMeta(title="重构意义世界"))
+    spec = cv.resolve_spec(pub, Config(), spec_file={})
+    assert spec.title == ["重构意义世界"]
+    assert spec.original_title == []  # 同一行不重复印两遍
+
+
+def test_spec_file_overrides_and_flattening() -> None:
+    spec = cv.resolve_spec(
+        _pub(),
+        Config(),
+        spec_file={
+            "title": "史书",
+            "lead": "前皇帝约翰尼斯 · 坎塔库泽努斯",
+            "series": "拜占庭历史文献集成",
+            "credits": ["[东罗马] 某人 著\n[德] 另一人 校订"],
+            "palette": "crimson",
+            "size": "b5",
+        },
+    )
+    assert spec.title == ["史书"]
+    assert spec.credits == ["[东罗马] 某人 著", "[德] 另一人 校订"]
+    assert spec.series == ["拜占庭历史文献集成"]
+    assert spec.palette == "crimson"
+    assert round(spec.width) == round(176 * 72 / 25.4)
+
+
+def test_unknown_palette_and_size_are_explicit_errors() -> None:
+    with pytest.raises(cv.CoverError, match="未知色板"):
+        cv.resolve_spec(_pub(), Config(), spec_file={}, palette="chartreuse")
+    with pytest.raises(cv.CoverError, match="未知开本"):
+        cv.resolve_spec(_pub(), Config(), spec_file={}, size="a9")
+
+
+def test_missing_title_is_an_explicit_error() -> None:
+    pub = Publication(slug="d", meta=PublicationMeta())
+    with pytest.raises(cv.CoverError, match="没有书名"):
+        cv.resolve_spec(pub, Config(), spec_file={})
+
+
+def test_spec_file_contract(tmp_path: Path) -> None:
+    store = _workspace(tmp_path)
+    path = store.dir / cv.SPEC_FILE
+    path.parent.mkdir(parents=True, exist_ok=True)
+
+    path.write_text(json.dumps({"subtitle": "x", "typo_field": 1}), encoding="utf-8")
+    with pytest.raises(cv.CoverError, match="未知字段"):
+        cv.read_spec_file(store)
+
+    path.write_text(json.dumps({"credits": [1, 2]}), encoding="utf-8")
+    with pytest.raises(cv.CoverError, match="credits"):
+        cv.read_spec_file(store)
+
+    path.write_text("{not json", encoding="utf-8")
+    with pytest.raises(cv.CoverError, match="不可读"):
+        cv.read_spec_file(store)
+
+
+# ---------------------------------------------------------------- 排版
+def test_render_is_deterministic() -> None:
+    fonts = _fonts_or_skip()
+    spec = cv.resolve_spec(_pub(), Config(), spec_file={"subtitle": "副书名"})
+    first = cv.render_png(spec, fonts, dpi=100)
+    assert first == cv.render_png(spec, fonts, dpi=100)
+    assert first.startswith(b"\x89PNG\r\n\x1a\n")
+
+
+def test_layout_matches_reference_proportions() -> None:
+    """色带 / 书名群 / 署名 的墨迹位置必须落在参考样张的同一比例上。"""
+    fonts = _fonts_or_skip()
+    spec = cv.resolve_spec(
+        _pub(creator="朱莉娅 · 尤尔丘克"),
+        Config(),
+        spec_file={"subtitle": "后苏联时期乌克兰对乌克兰\n民族主义者组织和乌克兰起义军的记忆"},
+    )
+    png = cv.render_png(spec, fonts, dpi=72)
+    runs, _w, h = _ink_rows(png)
+    assert len(runs) >= 5
+    band = (runs[0][0] / h, runs[0][1] / h)
+    assert band[0] == pytest.approx(0.0135, abs=0.006)
+    assert band[1] - band[0] == pytest.approx(0.0528, abs=0.006)
+    title = (runs[1][0] / h, runs[1][1] / h)
+    assert title[0] == pytest.approx(0.310, abs=0.008)  # 书名群起点
+    imprint = (runs[-1][0] / h, runs[-1][1] / h)
+    assert imprint[0] == pytest.approx(0.919, abs=0.010)  # 底部署名
+
+
+def test_png_and_pdf_share_the_same_page_size() -> None:
+    import pymupdf
+
+    fonts = _fonts_or_skip()
+    spec = cv.resolve_spec(_pub(), Config(), spec_file={})
+    doc = pymupdf.open(stream=cv.render_pdf(spec, fonts), filetype="pdf")
+    assert len(doc) == 1
+    assert doc[0].rect.width == pytest.approx(spec.width, abs=0.5)
+    assert doc[0].rect.height == pytest.approx(spec.height, abs=0.5)
+    doc.close()
+
+
+def test_script_font_missing_degrades_instead_of_failing(monkeypatch) -> None:
+    fonts = _fonts_or_skip()
+    no_script = cv.Fonts(cjk=fonts.cjk, latin=fonts.latin, script=None, missing=("script",))
+    spec = cv.resolve_spec(_pub(), Config(), spec_file={})
+    png = cv.render_png(spec, no_script, dpi=72)
+    assert png.startswith(b"\x89PNG\r\n\x1a\n")
+
+
+def test_wrap_balances_lines_and_keeps_punctuation_off_line_start() -> None:
+    fonts = _fonts_or_skip()
+    measurer = cv._Measurer(fonts)
+    text = "伊斯兰共和国的权力焦虑与地区秩序的重新排列"
+    lines = cv.wrap(text, 60.0, 10.0, measurer)
+    assert len(lines) >= 2
+    assert all(not line.startswith(tuple(cv.NO_LINE_START)) for line in lines)
+    assert "".join(lines) == text.replace(" ", "")
+
+
+# ---------------------------------------------------------------- 工作区接线
+def test_generate_registers_and_build_embeds_cover_image(tmp_path: Path) -> None:
+    store = _workspace(tmp_path)
+    orch.set_meta(store, title="重构意义世界", creator="朱莉娅 · 尤尔丘克", translator="OpenCode")
+    record = orch.generate_cover(store)
+    assert record["file"] == cv.GENERATED_REL
+    assert (store.dir / cv.GENERATED_REL).is_file()
+    assert (store.dir / cv.RECORD_FILE).is_file()
+
+    epub = orch.build(store)
+    with zipfile.ZipFile(epub) as zf:
+        opf = zf.read("OEBPS/content.opf").decode("utf-8")
+        assert 'properties="cover-image"' in opf
+        assert '<meta name="cover"' in opf
+        assert zf.read("OEBPS/media/cover-generated.png").startswith(b"\x89PNG")
+    events = (store.dir / "events.jsonl").read_text(encoding="utf-8")
+    assert "cover_generated_used" in events
+
+
+def test_build_does_not_invent_cover_without_registration(tmp_path: Path) -> None:
+    """没有登记就什么都不做——「没有源封面」不等于「必须造一个封面」。"""
+    store = _workspace(tmp_path)
+    epub = orch.build(store)
+    with zipfile.ZipFile(epub) as zf:
+        assert "cover-image" not in zf.read("OEBPS/content.opf").decode("utf-8")
+
+
+def test_generated_cover_does_not_override_source_cover(tmp_path: Path) -> None:
+    store = _workspace(tmp_path)
+    raw = store.structured_dir / "raw" / "media"
+    raw.mkdir(parents=True, exist_ok=True)
+    jpeg = b"\xff\xd8\xff\xe0\x00\x10JFIF\x00\x01\x01\x00\x00\x01\x00\x01\x00\x00" + b"\x00" * 32
+    (raw / "p001.png").write_bytes(jpeg)
+    (store.preprocessing_dir / "cover.json").write_text(
+        json.dumps(
+            {"file": "structured/raw/media/p001.png", "evidence": "第 1 页整页图，比对确认"}
+        ),
+        encoding="utf-8",
+    )
+    orch.generate_cover(store)
+    epub = orch.build(store)
+    with zipfile.ZipFile(epub) as zf:
+        opf = zf.read("OEBPS/content.opf").decode("utf-8")
+        assert 'href="media/p001.png"' in opf
+        assert "cover-generated.png" not in opf
+
+
+def test_metadata_change_triggers_regeneration(tmp_path: Path) -> None:
+    store = _workspace(tmp_path)
+    orch.set_meta(store, title="旧书名")
+    first = orch.generate_cover(store)
+    orch.set_meta(store, title="新书名")
+    orch.build(store)
+    record = json.loads((store.dir / cv.RECORD_FILE).read_text(encoding="utf-8"))
+    assert record["design_digest"] != first["design_digest"]
+    assert record["text"]["title"] == ["新书名"]
+    events = (store.dir / "events.jsonl").read_text(encoding="utf-8")
+    assert "cover_regenerated" in events
+
+
+def test_remove_cover(tmp_path: Path) -> None:
+    store = _workspace(tmp_path)
+    orch.generate_cover(store)
+    orch.delete_cover(store)
+    assert not (store.dir / cv.GENERATED_REL).exists()
+    assert not (store.dir / cv.RECORD_FILE).exists()
+    with pytest.raises(orch.OrchestrationError, match="没有生成封面"):
+        orch.delete_cover(store)
+
+
+def test_disabled_cover_refuses(tmp_path: Path) -> None:
+    store = _workspace(tmp_path)
+    cfg = Config()
+    cfg.cover.enabled = False
+    with pytest.raises(orch.OrchestrationError, match="关闭"):
+        orch.generate_cover(store, config=cfg)
+
+
+def test_cli_cover_json(tmp_path: Path) -> None:
+    store = _workspace(tmp_path)
+    orch.set_meta(store, title="重构意义世界")
+    result = runner.invoke(app, ["cover", "--workspace", str(store.dir.parent), "--json"])
+    assert result.exit_code == 0, result.output
+    payload = json.loads(result.output)
+    assert payload["palette"] == "indigo"
+    assert payload["file"] == cv.GENERATED_REL

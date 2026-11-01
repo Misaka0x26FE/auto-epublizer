@@ -55,6 +55,7 @@ class QaResult:
     review_effective_open: int = 0
     review_unknown: int = 0
     review_inconsistent: list[str] = field(default_factory=list)
+    review_findings: list[dict[str, Any]] = field(default_factory=list)
     review_issues: list[dict[str, Any]] = field(default_factory=list)
     # 语义整备（S2）：修复留痕计数（unresolved 仅 W 级提示，不阻断）
     repairs_total: int = 0
@@ -284,5 +285,6 @@ def generate_report(
         review_effective_open=review_effective_open,
         review_unknown=review_unknown,
         review_inconsistent=review_inconsistent,
+        review_findings=[dict(item) for item in ledger.get("findings") or []],
         review_issues=review_issues,
     )

@@ -214,6 +214,28 @@ class RunStore:
             pub.set_unit_status(unit_id, status)
             atomic_write_json(self.publication_path, pub.model_dump(mode="json"))
 
+    def unit_content_digests(self, unit: Any) -> dict[str, str | None]:
+        """当前单元三层产物的字节身份；缺文件明确为 None。"""
+        rel = (unit.meta or {}).get("rel_path")
+        return {
+            name: source_sha256(path) if path is not None and path.is_file() else None
+            for name, path in (
+                ("structured", self.structured_dir / rel if rel else None),
+                ("translation", self.translation_dir / rel if rel else None),
+                ("align", self.unit_align_path(unit.id)),
+            )
+        }
+
+    def record_unit_content(self, unit_id: str) -> None:
+        """成功导入后登记三层摘要；旧工作区无摘要时不推断历史身份。"""
+        with self.state_lock():
+            pub = Publication.model_validate(read_json(self.publication_path))
+            unit = pub.unit(unit_id)
+            if unit is None:
+                raise ValueError(f"单元不存在：{unit_id}")
+            unit.meta["import_digests"] = self.unit_content_digests(unit)
+            atomic_write_json(self.publication_path, pub.model_dump(mode="json"))
+
     def set_units(self, units: list[Any]) -> None:
         """把结构化单元清单写入 publication.json.units（保留已存在单元的状态与 rel_path）。"""
         from .models import Unit
@@ -231,6 +253,10 @@ class RunStore:
                     meta["region"] = u["region"]
                 if u.get("level"):
                     meta["level"] = int(u["level"])
+                rel = meta.get("rel_path")
+                structured = self.structured_dir / rel if rel else None
+                if structured is not None and structured.is_file():
+                    meta["structured_sha256"] = source_sha256(structured)
                 status = prior.status if prior else STATUS_PENDING
                 pub.units.append(
                     Unit(id=u["id"], kind=u["kind"], title=u["title"], status=status, meta=meta)

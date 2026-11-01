@@ -375,6 +375,35 @@ def test_report_releases_when_ledger_is_clean() -> None:
     assert report.released is True and report.released_reason == "ok"
 
 
+def test_self_parent_diagnostic_reaches_qa_status_and_cli(tmp_path: Path) -> None:
+    from typer.testing import CliRunner
+
+    from auto_epublizer.cli import app
+
+    src = tmp_path / "book.md"
+    src.write_text("# One\n\nSource body.\n", encoding="utf-8")
+    store = orch.init(str(src), workspace_dir=str(tmp_path / "ws"))
+    review_id = "review-20261031T120000"
+    directory = store.reviews_dir / review_id
+    directory.mkdir()
+    (directory / "result.json").write_text(
+        json.dumps(_full(review_id, parent_reviews=[review_id])), encoding="utf-8"
+    )
+    orch.build(store)
+
+    result = CliRunner().invoke(app, ["qa", "--json", "--workspace", str(store.dir)])
+
+    assert result.exit_code == 0, result.output
+    report = json.loads(result.stdout)
+    assert report["released"] is False
+    assert report["released_reason"] == "review_inconsistent"
+    assert report["review_inconsistent"]  # 旧的空数组现场现象须由真实接线验证
+    finding = next(f for f in report["review_findings"] if f["code"] == "E_REVIEW_PARENT_SELF")
+    assert finding["review_id"] == review_id
+    assert finding["path"] == f"reviews/{review_id}/result.json"
+    assert orch.status(store)["review"]["findings"] == report["review_findings"]
+
+
 def test_digest_covers_every_review_record(tmp_path: Path) -> None:
     """改动**非最新**的审校记录也必须使报告过期（旧问题不能被静默改写）。"""
     src = tmp_path / "book.md"

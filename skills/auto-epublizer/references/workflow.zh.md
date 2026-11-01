@@ -25,6 +25,14 @@ checkout、项目 `uv` 环境与无覆盖骨架生成；安装 Skill 不等于�
   有 output/*.epub               -> 已封装，qa 或重新 build
 ```
 
+### 机器输出与退出码
+
+`status/build/qa/ledger/import/g0 --json` 的 stdout 只输出一个 JSON 值；可预期输入错误返回 `{"error":{"code":"E_INPUT","message":"…"}}`，产物契约错误为 `E_ARTIFACT_CONTRACT` 并带 `artifact/line/field`，退出码为 1。status --all 与 ledger 保留逐工作区行，坏工作区行带 `error`、released=false 且命令非零退出，不过滤掉坏书。
+
+- build：`epub/fallback_units/producer`；ledger：工作区行数组（`-o` 写同份 JSON，stdout 仍为 JSON）。
+- import：保留 imported/revalidated/pending/skipped/failed/warnings，并返回 skipped_details；failed 非空退出 1，pending 或正常幂等跳过不等于失败。术语导入的 `terms.status_counts/status_source` 反映落盘 analysis/glossary.csv，不把 seed 冒称 confirmed。
+- qa：直接输出 report.json 的字段；g0：checked_units/flags。沿用原有退出码含义：0 表示检查已运行，**不等于放行**；调用方必须读取 qa.released/released_reason 或 g0.flags[].blocking。输入/运行错误非零。
+
 ### 机器「下一任务」指针（弱模型路径）
 
 `status --json` 还会返回 `next_tasks: [{kind, unit?, hint, done_when}]`，由现有状态机

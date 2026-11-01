@@ -5,7 +5,9 @@
 from __future__ import annotations
 
 import base64
+import hashlib
 import json
+import re
 import zipfile
 from pathlib import Path
 
@@ -16,6 +18,7 @@ from typer.testing import CliRunner
 from auto_epublizer import orchestrator as orch
 from auto_epublizer import pdfexport
 from auto_epublizer.cli import app
+from auto_epublizer.qa import artifacts_digest
 
 _PNG = base64.b64decode(
     "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="
@@ -126,6 +129,593 @@ def _unpack(tmp: Path, epub: Path) -> Path:
     return tmp / "unpacked"
 
 
+def _variant(epub: Path, replacements: dict[str, str | bytes]) -> Path:
+    with zipfile.ZipFile(epub) as archive:
+        files = {name: archive.read(name) for name in archive.namelist()}
+    files.update(
+        {
+            name: value.encode() if isinstance(value, str) else value
+            for name, value in replacements.items()
+        }
+    )
+    target = epub.with_name("variant.epub")
+    with zipfile.ZipFile(target, "w") as archive:
+        for name, data in files.items():
+            archive.writestr(name, data)
+    return target
+
+
+def _raster_png(width: int = 32, height: int = 48) -> bytes:
+    samples = bytes(
+        v for y in range(height) for x in range(width) for v in (x % 256, y % 256, (x + y) % 256)
+    )
+    pixmap = pymupdf.Pixmap(pymupdf.csRGB, width, height, samples, False)
+    return pixmap.tobytes("png")
+
+
+def test_nonlinear_cover_identity_does_not_depend_on_filename(tmp_path: Path) -> None:
+    epub = _mini_epub(tmp_path)
+    with zipfile.ZipFile(epub) as archive:
+        cover = archive.read("OEBPS/cover.xhtml").decode()
+    opf = _OPF.replace('href="cover.xhtml"', 'href="jacket.xhtml"').replace(
+        '<itemref idref="cover"/>', '<itemref idref="cover" linear="no"/>'
+    )
+    work = _unpack(
+        tmp_path, _variant(epub, {"OEBPS/content.opf": opf, "OEBPS/jacket.xhtml": cover})
+    )
+    package = pdfexport._parse_opf(work / "OEBPS/content.opf")
+
+    assert package.spine[0] == ("cover", "jacket.xhtml")
+    assert package.cover_href == "jacket.xhtml"
+    target, sections = pdfexport.build_print_html(package, pdfexport.PrintStyle())
+    assert sections == 3
+    assert 'src="media/cover.png"' in target.read_text()
+
+
+def test_cover_substring_does_not_hide_regular_chapter(tmp_path: Path) -> None:
+    epub = _mini_epub(tmp_path)
+    opf = _OPF.replace('href="ch02.xhtml"', 'href="discoveries.xhtml"')
+    work = _unpack(
+        tmp_path,
+        _variant(
+            epub,
+            {
+                "OEBPS/content.opf": opf,
+                "OEBPS/discoveries.xhtml": '<html xmlns="http://www.w3.org/1999/xhtml"><head><title>Discoveries</title></head><body><h1>Discoveries</h1><p>Keep this entire chapter.</p></body></html>',
+            },
+        ),
+    )
+    package = pdfexport._parse_opf(work / "OEBPS/content.opf")
+    target, _ = pdfexport.build_print_html(package, pdfexport.PrintStyle())
+    assert "Keep this entire chapter." in target.read_text()
+
+
+def test_registered_cover_image_without_document_is_printed_once(tmp_path: Path) -> None:
+    epub = _mini_epub(tmp_path)
+    opf = _OPF.replace('<itemref idref="cover"/>', "")
+    work = _unpack(tmp_path, _variant(epub, {"OEBPS/content.opf": opf}))
+    package = pdfexport._parse_opf(work / "OEBPS/content.opf")
+    target, sections = pdfexport.build_print_html(package, pdfexport.PrintStyle())
+    assert sections == 3
+    assert target.read_text().count('src="media/cover.png"') == 1
+
+
+def test_semantic_svg_cover_keeps_graphics_and_excludes_other_nonlinear_pages(
+    tmp_path: Path,
+) -> None:
+    epub = _mini_epub(tmp_path)
+    opf = (
+        _OPF.replace('href="cover.xhtml"', 'href="jacket.xhtml"')
+        .replace('properties="cover-image"', "")
+        .replace(
+            '<itemref idref="cover"/>',
+            '<itemref idref="cover" linear="no"/><itemref idref="software" linear="no"/>',
+        )
+        .replace(
+            "</manifest>",
+            '<item id="software" href="software.xhtml" media-type="application/xhtml+xml"/></manifest>',
+        )
+    )
+    nav = _NAV.replace(
+        '<nav epub:type="landmarks"><ol>',
+        '<nav epub:type="landmarks"><ol><li><a epub:type="cover" href="jacket.xhtml">封面</a></li>',
+    )
+    svg = '<html xmlns="http://www.w3.org/1999/xhtml"><head><title>Jacket</title></head><body><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 48"><image href="media/cover.png" width="32" height="48"/></svg></body></html>'
+    work = _unpack(
+        tmp_path,
+        _variant(
+            epub,
+            {
+                "OEBPS/content.opf": opf,
+                "OEBPS/nav.xhtml": nav,
+                "OEBPS/jacket.xhtml": svg,
+                "OEBPS/software.xhtml": "<html><body>Do not print this software appendix.</body></html>",
+            },
+        ),
+    )
+    package = pdfexport._parse_opf(work / "OEBPS/content.opf")
+    target, sections = pdfexport.build_print_html(package, pdfexport.PrintStyle())
+    assert sections == 3
+    assert package.cover_href == "jacket.xhtml"
+    assert "<svg " in target.read_text()
+    assert 'href="media/cover.png"' in target.read_text()
+    assert "Do not print this software appendix." not in target.read_text()
+
+
+def test_cover_resource_url_is_decoded_once_and_reencoded_for_html(tmp_path: Path) -> None:
+    epub = _mini_epub(tmp_path)
+    with zipfile.ZipFile(epub) as archive:
+        cover = archive.read("OEBPS/cover.xhtml").decode()
+    opf = _OPF.replace("media/cover.png", "media/jacket%23scan.png")
+    work = _unpack(
+        tmp_path,
+        _variant(
+            epub,
+            {
+                "OEBPS/content.opf": opf,
+                "OEBPS/cover.xhtml": cover.replace("media/cover.png", "media/jacket%23scan.png"),
+                "OEBPS/media/jacket#scan.png": _raster_png(),
+            },
+        ),
+    )
+    package = pdfexport._parse_opf(work / "OEBPS/content.opf")
+    target, _ = pdfexport.build_print_html(package, pdfexport.PrintStyle())
+    assert 'src="media/jacket%23scan.png"' in target.read_text()
+    assert not target.with_suffix(".notes.txt").read_text().count("jacket")
+
+
+def test_nested_opf_can_reference_sibling_resources_inside_archive(tmp_path: Path) -> None:
+    epub = _mini_epub(tmp_path)
+    opf = _OPF.replace('href="', 'href="../')
+    container = '<container xmlns="urn:oasis:names:tc:opendocument:xmlns:container"><rootfiles><rootfile full-path="OEBPS/package/content.opf"/></rootfiles></container>'
+    epub = _variant(epub, {"META-INF/container.xml": container, "OEBPS/package/content.opf": opf})
+    work = _unpack(tmp_path, epub)
+
+    package = pdfexport._parse_opf(pdfexport._opf_path(work), archive_root=work)
+
+    assert package.cover_href == "OEBPS/cover.xhtml"
+    target, sections = pdfexport.build_print_html(package, pdfexport.PrintStyle())
+    assert sections == 3
+    assert 'src="OEBPS/media/cover.png"' in target.read_text()
+    entries = pdfexport.nav_entries(work / package.nav_href, owner_href=package.nav_href)
+    assert entries[0][2] == "OEBPS/text/ch01.xhtml"
+
+
+@pytest.mark.skipif(pdfexport.find_chromium() is None, reason="需要 Chromium/Chrome")
+@pytest.mark.parametrize("has_cover", [True, False])
+def test_printed_cover_and_page_one_footer_follow_declared_identity(
+    tmp_path: Path, has_cover: bool
+) -> None:
+    epub = _mini_epub(tmp_path)
+    opf = _OPF.replace('<itemref idref="cover"/>', '<itemref idref="cover" linear="no"/>')
+    if not has_cover:
+        opf = opf.replace('<itemref idref="cover" linear="no"/>', "").replace(
+            'properties="cover-image"', ""
+        )
+    epub = _variant(epub, {"OEBPS/content.opf": opf, "OEBPS/media/cover.png": _raster_png()})
+    result = pdfexport.render(epub, tmp_path / "print.pdf")
+    with pymupdf.open(result.out) as doc:
+        footer = (
+            doc[0]
+            .get_text(
+                clip=pymupdf.Rect(0, doc[0].rect.height - 35, doc[0].rect.width, doc[0].rect.height)
+            )
+            .strip()
+        )
+        if has_cover:
+            assert doc[0].get_image_info()
+            assert all(
+                pymupdf.Rect(info["bbox"]).y1 <= doc[0].rect.height + 0.1
+                for info in doc[0].get_image_info()
+            )
+            assert doc.get_toc()[0] == [1, "封面", 1]
+            assert footer == ""
+        else:
+            assert footer == "1"
+            assert doc.get_toc()[0][1] != "封面"
+
+
+def test_clearing_markers_does_not_edit_underlying_cover_pixels() -> None:
+    with pymupdf.open() as doc:
+        page = doc.new_page()
+        page.insert_image(page.rect, stream=_raster_png())
+        page.insert_text((100, 100), "AEPMARK0001", fontsize=12)
+        before = page.get_image_info(hashes=True)[0]["digest"]
+
+        pdfexport._clear_markers(doc, 1)
+
+        page = doc.reload_page(page)
+        assert "AEPMARK" not in page.get_text()
+        assert page.get_image_info(hashes=True)[0]["digest"] == before
+
+
+@pytest.mark.skipif(pdfexport.find_chromium() is None, reason="需要 Chromium/Chrome")
+@pytest.mark.parametrize("size", ["a5", "16k"])
+@pytest.mark.parametrize("references", [1, 2])
+@pytest.mark.parametrize("dimensions", [(804, 1293), (1293, 804)])
+def test_tall_plates_are_drawn_once_per_reference_with_captions(
+    tmp_path: Path, size: str, references: int, dimensions: tuple[int, int]
+) -> None:
+    epub = _mini_epub(tmp_path)
+    figures = "".join(
+        f'<figure class="imgfig"><img src="../media/plate.png"/><figcaption>Plate {index} CAPTION_END</figcaption></figure>'
+        for index in range(references)
+    )
+    epub = _variant(
+        epub,
+        {
+            "OEBPS/text/ch01.xhtml": f'<html xmlns="http://www.w3.org/1999/xhtml"><head><title>Plates</title></head><body><h1>Plates</h1>{figures}</body></html>',
+            "OEBPS/media/plate.png": _raster_png(*dimensions),
+        },
+    )
+    result = pdfexport.render(epub, tmp_path / "plates.pdf", pdfexport.PrintStyle(size=size))
+    with pymupdf.open(result.out) as doc:
+        draws = [
+            (page.number, info["bbox"])
+            for page in doc
+            for info in page.get_image_info()
+            if (info["width"], info["height"]) == dimensions
+        ]
+        assert len(draws) == references
+        for page_index, bbox in draws:
+            assert pymupdf.Rect(bbox).y0 >= 18 * 72 / 25.4 - 1
+            assert pymupdf.Rect(bbox).y1 <= doc[page_index].rect.height - 20 * 72 / 25.4 + 1
+            assert "CAPTION_END" in doc[page_index].get_text()
+
+
+@pytest.mark.skipif(pdfexport.find_chromium() is None, reason="需要 Chromium/Chrome")
+def test_uncaptioned_standalone_plate_is_not_split_across_pages(tmp_path: Path) -> None:
+    epub = _variant(
+        _mini_epub(tmp_path),
+        {
+            "OEBPS/text/ch01.xhtml": '<html><body><h1>Plate</h1><p class="imgp"><img src="../media/plate.png"/></p></body></html>',
+            "OEBPS/media/plate.png": _raster_png(804, 1293),
+        },
+    )
+    result = pdfexport.render(epub, tmp_path / "uncaptioned.pdf")
+    with pymupdf.open(result.out) as doc:
+        draws = [
+            (page, info) for page in doc for info in page.get_image_info() if info["width"] == 804
+        ]
+        assert len(draws) == 1
+        page, info = draws[0]
+        assert pymupdf.Rect(info["bbox"]).y1 <= page.rect.height - 20 * 72 / 25.4 + 1
+
+
+@pytest.mark.skipif(pdfexport.find_chromium() is None, reason="需要 Chromium/Chrome")
+def test_plate_with_overlong_caption_keeps_image_once_and_all_caption_text(tmp_path: Path) -> None:
+    epub = _mini_epub(tmp_path)
+    caption = "Caption continuation. " * 180 + "CAPTION_END"
+    epub = _variant(
+        epub,
+        {
+            "OEBPS/text/ch01.xhtml": f'<html xmlns="http://www.w3.org/1999/xhtml"><head><title>Plate</title></head><body><h1>Plate</h1><figure class="imgfig"><img src="../media/plate.png"/><figcaption>{caption}</figcaption></figure></body></html>',
+            "OEBPS/media/plate.png": _raster_png(804, 1293),
+        },
+    )
+    result = pdfexport.render(epub, tmp_path / "long-caption.pdf")
+    with pymupdf.open(result.out) as doc:
+        assert sum(info["width"] == 804 for page in doc for info in page.get_image_info()) == 1
+        text = "".join(
+            page.get_text(clip=pymupdf.Rect(0, 0, page.rect.width, page.rect.height - 35))
+            for page in doc
+        )
+        assert re.sub(r"\s+", "", text).count("Captioncontinuation.") == 180
+        assert "CAPTION_END" in text
+
+
+def _wide_table_epub(tmp_path: Path) -> Path:
+    cells = "".join("<td>123456789012345</td>" for _ in range(13))
+    body = "<p>BODY_SAMPLE This paragraph supplies ordinary narrative text for independent font measurement before the wide table.</p>"
+    html = f'<html xmlns="http://www.w3.org/1999/xhtml"><head><title>Wide table</title></head><body><h1 id="s1">Wide table</h1>{body}<table class="data"><tr>{cells}</tr></table>{body}</body></html>'
+    return _variant(_mini_epub(tmp_path), {"OEBPS/text/ch01.xhtml": html})
+
+
+@pytest.mark.skipif(pdfexport.find_chromium() is None, reason="需要 Chromium/Chrome")
+def test_thirteen_column_table_does_not_shrink_the_entire_a5_document(tmp_path: Path) -> None:
+    result = pdfexport.render(_wide_table_epub(tmp_path), tmp_path / "wide.pdf", strict=True)
+    with pymupdf.open(result.out) as doc:
+        sizes = [
+            span["size"]
+            for page in doc
+            for block in page.get_text("dict")["blocks"]
+            if "lines" in block
+            for line in block["lines"]
+            for span in line["spans"]
+            if "BODY_SAMPLE" in span["text"]
+        ]
+        assert sizes and all(abs(size - 10.5) <= 0.2 for size in sizes)
+    assert result.diagnostics["fonts"]["body"]["observed_pt"] == pytest.approx(10.5, abs=0.2)
+    assert not any(f["code"] == "E_PDF_FONT_SCALE" for f in result.diagnostics["findings"])
+
+
+@pytest.mark.skipif(pdfexport.find_chromium() is None, reason="需要 Chromium/Chrome")
+def test_strict_pdf_diagnostics_fail_before_overwriting_existing_product(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    epub = _wide_table_epub(tmp_path)
+    output = tmp_path / "existing.pdf"
+    output.write_bytes(b"old product must remain unchanged")
+    css = pdfexport.PrintStyle.css
+    monkeypatch.setattr(
+        pdfexport.PrintStyle,
+        "css",
+        lambda self, **kwargs: css(self, **kwargs) + "\np {font-size:6pt !important}",
+    )
+    with pytest.raises(ValueError, match="E_PDF_FONT_SCALE"):
+        pdfexport.render(epub, output, strict=True)
+    assert output.read_bytes() == b"old product must remain unchanged"
+
+
+@pytest.mark.skipif(pdfexport.find_chromium() is None, reason="需要 Chromium/Chrome")
+def test_cli_pdf_strict_json_includes_source_bound_font_diagnostics(tmp_path: Path) -> None:
+    src = tmp_path / "book.md"
+    src.write_text("# One\n\nBody.\n", encoding="utf-8")
+    store = orch.init(str(src), workspace_dir=str(tmp_path / "ws"))
+    result = CliRunner().invoke(
+        app,
+        [
+            "pdf",
+            "--workspace",
+            str(store.dir),
+            "--epub",
+            str(_wide_table_epub(tmp_path)),
+            "--strict",
+            "--json",
+        ],
+    )
+    assert result.exit_code == 0, result.output
+    payload = json.loads(result.stdout)
+    assert payload["diagnostics"]["status"] == "pass"
+    assert payload["diagnostics"]["fonts"]["body"]["observed_pt"] == pytest.approx(10.5, abs=0.2)
+    assert Path(payload["pdf"]).is_file()
+
+
+def _toc_epub(tmp_path: Path, *, list_style: bool = False, stray: bool = False) -> Path:
+    opf = _OPF.replace(
+        "</manifest>",
+        '<item id="toc-body" href="front/contents.xhtml" media-type="application/xhtml+xml"/><item id="preface" href="front/preface.xhtml" media-type="application/xhtml+xml"/><item id="index" href="back/index.xhtml" media-type="application/xhtml+xml"/></manifest>',
+    )
+    opf = opf.replace(
+        '<itemref idref="cover"/>',
+        '<itemref idref="cover"/><itemref idref="toc-body"/><itemref idref="preface"/>',
+    ).replace('<itemref idref="ch2"/>', '<itemref idref="ch2"/><itemref idref="index"/>')
+    labels = [
+        ("序", "front/preface.xhtml#intro"),
+        ("Alpha", "text/ch01.xhtml#real"),
+        ("Beta", "ch02.xhtml"),
+        ("Index", "back/index.xhtml"),
+    ]
+    nav = (
+        '<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops"><head><title>Navigation</title></head><body><nav epub:type="toc"><ol>'
+        + "".join(f'<li><a href="{href}">{title}</a></li>' for title, href in labels)
+        + "</ol></nav></body></html>"
+    )
+    rows = "".join(
+        f"<li><strong>{title}</strong> — vii <em>Author C</em></li>"
+        if list_style
+        else f"<p>{title} 999</p>"
+        for title, _ in labels
+    )
+    if stray:
+        rows += "<p>Unknown entry 999</p>"
+    return _variant(
+        _mini_epub(tmp_path),
+        {
+            "OEBPS/content.opf": opf,
+            "OEBPS/nav.xhtml": nav,
+            "OEBPS/front/contents.xhtml": f"<html><head><title>Contents</title></head><body><h1>Contents</h1>{rows}</body></html>",
+            "OEBPS/front/preface.xhtml": '<html><head><title>序</title></head><body><h1 id="intro">序</h1><p>PREFACE_TARGET Body paragraph for the preface.</p></body></html>',
+            "OEBPS/text/ch01.xhtml": '<html><head><title>Alpha</title></head><body><h1>Alpha</h1><p>Alpha is echoed here, not the requested target.</p><div style="page-break-before:always"><h2 id="real">REAL_TARGET_ALPHA</h2><p>The actual fragment starts here.</p></div></body></html>',
+            "OEBPS/ch02.xhtml": "<html><head><title>Beta</title></head><body><h1>Beta</h1><p>BETA_TARGET Some body text.</p></body></html>",
+            "OEBPS/back/index.xhtml": "<html><head><title>Index</title></head><body><h1>Index</h1><p>Original index Alpha 123, Beta 456.</p></body></html>",
+        },
+    )
+
+
+@pytest.mark.skipif(pdfexport.find_chromium() is None, reason="需要 Chromium/Chrome")
+@pytest.mark.parametrize("list_style", [False, True])
+def test_print_toc_and_bookmarks_use_final_fragment_pages_not_title_echoes(
+    tmp_path: Path, list_style: bool
+) -> None:
+    epub = _toc_epub(tmp_path, list_style=list_style)
+    original = epub.read_bytes()
+    result = pdfexport.render(epub, tmp_path / "toc.pdf")
+    with pymupdf.open(result.out) as doc:
+        actual = {
+            name: next(page.number + 1 for page in doc if needle in page.get_text())
+            for name, needle in [
+                ("序", "PREFACE_TARGET"),
+                ("Alpha", "REAL_TARGET_ALPHA"),
+                ("Beta", "BETA_TARGET"),
+                ("Index", "Original index"),
+            ]
+        }
+        toc_text = next(page.get_text() for page in doc if "Contents" in page.get_text())
+        for label, page in actual.items():
+            assert re.search(rf"{label}\s*(?:—\s*)?{page}(?!\d)", toc_text), (label, page, toc_text)
+            assert any(title == label and target == page for _, title, target in doc.get_toc())
+        assert "Original index Alpha 123, Beta 456." in "".join(page.get_text() for page in doc)
+        assert "AEPANCHOR" not in "".join(page.get_text() for page in doc)
+    assert result.toc["converged"] is True and result.toc["rounds"] >= 2
+    assert epub.read_bytes() == original
+
+
+@pytest.mark.skipif(pdfexport.find_chromium() is None, reason="需要 Chromium/Chrome")
+def test_postprocessing_failure_preserves_existing_pdf(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    epub = _mini_epub(tmp_path)
+    target = tmp_path / "old.pdf"
+    target.write_bytes(b"previous approved product")
+
+    def fail(*args, **kwargs):
+        raise RuntimeError("postprocess fault injection")
+
+    monkeypatch.setattr(pdfexport, "stamp_folios", fail)
+    with pytest.raises(RuntimeError, match="postprocess fault"):
+        pdfexport.render(epub, target)
+    assert target.read_bytes() == b"previous approved product"
+
+
+@pytest.mark.skipif(pdfexport.find_chromium() is None, reason="需要 Chromium/Chrome")
+def test_strict_toc_unlocated_finding_preserves_existing_pdf(tmp_path: Path) -> None:
+    epub = _toc_epub(tmp_path, stray=True)
+    target = tmp_path / "old.pdf"
+    target.write_bytes(b"previous approved product")
+    with pytest.raises(ValueError, match="E_PDF_TOC_UNLOCATED"):
+        pdfexport.render(epub, target, strict=True)
+    assert target.read_bytes() == b"previous approved product"
+
+
+@pytest.mark.skipif(pdfexport.find_chromium() is None, reason="需要 Chromium/Chrome")
+def test_unstable_toc_pages_fail_without_replacing_existing_pdf(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    epub = _toc_epub(tmp_path)
+    target = tmp_path / "old.pdf"
+    target.write_bytes(b"previous approved product")
+    calls = {"count": 0}
+
+    def drifting(doc, sections, *, prefix="AEPMARK"):
+        calls["count"] += 1
+        return {number: number + calls["count"] * 10 for number in range(1, sections + 1)}
+
+    monkeypatch.setattr(pdfexport, "_section_pages", drifting)
+    with pytest.raises(ValueError, match="E_PDF_TOC_UNSTABLE"):
+        pdfexport.render(epub, target)
+    assert target.read_bytes() == b"previous approved product"
+    assert calls["count"] == 3
+
+
+@pytest.mark.skipif(pdfexport.find_chromium() is None, reason="需要 Chromium/Chrome")
+def test_marker_like_source_text_survives_positioning_and_cleanup(tmp_path: Path) -> None:
+    epub = _variant(
+        _mini_epub(tmp_path),
+        {
+            "OEBPS/text/ch01.xhtml": '<html><body><h1>Code examples</h1><p>Literal AEPMARK0001 and AEPANCHOR000001 must survive.</p><h2 id="s1">Details</h2></body></html>'
+        },
+    )
+    result = pdfexport.render(epub, tmp_path / "literal.pdf")
+    with pymupdf.open(result.out) as doc:
+        text = "".join(page.get_text() for page in doc)
+        assert "AEPMARK0001" in text
+        assert "AEPANCHOR000001" in text
+        assert "AEPPOS" not in text
+
+
+def _metadata_epub(tmp_path: Path) -> tuple[Path, str]:
+    rights = "版权所有 © 2026 示例出版社。" + "保留所有权利。" * 40
+    metadata = f"""<metadata xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:opf="http://www.idpf.org/2007/opf">
+    <dc:identifier id="uid">urn:isbn:978-7-0000-0000-0</dc:identifier>
+    <dc:title>Ünïcode 书名：测试</dc:title>
+    <dc:creator id="a1">作者甲</dc:creator>
+    <dc:creator id="a2">Author B</dc:creator>
+    <dc:creator id="t1">译者乙</dc:creator>
+    <meta refines="#t1" property="role">trl</meta>
+    <dc:publisher>示例出版社</dc:publisher>
+    <dc:date>2026-10-31</dc:date>
+    <dc:rights>{rights}</dc:rights>
+    <dc:language>zh-CN</dc:language>
+    <dc:subject>印刷</dc:subject>
+    <dc:subject>排版</dc:subject>
+    <dc:description>说明文字</dc:description>
+  </metadata>"""
+    opf = re.sub(r"<metadata.*?</metadata>", metadata, _OPF, flags=re.S)
+    return _variant(_mini_epub(tmp_path), {"OEBPS/content.opf": opf}), rights
+
+
+@pytest.mark.skipif(pdfexport.find_chromium() is None, reason="需要 Chromium/Chrome")
+def test_publication_metadata_maps_unicode_authors_translator_and_full_rights(
+    tmp_path: Path,
+) -> None:
+    epub, rights = _metadata_epub(tmp_path)
+    result = pdfexport.render(epub, tmp_path / "meta.pdf")
+    with pymupdf.open(result.out) as doc:
+        info = doc.metadata
+        xmp = doc.get_xml_metadata()
+        assert info["title"] == "Ünïcode 书名：测试"
+        assert info["author"] == "作者甲; Author B"
+        assert info["keywords"] == "印刷; 排版"
+        assert info["subject"] == "说明文字"
+        assert "20261031" not in info["creationDate"]
+        assert "2026-10-31" in xmp
+        assert "20261031" not in xmp
+        assert "示例出版社" in xmp
+        assert "译者乙" in xmp
+        assert rights in xmp  # 完整权利声明不能被截断
+        assert "Ünïcode" in xmp
+    assert result.metadata["info_readback"]["author"] == "作者甲; Author B"
+    assert result.metadata["xmp_readback"]["rights"] == rights
+    assert result.metadata["xmp_readback"]["translators"] == ["译者乙"]
+    assert result.metadata["xmp_readback"]["publishers"] == ["示例出版社"]
+
+
+@pytest.mark.skipif(pdfexport.find_chromium() is None, reason="需要 Chromium/Chrome")
+def test_empty_publication_fields_do_not_invent_metadata(tmp_path: Path) -> None:
+    result = pdfexport.render(_mini_epub(tmp_path), tmp_path / "empty.pdf")
+    assert result.metadata["source"]["publisher"] == ""
+    assert result.metadata["source"]["rights"] == ""
+    assert result.metadata["xmp_readback"]["publishers"] == []
+    assert result.metadata["xmp_readback"]["rights"] == ""
+    assert result.metadata["info_readback"]["title"] == "测试书"
+    assert result.metadata["generated_at"].endswith("Z")
+
+
+@pytest.mark.skipif(pdfexport.find_chromium() is None, reason="需要 Chromium/Chrome")
+def test_pdf_artifact_manifest_binds_hashes_and_detects_tampering(tmp_path: Path) -> None:
+    epub = _mini_epub(tmp_path)
+    result = pdfexport.render(epub, tmp_path / "bound.pdf")
+    manifest_path = result.out.with_name(result.out.name + ".manifest.json")
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    assert manifest["schema"] == "auto-epublizer/pdf-artifact/v1"
+    assert manifest["epub"]["sha256"] == hashlib.sha256(epub.read_bytes()).hexdigest()
+    assert manifest["pdf"]["sha256"] == hashlib.sha256(result.out.read_bytes()).hexdigest()
+    assert manifest["pdf"]["pages"] == result.pages
+    assert manifest["parameters"]["body_pt"] == 10.5
+    assert manifest["metadata"]["xmp_readback"]["title"] == "测试书"
+    assert pdfexport.verify_pdf_artifact(result.out)["ok"] is True
+
+    result.out.write_bytes(result.out.read_bytes() + b"\n%tampered")
+    verdict = pdfexport.verify_pdf_artifact(result.out)
+    assert verdict["ok"] is False
+    assert any(check["name"] == "pdf_sha256" and not check["ok"] for check in verdict["checks"])
+
+
+def test_missing_or_corrupt_manifest_is_reported_not_crashing(tmp_path: Path) -> None:
+    pdf = tmp_path / "missing.pdf"
+    pdf.write_bytes(b"%PDF-1.7\n")
+    verdict = pdfexport.verify_pdf_artifact(pdf)
+    assert verdict["ok"] is False
+    assert verdict["error"]
+
+
+@pytest.mark.skipif(pdfexport.find_chromium() is None, reason="需要 Chromium/Chrome")
+def test_pdf_and_manifest_stay_outside_epub_report_digest(tmp_path: Path) -> None:
+    source = tmp_path / "book.md"
+    source.write_text("# One\n\nBody.\n", encoding="utf-8")
+    store = orch.init(str(source), workspace_dir=str(tmp_path / "ws"))
+    before = artifacts_digest(store)
+    result = pdfexport.render(_mini_epub(tmp_path), store.output_dir / "book.pdf")
+    assert artifacts_digest(store) == before
+    assert pdfexport.manifest_path(result.out).is_file()
+
+
+@pytest.mark.skipif(pdfexport.find_chromium() is None, reason="需要 Chromium/Chrome")
+def test_cli_pdf_verify_reports_tampered_artifact_with_nonzero_exit(tmp_path: Path) -> None:
+    source = tmp_path / "book.md"
+    source.write_text("# One\n\nBody.\n", encoding="utf-8")
+    store = orch.init(str(source), workspace_dir=str(tmp_path / "ws"))
+    rendered = pdfexport.render(_mini_epub(tmp_path), store.output_dir / "book.pdf")
+    ok = CliRunner().invoke(app, ["pdf-verify", "--pdf", str(rendered.out), "--json"])
+    assert ok.exit_code == 0, ok.output
+    assert json.loads(ok.stdout)["ok"] is True
+    rendered.out.write_bytes(rendered.out.read_bytes() + b"\n%tampered")
+    bad = CliRunner().invoke(app, ["pdf-verify", "--pdf", str(rendered.out), "--json"])
+    assert bad.exit_code == 1
+    assert json.loads(bad.stdout)["ok"] is False
+
+
 # ── D1 容器与资源 ───────────────────────────────────────────────────────
 
 
@@ -151,6 +741,18 @@ def test_opf_located_via_container_not_by_guess(tmp_path: Path) -> None:
     work = _unpack(tmp_path, _mini_epub(tmp_path, opf_name="pkg.opf", decoy=True))
     opf = pdfexport._opf_path(work)
     assert opf.name == "pkg.opf"  # 不是字母序靠前的 decoy.opf
+
+
+def test_container_cannot_read_an_opf_outside_the_extracted_package(tmp_path: Path) -> None:
+    root = tmp_path / "package"
+    (root / "META-INF").mkdir(parents=True)
+    (tmp_path / "outside.opf").write_text(_OPF, encoding="utf-8")
+    (root / "META-INF/container.xml").write_text(
+        '<container xmlns="urn:oasis:names:tc:opendocument:xmlns:container"><rootfiles><rootfile full-path="../outside.opf"/></rootfiles></container>',
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="包文档路径"):
+        pdfexport._opf_path(root)
 
 
 def test_safe_extract_rejects_escape_and_absolute(tmp_path: Path) -> None:
@@ -229,6 +831,7 @@ def test_outline_maps_fragment_inside_section_and_records_unlocated(tmp_path: Pa
         section_pages={1: 1, 2: 2, 3: 4},
         notes=notes,
         cover=True,
+        target_pages={"text/ch01.xhtml#s1": 3},
     )
     assert toc[0] == [1, "封面", 1]
     assert [entry[2] for entry in toc[1:]] == [2, 3, 4]
@@ -236,7 +839,7 @@ def test_outline_maps_fragment_inside_section_and_records_unlocated(tmp_path: Pa
     doc.close()
 
 
-def test_unlocated_fragment_uses_section_start_and_says_so(tmp_path: Path) -> None:
+def test_unlocated_fragment_is_not_guessed_from_section_start(tmp_path: Path) -> None:
     doc = pymupdf.open()
     for _ in range(3):
         page = doc.new_page()
@@ -250,7 +853,7 @@ def test_unlocated_fragment_uses_section_start_and_says_so(tmp_path: Path) -> No
         notes=notes,
         cover=False,
     )
-    assert toc == [[2, "找不到的标题", 2]]
+    assert toc == []
     assert any("未定位" in note for note in notes)
     doc.close()
 

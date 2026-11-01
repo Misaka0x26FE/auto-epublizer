@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
 from typer.testing import CliRunner
 
 from auto_epublizer.cli import app
@@ -44,6 +45,70 @@ def test_status_json_not_corrupted_by_rich_wrapping(tmp_path: Path) -> None:
     result = _invoke("status", "--workspace", str(ws), "--json")
     data = json.loads(result.output)  # 折行会抛 JSONDecodeError
     assert data["next_tasks"]
+
+
+@pytest.mark.parametrize("artifact", ["catalog.csv", "repairs.jsonl"])
+def test_status_json_contract_error_is_structured(tmp_path: Path, artifact: str) -> None:
+    src = tmp_path / "book.md"
+    src.write_text("# One\n\nBody.\n", encoding="utf-8")
+    _invoke("init", str(src), "--workspace", str(tmp_path / "ws"))
+    ws = tmp_path / "ws/book"
+    content = (
+        "item,kind,status,locator,unit_id,note\nX,bad,included,p1,ch01,\n"
+        if artifact == "catalog.csv"
+        else json.dumps(
+            {
+                "unit": "ch01",
+                "kind": "ocr_char",
+                "status": "done",
+                "summary": "修复",
+                "evidence": "missing.png",
+            }
+        )
+        + "\n"
+    )
+    (ws / "preprocessing" / artifact).write_text(content, encoding="utf-8")
+
+    result = runner.invoke(app, ["status", "--json", "--workspace", str(ws)])
+
+    assert result.exit_code != 0
+    error = json.loads(result.stdout)["error"]
+    assert error["code"] == "E_ARTIFACT_CONTRACT"
+    assert error["artifact"] == artifact
+    assert error["line"] == (2 if artifact == "catalog.csv" else 1)
+    assert error["field"] == ("kind" if artifact == "catalog.csv" else "evidence")
+
+
+def test_status_json_missing_workspace_is_structured(tmp_path: Path) -> None:
+    result = runner.invoke(app, ["status", "--json", "--workspace", str(tmp_path)])
+    assert result.exit_code != 0
+    assert json.loads(result.stdout)["error"]["code"] == "E_INPUT"
+
+
+@pytest.mark.parametrize("command", ["build", "qa", "import", "g0"])
+def test_pipeline_json_missing_workspace_is_structured(tmp_path: Path, command: str) -> None:
+    result = runner.invoke(app, [command, "--json", "--workspace", str(tmp_path)])
+    assert result.exit_code != 0
+    assert json.loads(result.stdout)["error"]["code"] == "E_INPUT"
+
+
+def test_pipeline_json_outputs_results_without_text_noise(tmp_path: Path) -> None:
+    src = tmp_path / "book.md"
+    src.write_text("# One\n\nBody.\n", encoding="utf-8")
+    _invoke("init", str(src), "--workspace", str(tmp_path / "ws"))
+    ws = tmp_path / "ws/book"
+
+    built = json.loads(_invoke("build", "--json", "--workspace", str(ws)).stdout)
+    assert Path(built["epub"]).is_file()
+    assert built["fallback_units"] == ["ch01"]
+    imported = json.loads(_invoke("import", "--json", "--workspace", str(ws)).stdout)
+    assert imported["pending"][0]["unit"] == "ch01"
+    checked = json.loads(_invoke("g0", "--json", "--workspace", str(ws)).stdout)
+    assert "checked_units" in checked and "flags" in checked
+    qa = json.loads(_invoke("qa", "--json", "--workspace", str(ws)).stdout)
+    assert qa["released"] == json.loads((ws / "report.json").read_text())["released"]
+    rows = json.loads(_invoke("ledger", "--json", "--workspace", str(tmp_path / "ws")).stdout)
+    assert rows[0]["slug"] == "book"
 
 
 def test_status_json_is_parseable_with_newline_bearing_titles(tmp_path: Path) -> None:

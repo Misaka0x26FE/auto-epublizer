@@ -8,6 +8,12 @@
 `delivery` 三者之一。
 
 **动作**（按顺序，步与步之间重跑 `status --json`）：
+- 封面（进 `build` 之前）：读 `status --json` 的 `cover.effective`
+  - `source` → 有源封面，什么都不做；
+  - `generated` → 生成封面已就绪，直接 build；
+  - `null` → 这本书没有封面：按 `references/cover.md` 判断该不该生成，需要就写
+    `preprocessing/cover-spec.json`（副书名/原文名/署名行，只写有证据的内容）后跑
+    `auto-epublizer cover --workspace <ws>`，再 build。
 - `build`：`auto-epublizer build [--theme standard|compact|spacious]` → EPUB 落 `output/`。
 - `qa`：`auto-epublizer qa` → epubcheck + 解包审计 + 独立登记注释门 + `report.json`。
 - `delivery`：按 `references/delivery.md`（内容/资源/登记/链接/回链独立对账 + 抽样 + 人工核查）执行，写 `reviews/delivery-<ts>.md`，并核对全部分发副本字节。无需桌面：不可用时记「阅读器未实测」；GUI 仅为有条件兼容抽查，不替代离线验收、不承诺弹窗。

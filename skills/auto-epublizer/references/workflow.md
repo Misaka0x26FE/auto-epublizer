@@ -1,4 +1,4 @@
-<!-- i18n: source=workflow.zh.md sha256=e8f4ca2c7344cfa70efcf75793ebc241f33842f8f00eec4878c5757474b85636 -->
+<!-- i18n: source=workflow.zh.md sha256=e7ec4783e66b6f8ec85e07b4728cf8b1476f38226c698f66621164bc48dbbe15 -->
 > **English** | [中文](workflow.zh.md)
 
 # Workflow (stage routing + command overview)
@@ -27,6 +27,14 @@ publication.json present         -> resume: status --json to see the state machi
   has translation/ no reviews/   -> agent writes review artifacts reviews/review-<ts>/
   has output/*.epub              -> already built; qa or rebuild
 ```
+
+### Machine output and exit codes
+
+For `status/build/qa/ledger/import/g0 --json`, stdout contains one JSON value. Predictable input errors return `{"error":{"code":"E_INPUT","message":"…"}}`; artifact contract errors use `E_ARTIFACT_CONTRACT` with `artifact/line/field`, exiting 1. status --all and ledger retain every workspace row: invalid workspaces carry `error` and released=false and cause a nonzero exit rather than being silently filtered out.
+
+- build returns `epub/fallback_units/producer`; ledger returns workspace rows (`-o` writes the same JSON while stdout remains JSON).
+- import retains imported/revalidated/pending/skipped/failed/warnings and adds skipped_details. Nonempty failed exits 1; pending and ordinary idempotent skips are not failures. `terms.status_counts/status_source` describes the persisted analysis/glossary.csv, not a claim that seed terms are confirmed.
+- qa returns report.json fields; g0 returns checked_units/flags. Existing exit semantics remain: 0 means the check ran, **not release approval**. Consumers must inspect qa.released/released_reason or g0.flags[].blocking. Input/execution errors exit nonzero.
 
 ### Machine next-task pointer (weak-model path)
 

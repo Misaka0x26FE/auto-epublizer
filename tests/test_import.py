@@ -61,6 +61,46 @@ def test_import_blocks_on_broken_align(tmp_path: Path) -> None:
     assert store.load_publication().units[0].status == "split"
 
 
+def test_import_completed_changed_products_are_not_silent_success(tmp_path: Path) -> None:
+    store = _workspace(tmp_path)
+    _write_agent_products(store)
+    orch.import_translations(store)
+    orch.build(store)
+    path = store.translation_dir / "body/ch01.md"
+    path.write_text(path.read_text(encoding="utf-8") + "\n未登记的新段落。\n", encoding="utf-8")
+
+    result = orch.import_translations(store)
+
+    assert result["failed"][0]["unit"] == "ch01"
+    assert "E_STATE_DRIFT" in result["failed"][0]["errors"][0]
+    assert result["skipped"] == []
+    assert any(s["reason"] == "content_changed_since_import" for s in orch.status(store)["stale"])
+    from typer.testing import CliRunner
+
+    from auto_epublizer.cli import app
+
+    cli = CliRunner().invoke(app, ["import", "--workspace", str(store.dir)])
+    assert cli.exit_code != 0
+    assert "E_STATE_DRIFT" in cli.output
+    forced = orch.import_translations(store, force=True)
+    assert forced["failed"]
+    assert store.load_publication().unit("ch01").status == "aligned"
+
+
+def test_import_completed_unchanged_reports_specific_skip(tmp_path: Path) -> None:
+    store = _workspace(tmp_path)
+    _write_agent_products(store)
+    orch.import_translations(store)
+    orch.build(store)
+
+    result = orch.import_translations(store)
+
+    assert result["failed"] == []
+    assert result["skipped"] == ["ch01"]
+    assert result["skipped_details"][0]["reason"] == "already_built"
+    assert "--force" in result["skipped_details"][0]["next"]
+
+
 def test_import_reports_untranslated_as_pending(tmp_path: Path) -> None:
     """回归 #8：未译单元记入 `pending`（待译），不再计为 failed。
 
@@ -136,7 +176,13 @@ def test_import_terms_option_proposes_new_entries(tmp_path: Path) -> None:
         "source,target,type,aliases,gender,reading,status,note\ncriticize,批评,term,,,,seed,\n",
         encoding="utf-8",
     )
-    orch.import_translations(store, terms_path=str(terms_file))
+    result = orch.import_translations(store, terms_path=str(terms_file))
+    assert result["terms"]["status_counts"] == {
+        "seed": 1,
+        "candidate": 0,
+        "conflict": 0,
+        "confirmed": 0,
+    }
     content = (store.analysis_dir / "glossary.csv").read_text(encoding="utf-8")
     assert "criticize" in content and "批评" in content
 

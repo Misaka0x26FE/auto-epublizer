@@ -57,6 +57,8 @@ CLI 无法探测），据此选 ingest 路由（见 `references/ingest.md`）。
 |---|---|
 | 首次使用 / 安全续用（必须先于 version/doctor） | `references/work-root.md` |
 | 全新任务 / 状态路由 / 多阶段请求 / 命令总览 | `references/workflow.md` |
+| `status/build/qa/ledger/import/g0 --json`、错误字段与退出码 | `references/workflow.md` |
+| 印刷 PDF 封面/图版/宽表、字号与溢出诊断、`pdf --strict --json` | `references/build.md` |
 | 弱模型路径：机器「下一任务」指针（`status --json`）+ 原子任务卡 | `references/taskcards/` |
 | 长期多书：工作根生成、批次 SHA256 交付、台账人工列保留、断链/忽略对账工具 | `references/work-root.md` |
 | 预处理：读 facts → 撰写 todo/capabilities/plan/global/units/terms/risks/report | `references/preprocessing.md` |
@@ -70,6 +72,7 @@ CLI 无法探测），据此选 ingest 路由（见 `references/ingest.md`）。
 | 交付前全量校验（qa 之后、交付之前，强制） | `references/delivery.zh.md` |
 | `evidence report/source --json` 只读证据；`repair apply/recover` 批准修复及未决恢复 | `references/quality-evidence.zh.md` |
 | EPUB 封装、代码/raw HTML、SVG/媒体身份、软件指纹、制作页署名与 nav/NCX 入口 | `references/build.md` |
+| 无源封面的书：生成式封面（Magadan 版式）、`cover-spec.json` 设计稿、色板/开本、字体降级、源封面优先 | `references/cover.md` |
 | epubcheck + 解包审计、正文/注文独立对账、注释分段疑点 advisory、报告失效 | `references/qa.md` |
 | 文体档案（novel/academic/paper/poetry/newspaper）应用 | `references/style.md` |
 | 放行条件全集 / 错误码速查 / 排障判读 | `references/invariants.md` |

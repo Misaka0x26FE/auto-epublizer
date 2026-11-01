@@ -1,4 +1,4 @@
-<!-- i18n: source=build-qa-delivery.zh.md sha256=b9c189ba24e8e4b9e6a923b02dcde45191101111770d6dad70d67c7c8ad3f050 -->
+<!-- i18n: source=build-qa-delivery.zh.md sha256=160541c893d1cb5874fbeab0028f02db4f3c2f4e34eeadd92df2d4f50305440a -->
 > **English** | [中文](build-qa-delivery.zh.md)
 
 # Task card: build / qa / delivery
@@ -9,6 +9,12 @@ Stage reference: `references/build.md`, `references/qa.md`, `references/delivery
 `build`, `qa`, `delivery`.
 
 **Action** (in order, re-running `status --json` between steps):
+- Cover (before `build`): read `cover.effective` from `status --json`
+  - `source` → a source cover exists, do nothing;
+  - `generated` → the generated cover is ready, just build;
+  - `null` → this book has no cover: follow `references/cover.md` to decide, write
+    `preprocessing/cover-spec.json` when you have evidence for subtitle/original
+    title/credits, run `auto-epublizer cover --workspace <ws>`, then build.
 - `build`: `auto-epublizer build [--theme standard|compact|spacious]` → EPUB in `output/`.
 - `qa`: `auto-epublizer qa` → epubcheck + unpack audit + independent registered-notes gate + `report.json`.
 - `delivery`: follow `references/delivery.md` (independent content/resource/registration/link/backlink reconciliation + sampling + manual checks), write `reviews/delivery-<ts>.md`, and byte-check every distribution copy. A desktop is not required: record "reader not tested" when unavailable; reader GUI checks are conditional compatibility sampling and do not replace offline acceptance or promise popups.

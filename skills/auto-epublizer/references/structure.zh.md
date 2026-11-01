@@ -56,8 +56,7 @@ structured/
 
 ## 单元边界重建（restructure 登记）
 
-修复/重切导致**单元集合变化**（拆分、合并、新增、删除）时，内容级修改无需登记
-（build/provenance 直接读 `structured/`），但边界级变更必须登记，否则
+修复/重切导致**单元集合变化**（拆分、合并、新增、删除），或修改已完成单元的源正文时，应重新登记结构与内容摘要，否则
 `publication.json.units` 与磁盘脱节：
 
 1. 按真实章节手动重写 `structured/`（每个单元一个 md，首行 `# 标题`）；
@@ -67,13 +66,28 @@ structured/
    ——献词页等前置噪声页用它从正文目录里排除（仍在阅读顺序中）；
 3. 运行 `auto-epublizer restructure`：校验（文件在、无孤儿 md、无重复 id）后更新
    `publication.json.units`；
-4. 状态语义：同 id 且内容未变 → 保留状态；有变 → 回退 `split`（需重译重 import）；
+4. 状态语义：同 id 且结构字段与已登记的正文 SHA-256 均未变 → 保留状态；有变 → 回退 `split`（需重译重 import）；
+   旧工作区缺正文摘要时不推断历史完成态，首次 `restructure` 回退到 `split` 并登记当前基线；重复登记未变内容不会再次回退。
    消失的 id → 输出孤儿产物提示（旧 translation/align 可清理）。
 
 > 何时用：MinerU/OCR 层级混乱需重切、碎片单元合并、单单元丢 nav 需拆分。
 > 详见 `references/repair.md` 与 `docs/semantic-repair.md` §3.3。
 
 ## 说明
+
+### 源清点 catalog.csv
+
+列为 `item,kind,status,locator,unit_id,note`。kind 可取 toc/figure/table/footnote/section/physical/blank；figure 包含地图和整页图，输入 image 会规范化为 figure。blank 是内容类型，不是处置状态；OCR 没有文字不足以确认空白，仍需回看源页图。
+
+| status（适用于各 kind） | 必填约束 | 放行语义 |
+|---|---|---|
+| included | unit_id 绑定真实单元 | 内容已纳入 |
+| physical | 保留定位，物理载体记录 | 不自动作为未决 |
+| excluded | note 说明排除理由 | 不自动作为未决 |
+| absent | note 说明源件本身缺失依据 | 不自动作为未决 |
+| unresolved | 待核证，不以猜测补齐 | 阻断放行 |
+
+blank 的 locator 始终必填；除 unresolved 外还须 note 记录核证依据。`repairs.jsonl.evidence` 必须为存在的工作区相对文件路径（如 `structured/body/ch01.md`），路径或符号链接越出工作区均报错。
 
 分栏阅读顺序、复杂表格保形、脚注/尾注专项提取是复杂 PDF 场景，当前为后续扩展点；
 基础四层归类 + 页眉页脚/页码剔除已实现。

@@ -11,6 +11,7 @@ import zipfile
 from collections import Counter
 from collections.abc import Mapping
 from dataclasses import dataclass, field
+from html import unescape
 from html.parser import HTMLParser
 from pathlib import Path
 
@@ -302,6 +303,158 @@ def _dollar_delimiter_candidates(result: AuditResult, name: str, content: str) -
         result.add("warning", "W_RESIDUE", f"成品含未转换的数学定界符 $$（候选）：{name}")
     elif _DOLLAR_LINE_RE.search(text):
         result.add("warning", "W_RESIDUE", f"成品含成行的裸 $ 定界符（候选）：{name}")
+
+
+#: 混用中英文句号的候选（issue #83 P6）：两侧标点并存几乎总是转写/OCR 残留，
+#: 但在代码、引文里可能是被引原文，故只报候选，不自动替换。
+_MIXED_STOP_RE = re.compile(r"。\s*\.|\.\s*。")
+
+_PUNCT_BLOCKS = {"p", "li", "dd", "td", "th", "figcaption"}
+_PUNCT_EXCLUDED = {"pre", "code", "script", "style", "head", "blockquote"}
+
+
+class _PunctuationBlocks(HTMLParser):
+    """按最外层可见块收集正文；代码/引文整段排除，注文记最近 aside id。"""
+
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self.stack: list[tuple[str, bool, str]] = []
+        self.blocks: list[dict[str, object]] = []
+        self.buffer: list[str] | None = None
+        self.block_tag = ""
+        self.block_id = ""
+        self.note_id: str | None = None
+        self.index = 0
+
+    def _excluded(self) -> bool:
+        return bool(self.stack and self.stack[-1][1])
+
+    def _nearest_note(self) -> str | None:
+        for tag, _excluded, identity in reversed(self.stack):
+            if tag == "aside" and identity:
+                return identity
+        return None
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        values = dict(attrs)
+        identity = values.get("id") or values.get("xml:id") or ""
+        excluded = self._excluded() or tag in _PUNCT_EXCLUDED
+        self.stack.append((tag, excluded, identity))
+        if tag in _PUNCT_BLOCKS and not excluded and self.buffer is None:
+            self.index += 1
+            self.block_tag = tag
+            self.block_id = identity
+            self.note_id = self._nearest_note()
+            self.buffer = []
+
+    def handle_startendtag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        self.handle_starttag(tag, attrs)
+        if tag not in _PUNCT_BLOCKS:
+            self.handle_endtag(tag)
+        else:
+            self.handle_data(" ")
+
+    def handle_data(self, data: str) -> None:
+        if self.buffer is not None and not self._excluded():
+            self.buffer.append(data)
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag == self.block_tag and self.buffer is not None:
+            text = "".join(self.buffer).strip()
+            if text:
+                self.blocks.append(
+                    {
+                        "index": self.index,
+                        "text": text,
+                        "id": self.block_id,
+                        "note_id": self.note_id,
+                    }
+                )
+            self.buffer = None
+            self.block_tag = ""
+        for position in range(len(self.stack) - 1, -1, -1):
+            if self.stack[position][0] == tag:
+                del self.stack[position:]
+                break
+
+
+def _alignment_range(text: str, align: object) -> tuple[int | None, int | None]:
+    """用真实 align 译文行定位段落覆盖的 seq 区间；无证据返回 unknown。"""
+    if not isinstance(align, list):
+        return None, None
+    normalized = re.sub(r"\s+", "", text)
+    hits: list[int] = []
+    for row in align:
+        if not isinstance(row, dict):
+            continue
+        seq = row.get("seq")
+        target = re.sub(r"\s+", "", str(row.get("tgt") or ""))
+        if isinstance(seq, int) and len(target) >= 6 and target in normalized:
+            hits.append(seq)
+    if not hits:
+        return None, None
+    hits = sorted(set(hits))
+    if hits != list(range(hits[0], hits[-1] + 1)):
+        return hits[0], None
+    return hits[0], hits[-1]
+
+
+def _punctuation_candidates(
+    result: AuditResult, name: str, content: str, context: Mapping[str, str] | None
+) -> None:
+    """报 ``。.`` 混用候选；代码/引文不作正文证据，不静默改写成品。"""
+    parser = _PunctuationBlocks()
+    parser.feed(content)
+    parser.close()
+    unit = str((context or {}).get("unit") or "")
+    for block in parser.blocks:
+        text = str(block["text"])
+        match = _MIXED_STOP_RE.search(text)
+        if not match:
+            continue
+        start, end = max(0, match.start() - 20), min(len(text), match.end() + 20)
+        seq, seq_end = _alignment_range(text, (context or {}).get("align"))
+        data = {
+            "document": name,
+            "unit": unit or None,
+            "seq": seq,
+            "seq_end": seq_end,
+            "note_id": block["note_id"] or block["id"] or None,
+            "block": block["index"],
+            "match": match.group(0),
+            "context": text[start:end],
+            "seq_basis": "align_tgt" if seq is not None else "unknown",
+            "advice": "回源核证后人工统一句号；build 不自动替换",
+        }
+        where = f"unit={unit or 'unknown'} seq={seq if seq is not None else 'unknown'}"
+        if block["note_id"]:
+            where += f" note_id={block['note_id']}"
+        result.add(
+            "warning",
+            "W_PUNCT_MIXED",
+            f"疑似中英文句号混用（{match.group(0)}；{where}）：…{text[start:end]}…：{name}",
+            data=data,
+        )
+        if len([f for f in result.findings if f.code == "W_PUNCT_MIXED"]) >= 100:
+            return
+
+
+def _heading_entries(content: str) -> list[dict[str, object]]:
+    entries: list[dict[str, object]] = []
+    for match in re.finditer(
+        r"<h([1-6])\b([^>]*)>(.*?)</h\1\s*>", content, re.DOTALL | re.IGNORECASE
+    ):
+        attrs, inner = match.group(2), match.group(3)
+        anchor = re.search(r'\bid\s*=\s*"([^"]+)"', attrs, re.IGNORECASE)
+        entries.append(
+            {
+                "level": int(match.group(1)),
+                "text": unescape(_HTML_TAG_RE.sub("", inner)).strip(),
+                "anchor": anchor.group(1) if anchor else None,
+                "line": content.count("\n", 0, match.start()) + 1,
+            }
+        )
+    return entries
 
 
 def _layout_candidates(result: AuditResult, name: str, content: str) -> None:
@@ -678,16 +831,36 @@ def audit_epub(
         elif cover_meta and cover_meta.group(1) not in manifest_ids:
             result.add("error", "E_COVER_META", f"cover meta 指向未知条目：{cover_meta.group(1)}")
 
-        # 8. 标题跳级（postprocessing-spec P2）：h1→h3 等跳级
+        # 8. 标题跳级（postprocessing-spec P2）：h1→h3 等跳级；附文件/标题/锚点/行号证据
         for name in names:
             if not name.endswith(".xhtml") or name.endswith(("nav.xhtml", "landmarks.xhtml")):
                 continue
             content = zf.read(name).decode("utf-8")
-            levels = [int(m) for m in re.findall(r"<h([1-6])\b", content, re.IGNORECASE)]
-            for prev, cur in zip(levels, levels[1:], strict=False):
-                if cur > prev + 1:
-                    result.add("error", "E_HEADING_SKIP", f"标题跳级 h{prev}→h{cur}：{name}")
-                    break
+            headings = _heading_entries(content)
+            for previous, current in zip(headings, headings[1:], strict=False):
+                prev, cur = int(previous["level"]), int(current["level"])
+                if cur <= prev + 1:
+                    continue
+                detail = str(current["text"] or "").strip()
+                anchor = current["anchor"]
+                suffix = f"，#{anchor}" if anchor else "（无 id 锚点）"
+                result.add(
+                    "error",
+                    "E_HEADING_SKIP",
+                    f"标题跳级 h{prev}→h{cur}：{name}（{detail}{suffix}，"
+                    f"XHTML 第 {current['line']} 行）",
+                    data={
+                        "file": name,
+                        "from": prev,
+                        "to": cur,
+                        "heading": detail,
+                        "anchor": anchor,
+                        "line": current["line"],
+                        "line_scope": "xhtml",
+                        "advice": "核实层级后提升下级标题或补中间标题；不自动改稿",
+                    },
+                )
+                break
 
         # 9. 残留检查（postprocessing-spec P2）：HTML 注释=error；markdown/pandoc 标记=warning
         for name in names:
@@ -710,7 +883,14 @@ def audit_epub(
         for name in names:
             if not name.endswith(".xhtml") or name.endswith(("nav.xhtml", "landmarks.xhtml")):
                 continue
-            _layout_candidates(result, name, zf.read(name).decode("utf-8"))
+            content = zf.read(name).decode("utf-8")
+            _layout_candidates(result, name, content)
+            _punctuation_candidates(
+                result,
+                name,
+                content,
+                (notes_context or {}).get(name),
+            )
 
         # 9c. 图注判据（T12-4）：alt / figcaption 不得是**文件名**或**占位词**
         img_refs: dict[str, list[tuple[str, str]]] = {}

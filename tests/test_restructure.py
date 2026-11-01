@@ -79,6 +79,35 @@ def test_restructure_changed_resets_and_added(tmp_path: Path) -> None:
     assert pub.unit("ch03").status == "split"
 
 
+def test_restructure_body_change_resets_built_and_is_idempotent(tmp_path: Path) -> None:
+    store = _workspace(tmp_path)
+    store.set_unit_status("ch01", "built")
+    _write_csv(store, _rows(store))
+    path = store.structured_dir / "body/ch01.md"
+    path.write_text("# One\n\nChanged source body.\n", encoding="utf-8")
+
+    result = orch.restructure(store)
+
+    assert result["reset"] == ["ch01"]
+    assert store.load_publication().unit("ch01").status == "split"
+    assert orch.restructure(store)["reset"] == []
+
+
+def test_restructure_legacy_completed_unit_requires_revalidation(tmp_path: Path) -> None:
+    store = _workspace(tmp_path)
+    pub = store.load_publication()
+    unit = pub.unit("ch01")
+    unit.status = "built"
+    unit.meta.pop("structured_sha256", None)
+    store.save_publication(pub)
+    _write_csv(store, _rows(store))
+
+    result = orch.restructure(store)
+
+    assert "ch01" in result["reset"]
+    assert store.load_publication().unit("ch01").status == "split"
+
+
 def test_restructure_removed_unit(tmp_path: Path) -> None:
     store = _workspace(tmp_path)
     (store.structured_dir / "body" / "ch02.md").unlink()

@@ -73,6 +73,8 @@ clean 不会关闭全书的未结问题**，多份旧格式也不能相加或只
 }
 ```
 
+`parent_reviews` 不得包含自身 review_id。自引用、缺父、父记录次序错误和环分别给出 `E_REVIEW_PARENT_SELF`、`E_REVIEW_PARENT_MISSING`、`E_REVIEW_PARENT_ORDER`、`E_REVIEW_CYCLE`；重复 id 为 `E_REVIEW_ID_DUPLICATE`。`qa --json` 的 `review_findings` 与 `status --json` 的 `review.findings` 保留 review_id、parent_review 与结果文件路径，文本 qa 也输出诊断。旧的 review_inconsistent 原因列表仍保留。`import --reviewed` 只登记单元通过校验后的状态推进，不代替 qa 的全局血缘验收。
+
 规则（全部保守）：无 `parent_reviews` 的记录是独立根，不能结别人的问题；覆盖某单元
 却没处置继承未结项 → `unknown`；结案必须给 `closed_by` + `evidence`；`g3_patched`
 大于逐项结案数是虚增；缺父/成环/父记录不在更早目录/`inputs_digest` 不符 → 不一致，

@@ -612,6 +612,79 @@ def test_audit_heading_skip_residue_anchor(tmp_path: Path) -> None:
     assert "E_RESIDUE" in codes  # HTML 注释
     assert "E_ANCHOR" in codes
     assert not result.ok
+    finding = next(f for f in result.findings if f.code == "E_HEADING_SKIP")
+    assert finding.data is not None
+    assert finding.data["file"].endswith("front-preface.xhtml")
+    assert finding.data["heading"] == "跳级"
+    assert finding.data["anchor"] is None
+    assert finding.data["from"] == 1 and finding.data["to"] == 3
+    assert finding.data["line_scope"] == "xhtml" and int(finding.data["line"]) >= 1
+    assert "跳级" in finding.message and "XHTML 第" in finding.message
+
+
+def test_heading_skip_reports_anchor_and_xhtml_line_without_inventing_source_line(
+    tmp_path: Path,
+) -> None:
+    epub = _make_epub(tmp_path)
+    content = '<html><body><h1 id="top">标题</h1>\n<h3 id="deep">深层标题</h3></body></html>'
+    patched = _replace_member(epub, "OEBPS/front-preface.xhtml", content)
+    result = audit_epub(patched)
+    finding = next(f for f in result.findings if f.code == "E_HEADING_SKIP")
+    assert finding.data["anchor"] == "deep"
+    assert finding.data["line"] == 2
+    assert finding.data["line_scope"] == "xhtml"
+    assert "source_line" not in finding.data
+    assert "深层标题" in finding.message and "#deep" in finding.message
+
+
+def _replace_member(epub: Path, member: str, text: str) -> Path:
+    target = epub.with_name("patched.epub")
+    with zipfile.ZipFile(epub) as zin, zipfile.ZipFile(target, "w") as zout:
+        for item in zin.infolist():
+            data = text.encode("utf-8") if item.filename == member else zin.read(item.filename)
+            zout.writestr(item, data)
+    return target
+
+
+def test_punctuation_candidates_cover_body_notes_and_exclude_code_and_quotes(
+    tmp_path: Path,
+) -> None:
+    epub = _make_epub(tmp_path)
+    content = (
+        '<?xml version="1.0" encoding="utf-8"?>'
+        '<html xmlns="http://www.w3.org/1999/xhtml" lang="zh-CN"><head><title>前言</title></head><body>'
+        '<h1 id="top">前言</h1>'
+        "<p>第一段内容需要被定位。.</p>"
+        "<pre>代码。.</pre>"
+        "<blockquote><p>引文。.</p></blockquote>"
+        '<aside id="fn-1"><p>注文。.</p></aside>'
+        "<p>第二段。.</p>"
+        "</body></html>"
+    )
+    patched = _replace_member(epub, "OEBPS/front-preface.xhtml", content)
+    result = audit_epub(
+        patched,
+        notes_context={
+            "OEBPS/front-preface.xhtml": {
+                "unit": "front-preface",
+                "kind": "body",
+                "align": [{"seq": 3, "tgt": "第一段内容需要被定位。."}],
+            }
+        },
+    )
+    candidates = [f for f in result.findings if f.code == "W_PUNCT_MIXED"]
+    contexts = [str(f.data["context"]) for f in candidates]
+    assert any("第一段内容" in text for text in contexts)
+    assert any("注文" in text for text in contexts)
+    assert all("代码" not in text and "引文" not in text for text in contexts)
+    body = next(f for f in candidates if "第一段内容" in str(f.data["context"]))
+    assert body.data["unit"] == "front-preface"
+    assert body.data["seq"] == 3 and body.data["seq_basis"] == "align_tgt"
+    assert body.data["note_id"] is None
+    note = next(f for f in candidates if "注文" in str(f.data["context"]))
+    assert note.data["note_id"] == "fn-1"
+    assert note.data["seq"] is None and note.data["seq_basis"] == "unknown"
+    assert all(f.level == "warning" for f in candidates)
 
 
 def test_audit_asterisk_note_symbols_not_residue(tmp_path: Path) -> None:

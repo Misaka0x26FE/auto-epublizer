@@ -7,7 +7,7 @@ metadata:
   suite: auto-epublizer
   workspace_model: publication.json
 ---
-<!-- i18n: source=SKILL.zh.md sha256=f7373240bf62278017ef3d282574aae98182b17556e5a5dcbf836ff05ec1a017 -->
+<!-- i18n: source=SKILL.zh.md sha256=424c776fb771d19d038f79198172aeae59d137a207bd9c481b999fdad844fb7a -->
 > **English** | [中文](SKILL.zh.md)
 
 # auto-epublizer
@@ -70,6 +70,8 @@ work-root rather than accidentally calling a global namesake. Read only the curr
 |---|---|
 | First use / safe reuse (mandatory before version/doctor) | `references/work-root.md` |
 | Fresh task / state routing / multi-stage request / command overview | `references/workflow.md` |
+| `status/build/qa/ledger/import/g0 --json`, error fields and exit codes | `references/workflow.md` |
+| Print PDF covers/plates/wide tables, font and overflow diagnostics, `pdf --strict --json` | `references/build.md` |
 | Weak-model path: machine next-task pointer (`status --json`) + atomic task cards | `references/taskcards/` |
 | Long-running work root, batch SHA256 delivery, retained ledger manual cells, link/ignore guards | `references/work-root.md` |
 | Preprocessing: read facts → write todo/capabilities/plan/global/units/terms/risks/report | `references/preprocessing.md` |
@@ -83,6 +85,7 @@ work-root rather than accidentally calling a global namesake. Read only the curr
 | Pre-delivery full validation (after qa, before delivery; mandatory) | `references/delivery.md` |
 | `evidence report/source --json` read-only evidence; `repair apply/recover` approved repairs and pending recovery | `references/quality-evidence.md` |
 | EPUB packaging, code/raw HTML, SVG/media identity, software fingerprint, production credits and nav/NCX entry | `references/build.md` |
+| Books without a source cover: generated cover (Magadan layout), `cover-spec.json` design sheet, palettes/trim sizes, font fallback, source cover wins | `references/cover.md` |
 | epubcheck + unpack audit, independent body/note reconciliation, segmentation advisory, report invalidation | `references/qa.md` |
 | Genre profile (novel/academic/paper/poetry/newspaper) application | `references/style.md` |
 | Complete release-conditions set / error-code quick reference / troubleshooting interpretation | `references/invariants.md` |

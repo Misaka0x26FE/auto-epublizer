@@ -85,7 +85,43 @@ def test_language_exemption_downgrades_to_advisory() -> None:
     )
     exempt = [f for f in flags if f.check == "language_exempt"]
     assert exempt and exempt[0].blocking is False
+    assert exempt[0].data["seq"] == 1
+    assert "按体例保留原文" in exempt[0].message
     assert not [f for f in flags if f.check == "language"]
+
+
+def test_bibliography_exemption_is_block_scoped_and_copied_body_still_blocks() -> None:
+    import re
+
+    bibliography = "Müller, Hans. Die Lehre vom Text. Berlin: Verlag, 1992."
+    body = "This copied body sentence must still be translated in the same unit."
+    rows = [
+        {"seq": 1, "src": bibliography, "tgt": bibliography, "note": None},
+        {"seq": 2, "src": body, "tgt": body, "note": None},
+    ]
+    flags = g0_unit_flags(
+        rows,
+        Glossary(),
+        language_exempt=[(re.compile(r"^Müller, Hans\."), "§5 文献著录体例：保留原文")],
+    )
+    exempt = [f for f in flags if f.check == "language_exempt"]
+    blocking = [f for f in flags if f.check == "language"]
+    assert len(exempt) == 1 and exempt[0].data["seq"] == 1
+    assert len(blocking) == 1 and blocking[0].data["seq"] == 2
+    assert blocking[0].blocking is True
+
+
+def test_empty_translation_is_not_exempted_by_bibliography_pattern() -> None:
+    import re
+
+    flags = g0_unit_flags(
+        _rows("Müller, Hans. Die Lehre vom Text. Berlin: Verlag, 1992.", ""),
+        Glossary(),
+        language_exempt=[(re.compile(r"^Müller, Hans\."), "§5 文献著录体例：保留原文")],
+    )
+    empty = [f for f in flags if f.check == "length" and "为空" in f.message]
+    assert empty and empty[0].blocking is True
+    assert not [f for f in flags if f.check == "language_exempt"]
 
 
 def test_style_exemptions_contract(tmp_path: Path) -> None:

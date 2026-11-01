@@ -1,4 +1,4 @@
-<!-- i18n: source=review.zh.md sha256=88b3ba64d9c46524d5b37ab3112cae908dc957efcd7ab165964c04a3ff8dc68b -->
+<!-- i18n: source=review.zh.md sha256=a75c7b8888cbd24b3923bd8f5de21913d30d807a9b65db2e7690e1a535442099 -->
 > **English** | [中文](review.zh.md)
 
 # Review (six-gate QC operational guide)
@@ -78,6 +78,8 @@ the v2 contract in `result.json`:
   "termination": "clean_confirmed", "rounds": 2
 }
 ```
+
+`parent_reviews` must not contain its own review_id. Self-reference, missing parents, parent order errors and cycles produce `E_REVIEW_PARENT_SELF`, `E_REVIEW_PARENT_MISSING`, `E_REVIEW_PARENT_ORDER` and `E_REVIEW_CYCLE`; duplicate ids produce `E_REVIEW_ID_DUPLICATE`. `qa --json` exposes `review_findings`, while `status --json` exposes `review.findings`, retaining review_id, parent_review and the result file path. Text qa also prints these diagnostics. The existing review_inconsistent reason list is retained. `import --reviewed` registers state advancement after unit validation; it does not replace qa's global lineage acceptance.
 
 Rules (all conservative): a record without `parent_reviews` is an independent root and
 cannot close someone else's issues; a record that covers a unit but does not dispose the

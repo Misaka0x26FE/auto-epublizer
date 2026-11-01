@@ -223,7 +223,28 @@ class ReviewLedger:
     review_id: str | None = None
     issues: list[LedgerIssue] = field(default_factory=list)
     inconsistent: list[str] = field(default_factory=list)
+    findings: list[dict[str, Any]] = field(default_factory=list)
     legacy_unknown: bool = False
+
+    def add_inconsistency(
+        self,
+        reason: str,
+        code: str,
+        review_id: str,
+        *,
+        parent: str | None = None,
+    ) -> None:
+        """保留旧原因协议，并在检测点记录可定位的结构化诊断。"""
+        self.inconsistent.append(reason)
+        self.findings.append(
+            {
+                "code": code,
+                "review_id": review_id,
+                "parent_review": parent,
+                "path": f"reviews/{review_id}/result.json",
+                "message": reason,
+            }
+        )
 
     @property
     def open(self) -> int:
@@ -252,6 +273,7 @@ class ReviewLedger:
             "unknown": self.unknown,
             "closed": self.closed,
             "inconsistent": list(self.inconsistent),
+            "findings": list(self.findings),
             "blocking": self.blocking,
             "issues": [issue.to_dict() for issue in self.issues],
         }
@@ -280,7 +302,9 @@ def build_ledger(records: list[ReviewRecord]) -> ReviewLedger:
     by_id: dict[str, ReviewRecord] = {}
     for record in ordered:
         if record.review_id in by_id:
-            ledger.inconsistent.append(f"duplicate_review_id:{record.review_id}")
+            ledger.add_inconsistency(
+                f"duplicate_review_id:{record.review_id}", "E_REVIEW_ID_DUPLICATE", record.review_id
+            )
             continue
         by_id[record.review_id] = record
     v2_records = [r for r in ordered if not r.legacy]
@@ -291,16 +315,33 @@ def build_ledger(records: list[ReviewRecord]) -> ReviewLedger:
     position = {record.review_id: index for index, record in enumerate(ordered)}
     for record in ordered:
         for parent in record.parent_reviews:
+            if parent == record.review_id:
+                ledger.add_inconsistency(
+                    f"parent_self:{record.review_id}",
+                    "E_REVIEW_PARENT_SELF",
+                    record.review_id,
+                    parent=parent,
+                )
             if parent not in by_id:
-                ledger.inconsistent.append(f"missing_parent:{record.review_id}:{parent}")
+                ledger.add_inconsistency(
+                    f"missing_parent:{record.review_id}:{parent}",
+                    "E_REVIEW_PARENT_MISSING",
+                    record.review_id,
+                    parent=parent,
+                )
             elif position[parent] > position[record.review_id]:
-                ledger.inconsistent.append(f"parent_not_earlier:{record.review_id}:{parent}")
+                ledger.add_inconsistency(
+                    f"parent_not_earlier:{record.review_id}:{parent}",
+                    "E_REVIEW_PARENT_ORDER",
+                    record.review_id,
+                    parent=parent,
+                )
     state_colors: dict[str, int] = {}
 
     def visit(node: str) -> None:
         color = state_colors.get(node, 0)
         if color == 1:
-            ledger.inconsistent.append(f"review_cycle:{node}")
+            ledger.add_inconsistency(f"review_cycle:{node}", "E_REVIEW_CYCLE", node)
             return
         if color == 2:
             return

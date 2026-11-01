@@ -116,6 +116,16 @@ PDF ingest 会产出三类非纯文本段（来源见 `references/ingest.md`；�
   `pattern` 是正则（空 = 整单元），`style_ref` 指向该书 `analysis/style.md` 的体例条目，
   `reason` 写回核证理由。命中输出为 `language_exempt`（`blocking=false`），
   在 import 告警、独立 `g0` 与 QA 的 `g0_flags` 三处可见；未豁免的同类行仍阻断。
+  示例（只豁免著录块，不豁免同章复制正文）：
+
+  ```csv
+  unit,pattern,style_ref,reason
+  ch07,^Müller, Hans\.,§5,§5 文献著录体例：按体例保留德文书目
+  ```
+
+  同一单元里 `This copied body sentence…` 仍报 blocking `language`；空译文始终阻断，
+  不会被体例正则豁免。`language_exempt` 的 `data` 带命中 `seq` 与源句 `head` 作为
+  块级证据，改稿或改体例后报告摘要失效。
   `style_ref` 必须非空，且能定位现存 `analysis/style.md` 的条目（例如 `§5` 对应 `## 5.`）；
   依据和 CSV 改动均使报告过期。不得以整单元豁免覆盖用户明确要求中文化的索引。
   内嵌脚注标记不豁免正文；非 ASCII 字母同样检查；代码字面量不作为待译正文，
@@ -142,3 +152,5 @@ PDF ingest 会产出三类非纯文本段（来源见 `references/ingest.md`；�
 单元：`split → analyzed → translated → aligned → reviewed → built`。`import` 把完成单元
 置为 `aligned`；重复 import 无害（幂等）。审校通过后 `import --reviewed` 可在同次调用中把新验证通过的单元推进为
 `reviewed`（幂等）；`reviewed`/`built` 单元通常跳过重导；强制重验失败不得再提升为 reviewed。
+
+成功导入后 CLI 登记 structured/translation/align 的字节摘要。已完成单元若字节变化，普通 import 报 `E_STATE_DRIFT`，而非静默跳过；`status --json` 的单元 `content_state` 为 `current/changed/unknown`，并给出当前 `content_digests`。源正文变化先核证并 `restructure`；仅译文/align 修订用 `import --unit ID --force` 重校验。旧工作区无导入摘要时标为 unknown，跳过详情提示显式重验；未变单元仍幂等跳过。`--force` 只校验已写入的 translation/align，不负责从 `.work` 等自建中间文件组装译稿。

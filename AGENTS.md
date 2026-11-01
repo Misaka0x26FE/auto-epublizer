@@ -1,4 +1,4 @@
-<!-- i18n: source=AGENTS.zh.md sha256=5388bbd618e5b8c154580f0ed3df584e4b06d3d90869f98b2f2aab1b6e7cd231 -->
+<!-- i18n: source=AGENTS.zh.md sha256=371e584f04f878e09b5bb3962f99898226691a5dbee9b63f201b82ade81c7e62 -->
 > **English** | [中文](AGENTS.zh.md)
 
 # auto-epublizer repository guide (for coding agents developing/maintaining this project)
@@ -134,6 +134,11 @@ auto-epublizer evidence report   # read-only redo of product/external-source/cop
 # Scanned cover: cover_candidates from evidence source --json are candidates only; the agent
 # verifies and writes preprocessing/cover.json ({"file": "structured/raw/media/…", "evidence": "…"}),
 # and only then does build register cover-image — the first page image is never assumed to be the cover
+# 3.6 Generated cover (only when there is really no source cover; see references/cover.md):
+#     run `auto-epublizer cover` once; it writes structured/raw/media/cover-generated.png and
+#     registers preprocessing/cover-generated.json (design digest + fonts + text). build then
+#     publishes it as cover-image. Build never invents a cover without that registration; a
+#     confirmed cover.json always wins; incidental metadata changes re-render (auto_sync).
 
 # 4.7 Source-note verification, separation and registration (mandatory for books with notes; see references/notes.md):
 #     notes candidates exports candidates → the agent reviews the source item by item
@@ -306,6 +311,8 @@ stay Chinese-only.
 │                       + structure.csv (optional structural-rebuild list, used by restructure)
 │                       + note_candidates.jsonl (books with notes: candidates + dispositions exported by notes candidates)
 │                       + terminology_exemptions.csv (optional: unit,source,reason; evidence-backed per-unit terminology exemptions)
+│                       + cover-spec.json (optional, agent-written cover design: subtitle/series/credits lines)
+│                       + cover-generated.json (CLI-written registration of the generated cover: design digest/sha256/fonts)
 ├── publication.json  authoritative index (DC metadata + content tree + state machine + config snapshot)
 ├── .progress.json    (reserved) batch-level checkpoint; not written today, so resume = unit-level skip
 ├── glossary.db       terminology-store internal index (optional, SQLite)

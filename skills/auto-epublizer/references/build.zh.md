@@ -110,7 +110,7 @@ OPF 的 `aep:render-mode` 记录本次实际构建入口：`source`（纯源文�
 ```bash
 auto-epublizer pdf --workspace <dir> [--epub <path>] [-o <out.pdf>] \
   [--size a5|32k|b5|16k] [--body-pt 10.5] [--note-pt 8.5] [--line-height 1.55] \
-  [--no-bookmarks] [--json]
+  [--no-bookmarks] [--strict] [--json]
 ```
 
 - **定位**：EPUB 仍是交付格式；PDF 是每次从 EPUB 重新生成的派生件，不手改、不回写。
@@ -119,9 +119,15 @@ auto-epublizer pdf --workspace <dir> [--epub <path>] [-o <out.pdf>] \
   绝对路径、`..` 与符号链接；spine 文档缺失直接报中文错误，不静默少页。
 - **资源**：每章按章节目录重定位 `src`/`href`（子目录章节的 `../media/x.png` 不会错配）；
   远程/包外引用丢弃并在 `notes` 留痕；`script`/`on*` 一律移除。
-- **书签**：只读 OPF 的 `properties="nav"` 且只取 `epub:type="toc"`；区段起始页由不可见
-  定位标记确定（映射后 redaction 清除），片段级条目在区段页范围内找标题；找不到写
-  `notes` 明确「未定位」，不用页码单调冒充正确。OPF3 `meta refines` 的译者不进 author。
+- **封面身份**：优先使用包内 cover 地标/语义文档，或与登记 cover-image 精确对应的封面文档，封面可为非线性 spine 项；只有封面图登记时生成独立印刷封面页。其余非线性附件不自动纳入；存在多个封面身份时报错，不按文件名含 cover 猜测，也不重复添加。SVG 封面保留图形与已有文本。
+- **封面与页码**：封面置于绝对第 1 页且无页脚号；无封面时正文首页从 1 编号，并保留版心边距。封面用毫米版面而非 100vh，保留 0.5mm 纸张取整余量，避免图像越过实际纸边。
+- **图版**：图片高度由开本、上下边距、图注字号/行距预留计算，紧跟标题的大图另留标题空间。短图注与图版同页；超长图注可续页，图片不重复绘制。同一图片在源文中合法引用多次仍保留多次，不以资源去重代替呈现对账。
+- **定位标记清除**：仅移除定位文字，不擦除覆盖区的图像像素或矢量图形；URL 资源路径只解码一次并重新编码供浏览器使用，`#` 等文件名字符不被当成 fragment。
+- **宽表与实测诊断**：表格限定版心宽度，单元格允许换行，表内段落继承表字号，不按列数任意缩小字体。`--json` 的 `diagnostics` 分别报告 body/notes 的请求字号、实测字号、源/命中字符数与分布：通过源段落前缀绑定 PDF span，取字符加权众数；至少命中 24 个归一化字符、众数占比 ≥60% 才记 measured。正文/注文前缀同形、样本不足或未匹配均为 unknown，不靠全书中位数猜测正文。
+- **严格模式**：实测字号相对请求值偏差 >5%、纸张尺寸偏差 >1pt，或正文/图片超出版心 >2pt，记具体 finding（含页码/bbox，越界样例最多 100 条但总数/页集合完整），在 `notes` 提示；`--strict` 遇已确认 error 非零退出并保留旧 PDF。未知字号保持 unknown，不冒充已测通过；诊断不等价于全部图文、矢量图形、表格语义或字形可读性的人工验收。
+- **书签与目录页码**：只读 OPF 的 `properties="nav"` 且只取 `epub:type="toc"`。区段起始页由不可见定位标记确定（映射后 redaction 清除）；目录行和片段书签用完整 `href#fragment` 身份绑定到真实 id 处注入的锚点，取最终 PDF 的绝对页序，不按整页标题子串或区段起始页猜。目录最多三遍渲染收敛；未定位条目保留源数字并在成品该行明确标注「原版页码，未定位」且记 error，收敛失败记 `E_PDF_TOC_UNSTABLE`。OPF3 `meta refines` 的译者不进 author。
+- **出版元数据**：`dc:publisher`、`dc:date`、`dc:rights`、`dc:language`、`dc:subject`、`dc:description`、`dc:identifier` 原样写入 XMP（`dc:rights` 不截断）；`dc:creator` 中作者进 `dc:creator`、译者进 `aep:translators`。Info 只写标准短字段：`/Title`←`dc:title`、`/Author`←作者（分号连接，不含译者）、`/Subject`←描述、`/Keywords`←主题（分号连接）；`/CreationDate`、`/ModDate` 是**生成时间**，不冒充 `dc:date` 出版日期。空字段保持空，不补造。
+- **派生清单与核对**：每次成功排版写 `<pdf>.manifest.json`（schema、源 EPUB/PDF 的 sha256 与字节数、PDF 页数、实际参数、Info/XMP 读回、目录与诊断摘要）。`pdf --json` 回传同一份 `artifact`。`auto-epublizer pdf-verify --pdf <path> [--json]` 重算源 EPUB 与 PDF 字节；PDF 被改动、清单损坏或源件缺失时非零退出。PDF 与清单都在 `output/`，仍不进入 EPUB `artifacts_digest`，所以重排不改报告状态，靠派生清单对账。
 - **参数**：正文 4–24 pt、注文 4–20 pt、行距 1.0–3.0；非有限/越界直接拒绝。输出与输入
   同路径拒绝；Chromium 缺失/超时（240 s）/非零退出/产物非 PDF 都是中文错误，失败不留下
   半成品，也不破坏既有旧 PDF。

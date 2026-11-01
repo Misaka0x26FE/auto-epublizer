@@ -80,6 +80,26 @@ def test_next_tasks_stale_import(tmp_path: Path) -> None:
     assert head["done_when"] == {"cmd": "import", "unit": unit.id}
 
 
+@pytest.mark.parametrize("layer", ["structured", "translation"])
+def test_next_tasks_content_drift_routes_by_layer(tmp_path: Path, layer: str) -> None:
+    store = _complete_preprocessing(tmp_path)
+    unit = store.load_publication().units[0]
+    store.set_unit_status(unit.id, "built")
+    store.record_unit_content(unit.id)
+    root = store.structured_dir if layer == "structured" else store.translation_dir
+    path = root / unit.meta["rel_path"]
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("# Changed\n\n新的内容。\n", encoding="utf-8")
+    (store.analysis_dir / "overview.md").write_text("x", encoding="utf-8")
+
+    head = orch.status(store)["next_tasks"][0]
+
+    assert head["unit"] == unit.id
+    assert head["kind"] == ("restructure" if layer == "structured" else "import")
+    if layer == "translation":
+        assert head["done_when"]["force"] is True
+
+
 def test_next_tasks_review_before_next_translate(tmp_path: Path) -> None:
     """单元级原子循环：已 aligned 的单元先审校，再翻下一个（实测修正）。"""
     store = _complete_preprocessing(tmp_path)

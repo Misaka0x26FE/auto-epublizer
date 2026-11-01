@@ -41,7 +41,8 @@ auto-epublizer qa [--epub <path>] [--workspace <dir>]
 | 内容文档 img src 无法解析（媒体悬空） | `E_IMG_SRC` |
 | javascript:/data: URL 注入 | `E_UNSAFE_URL` |
 | 内容文档缺 lang / h1 数量不为 1 | `W_NO_LANG` / `W_H1_COUNT`（告警） |
-| 标题跳级（h1→h3 等） | `E_HEADING_SKIP` |
+| 标题跳级（h1→h3 等） | `E_HEADING_SKIP`（`data` 带 XHTML 文件、标题、`id` 锚点、XHTML 行号与建议；无映射时不写源行号） |
+| 中英文句号混用 `。.`/`.。`（正文、注文、书目、索引） | `W_PUNCT_MIXED`（候选；`data` 带 unit/seq/note_id/块号/上下文；代码与 `blockquote` 不作正文证据，不自动替换） |
 | HTML 注释残留 / markdown 标记残留（`![` `**` `:::` `{.` `[^`） | `E_RESIDUE` / `W_RESIDUE`（error/告警） |
 | 未转换的数学定界符 `$$…$$` 或成行裸 `$`（OCR 行间公式，issue #65） | `W_RESIDUE`（候选；代码/`pre`/MathML 不算，agent 核证后删包裹） |
 | DC 元数据缺失（creator/date/publisher/rights） | `W_META_INCOMPLETE`（告警） |

@@ -228,6 +228,7 @@ def convert(
     output: str | None = None,
     theme: str | None = None,
     nav_depth: int | None = None,
+    config: Config | None = None,
 ) -> Path:
     """仅转换：ingest + structure + build（源语言正文）。"""
     entries = ensure_structure(store)
@@ -246,6 +247,7 @@ def convert(
         prefer_translation=False,
         theme=theme or Config().output.theme,
         nav_depth=nav_depth,
+        config=config,
     )
 
 
@@ -425,6 +427,7 @@ def _render_and_pack(
     prefer_translation: bool,
     theme: str = "standard",
     nav_depth: int | None = None,
+    config: Config | None = None,
 ) -> Path:
     """构建内核（convert/build 共用）：渲染内容文档 + 收集媒体 + 打包 EPUB。
 
@@ -437,7 +440,8 @@ def _render_and_pack(
     from . import notes as notes_mod
     from .build.html import FootnoteState, NoteItem, NoteRef
 
-    nav_depth = nav_depth if nav_depth is not None else Config().output.nav_depth
+    cfg = config or Config()
+    nav_depth = nav_depth if nav_depth is not None else cfg.output.nav_depth
     out_path = Path(output) if output else store.output_dir / f"{pub.slug}.epub"
     media_root = store.structured_dir / "raw" / "media"
     content = []
@@ -568,6 +572,20 @@ def _render_and_pack(
                 file=confirmed_cover["file"],
                 evidence=confirmed_cover["evidence"],
             )
+    # 生成封面（Magadan 版式）：只补「没有源封面」的书，且只在 agent 已登记生成件时使用；
+    # 设计摘要变了就地重绘（内容同步），绝不静默造一个计划外的封面。
+    if cover_media is None and cfg.cover.enabled and cfg.cover.style != "off":
+        from . import cover as cover_mod
+
+        try:
+            generated = cover_mod.sync_for_build(store, pub, cfg)
+        except ValueError as exc:
+            store.log_event("cover_generate_failed", reason=str(exc))
+        else:
+            if generated:
+                cover_media = generated["epub_path"]
+                media[cover_media] = generated["data"]
+                store.log_event("cover_generated_used", file=cover_media)
     if any(e.get("kind") == "cover" for e in entries) and cover_media is None:
         # 声明了 cover 单元但没有可用图片：可定位提示，不造空封面。
         store.log_event("cover_without_image")
@@ -736,6 +754,7 @@ def build(
     output: str | None = None,
     theme: str | None = None,
     nav_depth: int | None = None,
+    config: Config | None = None,
 ) -> Path:
     """从译文（缺省回退源文）构建 EPUB。"""
     pub = store.load_publication()
@@ -753,6 +772,7 @@ def build(
         prefer_translation=True,
         theme=theme or Config().output.theme,
         nav_depth=nav_depth,
+        config=config,
     )
 
 
@@ -881,6 +901,7 @@ def import_translations(
     failed: list[dict[str, Any]] = []
     warned: list[dict[str, Any]] = []
     skipped: list[str] = []
+    skipped_details: list[dict[str, str]] = []
 
     for unit in pub.units:
         if unit_id and unit.id != unit_id:
@@ -890,11 +911,33 @@ def import_translations(
         # --force 显式要求重校验时除外（issue #13）。
         was_done = unit.status in ("reviewed", "built")
         if was_done and not force:
+            baseline = (unit.meta or {}).get("import_digests")
+            if baseline and baseline != store.unit_content_digests(unit):
+                failed.append(
+                    {
+                        "unit": unit.id,
+                        "errors": [
+                            "E_STATE_DRIFT：产物已变更但尚未重新登记；源结构变更先 restructure，"
+                            "译文/align 修订后用 import --force 重校验"
+                        ],
+                    }
+                )
+                continue
             skipped.append(unit.id)
+            skipped_details.append(
+                {
+                    "unit": unit.id,
+                    "reason": f"already_{unit.status}" if baseline else "registration_unknown",
+                    "next": "用 import --force 显式重校验已写入的 translation/align（不组装私有工作文件）",
+                }
+            )
             continue
         rel_path = (unit.meta or {}).get("rel_path")
         if not rel_path:
             skipped.append(unit.id)
+            skipped_details.append(
+                {"unit": unit.id, "reason": "missing_rel_path", "next": "先登记结构路径"}
+            )
             continue
         tgt_path = store.translation_dir / rel_path
         align_path = store.unit_align_path(unit.id)
@@ -1032,6 +1075,7 @@ def import_translations(
         from auto_translator.translation.align import write_align
 
         write_align(align_path, annotate_correction_notes(rows))
+        store.record_unit_content(unit.id)
         if was_done and force:
             # 重校验通过：保持原状态（不回退，护住审校/构建结论）
             revalidated.append(unit.id)
@@ -1064,6 +1108,14 @@ def import_translations(
         store.log_event("import_revalidated", units=revalidated)
     if reviewed:
         store.log_event("import_reviewed", units=reviewed)
+    if terms_info is not None:
+        from auto_translator.glossary.models import TERM_STATUSES
+
+        entries = load_glossary_csv(glossary_path)
+        terms_info["status_counts"] = {
+            status: sum(e.status == status for e in entries) for status in TERM_STATUSES
+        }
+        terms_info["status_source"] = "analysis/glossary.csv"
     return {
         "imported": imported,
         "revalidated": revalidated,
@@ -1071,6 +1123,7 @@ def import_translations(
         "failed": failed,
         "warnings": warned,
         "skipped": skipped,
+        "skipped_details": skipped_details,
         "conflicts_new": written,
         "conflicts_open": conflicts_open,
         "terms": terms_info,
@@ -1122,6 +1175,26 @@ def _assert_no_unregistered_notes(store: RunStore, pub: Any) -> None:
                 f"正文 {rel} 有注文原位标记 [^ref-…]，但 publication.json.notes 为空："
                 "须跑 notes register（注文门不得静默跳过）"
             )
+
+
+def _alignment_rows(store: RunStore, unit_id: str) -> list[dict[str, Any]] | None:
+    """读取单元对齐行，供成品候选定位 seq；缺失/坏行不伪造坐标。"""
+    path = store.unit_align_path(unit_id)
+    if not path.is_file():
+        return None
+    rows: list[dict[str, Any]] = []
+    try:
+        lines = path.read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return None
+    for line in lines:
+        try:
+            row = json.loads(line)
+        except ValueError:
+            continue
+        if isinstance(row, dict) and isinstance(row.get("seq"), int):
+            rows.append({"seq": row["seq"], "tgt": str(row.get("tgt") or "")})
+    return rows or None
 
 
 def _load_notes_context(
@@ -1361,6 +1434,95 @@ def set_meta(
     return {"updated": changed, "meta": pub.meta.model_dump()}
 
 
+def generate_cover(
+    store: RunStore,
+    *,
+    out: str | None = None,
+    palette: str | None = None,
+    imprint: str | None = None,
+    size: str | None = None,
+    dpi: int | None = None,
+    pdf: bool = False,
+    config: Config | None = None,
+) -> dict[str, Any]:
+    """生成 Magadan 版式书封（PNG，可选 PDF）并登记；返回登记记录。
+
+    这是**显式**动作：只有跑过它（或工作区里已有 ``preprocessing/cover-generated.json``）
+    的书，build 才会把生成封面写进 cover-image——「没有源封面」不等于「必须造封面」。
+    """
+    from . import cover as cover_mod
+
+    cfg = config or Config()
+    if not cfg.cover.enabled:
+        raise OrchestrationError("生成封面已在配置中关闭（cover.enabled=false）")
+    pub = store.load_publication()
+    return cover_mod.generate(
+        store, pub, cfg, out=out, palette=palette, imprint=imprint, size=size, dpi=dpi, pdf=pdf
+    )
+
+
+def delete_cover(store: RunStore) -> dict[str, Any]:
+    """撤销生成封面（删登记与文件）；源封面不受影响。"""
+    from . import cover as cover_mod
+
+    record = cover_mod.read_record(store)
+    if record is None:
+        raise OrchestrationError("没有生成封面可撤销")
+    pdf_rel = cover_mod.GENERATED_REL.rsplit(".", 1)[0] + ".pdf"
+    for rel in (cover_mod.RECORD_FILE, cover_mod.GENERATED_REL, pdf_rel):
+        path = store.dir / rel
+        if path.is_file():
+            path.unlink()
+    store.log_event("cover_generated_removed", file=cover_mod.GENERATED_REL)
+    return {"removed": True}
+
+
+def _cover_state(store: RunStore, pub: Any, cfg: Config) -> dict[str, Any]:
+    """封面全景（只读）：源封面三态 + 生成封面状态 + 最终会用哪一份。
+
+    ``effective``：``source``（已确认/已有图片的源封面）→ ``generated``（生成封面已登记且
+    文件在）→ ``None``（这本书目前没有封面）。``missing`` 仍表示**没有源封面**，两者不要混读。
+    """
+    from .preprocess.cover import cover_status
+
+    state = cover_status(store)
+    generated = _generated_cover_state(store, pub, cfg)
+    state["generated"] = generated
+    if state.get("confirmed") or state.get("has_image"):
+        state["effective"] = "source"
+    elif generated and generated.get("exists"):
+        state["effective"] = "generated"
+    else:
+        state["effective"] = None
+    return state
+
+
+def _generated_cover_state(store: RunStore, pub: Any, cfg: Config) -> dict[str, Any] | None:
+    """生成封面状态（只读）：未登记 → None；登记 → 文件/摘要/是否已过期。
+
+    ``stale``=元数据或设计稿变了但还没重绘（构建期 ``auto_sync`` 会处理）。
+    """
+    from . import cover as cover_mod
+
+    try:
+        record = cover_mod.read_record(store)
+        if record is None:
+            return None
+        spec = cover_mod.resolve_spec(pub, cfg, spec_file=cover_mod.read_spec_file(store))
+    except ValueError as exc:
+        return {"error": str(exc)}
+    path = store.dir / cover_mod.GENERATED_REL
+    return {
+        "file": cover_mod.GENERATED_REL,
+        "exists": path.is_file(),
+        "palette": record.get("palette"),
+        "dpi": record.get("dpi"),
+        "design_digest": record.get("design_digest"),
+        "stale": record.get("design_digest") != spec.digest(),
+        "fonts_missing": (record.get("fonts") or {}).get("missing") or [],
+    }
+
+
 def _qa_requires_align(store: RunStore, unit: Any) -> bool:
     """该单元必须进入 G0：有译文文件，或状态已进入译文族。
 
@@ -1548,6 +1710,7 @@ def restructure(store: RunStore) -> dict[str, Any]:
     """
     import csv
 
+    from auto_common.workspace import source_sha256
     from auto_common.workspace.models import Unit
 
     path = store.preprocessing_dir / "structure.csv"
@@ -1675,7 +1838,9 @@ def restructure(store: RunStore) -> dict[str, Any]:
     for r in rows:
         prior = existing.get(r["id"])
         meta = dict(prior.meta) if prior else {}
+        content_digest = source_sha256(store.structured_dir / r["rel_path"])
         meta.update({"rel_path": r["rel_path"], "region": r["region"], "level": r["level"]})
+        meta["structured_sha256"] = content_digest
         if r.get("nav") is False:
             meta["nav"] = False
         else:
@@ -1692,6 +1857,7 @@ def restructure(store: RunStore) -> dict[str, Any]:
                 and (prior.meta or {}).get("region") == r["region"]
                 and ((prior.meta or {}).get("nav", True) is not False)
                 == (r.get("nav") is not False)
+                and (prior.meta or {}).get("structured_sha256") == content_digest
             )
             status = prior.status if unchanged else "split"
             if not unchanged:
@@ -1777,6 +1943,7 @@ def qa(
                 )
                 + "/"
                 + str(entry["rel_path"]),
+                "align": _alignment_rows(store, str(entry["id"])),
             }
             for entry in entries
             if str(entry["id"]) in render_inputs
@@ -2066,6 +2233,27 @@ def _derive_next_tasks(
                     )
                 ]
             continue  # 未知伪项：不当作真实单元 import
+        if reason == "content_changed_since_import":
+            unit = pub.unit(s["id"])
+            current = store.unit_content_digests(unit)
+            previous = (unit.meta or {}).get("import_digests") or {}
+            if current["structured"] != previous.get("structured"):
+                return [
+                    _task(
+                        "restructure",
+                        f"{unit.id} 源正文已变更：先核证结构并 restructure，再重新导入",
+                        unit=unit.id,
+                        done_when={"cmd": "restructure"},
+                    )
+                ]
+            return [
+                _task(
+                    "import",
+                    f"{unit.id} 译文/align 已变更：import --unit {unit.id} --force 重校验",
+                    unit=unit.id,
+                    done_when={"cmd": "import", "unit": unit.id, "force": True},
+                )
+            ]
         return [
             _task(
                 "import",
@@ -2161,7 +2349,35 @@ def status_all(base_dir: str | Path) -> list[dict[str, Any]]:
             continue
         try:
             pub = read_json(pub_file)
-        except (OSError, ValueError):
+            if not isinstance(pub, dict):
+                raise ValueError("publication.json 必须是对象")
+            if pub.get("schema_version") == SCHEMA_VERSION and (
+                not isinstance(pub.get("meta") or {}, dict)
+                or not isinstance(pub.get("units") or [], list)
+                or any(not isinstance(u, dict) for u in pub.get("units") or [])
+            ):
+                raise ValueError("publication.json 的 meta/units 结构不合法")
+        except (OSError, ValueError) as exc:
+            rows.append(
+                {
+                    "slug": rel.parts[0] if len(rel.parts) > 1 else ws.name,
+                    "title": "",
+                    "units_total": 0,
+                    "unit_status": {},
+                    "words": None,
+                    "has_report": (ws / "report.json").is_file(),
+                    "released": False,
+                    "released_reason": "input_error",
+                    "report_stale": True,
+                    "progress": "error",
+                    "facts_created_at": None,
+                    "error": {
+                        "code": "E_INPUT",
+                        "message": str(exc),
+                        "artifact": "publication.json",
+                    },
+                }
+            )
             continue
         if pub.get("schema_version") != SCHEMA_VERSION:
             continue  # 跳过其它工具的工作区（epub-builder/v1alpha1 等）
@@ -2219,6 +2435,20 @@ def status_all(base_dir: str | Path) -> list[dict[str, Any]]:
                 ),
             }
         )
+        from .preprocess.artifacts import ArtifactContractError
+
+        try:
+            read_catalog(RunStore(ws))
+            read_repairs(RunStore(ws))
+        except ArtifactContractError as exc:
+            rows[-1].update(
+                {
+                    "error": exc.to_dict(),
+                    "released": False,
+                    "released_reason": "artifact_contract",
+                    "progress": "error",
+                }
+            )
     return rows
 
 
@@ -2259,8 +2489,9 @@ def render_ledger(rows: list[dict[str, Any]]) -> str:
     return "\n".join(lines) + "\n"
 
 
-def status(store: RunStore, *, as_json: bool = False) -> dict[str, Any]:
-    from .preprocess.cover import cover_status
+def status(
+    store: RunStore, *, as_json: bool = False, config: Config | None = None
+) -> dict[str, Any]:
 
     pub = store.load_publication()
     units_out: list[dict[str, Any]] = []
@@ -2271,6 +2502,15 @@ def status(store: RunStore, *, as_json: bool = False) -> dict[str, Any]:
             and (store.translation_dir / u.meta["rel_path"]).is_file()
         )
         has_align = store.unit_align_path(u.id).is_file()
+        registered = (u.meta or {}).get("import_digests")
+        current_digests = store.unit_content_digests(u)
+        content_state = (
+            "unknown"
+            if not registered
+            else "current"
+            if registered == current_digests
+            else "changed"
+        )
         units_out.append(
             {
                 "id": u.id,
@@ -2279,8 +2519,12 @@ def status(store: RunStore, *, as_json: bool = False) -> dict[str, Any]:
                 "status": u.status,
                 "has_translation": has_translation,
                 "has_align": has_align,
+                "content_state": content_state,
+                "content_digests": current_digests,
             }
         )
+        if content_state == "changed":
+            stale.append({"id": u.id, "status": u.status, "reason": "content_changed_since_import"})
         # 产物-状态对账：agent 手写了产物但未 import 登记 → 提示 stale
         if (has_translation or has_align) and u.status in ("pending", "split", "analyzed"):
             stale.append(
@@ -2306,6 +2550,7 @@ def status(store: RunStore, *, as_json: bool = False) -> dict[str, Any]:
         )
     # 源内容盘点对账（S4.4）：catalog.csv 存在时校验 included 绑定与未决项
     catalog_rows = read_catalog(store)
+    read_repairs(store)  # 续跑入口也须暴露整备契约错误，而非等待 qa 才发现
     catalog: dict[str, Any] = {"present": False}
     if catalog_rows is not None:
         unit_ids = {u.id for u in pub.units}
@@ -2338,6 +2583,7 @@ def status(store: RunStore, *, as_json: bool = False) -> dict[str, Any]:
         "open": ledger.open,
         "unknown": ledger.unknown,
         "inconsistent": list(ledger.inconsistent),
+        "findings": list(ledger.findings),
         "blocking": ledger.blocking,
     }
     if ledger.inconsistent:
@@ -2346,6 +2592,7 @@ def status(store: RunStore, *, as_json: bool = False) -> dict[str, Any]:
         stale.append({"id": "review", "status": "unknown", "reason": "review_unknown"})
     elif ledger.open:
         stale.append({"id": "review", "status": "open", "reason": "review_open"})
+    cfg = config or Config()
     data = {
         "slug": pub.slug,
         "title": pub.meta.title,
@@ -2356,7 +2603,7 @@ def status(store: RunStore, *, as_json: bool = False) -> dict[str, Any]:
         "preprocessing_complete": preprocessing_complete,
         "catalog": catalog,
         "notes": notes_state,
-        "cover": cover_status(store),
+        "cover": _cover_state(store, pub, cfg),
         "review": review_state,
         "report": report_info,
         "stale": stale,

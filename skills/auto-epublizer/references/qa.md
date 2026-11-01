@@ -1,4 +1,4 @@
-<!-- i18n: source=qa.zh.md sha256=2814923a51caf72018efcc6af22cc19d3476334419a1ca0adb5137097791f67c -->
+<!-- i18n: source=qa.zh.md sha256=11b369b224e357a1e960e56decbe11ee019d2252ec8ca14608bb4203af4e72b1 -->
 > **English** | [中文](qa.zh.md)
 
 # QA (epubcheck + unpack audit)
@@ -41,7 +41,8 @@ Standard EPUB note acceptance is mandatory offline: independently verify current
 | content document img src unresolvable (dangling media) | `E_IMG_SRC` |
 | javascript:/data: URL injection | `E_UNSAFE_URL` |
 | content document missing lang / h1 count not 1 | `W_NO_LANG` / `W_H1_COUNT` (warning) |
-| heading level skip (h1→h3 etc.) | `E_HEADING_SKIP` |
+| heading level skip (h1→h3 etc.) | `E_HEADING_SKIP` (`data` carries the XHTML file, heading, `id` anchor, XHTML line and advice; no source line is invented when unmapped) |
+| mixed Chinese/Latin full stops `。.`/`.。` (body, notes, bibliography, index) | `W_PUNCT_MIXED` (candidate; `data` carries unit/seq/note_id/block/context; code and `blockquote` are not body evidence, never auto-replaced) |
 | HTML comment residue / markdown marker residue (`![` `**` `:::` `{.` `[^`) | `E_RESIDUE` / `W_RESIDUE` (error/warning) |
 | Unconverted math delimiters `$$…$$` or a bare `$` on its own line (OCR display math, issue #65) | `W_RESIDUE` candidate; code/`pre`/MathML excluded, the agent verifies and removes the wrapper |
 | DC metadata missing (creator/date/publisher/rights) | `W_META_INCOMPLETE` (warning) |

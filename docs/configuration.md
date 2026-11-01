@@ -1,4 +1,4 @@
-<!-- i18n: source=configuration.zh.md sha256=5a3502e7d88cf3b69b64c62d55cc7c467cba2896695001a650a84eadfafa8af2 -->
+<!-- i18n: source=configuration.zh.md sha256=2dfeb7c57d491da6e5b2c0d6641f9819e1abc28b87cadb9db863a36d16ff7ffc -->
 > **English** | [中文](configuration.zh.md)
 
 # Configuration reference (target `config.yaml` schema)
@@ -62,6 +62,19 @@ paths:
                           #   https://github.com/Misaka0x26FE/auto-epublizer-knowledge.git
                           # override: --remote > AUTO_EPUBLIZER_REMOTE > this field > default
 
+# ── generated cover (books without a source cover) ──────────
+cover:
+  enabled: true           # the cover command is available; false = even explicit generation is refused
+  style: magadan          # only magadan today (off = build never uses a generated cover)
+  palette: indigo         # indigo|blue|maroon|purple|crimson|brown|green|ink
+  size: a5                # same set as pdf --size: a5|32k|b5|16k
+  dpi: 300                # PNG resolution (72–1200)
+  imprint: "马加丹汉化组"  # signature at the bottom; empty string = no signature line
+  imprint_font: ""        # brush font file; empty = auto-discovery (Zhi Mang Xing / Ma Shan Zheng / …)
+  font_serif: ""          # CJK serif file; empty = auto-discovery (Noto Serif CJK / Songti)
+  font_latin: ""          # Latin serif file; empty = auto-discovery (Nimbus Roman / Times)
+  auto_sync: true         # re-render during build when the design digest went stale
+
 # ── output ───────────────────────────────────────────────────
 output:
   about_page: true        # not wired (reserved; the "about this translation" page is not implemented)
@@ -70,6 +83,35 @@ output:
   nav_depth: 3            # maximum TOC nesting depth (1–6, docs/epub-template-spec.md §3 projection)
                           # overly deep units do not enter nav/NCX, but are kept in the spine reading order and anchors
 ```
+
+## Generated cover
+
+`cover` produces the **Magadan-layout** typeset cover for books that have no usable source
+cover (plain-text/Markdown sources, or scans whose first page was never confirmed as the
+cover). It is pure deterministic typesetting (PyMuPDF, no LLM, no browser): headline blocks
+come from `publication.json` metadata plus the optional agent-written
+`preprocessing/cover-spec.json`, and the result is registered in
+`preprocessing/cover-generated.json`.
+
+```bash
+auto-epublizer cover --workspace <ws> [--palette maroon] [--size a5] [--dpi 300] [--pdf] [--json]
+auto-epublizer cover --workspace <ws> --remove
+```
+
+Rules that matter:
+
+- **A source cover always wins.** With a confirmed `preprocessing/cover.json`, the generated
+  image is never used, and an unconfirmed first-page image is never promoted to cover.
+- **Build syncs, it does not create.** Without a registration, `build` adds no cover at all;
+  with one, `build` writes `properties="cover-image"` + `<meta name="cover">` and re-renders
+  only when the design digest changed (`auto_sync`).
+- **No semantic guessing.** Missing subtitle/nationality/role stay empty or neutral; the CLI
+  never slices sentences out of `description`.
+- **Fonts are discovered, degradations are announced.** A CJK serif is required; missing Latin
+  serif or brush signature degrade and say so (`doctor` exposes `cover-fonts`).
+
+Full layout ratios, palettes, design-sheet schema and troubleshooting:
+`skills/auto-epublizer/references/cover.md`.
 
 ## Unified terminology / knowledge store
 

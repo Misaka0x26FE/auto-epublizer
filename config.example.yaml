@@ -49,6 +49,21 @@ paths:
                           #   https://github.com/Misaka0x26FE/auto-epublizer-knowledge.git
                           # 覆盖：--remote > 环境变量 AUTO_EPUBLIZER_REMOTE > 本项 > 默认
 
+# ── 生成式封面（没有源封面的书）──────────────────────────────
+# 译作常常没有封面：纯文本源没有封面图，扫描件首页图未确认也不算。
+# 这套 Magadan 版式封面只在「确实没有源封面」时使用，源封面（preprocessing/cover.json）永远优先。
+cover:
+  enabled: true           # cover 命令可用；false=连显式生成也拒绝
+  style: magadan          # 目前只有 magadan（off=构建期不取用生成封面）
+  palette: indigo         # indigo|blue|maroon|purple|crimson|brown|green|ink
+  size: a5                # 与 pdf --size 同一组：a5|32k|b5|16k
+  dpi: 300                # PNG 分辨率（72–1200）
+  imprint: "马加丹汉化组"  # 底部署名；空串=不画署名行
+  imprint_font: ""        # 行书字体文件；空=自动发现（志莽行书/马善政/龙藏/华文行楷）
+  font_serif: ""          # 中文宋体文件；空=自动发现（思源宋体/宋体）
+  font_latin: ""          # 拉丁衬线文件；空=自动发现（Nimbus Roman/Times）
+  auto_sync: true         # 构建期发现封面设计摘要过期时自动重绘（内容同步）
+
 # ── 输出 ─────────────────────────────────────────────────────
 output:
   about_page: true        # 未接线（预留）

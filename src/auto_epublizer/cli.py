@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 # Copyright (C) 2026 Misaka0x26FE
-"""typer CLI 命令入口：init/convert/status/build/qa/preprocess/doctor/import/g0/version。"""
+"""typer CLI 命令入口：init/convert/status/build/cover/qa/preprocess/doctor/import/g0/version。"""
 
 from __future__ import annotations
 
@@ -55,6 +55,25 @@ def _emit_json(text: str) -> None:
     ``soft_wrap=True`` 关闭换行与裁切。
     """
     _emit_plain(text)
+
+
+def _command_error(exc: Exception, *, json_output: bool) -> None:
+    """可预期输入错误：JSON 单一 stdout，文本错误走 stderr，均非零退出。"""
+    from .preprocess.artifacts import ArtifactContractError
+
+    error = (
+        exc.to_dict()
+        if isinstance(exc, ArtifactContractError)
+        else {
+            "code": "E_INPUT",
+            "message": str(exc),
+        }
+    )
+    if json_output:
+        _emit_json(json.dumps({"error": error}, ensure_ascii=False))
+    else:
+        typer.echo(f"操作失败：{exc}", err=True)
+    raise typer.Exit(1) from None
 
 
 def _find_workspace(base: Path) -> Path:
@@ -138,7 +157,11 @@ def convert(
         else:
             store = _store_from(workspace, cfg)
         out = orch.convert(
-            store, output=output, theme=theme or cfg.output.theme, nav_depth=nav_depth
+            store,
+            output=output,
+            theme=theme or cfg.output.theme,
+            nav_depth=nav_depth,
+            config=cfg,
         )
         console.print(f"[green]EPUB 已生成：[/green]{out}")
         report = orch.qa(store, epub_path=str(out))
@@ -159,20 +182,31 @@ def status(
     config: str | None = typer.Option(None, "--config", help="配置文件路径"),
 ) -> None:
     """查看工作区进度 / 状态机（--all 为多工作区总览）。"""
-    cfg = load_config(config or _CONFIG_PATH)
+    try:
+        cfg = load_config(config or _CONFIG_PATH)
+        if all_workspaces:
+            rows = orch.status_all(workspace or cfg.paths.workspaces_dir)
+        else:
+            store = _store_from(workspace, cfg)
+            data = orch.status(store, config=cfg)
+    except (ValueError, OSError, typer.BadParameter) as exc:
+        _command_error(exc, json_output=json_output)
     if all_workspaces:
-        rows = orch.status_all(workspace or cfg.paths.workspaces_dir)
         if json_output:
             _emit_json(json.dumps(rows, ensure_ascii=False, indent=2))
+            if any(r.get("error") for r in rows):
+                raise typer.Exit(1)
             return
         console.print(f"工作区总览：{len(rows)} 个（base={workspace or cfg.paths.workspaces_dir}）")
         for r in rows:
             console.print(
                 f"  {r['progress']:18s} {r['slug']:32s} 单元 {r['units_total']:4d}  {r['title']}"
             )
+            if r.get("error"):
+                typer.echo(r["error"]["message"], err=True)
+        if any(r.get("error") for r in rows):
+            raise typer.Exit(1)
         return
-    store = _store_from(workspace, cfg)
-    data = orch.status(store)
     if json_output:
         _emit_json(json.dumps(data, ensure_ascii=False, indent=2))
         return
@@ -200,17 +234,36 @@ def ledger(
     ),
     output: str | None = typer.Option(None, "-o", "--output", help="写入文件（缺省 stdout）"),
     config: str | None = typer.Option(None, "--config", help="配置文件路径"),
+    json_output: bool = typer.Option(False, "--json", help="输出结构化台账 JSON"),
 ) -> None:
     """输出跨书台账 markdown（issue #32）：机器可重算字段 + 待 agent 填的领域/摘要。"""
-    cfg = load_config(config or _CONFIG_PATH)
-    rows = orch.status_all(workspace or cfg.paths.workspaces_dir)
-    text = orch.render_ledger(rows)
+    try:
+        cfg = load_config(config or _CONFIG_PATH)
+        rows = orch.status_all(workspace or cfg.paths.workspaces_dir)
+        text = (
+            json.dumps(rows, ensure_ascii=False, indent=2)
+            if json_output
+            else orch.render_ledger(rows)
+        )
+        if output:
+            Path(output).write_text(text, encoding="utf-8")
+    except (ValueError, OSError, typer.BadParameter) as exc:
+        _command_error(exc, json_output=json_output)
+    if json_output:
+        _emit_json(text)
+        if any(r.get("error") for r in rows):
+            raise typer.Exit(1)
+        return
     if output:
-        Path(output).write_text(text, encoding="utf-8")
         console.print(f"[green]台账已写入：[/green]{output}（{len(rows)} 个工作区）")
     else:
         # markdown 表格每条记录必须保持一行：走纯文本输出，不经 Rich 折行（issue #33）
         _emit_plain(text)
+    if any(r.get("error") for r in rows):
+        for row in rows:
+            if row.get("error"):
+                typer.echo(f"{row['slug']}：{row['error']['message']}", err=True)
+        raise typer.Exit(1)
 
 
 @app.command()
@@ -449,23 +502,37 @@ def build(
         None, "--nav-depth", help="目录最大嵌套深度（1–6，默认取配置 output.nav_depth）"
     ),
     config: str | None = typer.Option(None, "--config", help="配置文件路径"),
+    json_output: bool = typer.Option(False, "--json", help="输出成品路径与源文回退单元 JSON"),
 ) -> None:
     """从译文（缺省回退源文）封装 EPUB。"""
-    cfg = load_config(config or _CONFIG_PATH)
-    store = _store_from(workspace, cfg)
     try:
+        cfg = load_config(config or _CONFIG_PATH)
+        store = _store_from(workspace, cfg)
         out = orch.build(
             store,
             output=output,
             theme=theme or cfg.output.theme,
             nav_depth=nav_depth,
+            config=cfg,
         )
-    except (ValueError, OSError, orch.OrchestrationError) as e:
-        raise typer.Exit(f"封装失败：{e}") from None
+        st = orch.status(store)
+    except (ValueError, OSError, typer.BadParameter) as e:
+        _command_error(e, json_output=json_output)
     # 源文回退提示（现场报告 #8）：build 对缺译单元回退源文，且不再推进其状态——
     # 这里显式告知源文回退，避免 operator 误以为所有单元都已有译文。
-    st = orch.status(store)
     missing = [u["id"] for u in st["units"] if not u["has_translation"]]
+    if json_output:
+        _emit_json(
+            json.dumps(
+                {
+                    "epub": str(out),
+                    "fallback_units": missing,
+                    "producer": f"auto-epublizer@{__version__}",
+                },
+                ensure_ascii=False,
+            )
+        )
+        return
     if missing:
         shown = "、".join(missing[:8]) + ("…" if len(missing) > 8 else "")
         console.print(
@@ -477,6 +544,79 @@ def build(
         f"[dim]（auto-epublizer {__version__}，AGPL-3.0-only；"
         f"https://github.com/Misaka0x26FE/auto-epublizer）[/dim]"
     )
+
+
+@app.command()
+def cover(
+    workspace: str | None = typer.Option(None, "--workspace", help="工作区目录"),
+    out: str | None = typer.Option(None, "-o", "--out", help="额外导出 PNG 路径（登记仍在工作区）"),
+    palette: str | None = typer.Option(
+        None, "--palette", help="色板（indigo/blue/maroon/purple/crimson/brown/green/ink）"
+    ),
+    imprint: str | None = typer.Option(None, "--imprint", help="底部署名（空串=不画署名）"),
+    size: str | None = typer.Option(None, "--size", help="开本（a5/32k/b5/16k）"),
+    dpi: int | None = typer.Option(None, "--dpi", help="PNG 分辨率（72–1200，默认 300）"),
+    pdf_out: bool = typer.Option(False, "--pdf", help="同时输出印刷用 PDF"),
+    remove: bool = typer.Option(False, "--remove", help="撤销生成封面（源封面不受影响）"),
+    json_out: bool = typer.Option(False, "--json", help="机器可读输出"),
+    config: str | None = typer.Option(None, "--config", help="配置文件路径"),
+) -> None:
+    """生成 Magadan 版式书封（没有源封面的书用；构建时自动写 cover-image）。"""
+    cfg = load_config(config or _CONFIG_PATH)
+    store = _store_from(workspace, cfg)
+    if remove:
+        try:
+            result = orch.delete_cover(store)
+        except (ValueError, OSError, orch.OrchestrationError) as exc:
+            raise typer.Exit(f"撤销封面失败：{exc}") from None
+        if json_out:
+            _emit_json(json.dumps(result, ensure_ascii=False))
+        else:
+            console.print("[green]已撤销生成封面[/green]（源封面未受影响）")
+        return
+    try:
+        record = orch.generate_cover(
+            store,
+            out=out,
+            palette=palette,
+            imprint=imprint,
+            size=size,
+            dpi=dpi,
+            pdf=pdf_out,
+            config=cfg,
+        )
+    except (ValueError, OSError, orch.OrchestrationError) as exc:
+        raise typer.Exit(f"封面生成失败：{exc}") from None
+    if json_out:
+        _emit_json(json.dumps(record, ensure_ascii=False))
+        return
+    size_mm = record["size_mm"]
+    console.print(
+        f"[green]封面已生成：[/green]{store.dir / record['file']}"
+        f"[dim]（{size_mm[0]}×{size_mm[1]} mm，{record['dpi']} dpi，"
+        f"色板 {record['palette']}）[/dim]"
+    )
+    if record.get("pdf"):
+        console.print(f"[green]印刷 PDF：[/green]{store.dir / record['pdf']}")
+    if record.get("export"):
+        console.print(f"[green]已另存：[/green]{record['export']}")
+    missing = record.get("fonts", {}).get("missing") or []
+    if "script" in missing:
+        console.print(
+            "[yellow]⚠ 未找到行书字库，署名已降级为宋体。[/yellow]"
+            "[dim]想要毛笔署名：安装志莽行书（OFL）或用 cover --imprint_font 指向 .ttf[/dim]"
+        )
+    if "latin" in missing:
+        console.print("[yellow]⚠ 未找到拉丁衬线字体，原文书名已用中文字体排。[/yellow]")
+    if record.get("source_cover") == "confirmed":
+        console.print(
+            "[yellow]⚠ 这本书已有确认的源封面（preprocessing/cover.json）："
+            "build 会用源封面，生成件只留在工作区备查。[/yellow]"
+        )
+    else:
+        console.print(
+            "[dim]提示：build 会把这份封面写成 cover-image；之后若确认了源封面，源封面优先。[/dim]"
+        )
 
 
 @app.command()
@@ -493,6 +633,9 @@ def pdf(
     note_pt: float = typer.Option(8.5, "--note-pt", help="注文字号（pt；小五 = 8.5）"),
     line_height: float = typer.Option(1.55, "--line-height", help="行距（倍数）"),
     no_bookmarks: bool = typer.Option(False, "--no-bookmarks", help="不写 PDF 书签"),
+    strict: bool = typer.Option(
+        False, "--strict", help="实测字号偏差超过5%、纸张或版心溢出时失败并保留旧 PDF"
+    ),
     json_out: bool = typer.Option(False, "--json", help="机器可读输出"),
     config: str | None = typer.Option(None, "--config", help="配置文件路径"),
 ) -> None:
@@ -518,7 +661,7 @@ def pdf(
         size=size, body_pt=body_pt, note_pt=note_pt, line_height=line_height
     )
     try:
-        result = pdfexport.render(source, target, style, bookmarks=not no_bookmarks)
+        result = pdfexport.render(source, target, style, bookmarks=not no_bookmarks, strict=strict)
     except (ValueError, RuntimeError, OSError) as exc:
         _fail(str(exc))
         return
@@ -529,6 +672,10 @@ def pdf(
         "bookmarks": result.bookmarks,
         "size_mm": list(result.size_mm),
         "notes": list(result.notes),
+        "diagnostics": result.diagnostics,
+        "toc": result.toc,
+        "metadata": result.metadata,
+        "artifact": result.artifact,
     }
     if json_out:
         _emit_json(json.dumps(payload, ensure_ascii=False))
@@ -541,19 +688,44 @@ def pdf(
         console.print(f"[yellow]⚠ {note}[/yellow]")
 
 
+@app.command(name="pdf-verify")
+def pdf_verify(
+    pdf: str = typer.Option(..., "--pdf", help="待核对的派生 PDF 路径"),
+    json_output: bool = typer.Option(False, "--json", help="机器可读输出"),
+) -> None:
+    """按 PDF 旁的派生清单核对源 EPUB/PDF 字节；PDF 不进入 EPUB QA 摘要。"""
+    from . import pdfexport
+
+    verdict = pdfexport.verify_pdf_artifact(Path(pdf))
+    if json_output:
+        _emit_json(json.dumps(verdict, ensure_ascii=False, indent=2))
+    else:
+        for check in verdict["checks"]:
+            status = "OK" if check["ok"] else "FAIL"
+            console.print(f"  [{('green' if check['ok'] else 'red')}]{status}[/] {check['name']}")
+        if verdict.get("error"):
+            console.print(f"[red]{verdict['error']}[/red]")
+    if not verdict["ok"]:
+        raise typer.Exit(1)
+
+
 @app.command()
 def qa(
     workspace: str | None = typer.Option(None, "--workspace", help="工作区目录"),
     epub: str | None = typer.Option(None, "--epub", help="待检 EPUB 路径"),
     config: str | None = typer.Option(None, "--config", help="配置文件路径"),
+    json_output: bool = typer.Option(False, "--json", help="输出与 report.json 同口径的放行 JSON"),
 ) -> None:
     """结构审计 + epubcheck（写 report.json，聚合 G0–G5 放行判定）。"""
-    cfg = load_config(config or _CONFIG_PATH)
-    store = _store_from(workspace, cfg)
     try:
+        cfg = load_config(config or _CONFIG_PATH)
+        store = _store_from(workspace, cfg)
         report = orch.qa(store, epub_path=epub, config=cfg)
-    except (ValueError, OSError, orch.OrchestrationError) as e:
-        raise typer.Exit(f"质检失败：{e}") from None
+    except (ValueError, OSError, typer.BadParameter) as e:
+        _command_error(e, json_output=json_output)
+    if json_output:
+        _emit_json(json.dumps(report, ensure_ascii=False, indent=2))
+        return
     console.print(
         f"  G4 审计：{report['g4_audit']}；epubcheck errors：{report['g4_epubcheck_errors']}；"
         f"passed：{report['passed']}"
@@ -575,6 +747,8 @@ def qa(
         console.print(
             f"  G5 放行：[red]否[/red]（原因：{report.get('released_reason') or '未知'}）"
         )
+    for finding in report.get("review_findings") or []:
+        typer.echo(f"  {finding['code']}：{finding['path']}：{finding['message']}")
 
 
 @app.command()
@@ -751,11 +925,12 @@ def import_cmd(
     ),
     workspace: str | None = typer.Option(None, "--workspace", help="工作区目录"),
     config: str | None = typer.Option(None, "--config", help="配置文件路径"),
+    json_output: bool = typer.Option(False, "--json", help="输出导入、跳过、失败与告警 JSON"),
 ) -> None:
     """登记 agent 手写的 translation/ + align/（校验 + 推进状态 + 术语冲突外置）。"""
-    cfg = load_config(config or _CONFIG_PATH)
-    store = _store_from(workspace, cfg)
     try:
+        cfg = load_config(config or _CONFIG_PATH)
+        store = _store_from(workspace, cfg)
         result = orch.import_translations(
             store,
             unit_id=unit,
@@ -764,8 +939,13 @@ def import_cmd(
             force=force,
             config=cfg,
         )
-    except (ValueError, OSError, orch.OrchestrationError) as e:
-        raise typer.Exit(f"导入失败：{e}") from None
+    except (ValueError, OSError, typer.BadParameter) as e:
+        _command_error(e, json_output=json_output)
+    if json_output:
+        _emit_json(json.dumps(result, ensure_ascii=False, indent=2))
+        if result["failed"]:
+            raise typer.Exit(1)
+        return
     if result["reviewed"]:
         console.print(
             f"[green]审校通过已登记：[/green]{len(result['reviewed'])} 个单元推进为 reviewed"
@@ -802,11 +982,16 @@ def import_cmd(
             f"[red]其中硬缺陷 {n_term} 条（术语命中/标记/脚注守恒等，真实缺陷），"
             f"须逐条核验清零后才能放行[/red]"
         )
-    for sid in result["skipped"]:
-        console.print(f"[dim]- {sid}：跳过（无 rel_path 或已 reviewed/built）[/dim]")
+    for item in result["skipped_details"]:
+        console.print(f"[dim]- {item['unit']}：跳过（{item['reason']}）；{item['next']}[/dim]")
     # 术语提案（--terms）：显式坏输入已在上游报错；这里让「空结果」可见（issue #36）
     terms_info = result.get("terms")
     if terms_info is not None:
+        counts = terms_info["status_counts"]
+        console.print(
+            "术语落盘状态（analysis/glossary.csv）："
+            + "、".join(f"{k}={v}" for k, v in counts.items())
+        )
         if terms_info["proposed"]:
             extra = (
                 f"；跳过 {terms_info['skipped']} 条（缺 source/target）"
@@ -876,14 +1061,18 @@ def g0(
     unit: str | None = typer.Option(None, "--unit", help="只校验指定单元（缺省全部）"),
     workspace: str | None = typer.Option(None, "--workspace", help="工作区目录"),
     config: str | None = typer.Option(None, "--config", help="配置文件路径"),
+    json_output: bool = typer.Option(False, "--json", help="输出静态校验结果 JSON"),
 ) -> None:
     """G0 零 token 静态校验（翻译/导入后立即跑，不必等到 qa）。"""
-    cfg = load_config(config or _CONFIG_PATH)
-    store = _store_from(workspace, cfg)
     try:
+        cfg = load_config(config or _CONFIG_PATH)
+        store = _store_from(workspace, cfg)
         result = orch.g0_check(store, unit_id=unit, config=cfg)
-    except (ValueError, OSError, orch.OrchestrationError) as e:
-        raise typer.Exit(f"G0 校验失败：{e}") from None
+    except (ValueError, OSError, typer.BadParameter) as e:
+        _command_error(e, json_output=json_output)
+    if json_output:
+        _emit_json(json.dumps(result, ensure_ascii=False, indent=2))
+        return
     # 硬缺陷类（术语命中/标记/脚注守恒等）红色 ✗，须逐条核验；其余 advisory 黄色 ⚠
     _HARD_CHECKS = {"terminology", "marker", "footnote", "table", "fidelity"}
     n_hard = 0

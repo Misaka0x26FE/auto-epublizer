@@ -1,4 +1,4 @@
-<!-- i18n: source=translation.zh.md sha256=7277c7640d6156ba05f9ee89f50fcdca8fe446e09df9ae49f60afcb8684bd6e1 -->
+<!-- i18n: source=translation.zh.md sha256=579304e11bd75656be3089949d6d3d5dca2a73d340889c6169bff5046d0c6366 -->
 > **English** | [中文](translation.zh.md)
 
 # Translation (chunk translation + sentence alignment + terminology loop)
@@ -161,9 +161,20 @@ excluded from the severe-short rule's source and target character counts.
 Optional `preprocessing/style_exemptions.csv` requires `unit,pattern,style_ref,reason`.
 `pattern` is a regex (empty means the whole unit for the copying check); `style_ref` must
 be nonempty and resolve to a real entry in `analysis/style.md` (`§5` matches `## 5.`).
-Matches remain visible as advisory `language_exempt`. Do not exempt an entire index when
-the user has explicitly required localized headwords. Changing either evidence file
-invalidates the report digest. The agent must verify the actual reason, not merely fill fields.
+Matches remain visible as advisory `language_exempt`. Example (exempt the bibliography
+block only, never copied body prose in the same unit):
+
+```csv
+unit,pattern,style_ref,reason
+ch07,^Müller, Hans\.,§5,§5 bibliographic style: retain the German entry verbatim
+```
+
+A same-unit `This copied body sentence…` still emits blocking `language`; an empty
+translation stays blocking and cannot be exempted by a style regex. `language_exempt`
+carries the matched `seq` and source `head` as block-level evidence, and changing the
+translation or the evidence files invalidates the report digest. Do not exempt an entire
+index when the user has explicitly required localized headwords. The agent must verify the
+actual reason, not merely fill fields.
 
 The separate severe-short gate emits blocking `length_review` when source prose contains
 at least 80 alphabetic characters and a nonempty translation retains at most four, after
@@ -179,3 +190,4 @@ completed unit to `aligned`; repeated import is harmless (idempotent). After rev
 `import --reviewed` can advance newly validated units to `reviewed` in the same call
 (idempotent); import normally skips `reviewed`/`built` units. Failed forced revalidation
 must not promote a unit back to reviewed.
+Successful imports register byte digests for structured/translation/align. If a completed unit's bytes change, ordinary import reports `E_STATE_DRIFT` instead of silently skipping it. In `status --json`, each unit exposes `content_state` (`current/changed/unknown`) and current `content_digests`. Verify source changes and run `restructure` first; for translation/align revisions use `import --unit ID --force`. Legacy workspaces without import digests remain unknown, with an explicit revalidation hint in skip details; unchanged units still skip idempotently. `--force` validates existing translation/align artifacts; it does not assemble private intermediate files such as `.work`.

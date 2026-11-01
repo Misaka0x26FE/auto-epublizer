@@ -55,6 +55,32 @@ def test_cli_status_all_json(tmp_path: Path) -> None:
     assert len(data) == 2
 
 
+def test_status_all_retains_workspace_with_contract_error(tmp_path: Path) -> None:
+    base = _two_workspaces(tmp_path)
+    (base / "alpha/preprocessing/catalog.csv").write_text(
+        "item,kind,status,locator,unit_id,note\nX,bad,included,p1,ch01,\n", encoding="utf-8"
+    )
+
+    result = runner.invoke(app, ["status", "--all", "--json", "--workspace", str(base)])
+
+    assert result.exit_code != 0
+    rows = json.loads(result.stdout)
+    assert len(rows) == 2
+    bad = next(r for r in rows if r["slug"] == "alpha")
+    assert bad["error"]["code"] == "E_ARTIFACT_CONTRACT"
+    assert bad["released"] is False
+
+
+def test_status_all_does_not_hide_unreadable_publication(tmp_path: Path) -> None:
+    base = _two_workspaces(tmp_path)
+    (base / "alpha/publication.json").write_text("{", encoding="utf-8")
+    result = runner.invoke(app, ["status", "--all", "--json", "--workspace", str(base)])
+    assert result.exit_code != 0
+    rows = json.loads(result.stdout)
+    assert len(rows) == 2
+    assert next(r for r in rows if r["slug"] == "alpha")["error"]["code"] == "E_INPUT"
+
+
 def _scaffold_publication(path: Path) -> None:
     """写一份与 CLI 自带 template/publication.json 同形的脚手架（未 init 的工作区）。"""
     from auto_common.workspace.models import SCHEMA_VERSION

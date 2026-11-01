@@ -1,4 +1,4 @@
-<!-- i18n: source=structure.zh.md sha256=90bc52148fad142397ea29a72e9c7fdffdf6f6b608e11cc94a8c5d5714064d67 -->
+<!-- i18n: source=structure.zh.md sha256=b72eb729428d31368378d1ab976063c31cf5bc8c852e29c8167fe9f801caedc9 -->
 > **English** | [中文](structure.zh.md)
 
 # Structure (four-layer structural rebuild + provenance)
@@ -70,8 +70,7 @@ No keyword hit → `body` + `chNN` (sequential numbering). Unit IDs are stable (
 ## Unit-boundary rebuild (restructure registration)
 
 When repair/re-splitting causes **a change in the unit set** (split, merge, add, delete),
-content-level modifications need no registration (build/provenance read `structured/`
-directly), but boundary-level changes must be registered, otherwise
+or changes the source body of a completed unit, register the structure and content digests again; otherwise
 `publication.json.units` becomes decoupled from disk:
 
 1. Manually rewrite `structured/` according to the real chapters (one md per unit, first
@@ -84,8 +83,8 @@ directly), but boundary-level changes must be registered, otherwise
    not delete content; changing this switch invalidates the QA report digest.
 3. Run `auto-epublizer restructure`: after validation (files exist, no orphan md, no
    duplicate id) it updates `publication.json.units`;
-4. State semantics: same id and unchanged content → state retained; changed → roll back to
-   `split` (requires re-translation and re-import); a vanished id → output an orphan-artifact
+4. State semantics: retain state only when the id, structural fields and registered body SHA-256 are unchanged; changes roll back to
+   `split` (requires re-translation and re-import). Legacy workspaces without a body digest roll back to `split` on their first `restructure`, registering the current baseline rather than inferring historical completion. Repeating registration without changes does not reset again; a vanished id → output an orphan-artifact
    hint (old translation/align can be cleaned up).
 
 > When to use: MinerU/OCR hierarchy is messy and needs re-splitting, fragmented units need
@@ -93,6 +92,20 @@ directly), but boundary-level changes must be registered, otherwise
 > See `references/repair.md` and `docs/semantic-repair.md` §3.3.
 
 ## Notes
+
+### Source inventory catalog.csv
+
+Columns are `item,kind,status,locator,unit_id,note`. kind accepts toc/figure/table/footnote/section/physical/blank. figure includes maps and full-page images; image input normalizes to figure. blank is a content type, not a disposition status. Empty OCR text does not prove a blank page: inspect the source page image.
+
+| status (for every kind) | Required constraints | Release meaning |
+|---|---|---|
+| included | unit_id bound to a real unit | Content included |
+| physical | Keep a locator for the physical-carrier record | Not automatically unresolved |
+| excluded | note explaining exclusion | Not automatically unresolved |
+| absent | note evidencing absence in the source itself | Not automatically unresolved |
+| unresolved | Await verification; do not guess missing content | Blocks release |
+
+blank always requires locator; except for unresolved, note must record verification evidence. `repairs.jsonl.evidence` must be an existing workspace-relative file (e.g. `structured/body/ch01.md`); paths and symlinks escaping the workspace are errors.
 
 Column-order reading, complex-table shape preservation, and dedicated footnote/endnote
 extraction are complex PDF scenarios and are currently future extension points; basic

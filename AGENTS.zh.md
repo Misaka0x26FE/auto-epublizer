@@ -98,6 +98,10 @@ auto-epublizer evidence report   # 成品/外部源/副本的只读重做证据�
 # 扫描件封面：evidence source --json 里的 cover_candidates 只是候选；agent 核证后写
 # preprocessing/cover.json（{"file": "structured/raw/media/…", "evidence": "…"}），build 才登记
 # cover-image；未确认不自动把首页图当封面
+# 3.6 生成封面（确实没有源封面时才做；详见 references/cover.md）：跑一次 `auto-epublizer cover`，
+#     产物 structured/raw/media/cover-generated.png + 登记 preprocessing/cover-generated.json
+#     （设计摘要/字体/实际文字）；build 据此写 cover-image。没有登记 build 不会平白造封面；
+#     已确认的 cover.json 永远优先；元数据改了按设计摘要重绘（auto_sync）
 
 # 4.7 源注核证、抽离与登记（有注书必做；详见 references/notes.md）：notes candidates 导出候选 →
 #     agent 回看源件逐条核证（disposition=note|not_note）→ 写 structured/notes.json 与正文
@@ -243,6 +247,8 @@ skills/auto-epublizer/
 │                       + structure.csv（可选结构重建清单，restructure 登记用）
 │                       + note_candidates.jsonl（有注书：notes candidates 导出的注释候选+处置）
 │                       + terminology_exemptions.csv（可选：unit,source,reason，逐单元有据术语豁免）
+│                       + cover-spec.json（可选，agent 手写封面设计稿：副书名/丛书名/署名行）
+│                       + cover-generated.json（CLI 写的生成封面登记：设计摘要/sha256/字体）
 ├── publication.json  权威索引（DC 元数据 + 内容树 + 状态机 + 配置快照）
 ├── .progress.json    （预留）批次级断点；当前未落盘，断点=单元级跳过
 ├── glossary.db       术语库内部索引（可选，SQLite）

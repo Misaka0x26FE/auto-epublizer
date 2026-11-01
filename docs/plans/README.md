@@ -19,6 +19,7 @@
 
 | 文档 | 状态 | 内容 |
 |---|---|---|
+| [2026-10-31-issue-pr-update.md](2026-10-31-issue-pr-update.md) | 实施中（S/C/P1–P3 已验证） | 21 个开放 issue 与全部 18 个历史 PR 对账；状态摘要、JSON/审校诊断、PDF 封面图版与宽表诊断已落地；目录绝对页码及 #72 等后续继续；证据见 §7 |
 | [2026-10-29-structured-document-stack.md](2026-10-29-structured-document-stack.md) | 已完成（`ad1461f`） | markdown-it-py token 解析、EPUBCheck JSON 诊断、OCR 坐标/置信度、Pandoc AST 试点、Hypothesis 性质测试与固定工具 CI |
 | [2026-10-27-issue-pr-triage.md](2026-10-27-issue-pr-triage.md) | 已交付（main `10597f1`；§6 工作树已被清理，§7 为重做与推送记录） | #68 审校账本、#65 `$$` 候选、PR66 单项列表、PR67 PDF D1–D3、#62/#58 源分区、#63 扫描封面；证据与未验证范围见 §7 |
 | [2026-10-23-issue-pr-triage.md](2026-10-23-issue-pr-triage.md) | 已实施（`f4d6c24`） | PR59 独立审查补修、历史对账、制作页和证据/安全修复接口已交付；保留投稿历史，实书语义核证另列；恢复及推送证据见 §11 |
@@ -46,3 +47,4 @@
 | [2026-10-15-review-backflow.md](2026-10-15-review-backflow.md) | 当前代码与架构已提交（§10.4，`1db8752`） | 更正旧 checker 证据，记录实际退出码/旧报告 stale、无桌面注释及媒体正负验收、架构浏览器核证；644 passed、1 skipped，不冒充原书完整验收 |
 | [2026-10-17-pr42-repair.md](2026-10-17-pr42-repair.md) | 已合并（`8850c51`，实现 `601c002`） | PR42 八类修复与 source ingest 围栏保真；保留作者 12 提交，755 passed / 1 skipped、真实无桌面正负验收，不冒充真实书迁移 |
 | [2026-10-17-field-followups.md](2026-10-17-field-followups.md) | 已完成（集成 `5de1225`；PR44 `0b2c7a6`、PR45 `05db7b8`） | #43 相对摘要；注释经验边界与 #46 分段 advisory；#47 四项工作根工具及失败护栏；802 passed / 1 skipped、真实无桌面 CLI/Java/Git 验收 |
+| [2026-10-31-generated-cover.md](2026-10-31-generated-cover.md) | 实施中（代码/测试/文档已落地，待提交号） | 生成式封面（Magadan 版式）内置：`cover` 命令 + `cover-generated.json` 登记 + build 写 `cover-image`；源封面优先、不凭空造封面、字体降级明说；配套 skill `references/cover.md` 与 status 封面全景 |
