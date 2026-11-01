@@ -97,7 +97,7 @@ def probe_mineru() -> Capability:
 
 
 def probe_cover_fonts(config: Config) -> Capability:
-    """生成封面（Magadan 版式）的字体可用性：中文字体必需，拉丁/行书缺失仅降级。"""
+    """生成封面（quarto/界栏版式）的字体可用性：中文字体必需，拉丁/行书缺失仅降级。"""
     from .cover import CoverError, find_fonts
 
     try:

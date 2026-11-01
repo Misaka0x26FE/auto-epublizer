@@ -585,15 +585,12 @@ def cover(
     workspace: str | None = typer.Option(None, "--workspace", help="工作区目录"),
     out: str | None = typer.Option(None, "-o", "--out", help="额外导出 PNG 路径（登记仍在工作区）"),
     style: str | None = typer.Option(
-        None, "--style", help="版式：quarto（界栏，默认）/ magadan（旧版式）"
+        None, "--style", help="版式：quarto（界栏，唯一；旧版 magadan 已停用）"
     ),
     palette: str | None = typer.Option(
         None,
         "--palette",
-        help=(
-            "色板：quarto=ink/oxblood/forest/indigo/aubergine/slate/rust/paper；"
-            "magadan=indigo/blue/maroon/purple/crimson/brown/green/ink"
-        ),
+        help="色板：ink/oxblood/forest/indigo/aubergine/slate/rust/paper",
     ),
     imprint: str | None = typer.Option(None, "--imprint", help="底部署名（空串=不画署名）"),
     size: str | None = typer.Option(None, "--size", help="开本（a5/32k/b5/16k）"),

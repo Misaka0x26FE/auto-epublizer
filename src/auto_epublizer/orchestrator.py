@@ -572,7 +572,7 @@ def _render_and_pack(
                 file=confirmed_cover["file"],
                 evidence=confirmed_cover["evidence"],
             )
-    # 生成封面（Magadan 版式）：只补「没有源封面」的书，且只在 agent 已登记生成件时使用；
+    # 生成封面（quarto/界栏版式）：只补「没有源封面」的书，且只在 agent 已登记生成件时使用；
     # 设计摘要变了就地重绘（内容同步），绝不静默造一个计划外的封面。
     if cover_media is None and cfg.cover.enabled and cfg.cover.style != "off":
         from . import cover as cover_mod
@@ -1459,7 +1459,7 @@ def generate_cover(
     pdf: bool = False,
     config: Config | None = None,
 ) -> dict[str, Any]:
-    """生成 Magadan 版式书封（PNG，可选 PDF）并登记；返回登记记录。
+    """生成书封（quarto/界栏版式，PNG，可选 PDF）并登记；返回登记记录。
 
     这是**显式**动作：只有跑过它（或工作区里已有 ``preprocessing/cover-generated.json``）
     的书，build 才会把生成封面写进 cover-image——「没有源封面」不等于「必须造封面」。

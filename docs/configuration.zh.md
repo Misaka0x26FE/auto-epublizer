@@ -59,9 +59,8 @@ paths:
 # ── 生成式封面（没有源封面的书）──────────────────────────────
 cover:
   enabled: true           # cover 命令可用；false=连显式生成也拒绝
-  style: quarto           # quarto（界栏，默认：整幅深底 + 反白书名）| magadan（旧版式）
-  palette: ink            # quarto：ink|oxblood|forest|indigo|aubergine|slate|rust|paper
-                          # magadan：indigo|blue|maroon|purple|crimson|brown|green|ink
+  style: quarto           # 只有 quarto（界栏）；旧版 magadan 已停用（写成它会明确报错）
+  palette: ink            # ink|oxblood|forest|indigo|aubergine|slate|rust|paper
   size: a5                # 与 pdf --size 同一组：a5|32k|b5|16k
   dpi: 300                # PNG 分辨率（72–1200）
   imprint: "马加丹汉化组"  # 底部署名；空串=不画署名行
@@ -86,15 +85,16 @@ output:
 可选的、由 agent 手写的 `preprocessing/cover-spec.json`，成品登记在
 `preprocessing/cover-generated.json`。
 
-两套版式共用一个生成器，由 `cover.style` 选：
+只有一套版式（`quarto`，界栏）：整幅底面 + 反白左对齐大字书名 + 左侧双线界栏 + 短横 +
+斜体原文名 + 左下责任者 + 右下署名。旧版 `magadan` **已停用**：点名它会得到明确报错，
+不会静默换成别的版式。
 
-| 版式 | 样子 |
-|---|---|
-| `quarto`（默认，界栏） | 整幅底面 + 反白左对齐大字书名 + 左侧双线界栏 + 短横 + 斜体原文名 + 左下责任者 + 右下署名 |
-| `magadan` | 白底 + 顶部通栏色带 + 右侧竖色条 + 右对齐宋体书名群 |
+**可辨认底线**：封面按 600px 宽看（更小的分辨率不考虑），所以每个字号在该宽度下都
+≥14px —— `MIN_TYPE_FRAC` = 14/600 ≈ 2.34% 页宽，由代码夹紧并由
+`tests/test_cover_render.py` 拦住。改比例可以，把任何字号压到这条线下就是缺陷。
 
 ```bash
-auto-epublizer cover --workspace <ws> [--style quarto|magadan] [--palette oxblood] \
+auto-epublizer cover --workspace <ws> [--palette oxblood] [--size a5] [--dpi 300] \
     [--size a5] [--dpi 300] [--pdf] [--json]
 auto-epublizer cover --workspace <ws> --remove
 ```

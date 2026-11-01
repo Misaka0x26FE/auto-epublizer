@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 # Copyright (C) 2026 Misaka0x26FE
-"""生成式书封（Magadan 版式）：设计解析、排版对版、构建接线。
+"""生成式书封（quarto/界栏版式）：设计解析、排版对版、可辨认下限、构建接线。
 
 对版断言用「墨迹位置」而不是像素比对：版式比例的权威来源是参考样张的实测，
 这里守住的就是那几组比例（色带、书名群起点、右边界、署名）不被无意改掉。
@@ -96,9 +96,9 @@ def test_spec_uses_translated_title_and_source_title() -> None:
     assert spec.title == ["重构意义世界"]
     assert spec.original_title == ["Reordering of Meaningful Worlds"]
     assert spec.credits == ["朱莉娅 · 尤尔丘克 著", "OpenCode 译"]
-    assert spec.style == cv.DEFAULT_STYLE == "quarto"
+    assert spec.style == cv.STYLE == "quarto"
     assert spec.palette == "ink"
-    assert spec.colors == cv.STYLE_PALETTES["quarto"]["ink"]
+    assert spec.colors == cv.PALETTES["ink"]
     assert spec.imprint == "马加丹汉化组"
 
 
@@ -146,12 +146,29 @@ def test_unknown_palette_style_and_size_are_explicit_errors() -> None:
         cv.resolve_spec(_pub(), Config(), spec_file={}, style="baroque")
 
 
-def test_palette_names_are_style_scoped() -> None:
-    """magadan 的色板名不能当成 quarto 的用（反之亦然）。"""
-    with pytest.raises(cv.CoverError, match="未知色板"):
-        cv.resolve_spec(_pub(), Config(), spec_file={}, palette="crimson")  # magadan 才有的名字
-    spec = cv.resolve_spec(_pub(), Config(), spec_file={}, style="magadan", palette="crimson")
-    assert spec.colors["band"] == "#962311" and spec.colors["paper"] == "#FFFFFF"
+def test_old_magadan_style_is_disabled() -> None:
+    """旧版式已停用：点名 magadan 要给得出「已停用」的解释，而不是静默换版式。"""
+    with pytest.raises(cv.CoverError, match="已停用"):
+        cv.resolve_spec(_pub(), Config(), spec_file={}, style="magadan")
+    with pytest.raises(cv.CoverError, match="已停用"):
+        cv.resolve_spec(_pub(), Config(), spec_file={"style": "magadan"})
+
+
+def test_legibility_floor_at_600px() -> None:
+    """600px 宽的成品上，最小字号也要 ≥14px（再小的分辨率不考虑）。"""
+    cfg = Config()
+    page_w = cv.resolve_spec(_pub(), cfg, spec_file={}).width
+    for key, frac in cv.QUARTO_TYPE.items():
+        assert frac >= cv.MIN_TYPE_FRAC, key
+        assert frac * cv.LEGIBILITY_REF_WIDTH_PX >= cv.LEGIBILITY_EM_PX, key
+        assert frac * page_w * 600 / page_w >= 13.99, key
+    # 缩放兜底不会把任何元素缩到线下
+    spec = cv.resolve_spec(
+        _pub(), cfg, spec_file={"title": "晚期资本主义的文化逻辑与后现代主义的起源"}
+    )
+    fonts = _fonts_or_skip()
+    texts, _rules, _fits = cv._quarto_layout(spec, cv._Measurer(fonts), fonts, 0.81)
+    assert min(item[1] for item in texts) >= cv.MIN_TYPE_FRAC * page_w
 
 
 def test_missing_title_is_an_explicit_error() -> None:
@@ -185,28 +202,6 @@ def test_render_is_deterministic() -> None:
     first = cv.render_png(spec, fonts, dpi=100)
     assert first == cv.render_png(spec, fonts, dpi=100)
     assert first.startswith(b"\x89PNG\r\n\x1a\n")
-
-
-def test_layout_matches_reference_proportions() -> None:
-    """magadan 版式：书名群起点与署名位置必须仍在参考样张的比例上（回归守护）。"""
-    fonts = _fonts_or_skip()
-    spec = cv.resolve_spec(
-        _pub(creator="朱莉娅 · 尤尔丘克"),
-        Config(),
-        spec_file={"subtitle": "后苏联时期乌克兰对乌克兰\n民族主义者组织和乌克兰起义军的记忆"},
-        style="magadan",
-        palette="indigo",
-    )
-    png = cv.render_png(spec, fonts, dpi=72)
-    runs, _w, h = _ink_rows(png)
-    assert len(runs) >= 5
-    band = (runs[0][0] / h, runs[0][1] / h)
-    assert band[0] == pytest.approx(0.0135, abs=0.006)
-    assert band[1] - band[0] == pytest.approx(0.0528, abs=0.006)
-    title = (runs[1][0] / h, runs[1][1] / h)
-    assert title[0] == pytest.approx(0.310, abs=0.008)  # 书名群起点
-    imprint = (runs[-1][0] / h, runs[-1][1] / h)
-    assert imprint[0] == pytest.approx(0.919, abs=0.010)  # 底部署名
 
 
 def test_quarto_layout_proportions() -> None:

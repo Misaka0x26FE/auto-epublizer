@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 # Copyright (C) 2026 Misaka0x26FE
-"""生成式书封（Magadan 版式）：metadata + 设计稿 → 确定性 PNG/PDF。
+"""生成式书封（quarto「界栏」版式）：metadata + 设计稿 → 确定性 PNG/PDF。
 
 为什么需要：译作常常没有可用的封面——扫描件首页图未必是封面（issue #63 已规定
 「未确认不当封面」），纯文本/Markdown 源根本没有封面图，成品因此在书架与锁屏上
@@ -17,16 +17,17 @@
    没有源封面时使用。生成件登记在 ``preprocessing/cover-generated.json``，与源封面
    互不覆盖。
 
-两套版式（``cover.style`` 选）：
+版式（``quarto``，中文名「界栏」）：整幅深色底面 + 反白左对齐大字号书名 +
+左侧双线界栏 + 标题下短横 + 斜体原文名 + 左下责任者 + 右下署名。整本书靠色板
+（底面/文字/强调三色）分家，同一批书既统一又互不雷同。
 
-- ``quarto``（默认，中文名「界栏」）：整幅深色底面 + 反白左对齐大字号书名 +
-  左侧双线界栏 + 标题下短横 + 斜体原文名 + 左下责任者 + 右下署名。整本书靠
-  色板（底面/文字/强调三色）分家，同一批书既统一又互不雷同。
-- ``magadan``：白底 + 顶部通栏色带 + 右侧竖色条 + 右对齐宋体书名群（实测自参考样张）。
+**可辨认底线**：成品最窄按 600px 宽看（更小的分辨率不考虑）。中文衬线字身低于
+约 14px 就糊成一团，所以本模块所有字号都必须 ≥ ``MIN_TYPE_FRAC``（= 14/600 ≈
+2.34% 页宽 = A5 上 9.8pt）。改版式比例可以，别把字号压到这条线以下——
+``tests/test_cover_render.py`` 会拦。
 
-quarto 的比例见 ``QUARTO_GEOM``/``QUARTO_TYPE``；magadan 的比例实测自参考样张，
-见 ``MAGADAN_GEOM``/``MAGADAN_TYPE``/``MAGADAN_GAPS``。改这些常数等于改版式，
-改动后请重跑 ``tests/test_cover_render.py`` 的对版断言。
+比例见 ``QUARTO_GEOM``/``QUARTO_TYPE``；改这些常数等于改版式，改动后请重跑
+``tests/test_cover_render.py`` 的对版与可辨认断言。
 
 字体：中文思源宋体、拉丁 Nimbus Roman/Times、行书署名用志莽行书一类手写体；
 全部按系统字体发现，找不到时降级并**明说**（不静默换字体而假装是同一套封面）。
@@ -56,85 +57,25 @@ RECORD_FILE = "preprocessing/cover-generated.json"
 #: 生成封面的落盘位置（与其它媒体同目录，build 直接按 EPUB 相对路径引用）。
 GENERATED_REL = "structured/raw/media/cover-generated.png"
 
-#: 版式名；``quarto`` 是默认版式，``magadan`` 保留为可选项。
-DEFAULT_STYLE = "quarto"
+#: 唯一版式名（旧的 magadan 版式已停用；记录与摘要里仍保留该字段以便追溯）。
+STYLE = "quarto"
 
-#: 色板表：``style -> palette -> 颜色字典``。两套版式用不同的颜色角色——
-#: quarto 是「底面/文字/强调」三色，magadan 是「色带/侧条」两色（纸白与墨黑固定）。
-STYLE_PALETTES: dict[str, dict[str, dict[str, str]]] = {
-    "quarto": {
-        "ink": {"field": "#171A20", "type": "#F5F0E6", "accent": "#C9A227"},
-        "oxblood": {"field": "#5B1B22", "type": "#F2EADD", "accent": "#D8B26E"},
-        "forest": {"field": "#1D3A2F", "type": "#F1EDDF", "accent": "#CBB27A"},
-        "indigo": {"field": "#1B2A55", "type": "#F3EFE4", "accent": "#C9B37E"},
-        "aubergine": {"field": "#3A2340", "type": "#F3ECEE", "accent": "#D9A7A0"},
-        "slate": {"field": "#22333B", "type": "#F0EEE7", "accent": "#A8C3B5"},
-        "rust": {"field": "#6B2E17", "type": "#F5EDDF", "accent": "#E3C08A"},
-        # 浅色版：纸底墨字，印得省、看着轻，适合同一批里的「轻」书
-        "paper": {"field": "#F4EFE3", "type": "#1A1A1A", "accent": "#8A2B2B"},
-    },
-    "magadan": {
-        "indigo": {"band": "#0D1168", "bar": "#0D1168"},
-        "blue": {"band": "#2C5F9E", "bar": "#FECB00"},
-        "maroon": {"band": "#612326", "bar": "#612326"},
-        "purple": {"band": "#4B2C65", "bar": "#4B2C65"},
-        "crimson": {"band": "#962311", "bar": "#962311"},
-        "brown": {"band": "#5A2B1B", "bar": "#5A2B1B"},
-        "green": {"band": "#236243", "bar": "#236243"},
-        "ink": {"band": "#1A1A1A", "bar": "#1A1A1A"},
-    },
-}
+#: 可辨认底线：600px 宽的成品上，最小字号的字身不得低于 14px（CJK 衬线）。
+LEGIBILITY_EM_PX = 14.0
+LEGIBILITY_REF_WIDTH_PX = 600.0
+MIN_TYPE_FRAC = LEGIBILITY_EM_PX / LEGIBILITY_REF_WIDTH_PX  # ≈ 0.02333（页宽比例）
 
-#: magadan 版式固定的纸色与墨色（色板只管色带与侧条）。
-MAGADAN_PAPER = {"paper": "#FFFFFF", "ink": "#000000"}
-
-STYLES: tuple[str, ...] = tuple(STYLE_PALETTES)
-
-
-#: 版式（页宽 W / 页高 H 的比例）。来源：参考样张逐像素实测。
-MAGADAN_GEOM = {
-    "band_top": 0.0135,
-    "band_h": 0.0528,
-    "bar_left": 0.897,
-    "bar_w": 0.021,
-    "content_right": 0.882,
-    "content_left": 0.080,
-    "block_ink_top": 0.3099,
-    "series_left": 0.030,
-    "series_ink_top": 0.084,
-    "imprint_center": 0.470,
-    "imprint_ink_top": 0.9191,
-}
-
-#: 字号（/ 页宽）。
-MAGADAN_TYPE = {
-    "title": 0.0767,
-    "subtitle": 0.0375,
-    "original_title": 0.0383,
-    "original_subtitle": 0.0295,
-    "credits": 0.0294,
-    "lead": 0.0295,
-    "series": 0.0300,
-    "imprint": 0.0330,
-}
-
-#: 行高（× 字号）。
-MAGADAN_LEADING = {
-    "title": 1.02,
-    "subtitle": 1.12,
-    "original_title": 1.15,
-    "original_subtitle": 1.15,
-    "credits": 1.50,
-    "lead": 1.25,
-}
-
-#: 块间距（/ 页高，墨迹到墨迹）：实测自样张，保住「书名群」的呼吸感。
-MAGADAN_GAPS = {
-    "lead_title": 0.0120,
-    "title_subtitle": 0.0224,
-    "subtitle_original": 0.0262,
-    "original_originalsub": 0.0120,
-    "originalsub_credits": 0.0235,
+#: 色板：quarto 用「底面 / 文字 / 强调」三色。整本书靠色板区分，版式保持一致。
+PALETTES: dict[str, dict[str, str]] = {
+    "ink": {"field": "#171A20", "type": "#F5F0E6", "accent": "#C9A227"},
+    "oxblood": {"field": "#5B1B22", "type": "#F2EADD", "accent": "#D8B26E"},
+    "forest": {"field": "#1D3A2F", "type": "#F1EDDF", "accent": "#CBB27A"},
+    "indigo": {"field": "#1B2A55", "type": "#F3EFE4", "accent": "#C9B37E"},
+    "aubergine": {"field": "#3A2340", "type": "#F3ECEE", "accent": "#D9A7A0"},
+    "slate": {"field": "#22333B", "type": "#F0EEE7", "accent": "#A8C3B5"},
+    "rust": {"field": "#6B2E17", "type": "#F5EDDF", "accent": "#E3C08A"},
+    # 浅色版：纸底墨字，印得省、看着轻，适合同一批里的「轻」书
+    "paper": {"field": "#F4EFE3", "type": "#1A1A1A", "accent": "#8A2B2B"},
 }
 
 #: quarto 版式比例（页宽 W / 页高 H）：整幅底面、左界栏、左对齐书名群。
@@ -159,16 +100,16 @@ QUARTO_GEOM = {
     "title_leading": 1.06,
 }
 
-#: quarto 版式字号（/ 页宽）。
+#: quarto 版式字号（/ 页宽）。**每一项都必须 ≥ MIN_TYPE_FRAC**（600px 宽下 ≥14px）。
 QUARTO_TYPE = {
-    "series": 0.0155,
-    "lead": 0.0175,
-    "title": 0.105,
-    "subtitle": 0.0215,
-    "original_title": 0.0192,
-    "original_subtitle": 0.0155,
-    "credits": 0.0135,
-    "imprint": 0.0170,
+    "series": 0.0245,  # 600px 下 ≈ 14.7px
+    "lead": 0.0260,  # ≈ 15.6px
+    "title": 0.0960,  # 基准 57.6px；短书名可放到 1.45×，长书名收到 0.75×
+    "subtitle": 0.0305,  # ≈ 18.3px
+    "original_title": 0.0275,  # ≈ 16.5px
+    "original_subtitle": 0.0250,  # ≈ 15.0px
+    "credits": 0.0240,  # ≈ 14.4px（全篇最小）
+    "imprint": 0.0260,  # ≈ 15.6px
 }
 
 #: 墨迹相对基线的比例（上, 下）：CJK 全角字 / 拉丁衬线 / 行书。实测（见模块文档）。
@@ -265,7 +206,7 @@ class CoverSpec:
 
     width: float
     height: float
-    #: 颜色角色（quarto: field/type/accent；magadan: band/bar/ink/paper）
+    #: 颜色角色：field（底面）/ type（文字）/ accent（强调）
     colors: dict[str, str]
     title: list[str]
     subtitle: list[str] = field(default_factory=list)
@@ -275,7 +216,7 @@ class CoverSpec:
     lead: list[str] = field(default_factory=list)
     series: list[str] = field(default_factory=list)
     imprint: str = ""
-    style: str = DEFAULT_STYLE
+    style: str = STYLE
     palette: str = "ink"
 
     def digest(self) -> str:
@@ -529,17 +470,14 @@ def resolve_spec(
         source_title = str(meta.title or "").strip()
         original = source_title if source_title and source_title != title_text else ""
 
-    style_name = str(style or overrides.get("style") or cfg.cover.style or DEFAULT_STYLE)
-    if style_name not in STYLE_PALETTES:
-        raise CoverError(f"未知版式：{style_name}（可选 {', '.join(STYLES)}）")
-    style = style_name
-    table = STYLE_PALETTES[style]
+    style_name = str(style or overrides.get("style") or cfg.cover.style or STYLE)
+    if style_name != STYLE:
+        hint = "（旧版式 magadan 已停用，统一用 quarto/界栏）" if style_name == "magadan" else ""
+        raise CoverError(f"未知版式：{style_name}{hint}；本版只支持 {STYLE}")
     palette_name = str(palette or overrides.get("palette") or cfg.cover.palette or "ink")
-    if palette_name not in table:
-        raise CoverError(f"未知色板：{palette_name}（{style} 可选 {', '.join(table)}）")
-    colors = dict(table[palette_name])
-    if style == "magadan":
-        colors.update(MAGADAN_PAPER)
+    if palette_name not in PALETTES:
+        raise CoverError(f"未知色板：{palette_name}（可选 {', '.join(PALETTES)}）")
+    colors = dict(PALETTES[palette_name])
 
     size_name = str(size or overrides.get("size") or cfg.cover.size or "a5").lower()
     if size_name not in SIZES:
@@ -564,7 +502,7 @@ def resolve_spec(
         lead=_lines(overrides.get("lead") or ""),
         series=_lines(overrides.get("series") or ""),
         imprint=str(imprint_text).strip(),
-        style=style,
+        style=STYLE,
         palette=palette_name,
     )
 
@@ -758,10 +696,11 @@ def _quarto_layout(
     rules: list[tuple] = []
 
     def text(line, size, x, baseline, color, kind="auto", tracking=0.0):
-        texts.append((line, size, x, baseline, color, kind, tracking))
+        # 可辨认下限是硬约束：任何元素都不许被缩到 600px 宽下糊掉
+        texts.append((line, max(size, MIN_TYPE_FRAC * W), x, baseline, color, kind, tracking))
 
     if spec.series:
-        size = QUARTO_TYPE["series"] * W * scale
+        size = QUARTO_TYPE["series"] * W
         baseline = QUARTO_GEOM["series_top"] * H
         chip = size * 0.60
         rules.append(
@@ -841,7 +780,7 @@ def _quarto_layout(
     # 责任者：从下往上排，最后一行贴住 credits_bottom
     credits_lines: list[str] = []
     if spec.credits:
-        size = QUARTO_TYPE["credits"] * W * scale
+        size = QUARTO_TYPE["credits"] * W
         for line in spec.credits:
             credits_lines.extend(wrap(line, measure, size, measurer) or [line])
         leading = QUARTO_GEOM["credits_leading"] * size
@@ -865,7 +804,7 @@ def _quarto_layout(
     )
 
     if spec.imprint:
-        size = QUARTO_TYPE["imprint"] * W * scale
+        size = QUARTO_TYPE["imprint"] * W
         has_script = fonts.script is not None
         tracking = 0.0 if has_script else 0.10
         width = measurer.width(spec.imprint, size, script=has_script) + (
@@ -885,8 +824,8 @@ def _quarto_layout(
     return texts, rules, fits
 
 
-def _draw_quarto(spec: CoverSpec, fonts: Fonts) -> pymupdf.Document:
-    """quarto（界栏）版式：整幅底面 + 反白书名 + 双线界栏 + 短横 + 斜体原文名。"""
+def _draw(spec: CoverSpec, fonts: Fonts) -> pymupdf.Document:
+    """把设计画到一页上：整幅底面 + 反白书名 + 双线界栏 + 短横 + 斜体原文名。"""
     measurer = _Measurer(fonts)
     W, H = spec.width, spec.height
     scale = 1.0
@@ -942,167 +881,6 @@ def _draw_quarto(spec: CoverSpec, fonts: Fonts) -> pymupdf.Document:
             cursor += font.text_length(ch, fontsize=size) + tracking * size
     for color, tw in writers.items():
         tw.write_text(page, color=color)
-    return doc
-
-
-def _draw(spec: CoverSpec, fonts: Fonts) -> pymupdf.Document:
-    """按 ``spec.style`` 分派到具体版式。"""
-    if spec.style == "magadan":
-        return _draw_magadan(spec, fonts)
-    return _draw_quarto(spec, fonts)
-
-
-def _draw_magadan(spec: CoverSpec, fonts: Fonts) -> pymupdf.Document:
-    """magadan 版式：白底 + 顶部通栏色带 + 右侧竖色条 + 右对齐书名群。"""
-    measurer = _Measurer(fonts)
-    width, height = spec.width, spec.height
-    doc = pymupdf.open()
-    page = doc.new_page(width=width, height=height)
-    page.draw_rect(
-        pymupdf.Rect(0, 0, width, height), color=None, fill=_hex(spec.colors["paper"]), width=0
-    )
-
-    # 顶部通栏色带 + 右侧竖色条（色条自色带下沿到页底，右侧留白由 bar_left/bar_w 决定）
-    band_top = MAGADAN_GEOM["band_top"] * height
-    band_h = MAGADAN_GEOM["band_h"] * height
-    page.draw_rect(
-        pymupdf.Rect(0, band_top, width, band_top + band_h),
-        color=None,
-        fill=_hex(spec.colors["band"]),
-        width=0,
-    )
-    bar_left = MAGADAN_GEOM["bar_left"] * width
-    bar_w = MAGADAN_GEOM["bar_w"] * width
-    page.draw_rect(
-        pymupdf.Rect(bar_left, band_top, bar_left + bar_w, height),
-        color=None,
-        fill=_hex(spec.colors["bar"]),
-        width=0,
-    )
-
-    content_right = MAGADAN_GEOM["content_right"] * width
-    content_w = content_right - MAGADAN_GEOM["content_left"] * width
-    ink = _hex(spec.colors["ink"])
-    tw = pymupdf.TextWriter(page.rect)
-
-    def emit(
-        lines: list[str],
-        size: float,
-        *,
-        right: float | None = None,
-        left: float | None = None,
-        baseline: float,
-        script: bool = False,
-    ) -> None:
-        for line in lines:
-            text_w = measurer.width(line, size, script=script)
-            x = (right - text_w) if right is not None else (left or 0.0)
-            for chunk, font in measurer.runs(line, script=script):
-                tw.append((x, baseline), chunk, font=font, fontsize=size)
-                x += font.text_length(chunk, fontsize=size)
-
-    def advance(size: float, key: str) -> float:
-        return MAGADAN_LEADING[key] * size
-
-    # —— 左上丛书名 ——
-    if spec.series:
-        size = MAGADAN_TYPE["series"] * width
-        baseline = MAGADAN_GEOM["series_ink_top"] * height + INK["cjk"][0] * size
-        emit(spec.series, size, left=MAGADAN_GEOM["series_left"] * width, baseline=baseline)
-
-    # —— 书名群（右对齐，自上而下）——
-    y = MAGADAN_GEOM["block_ink_top"] * height
-
-    def block(lines: list[str], key: str, size: float, *, gap_after: float) -> None:
-        nonlocal y
-        if not lines:
-            return
-        top_ratio = (
-            INK["cjk"][0] if any(_is_cjk(c) for line in lines for c in line) else INK["latin"][0]
-        )
-        baseline = y + top_ratio * size
-        for index, line in enumerate(lines):
-            if index:
-                baseline += advance(size, key)
-            emit([line], size, right=content_right, baseline=baseline)
-        bottom_ratio = (
-            INK["cjk"][1] if any(_is_cjk(c) for line in lines for c in line) else INK["latin"][1]
-        )
-        y = baseline + bottom_ratio * size + gap_after * height
-
-    if spec.lead:
-        size = MAGADAN_TYPE["lead"] * width
-        block(spec.lead, "lead", size, gap_after=MAGADAN_GAPS["lead_title"])
-
-    if spec.title:
-        size = (
-            _fit_title(spec.title, measurer, MAGADAN_TYPE["title"] * width, content_w)
-            if spec.title
-            else 0
-        )
-        # 超宽书名再按版心断行（标题保持最小 62% 前提下的自然折行）
-        title_lines: list[str] = []
-        for line in spec.title:
-            if measurer.width(line, size) > content_w:
-                title_lines.extend(wrap(line, content_w, size, measurer) or [line])
-            else:
-                title_lines.append(line)
-        block(title_lines, "title", size, gap_after=MAGADAN_GAPS["title_subtitle"])
-
-    if spec.subtitle:
-        size = MAGADAN_TYPE["subtitle"] * width
-        lines = [
-            w for line in spec.subtitle for w in (wrap(line, content_w, size, measurer) or [line])
-        ]
-        block(lines, "subtitle", size, gap_after=MAGADAN_GAPS["subtitle_original"])
-
-    if spec.original_title:
-        size = MAGADAN_TYPE["original_title"] * width
-        lines = [
-            w
-            for line in spec.original_title
-            for w in (wrap(line, content_w, size, measurer) or [line])
-        ]
-        block(lines, "original_title", size, gap_after=MAGADAN_GAPS["original_originalsub"])
-
-    if spec.original_subtitle:
-        size = MAGADAN_TYPE["original_subtitle"] * width
-        lines = [
-            w
-            for line in spec.original_subtitle
-            for w in (wrap(line, content_w, size, measurer) or [line])
-        ]
-        block(lines, "original_subtitle", size, gap_after=MAGADAN_GAPS["originalsub_credits"])
-
-    if spec.credits:
-        size = MAGADAN_TYPE["credits"] * width
-        lines = [
-            w for line in spec.credits for w in (wrap(line, content_w, size, measurer) or [line])
-        ]
-        block(lines, "credits", size, gap_after=0.0)
-
-    # —— 底部署名（行书；无行书字体时降级为宋体并明示）——
-    if spec.imprint:
-        size = MAGADAN_TYPE["imprint"] * width
-        text_w = measurer.width(spec.imprint, size, script=fonts.script is not None)
-        baseline = MAGADAN_GEOM["imprint_ink_top"] * height + INK["script"][0] * size
-        x = MAGADAN_GEOM["imprint_center"] * width - text_w / 2
-        if fonts.script is None:
-            # 降级：宋体 + 字距，保住「署名居中靠底」的版式，但不再是行书
-            tracking = 0.004 * width
-            for chunk, font in measurer.runs(spec.imprint):
-                tw.append((x, baseline), chunk, font=font, fontsize=size)
-                x += font.text_length(chunk, fontsize=size) + tracking
-        else:
-            # 行书单字笔画偏细：按 0.012em 叠画三次补一点点笔重（等同 faux bold，
-            # 但仍是矢量文字，不描边、不模糊）
-            shift = 0.012 * size
-            for dx, dy in ((0.0, 0.0), (shift, 0.0), (0.0, shift)):
-                tw.append(
-                    (x + dx, baseline + dy), spec.imprint, font=measurer.script, fontsize=size
-                )
-
-    tw.write_text(page, color=ink)
     return doc
 
 

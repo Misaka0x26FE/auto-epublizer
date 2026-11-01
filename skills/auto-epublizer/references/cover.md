@@ -1,18 +1,27 @@
-<!-- i18n: source=cover.zh.md sha256=49a37e9e859415e922b9b941b6f3e7767609f5e26bb99864aba9d7f8e66c21c5 -->
+<!-- i18n: source=cover.zh.md sha256=832126325d659eeb3b00b5fc0ad3282dabf1b1d3a3bd7409d6b056a6cb344f6c -->
 > **English** | [中文](cover.zh.md)
 
-# Generated cover (quarto default / magadan optional)
+# Generated cover (quarto, 界栏)
 
 For books with **no usable cover**: plain text / Markdown / DOCX / HTML sources have no cover
 image at all, and a scanned book's first page is not automatically its cover (a candidate only
 becomes one after `preprocessing/cover.json` is confirmed). Such books show up blank on the
-shelf and lock screen. This flow gives them one shared typeset cover — two layouts, one
-generator:
+shelf and lock screen. This flow gives them one shared typeset cover: `quarto` (界栏) —
+full-bleed ground, reversed flush-left title, double hairline at the left edge, a short accent
+rule, italic original title, credits bottom-left, signature bottom-right.
 
-| Style | Look |
-|---|---|
-| `quarto` (**default**, 界栏) | full-bleed ground + reversed flush-left title + double hairline at the left edge + short accent rule + italic original title + credits bottom-left + signature bottom-right |
-| `magadan` | white page + full-width band at the top + vertical stripe on the right + right-aligned serif title group (ratios measured from the reference samples) |
+> **The previous layout is disabled**: `magadan` (white page + band/stripe) is no longer
+> offered. Writing `style: magadan` in config or a design sheet is an explicit error, never a
+> silent style switch.
+
+## Legibility floor (hard constraint)
+
+Covers are read down to **600px wide**; smaller resolutions are out of scope. A CJK serif
+below roughly a 14px em turns to mush, so **every type size must be ≥ 2.34% of the page width**
+(`MIN_TYPE_FRAC` = 14/600; ≈9.8pt on A5). The clamp lives in `_quarto_layout`
+(`max(size, MIN_TYPE_FRAC * W)`) and `tests/test_cover_render.py` enforces it.
+
+Changing ratios, weights or spacing is fine; **pushing any size below that line is a defect**.
 
 > **Source cover wins**: a cover confirmed in `preprocessing/cover.json` is never replaced by
 > a generated one. Generation only fills the "there really is no cover" case.
@@ -48,7 +57,6 @@ generated cover — never take "looks like a cover" as evidence.
 
 ```bash
 "$AEP_CLI" cover --workspace <ws>                        # defaults: quarto, ink palette, a5, 300dpi
-"$AEP_CLI" cover --workspace <ws> --style magadan        # back to the previous layout
 "$AEP_CLI" cover --workspace <ws> --palette oxblood --pdf
 "$AEP_CLI" cover --workspace <ws> --json                 # machine-readable (style/design_digest/fonts/text)
 "$AEP_CLI" cover --workspace <ws> --remove               # remove (source cover untouched)
@@ -66,7 +74,7 @@ Afterwards `build` writes `properties="cover-image"` and `<meta name="cover">`, 
 `cover_generated_used`. **Without a registration no cover appears**: build only *uses* and
 *syncs* an existing registration.
 
-## Layout one: quarto (default, 界栏)
+## Layout (quarto, 界栏)
 
 The design logic, most important first:
 
@@ -107,7 +115,8 @@ skeleton.
 | Left rules | main line at `6.2%W`, thin line 3.4pt to its left; from `6.5%H` to `94.5%H` |
 | Series baseline | `8.5%H` (preceded by a small accent square) |
 | Title ink top | `25.5%H` |
-| Base size: title / subtitle / original / original sub / credits | `10.5 / 2.15 / 1.92 / 1.55 / 1.35 %W` |
+| Size: title base / subtitle / original / original sub / credits / series / signature | `9.6 / 3.05 / 2.75 / 2.50 / 2.40 / 2.45 / 2.60 %W` |
+| Actual size at 600px wide | title 57.6px; subtitle 18.3; original 16.5; original sub 15.0; credits 14.4; signature 15.6 |
 | Rule under title | `3.0%H` below the title, `30%W` long |
 | Last credit line ink bottom | `87.8%H` |
 | Foot rule / signature baseline | `90.6%H` / `94.0%H` |
@@ -115,23 +124,13 @@ skeleton.
 If the title group would collide with the credits, the whole block scales by 0.90 per step (at
 most three steps) — it never overlaps.
 
-## Layout two: magadan (previous look)
+## The previous layout (disabled)
 
-White page + full-width band on top + vertical stripe on the right + right-aligned title
-group, ratios measured from the reference samples. Use `--style magadan` when a book should
-match that batch.
-
-Palettes: `indigo` (default) / `blue` (blue band, gold edge) / `maroon` / `purple` /
-`crimson` / `brown` / `green` / `ink`.
-
-| Element | Ratio |
-|---|---|
-| Top band | `1.35%H` from the top, `5.28%H` tall, full width |
-| Right stripe | left edge `89.7%W`, width `2.1%W` (`8.2%W` white gutter) |
-| Text column right edge | `88.2%W` |
-| Title group origin | `30.99%H` |
-| Title / subtitle / original / original sub / credits | `7.67 / 3.75 / 3.83 / 2.95 / 2.94 %W` |
-| Signature | centred on `47%W`, ink top `91.91%H` |
+The `magadan` layout (white page + band + stripe + right-aligned title group) is **disabled**:
+the rendering path is gone, and `style: magadan` in config or a design sheet errors with
+"unknown style … (the magadan layout is disabled)". Workspaces whose cover was generated with
+it keep their PNG and record; re-running `cover` re-renders with the current layout (the
+record's `style` becomes `quarto`).
 
 ## Design sheet `preprocessing/cover-spec.json` (optional, agent-written)
 
@@ -213,8 +212,8 @@ Explicit paths: config `cover.font_serif` / `cover.font_latin` / `cover.imprint_
 | Symptom / event | Meaning | Action |
 |---|---|---|
 | `没有书名，无法生成封面` | both title fields are empty | run `meta --title`, or set `title` in the design sheet |
-| `未知版式` | unknown style | only `quarto` / `magadan` |
-| `未知色板 / 未知开本` | misspelled, or a palette from the other layout | use the tables above; magadan's `crimson` does not exist in quarto |
+| `未知版式 … 已停用` | `style: magadan` (or any other name) | drop the field; only `quarto` exists |
+| `未知色板 / 未知开本` | misspelled, or a palette from the retired layout | use the table above (`crimson` belonged to the old one) |
 | `找不到中文字体` | no CJK font | install `fonts-noto-cjk` or set `cover.font_serif` |
 | `⚠ 未找到行书字库` | brush font missing, degraded | install one or set `cover.imprint_font`; accepting the fallback is fine |
 | event `cover_regenerated` | metadata/design changed, re-rendered during build | normal; confirm the cover text changed |

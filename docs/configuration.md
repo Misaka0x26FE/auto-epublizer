@@ -1,4 +1,4 @@
-<!-- i18n: source=configuration.zh.md sha256=2f391ecf81d61b69145419b46fa2c20674c82699ce094a669347d3fa0c8f9796 -->
+<!-- i18n: source=configuration.zh.md sha256=9af6619174d190d8033de17b7852f7521713da7b10742ef319c08941fee95522 -->
 > **English** | [中文](configuration.zh.md)
 
 # Configuration reference (target `config.yaml` schema)
@@ -65,9 +65,8 @@ paths:
 # ── generated cover (books without a source cover) ──────────
 cover:
   enabled: true           # the cover command is available; false = even explicit generation is refused
-  style: quarto           # quarto (default: full-bleed ground + reversed title) | magadan (previous look)
-  palette: ink            # quarto: ink|oxblood|forest|indigo|aubergine|slate|rust|paper
-                          # magadan: indigo|blue|maroon|purple|crimson|brown|green|ink
+  style: quarto           # only quarto (界栏); the previous magadan layout is disabled (naming it errors)
+  palette: ink            # ink|oxblood|forest|indigo|aubergine|slate|rust|paper
   size: a5                # same set as pdf --size: a5|32k|b5|16k
   dpi: 300                # PNG resolution (72–1200)
   imprint: "马加丹汉化组"  # signature at the bottom; empty string = no signature line
@@ -94,15 +93,18 @@ deterministic typesetting (PyMuPDF, no LLM, no browser): headline blocks come fr
 `preprocessing/cover-spec.json`, and the result is registered in
 `preprocessing/cover-generated.json`.
 
-Two layouts share one generator, selected by `cover.style`:
+One layout (`quarto`, 界栏): full-bleed ground + reversed flush-left title + double hairline at
+the left edge + short accent rule + italic original title + credits bottom-left + signature
+bottom-right. The previous `magadan` layout is **disabled**; asking for it is an explicit error
+rather than a silent style switch.
 
-| Style | Look |
-|---|---|
-| `quarto` (default, 界栏) | full-bleed ground + reversed, flush-left title + double hairline at the left edge + short accent rule + italic original title + credits bottom-left + signature bottom-right |
-| `magadan` | white page + full-width band at the top + vertical stripe on the right + right-aligned serif title group |
+**Legibility floor**: covers are read down to 600px wide (smaller resolutions are out of
+scope). Every type size is therefore at least 14px at that width — `MIN_TYPE_FRAC` = 14/600 ≈
+2.34% of the page width, enforced by a clamp and by `tests/test_cover_render.py`. Editing the
+layout ratios is fine; pushing any size below that line is a defect.
 
 ```bash
-auto-epublizer cover --workspace <ws> [--style quarto|magadan] [--palette oxblood] \
+auto-epublizer cover --workspace <ws> [--palette oxblood] [--size a5] [--dpi 300] \
     [--size a5] [--dpi 300] [--pdf] [--json]
 auto-epublizer cover --workspace <ws> --remove
 ```

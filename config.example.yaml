@@ -54,9 +54,8 @@ paths:
 # 生成封面只在「确实没有源封面」时使用，源封面（preprocessing/cover.json）永远优先。
 cover:
   enabled: true           # cover 命令可用；false=连显式生成也拒绝
-  style: quarto           # quarto（界栏，默认：整幅深底 + 反白书名）| magadan（旧版式）
-  palette: ink            # quarto：ink|oxblood|forest|indigo|aubergine|slate|rust|paper
-                          # magadan：indigo|blue|maroon|purple|crimson|brown|green|ink
+  style: quarto           # 只有 quarto（界栏）；旧版 magadan 已停用，写成 magadan 会明确报错
+  palette: ink            # ink|oxblood|forest|indigo|aubergine|slate|rust|paper
   size: a5                # 与 pdf --size 同一组：a5|32k|b5|16k
   dpi: 300                # PNG 分辨率（72–1200）
   imprint: "马加丹汉化组"  # 底部署名；空串=不画署名行

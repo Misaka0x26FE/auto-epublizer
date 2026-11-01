@@ -93,7 +93,7 @@ class CoverConfig(BaseModel):
     """
 
     enabled: bool = True  # cover 命令可用；关掉则连显式生成一并拒绝
-    style: str = "quarto"  # quarto（界栏，默认）| magadan（旧版式，仍可用）
+    style: str = "quarto"  # 只有 quarto（界栏）；旧版 magadan 已停用（写成它会报错）
     palette: str = "ink"  # quarto: ink/oxblood/forest/indigo/aubergine/slate/rust/paper
     size: str = "a5"  # 与 pdf --size 同一组开本
     dpi: int = Field(300, ge=72, le=1200)
