@@ -298,4 +298,4 @@
 - 真实工具：Chromium headless 生成的 A5 PDF 已用 PyMuPDF 读回目录/书签/Info/XMP/图片 bbox，并查看 PNG 预览；`pdf-verify` 对篡改 PDF 返回非零；工作根 `check_tracked` 在真实 Git 仓库上验证不改 index、不产生锁文件。
 - 运行环境：Python 3.13（uv 项目虚拟环境）、Chromium、PyMuPDF、Java/EPUBCheck 按本机可用性执行；未安装的外部阅读器仍记未实测。
 - 剩余实书项：扫描书 OCR 语义、真实多栏/跨页注尾、历史工作区缺源、阅读器兼容性仍按 plan §8 的 unknown 保留，不用机械测试替代。
-- 提交：本批代码与文档提交见下一行（远端 issue/PR 未变更）。
+- 提交：`86c7f3c`（S/C/P1–P3 与首批文档）、`c60c2e5`（P4–P6/Q/E 与 D 收尾）；工作树无未提交代码，远端 issue/PR 未变更。
