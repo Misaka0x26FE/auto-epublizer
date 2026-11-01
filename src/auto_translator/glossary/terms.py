@@ -112,6 +112,24 @@ def _target_forms(target: str) -> list[str]:
     return forms
 
 
+def count_source_occurrences(text: str, source: str) -> int:
+    """按词边界统计源术语出现次数（归一化后，最多别名不作猜测）。"""
+    normalized = normalize(text)
+    term = normalize(source)
+    if not normalized or not term:
+        return 0
+    return len(_boundary_pattern(term).findall(normalized))
+
+
+def count_target_occurrences(text: str, target: str) -> int:
+    """统计译文中确认译法（含去助词构词形）的出现次数。"""
+    normalized = normalize(text)
+    forms = [form for form in _target_forms(normalize(target)) if form]
+    if not normalized or not forms:
+        return 0
+    return max(len(_boundary_pattern(form).findall(normalized)) for form in forms)
+
+
 def terminology_hits(src: str, tgt: str, glossary: Glossary) -> list[TerminologyHit]:
     """源句出现术语 source（或其别名），译文缺失对应 target 时报违例（G0 术语命中）。
 

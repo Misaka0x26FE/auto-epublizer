@@ -1,4 +1,4 @@
-<!-- i18n: source=quality-evidence.zh.md sha256=eadad71e143e1a2608668b8273526fa67a88f291cdfe5ab8ccab5cec91c5d282 -->
+<!-- i18n: source=quality-evidence.zh.md sha256=1745f101f1dba8ad5f0212eede0c9802b2d18bea1613c9d4fd991131c21901aa -->
 > **English** | [中文](quality-evidence.zh.md)
 
 # Evidence and safe-repair contract
@@ -25,6 +25,14 @@ roles and independent source-note candidates without writing anything. Missing p
 is null. All repeated raw_matches are retained as ambiguous, never reduced to the first
 location; code literals are not note candidates. Boundaries include both page numbers
 and all unit/block locations; missing or nonconsecutive pages never claim continuation.
+`note_evidence` takes every registered `source_locations` entry from
+`structured/notes.json` as the complete set and reports page/bbox/candidate_id/unit/line/status/
+raw_matches per location. Multi-page continuations keep every position; missing coordinates
+are unknown, no match is unmatched, and page-only is page_only. `--note-id` only narrows the
+output and reports missing IDs; it never changes evidence or review status.
+`evidence page-numbers` read-only reports `original|product|none` declarations, page-number
+candidates, duplicate-TOC candidates and source hashes; undeclared is not assumed original,
+duplicates are candidates only, and source files are untouched.
 Missing raw/facts information is not guessed from filenames or font thresholds; source
 note completeness still requires independent page-by-page review.
 
@@ -85,15 +93,20 @@ Success emits JSON; failure exits 1. Unknown fields are rejected. Plan shape (us
 }
 ```
 
-Targets are limited to registered units' structured/translation Markdown and translation/align
-JSONL, never source, publication, glossary/manual tables or EPUB. Each file permits one
-nonempty unique exact replacement; for multiple edits first create one unique larger literal
-manually, never a global regex. Translation candidates must have consistent md/align.
-In-memory group preflight checks source fidelity, alignment completeness and md/align drift,
-conservatively protecting note/insert markers, links, numbers, code and heading levels;
-existing Latin words cannot be removed. Legitimate edits outside these limits need independent
-handling and audit, not weaker checks. Evidence page numbers record approval grounds, not
-proof that the tool read the source page.
+Targets are limited to explicitly registered authoritative adapters: registered units'
+structured/translation Markdown, translation/align JSONL, and `structured/notes.json` /
+`translation/notes.json`. Derived chunks such as `structured/raw/` and `preprocessing/` are
+rejected; source, publication, glossary/manual tables and EPUB are never writable. A file may
+carry several exact replacements applied in plan order (each step still unique, nonempty and
+UTF-8 without BOM); `sha256` always names that file's baseline. Translation candidates must
+have consistent md/align. The notes adapters allow only complete note text
+(`source_markdown`/`target_markdown`) to change; note_id, scope, source_locations, references
+and top-level binding digests stay conserved. A source-note change must update the translation
+`source_notes_sha256` in the same transaction. In-memory group preflight checks source fidelity,
+alignment completeness and md/align drift, conservatively protecting note/insert markers,
+links, numbers, code and heading levels; existing Latin words cannot be removed. Legitimate
+edits outside these limits need independent handling and audit, not weaker checks. Evidence
+page numbers record approval grounds, not proof that the tool read the source page.
 
 Before writes, all old/new bytes and hashes are persisted in
 `preprocessing/repair-transactions/<plan-sha256>.json`, then files are replaced individually.

@@ -13,8 +13,23 @@ import sys
 from collections import Counter
 from pathlib import Path
 
-# 这不是 .gitignore 的副本；仅已知的工具缓存与交付 EPUB 默认可忽略。
-DEFAULT_ALLOW = ("docs/__pycache__/**", "outbox/*/epub/**")
+# 这不是 .gitignore 的副本；仅已知的工具缓存与交付 EPUB 默认可忽略，且每条都带理由。
+DEFAULT_ALLOW = {
+    "docs/__pycache__/**": "本地工具缓存，可由源码重建",
+    "outbox/*/epub/**": "已打包交付的 EPUB 副本，由工作区成品重建",
+}
+
+
+def parse_rule(text: str, *, source: str, require_reason: bool) -> tuple[str, str]:
+    """解析 ``pattern|reason``；允许文件必须写理由，旧 CLI 纯模式保留兼容。"""
+    raw = text.strip()
+    pattern, separator, reason = raw.partition("|")
+    pattern, reason = pattern.strip(), reason.strip()
+    if not separator and require_reason:
+        raise ValueError(f"{source} 的允许规则缺少 |理由：{raw}")
+    if not pattern:
+        raise ValueError(f"{source} 的允许规则缺少路径：{raw}")
+    return pattern, reason or "显式 --allow 参数（调用者已声明）"
 
 
 def allowed(path: str, pattern: str) -> bool:
@@ -55,7 +70,9 @@ def main() -> int:
         help="额外允许忽略的精确相对路径模式，可重复；* 不跨目录",
     )
     parser.add_argument(
-        "--allow-file", type=Path, help="独立允许规则文件（一行一条，# 注释）；不得用 .gitignore"
+        "--allow-file",
+        type=Path,
+        help="独立允许规则文件（一行一条 pattern|理由，# 注释）；不得用 .gitignore",
     )
     args = parser.parse_args()
     try:
@@ -63,17 +80,19 @@ def main() -> int:
         top = Path(os.fsdecode(git(repo, "rev-parse", "--show-toplevel")).strip()).resolve()
         if top != repo:
             raise ValueError(f"--repo 必须指定仓库根，实际为：{top}")
-        rules = list(DEFAULT_ALLOW) + args.allow
+        rules = list(DEFAULT_ALLOW.items())
+        rules.extend(
+            parse_rule(item, source="--allow", require_reason=False) for item in args.allow
+        )
         if args.allow_file:
             policy = args.allow_file.resolve(strict=True)
             if policy.name == ".gitignore" or policy == repo / ".git" / "info" / "exclude":
                 raise ValueError("允许规则必须独立于 Git 忽略文件")
-            rules.extend(
-                line.strip()
-                for line in policy.read_text(encoding="utf-8").splitlines()
-                if line.strip() and not line.lstrip().startswith("#")
-            )
-        for rule in rules:
+            for line in policy.read_text(encoding="utf-8").splitlines():
+                if not line.strip() or line.lstrip().startswith("#"):
+                    continue
+                rules.append(parse_rule(line, source=str(policy), require_reason=True))
+        for rule, _reason in rules:
             if rule.startswith(("/", "!")) or ".." in rule.split("/") or "\\" in rule:
                 raise ValueError(f"允许规则必须为正向、仓库相对路径：{rule}")
         tracked = paths(repo, "--cached")
@@ -93,12 +112,15 @@ def main() -> int:
                     continue
                 disk.add(path.relative_to(repo).as_posix())
         missing = tracked - disk
-        unexpected = {p for p in ignored if not any(allowed(p, rule) for rule in rules)}
+        unexpected = {p for p in ignored if not any(allowed(p, rule) for rule, _reason in rules)}
         unclassified = disk - tracked - ignored - untracked
         print(f"仓库：{repo}")
         print(
             f"跟踪 {len(tracked)}；磁盘 {len(disk)}；忽略 {len(ignored)}；未跟踪 {len(untracked)}；缺失 {len(missing)}"
         )
+        print("忽略允许规则（均含理由）：")
+        for rule, reason in rules:
+            print(f"  {rule} — {reason}")
         print("忽略文件按顶层分组：")
         for group, count in sorted(Counter(p.split("/")[0] for p in ignored).items()):
             print(f"  {group}: {count}")

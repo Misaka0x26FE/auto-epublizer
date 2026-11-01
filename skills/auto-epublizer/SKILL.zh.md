@@ -58,7 +58,8 @@ CLI 无法探测），据此选 ingest 路由（见 `references/ingest.md`）。
 | 首次使用 / 安全续用（必须先于 version/doctor） | `references/work-root.md` |
 | 全新任务 / 状态路由 / 多阶段请求 / 命令总览 | `references/workflow.md` |
 | `status/build/qa/ledger/import/g0 --json`、错误字段与退出码 | `references/workflow.md` |
-| 印刷 PDF 封面/图版/宽表、字号与溢出诊断、`pdf --strict --json` | `references/build.md` |
+| 印刷 PDF 封面/图版/宽表、目录绝对页码、出版元数据、`pdf --strict --json`、`pdf-verify` | `references/build.md` |
+| 注文证据清单、页码策略、工作根 dry-run/忽略理由 | `references/workflow.md`、`references/preprocessing.md`、`references/work-root.md` |
 | 弱模型路径：机器「下一任务」指针（`status --json`）+ 原子任务卡 | `references/taskcards/` |
 | 长期多书：工作根生成、批次 SHA256 交付、台账人工列保留、断链/忽略对账工具 | `references/work-root.md` |
 | 预处理：读 facts → 撰写 todo/capabilities/plan/global/units/terms/risks/report | `references/preprocessing.md` |

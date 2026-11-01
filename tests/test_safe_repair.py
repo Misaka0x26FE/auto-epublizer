@@ -217,6 +217,145 @@ def test_cli_dry_run_and_apply_are_explicit(tmp_path: Path) -> None:
     assert "新译名" in md.read_text()
 
 
+def _notes_fixture(tmp_path: Path):
+    store, plan, md, align = _fixture(tmp_path)
+    pub = store.load_publication()
+    note = {
+        "note_id": "n-000001",
+        "scope_id": "ch01",
+        "source_label": "1",
+        "note_type": "footnote",
+        "source_markdown": "第一版源注。",
+        "source_locations": [{"kind": "page", "page": 1, "bbox": [1, 2, 3, 4]}],
+        "status": "verified",
+    }
+    source_notes = {
+        "schema_version": "1",
+        "source_sha256": pub.meta.source_sha256,
+        "inventory": "present",
+        "notes": [note],
+        "references": [
+            {
+                "ref_id": "ref-000001",
+                "note_id": "n-000001",
+                "unit": pub.units[0].id,
+                "scope_id": "ch01",
+                "status": "verified",
+            }
+        ],
+    }
+    source_path = store.structured_dir / "notes.json"
+    source_path.write_text(json.dumps(source_notes, ensure_ascii=False), encoding="utf-8")
+    translation_path = store.translation_dir / "notes.json"
+    translation_path.parent.mkdir(parents=True, exist_ok=True)
+    translation = {
+        "schema_version": "1",
+        "source_notes_sha256": _hash(source_path.read_bytes()),
+        "notes": [{"note_id": "n-000001", "target_markdown": "旧译注。"}],
+    }
+    translation_path.write_text(json.dumps(translation, ensure_ascii=False), encoding="utf-8")
+    source_path.write_text(json.dumps(source_notes, ensure_ascii=False, indent=2), encoding="utf-8")
+    translation["source_notes_sha256"] = _hash(source_path.read_bytes())
+    translation_path.write_text(
+        json.dumps(translation, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
+    evidence = {
+        "path": pub.meta.source,
+        "sha256": _hash((store.dir / pub.meta.source).read_bytes()),
+        "page": 1,
+    }
+
+    def edit(path: Path, old: str, new: str) -> dict:
+        return {
+            "unit": "notes",
+            "path": path.relative_to(store.dir).as_posix(),
+            "sha256": _hash(path.read_bytes()),
+            "old": old,
+            "new": new,
+            "approved": True,
+            "evidence": dict(evidence),
+        }
+
+    notes_plan = {
+        "schema_version": "1",
+        "rule_version": "safe-repair-1",
+        "source_sha256": pub.meta.source_sha256,
+        "edits": [],
+    }
+    return store, notes_plan, source_path, translation_path, edit
+
+
+def test_notes_adapter_updates_text_and_paired_digest_in_order(tmp_path: Path) -> None:
+    from auto_epublizer.safe_repair import apply_plan
+
+    store, plan, source_path, translation_path, edit = _notes_fixture(tmp_path)
+    new_source = "第二版源注。"
+    new_target = "新译注。"
+    plan["edits"] = [
+        edit(source_path, "第一版源注。", new_source),
+        edit(translation_path, "旧译注。", new_target),
+    ]
+    # 摘要需与源注文同事务更新；先构造新摘要后加入同一文件的第二处替换。
+    source_after = source_path.read_text(encoding="utf-8").replace("第一版源注。", new_source)
+    new_digest = _hash(source_after.encode("utf-8"))
+    plan["edits"].append(edit(translation_path, _hash(source_path.read_bytes()), new_digest))
+    before_snapshot = _snapshot(store)
+    assert apply_plan(store, plan)["status"] == "dry_run"
+    assert _snapshot(store) == before_snapshot
+
+    result = apply_plan(store, plan, apply=True)
+    assert result["status"] == "applied"
+    assert "第二版源注。" in source_path.read_text(encoding="utf-8")
+    translation = json.loads(translation_path.read_text(encoding="utf-8"))
+    assert translation["notes"][0]["target_markdown"] == new_target
+    assert translation["source_notes_sha256"] == new_digest
+    source = json.loads(source_path.read_text(encoding="utf-8"))
+    assert source["notes"][0]["note_id"] == "n-000001"
+    assert source["notes"][0]["source_locations"] == [
+        {"kind": "page", "page": 1, "bbox": [1, 2, 3, 4]}
+    ]
+    assert source["references"][0]["ref_id"] == "ref-000001"
+    assert apply_plan(store, plan, apply=True)["status"] == "already_applied"
+
+
+def test_source_note_change_without_translation_digest_update_is_rejected(tmp_path: Path) -> None:
+    from auto_epublizer.safe_repair import apply_plan
+
+    store, plan, source_path, _, edit = _notes_fixture(tmp_path)
+    plan["edits"] = [edit(source_path, "第一版源注。", "第二版源注。")]
+    before = _snapshot(store)
+    with pytest.raises(ValueError, match="source_notes_sha256"):
+        apply_plan(store, plan, apply=True)
+    assert _snapshot(store) == before
+
+
+def test_notes_adapter_rejects_identity_or_location_changes(tmp_path: Path) -> None:
+    from auto_epublizer.safe_repair import apply_plan
+
+    store, plan, source_path, _, edit = _notes_fixture(tmp_path)
+    for old, new in (
+        ('"note_id": "n-000001"', '"note_id": "n-000002"'),
+        ('"page": 1', '"page": 2'),
+    ):
+        plan["edits"] = [edit(source_path, old, new)]
+        with pytest.raises(ValueError):
+            apply_plan(store, plan, apply=True)
+
+
+def test_derived_chunk_is_not_a_safe_repair_target(tmp_path: Path) -> None:
+    from auto_epublizer.safe_repair import apply_plan
+
+    store, plan, _, _, edit = _notes_fixture(tmp_path)
+    chunk = store.structured_dir / "raw" / "page-001.json"
+    chunk.parent.mkdir(parents=True, exist_ok=True)
+    chunk.write_text('{"page_idx": 1}', encoding="utf-8")
+    item = edit(chunk, '"page_idx": 1', '"page_idx": 2')
+    item["unit"] = "notes"
+    plan["edits"] = [item]
+    with pytest.raises(ValueError, match="派生"):
+        apply_plan(store, plan)
+
+
 def test_inline_code_cannot_be_rewritten_as_a_name(tmp_path: Path) -> None:
     from auto_epublizer.safe_repair import apply_plan
 

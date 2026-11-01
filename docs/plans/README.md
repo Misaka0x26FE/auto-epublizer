@@ -19,7 +19,7 @@
 
 | 文档 | 状态 | 内容 |
 |---|---|---|
-| [2026-10-31-issue-pr-update.md](2026-10-31-issue-pr-update.md) | 实施中（S/C/P1–P3 已验证） | 21 个开放 issue 与全部 18 个历史 PR 对账；状态摘要、JSON/审校诊断、PDF 封面图版与宽表诊断已落地；目录绝对页码及 #72 等后续继续；证据见 §7 |
+| [2026-10-31-issue-pr-update.md](2026-10-31-issue-pr-update.md) | 实施中（S/C/P/Q/E 已验证，D 收尾） | 21 个开放 issue 与全部 18 个历史 PR 对账；状态摘要、JSON/审校诊断、PDF 封面图版与目录/元数据、注文证据、修复适配器、页码策略与工作根治理已落地；逐 issue 账本与真实工具证据见 §7–§8 |
 | [2026-10-29-structured-document-stack.md](2026-10-29-structured-document-stack.md) | 已完成（`ad1461f`） | markdown-it-py token 解析、EPUBCheck JSON 诊断、OCR 坐标/置信度、Pandoc AST 试点、Hypothesis 性质测试与固定工具 CI |
 | [2026-10-27-issue-pr-triage.md](2026-10-27-issue-pr-triage.md) | 已交付（main `10597f1`；§6 工作树已被清理，§7 为重做与推送记录） | #68 审校账本、#65 `$$` 候选、PR66 单项列表、PR67 PDF D1–D3、#62/#58 源分区、#63 扫描封面；证据与未验证范围见 §7 |
 | [2026-10-23-issue-pr-triage.md](2026-10-23-issue-pr-triage.md) | 已实施（`f4d6c24`） | PR59 独立审查补修、历史对账、制作页和证据/安全修复接口已交付；保留投稿历史，实书语义核证另列；恢复及推送证据见 §11 |

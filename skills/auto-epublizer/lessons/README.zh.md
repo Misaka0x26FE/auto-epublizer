@@ -27,6 +27,7 @@
 
 | 文档 | 主题 | 状态 |
 |---|---|---|
+| [2026-11-01-pdf-toc-anchors-and-artifact-manifest.md](2026-11-01-pdf-toc-anchors-and-artifact-manifest.zh.md) | 印刷 PDF 目录/书签绑定最终片段页；唯一定位标记；暂存原子发布与派生件清单 | 已修复（#73/#82/#60 后续）+ 经验留存 |
 | [2026-10-27-scanned-academic-false-green.md](2026-10-27-scanned-academic-false-green.zh.md) | 扫描学术书 18 类机械假绿：双栏人物表、尾注清点、审校覆盖与禁止凑数/占位修复 | 经验与待开发方案（#68/#69），不代表代码修复或原书重新验收 |
 | [2026-09-05-baka-tsuki-html-figures.md](2026-09-05-baka-tsuki-html-figures.zh.md) | Baka-Tsuki 源站 HTML 的插图段结构（figure>a>img 三行）在 ingest/build 的保真与复原 | 已修复（1766e7a 等）+ 经验留存 |
 | [2026-09-05-scanned-pdf-mineru-first.md](2026-09-05-scanned-pdf-mineru-first.zh.md) | 扫描件 PDF：MinerU 最优先（换行/插图识别），传统 OCR 只识别字符需 agent 逐页阅读兜底 | 已落地（ingest/mineru.py）+ 经验留存 |

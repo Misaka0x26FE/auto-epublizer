@@ -43,7 +43,13 @@ from .store import (
     write_store_conflicts,
     write_workspace_terms,
 )
-from .terms import TerminologyHit, terminology_hits, terms_in_text
+from .terms import (
+    TerminologyHit,
+    count_source_occurrences,
+    count_target_occurrences,
+    terminology_hits,
+    terms_in_text,
+)
 
 __all__ = [
     "GENDERS",
@@ -76,6 +82,8 @@ __all__ = [
     "store_key",
     "store_stats",
     "terminology_hits",
+    "count_source_occurrences",
+    "count_target_occurrences",
     "terms_in_text",
     "to_workspace_entry",
     "unresolved_keys",

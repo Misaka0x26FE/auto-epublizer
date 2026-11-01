@@ -14,6 +14,7 @@ import csv
 import io
 import json
 import unicodedata
+from dataclasses import dataclass
 from pathlib import Path
 
 from .models import (
@@ -101,47 +102,105 @@ def load_glossary_csv(path: str | Path) -> list[GlossaryEntry]:
     return entries
 
 
-def load_terminology_exemptions(path: str | Path) -> dict[str, dict[str, str]]:
-    """读取**按单元**的术语门豁免表，返回 ``{单元 id: {术语 source: 理由}}``。
+@dataclass(frozen=True)
+class TerminologyExemption:
+    """术语例外：legacy 按单元整词，locator 行按 seq/note/occurrence+摘要定位。"""
 
-    CSV 必须包含 ``unit,source,reason`` 列，每条非空记录的三项均须填写；
-    缺列或缺值抛出 ``ValueError``，不能作为有效豁免。文件不存在即无豁免。
+    unit: str
+    source: str
+    reason: str
+    seq: int | None = None
+    note_id: str | None = None
+    occurrence: int | None = None
+    text_sha256: str | None = None
+    evidence: str = ""
 
-    为什么需要（2026-10-07 于 forced-labour 的 back-notes）：
-    G0 术语判据是「源行出现术语 source，译文行必须含 target」，但**文献著录
-    体例天然违反它**——注文里的书名/丛书名/档案题名按体例保留德文，Kurztiitel
-    （`Tuchei, Konzentrationslager, S. 243`）也保留拉丁。这类行里术语出现
-    而中文译名按体例**不该**出现，判据报出的 227 条全是**改译文也放行不了**
-    的假阳性：一刀切改译文会把正确体例改坏。
+    @property
+    def located(self) -> bool:
+        return any(
+            value is not None
+            for value in (self.seq, self.note_id, self.occurrence, self.text_sha256)
+        )
 
-    与「把词条从 glossary.csv 删掉」的区别：删词条会让该术语**全书失去检查**
-    （`Konzentrationslager → 集中营` 在正文译了几百处，正文必须继续查）。
-    本表只豁免**指定单元**，其余单元照常受检；且每条豁免必须写 ``reason``，
-    命中时以 advisory 形式**照样报出**（check=``terminology_exempt``），
-    不阻断放行也不从报告里消失——审计可见、可回溯、可撤销。
-    """
+
+def load_terminology_exemption_rows(path: str | Path) -> list[TerminologyExemption]:
+    """读取逐处例外表；定位行必须同时带文本摘要与证据，防止改稿后继续豁免。"""
     p = Path(path)
     if not p.is_file():
-        return {}
+        return []
     reader = csv.DictReader(io.StringIO(p.read_text(encoding="utf-8-sig")))
     required = ("unit", "source", "reason")
     missing = [field for field in required if field not in (reader.fieldnames or [])]
     if missing:
         raise ValueError(f"术语豁免表缺少必需列：{', '.join(missing)}")
-    out: dict[str, dict[str, str]] = {}
+    rows: list[TerminologyExemption] = []
     for row in reader:
-        if not any(
-            (cell or "").strip()
-            for value in row.values()
-            for cell in (value if isinstance(value, list) else (value,))
-        ):
+        if not any((value or "").strip() for value in row.values() if isinstance(value, str)):
             continue
         unit = (row.get("unit") or "").strip()
         source = (row.get("source") or "").strip()
         reason = (row.get("reason") or "").strip()
         if not unit or not source or not reason:
             raise ValueError(f"术语豁免表第 {reader.line_num} 行的 unit、source、reason 均不能为空")
-        out.setdefault(unit, {})[source] = reason
+        seq_raw = (row.get("seq") or "").strip()
+        occurrence_raw = (row.get("occurrence") or "").strip()
+        note_id = (row.get("note_id") or "").strip() or None
+        digest = (row.get("text_sha256") or "").strip().lower() or None
+        evidence = (row.get("evidence") or "").strip()
+        try:
+            seq = int(seq_raw) if seq_raw else None
+            occurrence = int(occurrence_raw) if occurrence_raw else None
+        except ValueError:
+            raise ValueError(
+                f"术语豁免表第 {reader.line_num} 行的 seq/occurrence 必须是整数"
+            ) from None
+        if (seq is not None and seq < 1) or (occurrence is not None and occurrence < 1):
+            raise ValueError(f"术语豁免表第 {reader.line_num} 行的 seq/occurrence 必须为正整数")
+        if digest is not None and (
+            len(digest) != 64 or any(c not in "0123456789abcdef" for c in digest)
+        ):
+            raise ValueError(
+                f"术语豁免表第 {reader.line_num} 行的 text_sha256 必须是 64 位十六进制"
+            )
+        located = any(value is not None for value in (seq, note_id, occurrence, digest))
+        if located and (digest is None or not evidence):
+            raise ValueError(
+                f"术语豁免表第 {reader.line_num} 行按 seq/note_id/occurrence 定位时，"
+                "text_sha256 与 evidence 必须同时给出"
+            )
+        rows.append(
+            TerminologyExemption(
+                unit=unit,
+                source=source,
+                reason=reason,
+                seq=seq,
+                note_id=note_id,
+                occurrence=occurrence,
+                text_sha256=digest,
+                evidence=evidence,
+            )
+        )
+    return rows
+
+
+def load_terminology_exemptions(path: str | Path) -> dict[str, dict[str, str]]:
+    """读取**按单元**的术语门豁免表，返回 ``{单元 id: {术语 source: 理由}}``。
+
+    只汇总未带 seq/note_id/occurrence 的 legacy 行；逐处例外由
+    :func:`load_terminology_exemption_rows` 提供给 G0，避免把局部豁免误当整单元。
+
+    契约（E3）：必需列 ``unit,source,reason``；可选 ``seq,note_id,occurrence,
+    text_sha256,evidence``。定位行必须同时有文本摘要与证据；缺列或缺值抛出
+    ``ValueError``，不能作为有效豁免。文件不存在即无豁免。
+    """
+    p = Path(path)
+    if not p.is_file():
+        return {}
+    out: dict[str, dict[str, str]] = {}
+    for row in load_terminology_exemption_rows(p):
+        if row.located:
+            continue
+        out.setdefault(row.unit, {})[row.source] = row.reason
     return out
 
 

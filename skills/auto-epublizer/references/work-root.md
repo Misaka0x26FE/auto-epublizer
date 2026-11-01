@@ -1,4 +1,4 @@
-<!-- i18n: source=work-root.zh.md sha256=88f64fc9d3ebfe6fd19ff177eabdca95f2bb1e90db2e19cef7e97fbf699ea768 -->
+<!-- i18n: source=work-root.zh.md sha256=a4f658568689d4d23b8dbb124c45a07c439c17da9228b6536a4f32d0cb2b7f10 -->
 > **English** | [中文](work-root.zh.md)
 
 # Work root (long-running multi-book workspace)
@@ -66,7 +66,8 @@ Ahead/divergent main, a wrong branch, origin, or repository root stops the flow.
 After fetch, recheck ancestry and allow only fast-forward. Network, dependency, or other
 command failures also stop. The existing `work-root` CLI copies the sole authoritative
 `template/work-root/` skeleton, **without `--force`**: keep existing files and only fill gaps.
-Do not edit the checkout concurrently. Only after success, continue:
+Add `--dry-run` first to preview each `+ create` / `= skip` without creating directories or
+writing files. Do not edit the checkout concurrently. Only after success, continue:
 
 ```bash
 "$AEP_CLI" version
@@ -188,14 +189,17 @@ Nested repository contents require checking their own root. Untracked, missing, 
 and unexpectedly ignored files all fail.
 
 The independent default ignore allowance is **only** `docs/__pycache__/**` and
-`outbox/*/epub/**`, not a copy of `.gitignore`. Thus ignored `outbox/batch/secret.txt` and
-`.tr/draft.txt` still fail. After inspection, extend the allowance using repeated
-`--allow 'precise/pattern'` or `--allow-file <independent-policy-file>` (one rule per line,
-`#` comments; `*` does not cross path segments, `**` does, and trailing `/` allows a subtree).
-`.gitignore` is not accepted as the independent policy file. Failure does not mean files should
-be committed: first inspect content and confidentiality boundaries, add a precise allowance
-when ignoring is intentional, and **never add secrets to Git merely to silence a warning**.
-The tool never runs `git add`.
+`outbox/*/epub/**`, each with a verifiable reason, not a copy of `.gitignore`. Thus ignored
+`outbox/batch/secret.txt` and `.tr/draft.txt` still fail. After inspection, extend the
+allowance using repeated `--allow 'precise/pattern'` or
+`--allow-file <independent-policy-file>` (one `pattern|reason` per line, `#` comments;
+`*` does not cross path segments, `**` does, and trailing `/` allows a subtree; a missing
+`|reason` fails). Plain `--allow pattern` remains compatible, but the policy file must carry
+reasons. `.gitignore` is not accepted as the independent policy file. Failure does not mean
+files should be committed: first inspect content and confidentiality boundaries, add a precise
+allowance when ignoring is intentional, and **never add secrets to Git merely to silence a
+warning**. The tool is read-only: it never runs `git add`, writes `.git/index`, or creates
+`index.lock`.
 
 These guards do not replace per-book QA or content verification. All four return nonzero on
 failure and never repair files automatically or manufacture release evidence.

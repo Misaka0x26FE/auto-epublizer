@@ -122,6 +122,11 @@ mkdir -p /tmp/epub-check && cd /tmp/epub-check && unzip -o <slug>.epub
 按 `references/publishing.md`：成品清单 + 分发副本字节核对（本地 `output/`、
 备份、云盘/仓库等全部副本更新）；更新分发说明与版本记录。
 
+若交付印刷 PDF：PDF 与 `<pdf>.manifest.json` 是 **派生件**，不在 EPUB `qa` 摘要内；
+用 `pdf-verify --pdf <path> --json` 核对源 EPUB/PDF 哈希、页数与参数，并在交付记录中
+登记 `pdf.sha256`。清单损坏、源件缺失或 PDF 被改动都必须失败，不能以“EPUB 仍能构建”
+代替派生件对账。
+
 ## 9. 经验沉淀
 
 交付中发现的**可复用判据**（不只是本书特例）写 `lessons/`（判据/处置/验证三段式）

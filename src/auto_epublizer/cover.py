@@ -17,9 +17,16 @@
    没有源封面时使用。生成件登记在 ``preprocessing/cover-generated.json``，与源封面
    互不覆盖。
 
-版式比例全部实测自参考样张（1500×2120 基准，换算为页宽 W / 页高 H 的比例），
-见 ``GEOM``/``TYPE``/``GAPS``；改这些常数等于改版式，改动后请重跑
-``tests/test_cover_render.py`` 的对版断言。
+两套版式（``cover.style`` 选）：
+
+- ``quarto``（默认，中文名「界栏」）：整幅深色底面 + 反白左对齐大字号书名 +
+  左侧双线界栏 + 标题下短横 + 斜体原文名 + 左下责任者 + 右下署名。整本书靠
+  色板（底面/文字/强调三色）分家，同一批书既统一又互不雷同。
+- ``magadan``：白底 + 顶部通栏色带 + 右侧竖色条 + 右对齐宋体书名群（实测自参考样张）。
+
+quarto 的比例见 ``QUARTO_GEOM``/``QUARTO_TYPE``；magadan 的比例实测自参考样张，
+见 ``MAGADAN_GEOM``/``MAGADAN_TYPE``/``MAGADAN_GAPS``。改这些常数等于改版式，
+改动后请重跑 ``tests/test_cover_render.py`` 的对版断言。
 
 字体：中文思源宋体、拉丁 Nimbus Roman/Times、行书署名用志莽行书一类手写体；
 全部按系统字体发现，找不到时降级并**明说**（不静默换字体而假装是同一套封面）。
@@ -49,20 +56,43 @@ RECORD_FILE = "preprocessing/cover-generated.json"
 #: 生成封面的落盘位置（与其它媒体同目录，build 直接按 EPUB 相对路径引用）。
 GENERATED_REL = "structured/raw/media/cover-generated.png"
 
-#: 色板：主色（通栏色带）与侧条色（可与主色不同，如蓝带 + 金边）。实测自样张。
-PALETTES: dict[str, tuple[str, str]] = {
-    "indigo": ("#0D1168", "#0D1168"),
-    "blue": ("#2C5F9E", "#FECB00"),
-    "maroon": ("#612326", "#612326"),
-    "purple": ("#4B2C65", "#4B2C65"),
-    "crimson": ("#962311", "#962311"),
-    "brown": ("#5A2B1B", "#5A2B1B"),
-    "green": ("#236243", "#236243"),
-    "ink": ("#1A1A1A", "#1A1A1A"),
+#: 版式名；``quarto`` 是默认版式，``magadan`` 保留为可选项。
+DEFAULT_STYLE = "quarto"
+
+#: 色板表：``style -> palette -> 颜色字典``。两套版式用不同的颜色角色——
+#: quarto 是「底面/文字/强调」三色，magadan 是「色带/侧条」两色（纸白与墨黑固定）。
+STYLE_PALETTES: dict[str, dict[str, dict[str, str]]] = {
+    "quarto": {
+        "ink": {"field": "#171A20", "type": "#F5F0E6", "accent": "#C9A227"},
+        "oxblood": {"field": "#5B1B22", "type": "#F2EADD", "accent": "#D8B26E"},
+        "forest": {"field": "#1D3A2F", "type": "#F1EDDF", "accent": "#CBB27A"},
+        "indigo": {"field": "#1B2A55", "type": "#F3EFE4", "accent": "#C9B37E"},
+        "aubergine": {"field": "#3A2340", "type": "#F3ECEE", "accent": "#D9A7A0"},
+        "slate": {"field": "#22333B", "type": "#F0EEE7", "accent": "#A8C3B5"},
+        "rust": {"field": "#6B2E17", "type": "#F5EDDF", "accent": "#E3C08A"},
+        # 浅色版：纸底墨字，印得省、看着轻，适合同一批里的「轻」书
+        "paper": {"field": "#F4EFE3", "type": "#1A1A1A", "accent": "#8A2B2B"},
+    },
+    "magadan": {
+        "indigo": {"band": "#0D1168", "bar": "#0D1168"},
+        "blue": {"band": "#2C5F9E", "bar": "#FECB00"},
+        "maroon": {"band": "#612326", "bar": "#612326"},
+        "purple": {"band": "#4B2C65", "bar": "#4B2C65"},
+        "crimson": {"band": "#962311", "bar": "#962311"},
+        "brown": {"band": "#5A2B1B", "bar": "#5A2B1B"},
+        "green": {"band": "#236243", "bar": "#236243"},
+        "ink": {"band": "#1A1A1A", "bar": "#1A1A1A"},
+    },
 }
 
+#: magadan 版式固定的纸色与墨色（色板只管色带与侧条）。
+MAGADAN_PAPER = {"paper": "#FFFFFF", "ink": "#000000"}
+
+STYLES: tuple[str, ...] = tuple(STYLE_PALETTES)
+
+
 #: 版式（页宽 W / 页高 H 的比例）。来源：参考样张逐像素实测。
-GEOM = {
+MAGADAN_GEOM = {
     "band_top": 0.0135,
     "band_h": 0.0528,
     "bar_left": 0.897,
@@ -77,7 +107,7 @@ GEOM = {
 }
 
 #: 字号（/ 页宽）。
-TYPE = {
+MAGADAN_TYPE = {
     "title": 0.0767,
     "subtitle": 0.0375,
     "original_title": 0.0383,
@@ -89,7 +119,7 @@ TYPE = {
 }
 
 #: 行高（× 字号）。
-LINE_HEIGHT = {
+MAGADAN_LEADING = {
     "title": 1.02,
     "subtitle": 1.12,
     "original_title": 1.15,
@@ -99,12 +129,46 @@ LINE_HEIGHT = {
 }
 
 #: 块间距（/ 页高，墨迹到墨迹）：实测自样张，保住「书名群」的呼吸感。
-GAPS = {
+MAGADAN_GAPS = {
     "lead_title": 0.0120,
     "title_subtitle": 0.0224,
     "subtitle_original": 0.0262,
     "original_originalsub": 0.0120,
     "originalsub_credits": 0.0235,
+}
+
+#: quarto 版式比例（页宽 W / 页高 H）：整幅底面、左界栏、左对齐书名群。
+QUARTO_GEOM = {
+    "margin": 0.090,  # 左右版心边距
+    "spine_x": 0.062,  # 左侧界栏主线位置
+    "spine_top": 0.055,
+    "spine_bottom": 0.945,
+    "series_top": 0.085,  # 丛书名基线
+    "title_top": 0.255,  # 书名墨迹顶
+    "title_min": 0.048,  # 书名自动缩排下限（/ 页宽）
+    "lead_gap": 0.028,  # 书名上方小字与书名
+    "rule_gap": 0.030,  # 书名下短横
+    "rule_w": 0.30,  # 短横长度（/ 页宽）
+    "sub_gap": 0.030,  # 短横与副书名
+    "orig_gap": 0.050,  # 副书名与原文名
+    "origsub_gap": 0.014,  # 原文名与原文副名
+    "credits_bottom": 0.878,  # 责任者行末行墨迹底
+    "credits_leading": 1.55,
+    "foot_rule": 0.906,
+    "imprint_baseline": 0.940,
+    "title_leading": 1.06,
+}
+
+#: quarto 版式字号（/ 页宽）。
+QUARTO_TYPE = {
+    "series": 0.0155,
+    "lead": 0.0175,
+    "title": 0.105,
+    "subtitle": 0.0215,
+    "original_title": 0.0192,
+    "original_subtitle": 0.0155,
+    "credits": 0.0135,
+    "imprint": 0.0170,
 }
 
 #: 墨迹相对基线的比例（上, 下）：CJK 全角字 / 拉丁衬线 / 行书。实测（见模块文档）。
@@ -165,15 +229,34 @@ class Fonts:
     cjk: Path
     latin: Path | None
     script: Path | None
+    latin_italic: Path | None = None
     missing: tuple[str, ...] = ()
 
     def describe(self) -> dict[str, Any]:
         return {
             "cjk": self.cjk.name,
             "latin": self.latin.name if self.latin else None,
+            "italic": self.latin_italic.name if self.latin_italic else None,
             "script": self.script.name if self.script else None,
             "missing": list(self.missing),
         }
+
+
+def _italic_sibling(path: Path | None) -> Path | None:
+    """同一家族的斜体文件（拉丁衬线的斜体常与常规同目录同前缀）。"""
+    if path is None:
+        return None
+    stem = path.stem
+    for marker in ("-Regular", "Regular", "-Book", "-Roman"):
+        if not stem.endswith(marker):
+            continue
+        base = stem[: -len(marker)]
+        for suffix in ("-Italic", "-Oblique", "Italic", " Italic", "-ItalicMT"):
+            for ext in (path.suffix, ".otf", ".ttf"):
+                candidate = path.with_name(f"{base}{suffix}{ext}")
+                if candidate.is_file():
+                    return candidate
+    return None
 
 
 @dataclass(frozen=True)
@@ -182,10 +265,8 @@ class CoverSpec:
 
     width: float
     height: float
-    background: str
-    ink: str
-    band: str
-    bar: str
+    #: 颜色角色（quarto: field/type/accent；magadan: band/bar/ink/paper）
+    colors: dict[str, str]
     title: list[str]
     subtitle: list[str] = field(default_factory=list)
     original_title: list[str] = field(default_factory=list)
@@ -194,8 +275,8 @@ class CoverSpec:
     lead: list[str] = field(default_factory=list)
     series: list[str] = field(default_factory=list)
     imprint: str = ""
-    style: str = "magadan"
-    palette: str = "indigo"
+    style: str = DEFAULT_STYLE
+    palette: str = "ink"
 
     def digest(self) -> str:
         """设计摘要：内容一变，构建期就能发现封面过期。"""
@@ -203,7 +284,7 @@ class CoverSpec:
             "style": self.style,
             "palette": self.palette,
             "size": [round(self.width, 3), round(self.height, 3)],
-            "colors": [self.band, self.bar, self.ink, self.background],
+            "colors": sorted(self.colors.items()),
             "texts": [
                 self.title,
                 self.subtitle,
@@ -335,7 +416,13 @@ def find_fonts(*, cjk: str = "", latin: str = "", script: str = "") -> Fonts:
     )
     if script_path is None:
         missing.append("script")
-    return Fonts(cjk=cjk_path, latin=latin_path, script=script_path, missing=tuple(missing))
+    return Fonts(
+        cjk=cjk_path,
+        latin=latin_path,
+        script=script_path,
+        latin_italic=_italic_sibling(latin_path),
+        missing=tuple(missing),
+    )
 
 
 # ---------------------------------------------------------------- 设计稿
@@ -422,6 +509,7 @@ def resolve_spec(
     palette: str | None = None,
     imprint: str | None = None,
     size: str | None = None,
+    style: str | None = None,
 ) -> CoverSpec:
     """元数据 + 设计稿 + 命令行覆盖 → CoverSpec（不渲染、不落盘）。"""
     from auto_epublizer.pdfexport import SIZES
@@ -441,10 +529,17 @@ def resolve_spec(
         source_title = str(meta.title or "").strip()
         original = source_title if source_title and source_title != title_text else ""
 
-    palette_name = str(palette or overrides.get("palette") or cfg.cover.palette or "indigo")
-    if palette_name not in PALETTES:
-        raise CoverError(f"未知色板：{palette_name}（可选 {', '.join(PALETTES)}）")
-    band, bar = PALETTES[palette_name]
+    style_name = str(style or overrides.get("style") or cfg.cover.style or DEFAULT_STYLE)
+    if style_name not in STYLE_PALETTES:
+        raise CoverError(f"未知版式：{style_name}（可选 {', '.join(STYLES)}）")
+    style = style_name
+    table = STYLE_PALETTES[style]
+    palette_name = str(palette or overrides.get("palette") or cfg.cover.palette or "ink")
+    if palette_name not in table:
+        raise CoverError(f"未知色板：{palette_name}（{style} 可选 {', '.join(table)}）")
+    colors = dict(table[palette_name])
+    if style == "magadan":
+        colors.update(MAGADAN_PAPER)
 
     size_name = str(size or overrides.get("size") or cfg.cover.size or "a5").lower()
     if size_name not in SIZES:
@@ -460,10 +555,7 @@ def resolve_spec(
     return CoverSpec(
         width=width,
         height=height,
-        background="#FFFFFF",
-        ink="#000000",
-        band=band,
-        bar=bar,
+        colors=colors,
         title=_lines(title_text),
         subtitle=_lines(overrides.get("subtitle") or ""),
         original_title=_lines(original or ""),
@@ -472,7 +564,7 @@ def resolve_spec(
         lead=_lines(overrides.get("lead") or ""),
         series=_lines(overrides.get("series") or ""),
         imprint=str(imprint_text).strip(),
-        style=str(overrides.get("style") or cfg.cover.style or "magadan"),
+        style=style,
         palette=palette_name,
     )
 
@@ -520,6 +612,9 @@ class _Measurer:
     def __init__(self, fonts: Fonts) -> None:
         self._cjk = pymupdf.Font(fontfile=str(fonts.cjk))
         self._latin = pymupdf.Font(fontfile=str(fonts.latin)) if fonts.latin else self._cjk
+        self._italic = (
+            pymupdf.Font(fontfile=str(fonts.latin_italic)) if fonts.latin_italic else self._latin
+        )
         self._script = pymupdf.Font(fontfile=str(fonts.script)) if fonts.script else self._cjk
 
     @property
@@ -529,6 +624,10 @@ class _Measurer:
     @property
     def latin(self) -> pymupdf.Font:
         return self._latin
+
+    @property
+    def italic(self) -> pymupdf.Font:
+        return self._italic
 
     @property
     def script(self) -> pymupdf.Font:
@@ -626,37 +725,264 @@ def _hex(color: str) -> tuple[float, float, float]:
         raise CoverError(f"色值格式不对：{color}（应为 #RRGGBB）") from None
 
 
+def _mix(color: str, base: str, alpha: float) -> tuple[float, float, float]:
+    """把 ``color`` 按 ``alpha`` 混到 ``base`` 上（等价于低不透明度，但直接给 RGB）。
+
+    MuPDF 的填充色只认 RGB 三元组（四元组会被当成 CMYK，白会变黑），因此这里预先
+    混色，而不是靠 opacity。
+    """
+    top = _hex(color)
+    bottom = _hex(base)
+    return tuple(top[i] * alpha + bottom[i] * (1 - alpha) for i in range(3))  # type: ignore[return-value]
+
+
+def _quarto_layout(
+    spec: CoverSpec, measurer: _Measurer, fonts: Fonts, scale: float
+) -> tuple[list[tuple], list[tuple], bool]:
+    """算 quarto 版式的绘制指令；返回 (文字指令, 线条指令, 是否放得下)。
+
+    文字指令：``(text, size, x, baseline, color_rgb, kind, tracking)``，
+    ``kind`` 取 ``auto``（按字符自动选中文/拉丁）、``italic``、``script``。
+    线条指令：``(x0, y0, x1, y1, color_rgb, width)``
+    先算再画，才能在「书名群过长会顶到责任者」时整体缩一档重排（见 ``_draw_quarto``）。
+    """
+    W, H = spec.width, spec.height
+    colors = spec.colors
+    field, type_c, accent = colors["field"], colors["type"], colors["accent"]
+    left = QUARTO_GEOM["margin"] * W
+    right = W - left
+    measure = right - left
+    ink = _hex(type_c)
+
+    texts: list[tuple] = []
+    rules: list[tuple] = []
+
+    def text(line, size, x, baseline, color, kind="auto", tracking=0.0):
+        texts.append((line, size, x, baseline, color, kind, tracking))
+
+    if spec.series:
+        size = QUARTO_TYPE["series"] * W * scale
+        baseline = QUARTO_GEOM["series_top"] * H
+        chip = size * 0.60
+        rules.append(
+            (
+                left,
+                baseline - chip * 0.72,
+                left + chip,
+                baseline - chip * 0.72 + chip,
+                _hex(accent),
+                0.0,
+            )
+        )
+        text(" ".join(spec.series), size, left + size * 1.9, baseline, _hex(accent), tracking=0.16)
+
+    y = QUARTO_GEOM["title_top"] * H
+    if spec.lead:
+        size = QUARTO_TYPE["lead"] * W * scale
+        text(
+            " ".join(spec.lead),
+            size,
+            left,
+            y + INK["cjk"][0] * size,
+            _mix(type_c, field, 0.92),
+            tracking=0.05,
+        )
+        y += (INK["cjk"][0] + INK["cjk"][1]) * size + QUARTO_GEOM["lead_gap"] * H
+
+    # 书名自适应：短书名涨到版心的 88%（最多 1.45 倍），长书名收到 0.75 倍后折行——
+    # 「字少就大、字多就稳」，同批书摆一起不会有的满版有的缩成小字。
+    base_title = QUARTO_TYPE["title"] * W * scale
+    unit_w = max(measurer.width(line, 100.0) for line in spec.title) / 100.0
+    fill_size = measure * 0.88 / max(unit_w, 1e-6)
+    title_size = min(max(fill_size, base_title * 0.75), base_title * 1.45)
+    title_size = max(title_size, QUARTO_GEOM["title_min"] * W)
+    title_lines: list[str] = []
+    for line in spec.title:
+        title_lines.extend(wrap(line, measure, title_size, measurer) or [line])
+    baseline = y + INK["cjk"][0] * title_size
+    for index, line in enumerate(title_lines):
+        if index:
+            baseline += QUARTO_GEOM["title_leading"] * title_size
+        text(line, title_size, left, baseline, ink)
+    y = baseline + INK["cjk"][1] * title_size
+
+    y += QUARTO_GEOM["rule_gap"] * H
+    rules.append((left, y, left + QUARTO_GEOM["rule_w"] * W, y, _hex(accent), 1.2))
+    y += QUARTO_GEOM["sub_gap"] * H
+
+    def block(lines: list[str], key: str, alpha: float, leading: float, italic: bool = False):
+        nonlocal y
+        size = QUARTO_TYPE[key] * W * scale
+        for line in lines:
+            for piece in wrap(line, measure, size, measurer) or [line]:
+                cjk = any(_is_cjk(ch) for ch in piece)
+                top, bottom = INK["cjk"] if cjk else INK["latin"]
+                base = y + top * size
+                text(
+                    piece,
+                    size,
+                    left,
+                    base,
+                    _mix(type_c, field, alpha),
+                    kind="italic" if italic else "auto",
+                )
+                y = base + bottom * size
+                y += (leading - 1) * size
+
+    if spec.subtitle:
+        block(spec.subtitle, "subtitle", 0.88, 1.32)
+        y += QUARTO_GEOM["orig_gap"] * H
+    if spec.original_title:
+        block(spec.original_title, "original_title", 0.60, 1.25, italic=True)
+        y += QUARTO_GEOM["origsub_gap"] * H
+    if spec.original_subtitle:
+        block(spec.original_subtitle, "original_subtitle", 0.46, 1.30)
+
+    # 责任者：从下往上排，最后一行贴住 credits_bottom
+    credits_lines: list[str] = []
+    if spec.credits:
+        size = QUARTO_TYPE["credits"] * W * scale
+        for line in spec.credits:
+            credits_lines.extend(wrap(line, measure, size, measurer) or [line])
+        leading = QUARTO_GEOM["credits_leading"] * size
+        base = QUARTO_GEOM["credits_bottom"] * H
+        for line in reversed(credits_lines):
+            text(line, size, left, base, _mix(type_c, field, 0.70))
+            base -= leading
+        credits_top = base + leading
+    else:
+        credits_top = QUARTO_GEOM["credits_bottom"] * H
+
+    rules.append(
+        (
+            left,
+            QUARTO_GEOM["foot_rule"] * H,
+            right,
+            QUARTO_GEOM["foot_rule"] * H,
+            _mix(type_c, field, 0.16),
+            0.4,
+        )
+    )
+
+    if spec.imprint:
+        size = QUARTO_TYPE["imprint"] * W * scale
+        has_script = fonts.script is not None
+        tracking = 0.0 if has_script else 0.10
+        width = measurer.width(spec.imprint, size, script=has_script) + (
+            tracking * size * len(spec.imprint)
+        )
+        text(
+            spec.imprint,
+            size,
+            right - width,
+            QUARTO_GEOM["imprint_baseline"] * H,
+            _hex(accent),
+            kind="script" if has_script else "auto",
+            tracking=tracking,
+        )
+
+    fits = y <= credits_top - 0.03 * H
+    return texts, rules, fits
+
+
+def _draw_quarto(spec: CoverSpec, fonts: Fonts) -> pymupdf.Document:
+    """quarto（界栏）版式：整幅底面 + 反白书名 + 双线界栏 + 短横 + 斜体原文名。"""
+    measurer = _Measurer(fonts)
+    W, H = spec.width, spec.height
+    scale = 1.0
+    texts: list[tuple] = []
+    rules: list[tuple] = []
+    for _attempt in range(3):
+        texts, rules, fits = _quarto_layout(spec, measurer, fonts, scale)
+        if fits:
+            break
+        scale *= 0.90  # 书名群顶到责任者时整体缩一档，绝不叠字
+
+    doc = pymupdf.open()
+    page = doc.new_page(width=W, height=H)
+    page.draw_rect(pymupdf.Rect(0, 0, W, H), color=None, fill=_hex(spec.colors["field"]), width=0)
+
+    # 左侧界栏：一粗一细两条竖线（书口/版框的意思）
+    spine_x = QUARTO_GEOM["spine_x"] * W
+    page.draw_line(
+        pymupdf.Point(spine_x, QUARTO_GEOM["spine_top"] * H),
+        pymupdf.Point(spine_x, QUARTO_GEOM["spine_bottom"] * H),
+        color=_mix(spec.colors["accent"], spec.colors["field"], 0.55),
+        width=0.7,
+    )
+    page.draw_line(
+        pymupdf.Point(spine_x - 3.4, QUARTO_GEOM["spine_top"] * H),
+        pymupdf.Point(spine_x - 3.4, QUARTO_GEOM["spine_bottom"] * H),
+        color=_mix(spec.colors["type"], spec.colors["field"], 0.22),
+        width=0.4,
+    )
+
+    for x0, y0, x1, y1, color, width in rules:
+        if width <= 0:  # 色块（丛书名前的小方点）
+            page.draw_rect(pymupdf.Rect(x0, y0, x1, y1), color=None, fill=color, width=0)
+        else:
+            page.draw_line(pymupdf.Point(x0, y0), pymupdf.Point(x1, y1), color=color, width=width)
+
+    # 同一颜色的文字合到一个 TextWriter 里（TextWriter 每次 write 只认一种颜色）
+    writers: dict[tuple, pymupdf.TextWriter] = {}
+    for line, size, x, baseline, color, kind, tracking in texts:
+        key = tuple(round(c, 6) for c in color)
+        tw = writers.get(key)
+        if tw is None:
+            tw = writers[key] = pymupdf.TextWriter(page.rect)
+        if kind == "script":
+            font = measurer.script
+        elif kind == "italic":
+            font = measurer.italic or measurer.latin
+        else:
+            font = measurer.cjk if any(_is_cjk(ch) for ch in line) else measurer.latin
+        cursor = x
+        for ch in line:
+            tw.append((cursor, baseline), ch, font=font, fontsize=size)
+            cursor += font.text_length(ch, fontsize=size) + tracking * size
+    for color, tw in writers.items():
+        tw.write_text(page, color=color)
+    return doc
+
+
 def _draw(spec: CoverSpec, fonts: Fonts) -> pymupdf.Document:
-    """把设计画到一页上（纯排版，无外部进程）。"""
+    """按 ``spec.style`` 分派到具体版式。"""
+    if spec.style == "magadan":
+        return _draw_magadan(spec, fonts)
+    return _draw_quarto(spec, fonts)
+
+
+def _draw_magadan(spec: CoverSpec, fonts: Fonts) -> pymupdf.Document:
+    """magadan 版式：白底 + 顶部通栏色带 + 右侧竖色条 + 右对齐书名群。"""
     measurer = _Measurer(fonts)
     width, height = spec.width, spec.height
     doc = pymupdf.open()
     page = doc.new_page(width=width, height=height)
     page.draw_rect(
-        pymupdf.Rect(0, 0, width, height), color=None, fill=_hex(spec.background), width=0
+        pymupdf.Rect(0, 0, width, height), color=None, fill=_hex(spec.colors["paper"]), width=0
     )
 
     # 顶部通栏色带 + 右侧竖色条（色条自色带下沿到页底，右侧留白由 bar_left/bar_w 决定）
-    band_top = GEOM["band_top"] * height
-    band_h = GEOM["band_h"] * height
+    band_top = MAGADAN_GEOM["band_top"] * height
+    band_h = MAGADAN_GEOM["band_h"] * height
     page.draw_rect(
         pymupdf.Rect(0, band_top, width, band_top + band_h),
         color=None,
-        fill=_hex(spec.band),
+        fill=_hex(spec.colors["band"]),
         width=0,
     )
-    bar_left = GEOM["bar_left"] * width
-    bar_w = GEOM["bar_w"] * width
+    bar_left = MAGADAN_GEOM["bar_left"] * width
+    bar_w = MAGADAN_GEOM["bar_w"] * width
     page.draw_rect(
         pymupdf.Rect(bar_left, band_top, bar_left + bar_w, height),
         color=None,
-        fill=_hex(spec.bar),
+        fill=_hex(spec.colors["bar"]),
         width=0,
     )
 
-    content_right = GEOM["content_right"] * width
-    content_w = content_right - GEOM["content_left"] * width
-    ink = _hex(spec.ink)
+    content_right = MAGADAN_GEOM["content_right"] * width
+    content_w = content_right - MAGADAN_GEOM["content_left"] * width
+    ink = _hex(spec.colors["ink"])
     tw = pymupdf.TextWriter(page.rect)
 
     def emit(
@@ -676,16 +1002,16 @@ def _draw(spec: CoverSpec, fonts: Fonts) -> pymupdf.Document:
                 x += font.text_length(chunk, fontsize=size)
 
     def advance(size: float, key: str) -> float:
-        return LINE_HEIGHT[key] * size
+        return MAGADAN_LEADING[key] * size
 
     # —— 左上丛书名 ——
     if spec.series:
-        size = TYPE["series"] * width
-        baseline = GEOM["series_ink_top"] * height + INK["cjk"][0] * size
-        emit(spec.series, size, left=GEOM["series_left"] * width, baseline=baseline)
+        size = MAGADAN_TYPE["series"] * width
+        baseline = MAGADAN_GEOM["series_ink_top"] * height + INK["cjk"][0] * size
+        emit(spec.series, size, left=MAGADAN_GEOM["series_left"] * width, baseline=baseline)
 
     # —— 书名群（右对齐，自上而下）——
-    y = GEOM["block_ink_top"] * height
+    y = MAGADAN_GEOM["block_ink_top"] * height
 
     def block(lines: list[str], key: str, size: float, *, gap_after: float) -> None:
         nonlocal y
@@ -705,12 +1031,14 @@ def _draw(spec: CoverSpec, fonts: Fonts) -> pymupdf.Document:
         y = baseline + bottom_ratio * size + gap_after * height
 
     if spec.lead:
-        size = TYPE["lead"] * width
-        block(spec.lead, "lead", size, gap_after=GAPS["lead_title"])
+        size = MAGADAN_TYPE["lead"] * width
+        block(spec.lead, "lead", size, gap_after=MAGADAN_GAPS["lead_title"])
 
     if spec.title:
         size = (
-            _fit_title(spec.title, measurer, TYPE["title"] * width, content_w) if spec.title else 0
+            _fit_title(spec.title, measurer, MAGADAN_TYPE["title"] * width, content_w)
+            if spec.title
+            else 0
         )
         # 超宽书名再按版心断行（标题保持最小 62% 前提下的自然折行）
         title_lines: list[str] = []
@@ -719,35 +1047,35 @@ def _draw(spec: CoverSpec, fonts: Fonts) -> pymupdf.Document:
                 title_lines.extend(wrap(line, content_w, size, measurer) or [line])
             else:
                 title_lines.append(line)
-        block(title_lines, "title", size, gap_after=GAPS["title_subtitle"])
+        block(title_lines, "title", size, gap_after=MAGADAN_GAPS["title_subtitle"])
 
     if spec.subtitle:
-        size = TYPE["subtitle"] * width
+        size = MAGADAN_TYPE["subtitle"] * width
         lines = [
             w for line in spec.subtitle for w in (wrap(line, content_w, size, measurer) or [line])
         ]
-        block(lines, "subtitle", size, gap_after=GAPS["subtitle_original"])
+        block(lines, "subtitle", size, gap_after=MAGADAN_GAPS["subtitle_original"])
 
     if spec.original_title:
-        size = TYPE["original_title"] * width
+        size = MAGADAN_TYPE["original_title"] * width
         lines = [
             w
             for line in spec.original_title
             for w in (wrap(line, content_w, size, measurer) or [line])
         ]
-        block(lines, "original_title", size, gap_after=GAPS["original_originalsub"])
+        block(lines, "original_title", size, gap_after=MAGADAN_GAPS["original_originalsub"])
 
     if spec.original_subtitle:
-        size = TYPE["original_subtitle"] * width
+        size = MAGADAN_TYPE["original_subtitle"] * width
         lines = [
             w
             for line in spec.original_subtitle
             for w in (wrap(line, content_w, size, measurer) or [line])
         ]
-        block(lines, "original_subtitle", size, gap_after=GAPS["originalsub_credits"])
+        block(lines, "original_subtitle", size, gap_after=MAGADAN_GAPS["originalsub_credits"])
 
     if spec.credits:
-        size = TYPE["credits"] * width
+        size = MAGADAN_TYPE["credits"] * width
         lines = [
             w for line in spec.credits for w in (wrap(line, content_w, size, measurer) or [line])
         ]
@@ -755,10 +1083,10 @@ def _draw(spec: CoverSpec, fonts: Fonts) -> pymupdf.Document:
 
     # —— 底部署名（行书；无行书字体时降级为宋体并明示）——
     if spec.imprint:
-        size = TYPE["imprint"] * width
+        size = MAGADAN_TYPE["imprint"] * width
         text_w = measurer.width(spec.imprint, size, script=fonts.script is not None)
-        baseline = GEOM["imprint_ink_top"] * height + INK["script"][0] * size
-        x = GEOM["imprint_center"] * width - text_w / 2
+        baseline = MAGADAN_GEOM["imprint_ink_top"] * height + INK["script"][0] * size
+        x = MAGADAN_GEOM["imprint_center"] * width - text_w / 2
         if fonts.script is None:
             # 降级：宋体 + 字距，保住「署名居中靠底」的版式，但不再是行书
             tracking = 0.004 * width
@@ -829,6 +1157,7 @@ def generate(
     cfg: Any,
     *,
     out: str | Path | None = None,
+    style: str | None = None,
     palette: str | None = None,
     imprint: str | None = None,
     size: str | None = None,
@@ -844,6 +1173,7 @@ def generate(
         palette=palette,
         imprint=imprint,
         size=size,
+        style=style,
     )
     fonts = fonts or find_fonts(
         cjk=cfg.cover.font_serif, latin=cfg.cover.font_latin, script=cfg.cover.imprint_font

@@ -39,3 +39,22 @@ def test_create_work_root_idempotent_and_force(tmp_path: Path) -> None:
     assert (target / "README.md").read_text(encoding="utf-8") == (
         template_dir() / "README.md"
     ).read_text(encoding="utf-8")
+
+
+def test_create_work_root_dry_run_previews_every_file_without_writing(tmp_path: Path) -> None:
+    target = tmp_path / "preview"
+    preview = create_work_root(target, dry_run=True)
+    assert preview["dry_run"] is True
+    assert preview["created"]
+    assert not target.exists()  # 不创建目标目录，也不写任何文件
+
+    real = create_work_root(target)
+    assert real["created"] == preview["created"]
+    assert real["skipped"] == preview["skipped"]
+
+    changed = tmp_path / "mixed"
+    create_work_root(changed)
+    before = {path: path.read_bytes() for path in changed.rglob("*") if path.is_file()}
+    again = create_work_root(changed, dry_run=True, force=True)
+    assert again["created"] == sorted(again["created"])
+    assert {path: path.read_bytes() for path in changed.rglob("*") if path.is_file()} == before

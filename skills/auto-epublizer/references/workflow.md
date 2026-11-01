@@ -1,4 +1,4 @@
-<!-- i18n: source=workflow.zh.md sha256=e7ec4783e66b6f8ec85e07b4728cf8b1476f38226c698f66621164bc48dbbe15 -->
+<!-- i18n: source=workflow.zh.md sha256=ccd0ffb2d66d4fb4da6e33063741e81537d79224130d6d5ec9abe46529e1d03e -->
 > **English** | [中文](workflow.zh.md)
 
 # Workflow (stage routing + command overview)
@@ -217,13 +217,15 @@ auto-epublizer notes status [--json] [--workspace <dir>]          # summary / st
 # build (translation missing falls back to source; --theme selects the layout theme)
 auto-epublizer build [--theme standard|compact|spacious] [-o <out.epub>] [--workspace <dir>]
 
-# derived print PDF (not in the QA digest; the EPUB stays the delivery format)
-auto-epublizer pdf [--size a5|32k|b5|16k] [--body-pt 10.5] [--note-pt 8.5] [--json] [--workspace <dir>]
+# derived print PDF (not in the QA digest; the EPUB stays the delivery format; --strict keeps the old file on failure)
+auto-epublizer pdf [--size a5|32k|b5|16k] [--body-pt 10.5] [--note-pt 8.5] [--strict] [--json] [--workspace <dir>]
+auto-epublizer pdf-verify --pdf <out.pdf> [--json]     # recompute source EPUB/PDF hashes and the artifact manifest
 
 # read-only evidence (deterministic, zero-token; releases nothing, changes no state)
-auto-epublizer evidence source [--json] [--workspace <dir>]
+auto-epublizer evidence source [--json] [--note-id <id> ...] [--workspace <dir>]
 auto-epublizer evidence partition [--json] [--workspace <dir>]   # per-line source partition: destination/duplicates/block ranges
 auto-epublizer evidence breaks [-o <jsonl>] [--workspace <dir>]
+auto-epublizer evidence page-numbers [--json] [--workspace <dir>]  # TOC/index page policy and duplicate candidates
 auto-epublizer evidence report [--json] [--epub <path>] [--workspace <dir>]
 
 # QA (epubcheck zero errors + unpack audit + provenance audit + G5 release decision)
@@ -248,7 +250,7 @@ Not every command supports `--json`; do not append it mechanically to arbitrary 
 
 | Command | Machine-readable interface |
 |---|---|
-| `doctor`, `status` (including `--all`), `notes status`, `knowledge status`, `evidence source/partition/report`, `pdf` | Explicit `--json`; parse stdout as JSON |
+| `doctor`, `status` (including `--all`), `notes status`, `knowledge status`, `evidence source/partition/report/page-numbers`, `pdf`, `pdf-verify` | Explicit `--json`; parse stdout as JSON |
 | `qa` | Read workspace `report.json`, then check freshness with `status --json`; exit 0 means execution finished, not released |
 | `build`, `import`, `g0`, `meta` | Follow actual help, reject nonzero exits, then read applicable state through `status --json` / `report.json`; rerun QA after later edits |
 | `ledger` | Markdown; use `-o` for a file and `status --all --json` for progress decisions, not colored summaries |
@@ -282,7 +284,8 @@ auto-epublizer status --workspace <dir> --json
 ## Multi-workspace work root (long-running projects)
 
 For one book or many, first follow the safe bootstrap in `references/work-root.md`.
-The existing `"$AEP_CLI" work-root "$AEP_ROOT"` generates the skeleton without `--force`.
+The existing `"$AEP_CLI" work-root "$AEP_ROOT"` generates the skeleton without `--force`;
+add `--dry-run` to preview each item first.
 Keep one separate workspace per book; `status --all` and `ledger` are the cross-book index.
 
 ```text

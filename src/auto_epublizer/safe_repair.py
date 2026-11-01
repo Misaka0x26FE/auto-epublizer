@@ -10,6 +10,7 @@ import os
 import re
 import uuid
 from collections import Counter
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -20,6 +21,15 @@ from auto_translator.review.g0 import check_alignment, count_heading_levels, md_
 
 RULE_VERSION = "safe-repair-1"
 _CLOSED = {"applied", "rolled_back"}
+
+
+@dataclass(frozen=True)
+class RepairAdapter:
+    """显式登记的修复层：只有 authoritative 可写，派生 chunk 明确拒绝。"""
+
+    layer: str
+    kind: str
+    unit: str
 
 
 def _hash(data: bytes) -> str:
@@ -56,15 +66,75 @@ def assert_no_pending(store: RunStore) -> None:
             raise ValueError("存在未决修复事务；请先运行 repair recover，不得继续普通处理")
 
 
-def _allowed(store: RunStore) -> dict[str, str]:
-    result = {}
+def _allowed(store: RunStore) -> dict[str, RepairAdapter]:
+    result: dict[str, RepairAdapter] = {}
     for unit in store.load_publication().units:
         rel = str(unit.meta.get("rel_path") or "")
-        if rel:
-            for region in ("structured", "translation"):
-                result[f"{region}/{rel}"] = unit.id
-            result[f"translation/align/{unit.id}.jsonl"] = unit.id
+        if not rel:
+            continue
+        for region in ("structured", "translation"):
+            result[f"{region}/{rel}"] = RepairAdapter("authoritative", "markdown", unit.id)
+        result[f"translation/align/{unit.id}.jsonl"] = RepairAdapter(
+            "authoritative", "align", unit.id
+        )
+    result["structured/notes.json"] = RepairAdapter("authoritative", "notes_source", "notes")
+    result["translation/notes.json"] = RepairAdapter("authoritative", "notes_translation", "notes")
     return result
+
+
+def _adapter(store: RunStore, rel: str) -> RepairAdapter:
+    adapter = _allowed(store).get(rel)
+    if adapter is not None:
+        return adapter
+    if rel.startswith(("structured/raw/", "preprocessing/", "analysis/", "reviews/", "output/")):
+        raise ValueError(
+            f"派生/非权威层不是精确修复目标（不改派生 chunk，须重建上游权威件）：{rel}"
+        )
+    raise ValueError(f"修复目标不在显式登记的权威适配器内：{rel}")
+
+
+def _notes_change(before: str, after: str, kind: str) -> tuple[str, str]:
+    """notes.json 只允许改完整注文文本；身份、位置、引用与绑定摘要必须守恒。"""
+    try:
+        old = json.loads(before)
+        new = json.loads(after)
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"注文修复必须保持合法 JSON：{exc}") from None
+    if not isinstance(old, dict) or not isinstance(new, dict) or set(old) != set(new):
+        raise ValueError("注文修复不得改变顶层字段")
+    protected = {
+        "notes_source": {"source_markdown"},
+        "notes_translation": {"target_markdown"},
+    }.get(kind, set())
+    allowed_top = {"source_notes_sha256"} if kind == "notes_translation" else set()
+    for key in old:
+        if key != "notes" and old[key] != new[key] and key not in allowed_top:
+            raise ValueError(f"注文修复不得改变 {key}（身份/绑定摘要必须守恒）")
+    old_rows, new_rows = old.get("notes"), new.get("notes")
+    if not isinstance(old_rows, list) or not isinstance(new_rows, list):
+        raise ValueError("注文修复的 notes 必须是数组")
+    if len(old_rows) != len(new_rows):
+        raise ValueError("注文修复不得增删注文")
+    changed: list[tuple[str, str]] = []
+    for left, right in zip(old_rows, new_rows, strict=True):
+        if not isinstance(left, dict) or not isinstance(right, dict):
+            raise ValueError("注文条目必须是对象")
+        if left.get("note_id") != right.get("note_id"):
+            raise ValueError("注文修复不得改 note_id")
+        differing = {key for key in left if left[key] != right.get(key)}
+        if not differing:
+            continue
+        if differing - protected:
+            raise ValueError("注文修复只允许改完整注文文本，其他字段须保持原样")
+        field = next(iter(protected))
+        text = right.get(field)
+        if not isinstance(text, str) or not text.strip():
+            raise ValueError("注文修复后的文本不得为空")
+        _conservation(str(left.get(field) or ""), text, markdown=True)
+        changed.append((str(left.get("note_id")), field))
+    if not changed:
+        raise ValueError("注文修复没有实际文本变化")
+    return changed[0]
 
 
 def _shape(value: Any, keys: set[str], label: str) -> None:
@@ -113,16 +183,15 @@ def _prepare(store: RunStore, plan: dict[str, Any]) -> list[dict[str, Any]]:
     _identity(store, plan)
     if not isinstance(plan["edits"], list) or not plan["edits"]:
         raise ValueError("修复清单不能为空")
-    allowed = _allowed(store)
-    rows = []
-    seen = set()
+    batches: dict[str, dict[str, Any]] = {}
+    order: list[str] = []
     for edit in plan["edits"]:
         _shape(edit, {"unit", "path", "sha256", "old", "new", "approved", "evidence"}, "修复项")
         rel = edit["path"]
         path = _inside(store, rel)
-        if rel not in allowed or allowed[rel] != edit["unit"] or rel in seen:
-            raise ValueError("修复目标/单元身份不符或重复文件（每文件一条精确替换）")
-        seen.add(rel)
+        adapter = _adapter(store, rel)
+        if adapter.unit != edit["unit"]:
+            raise ValueError("修复目标/单元身份不符")
         if edit["approved"] is not True:
             raise ValueError("修复项未明确批准")
         evidence = edit["evidence"]
@@ -135,11 +204,22 @@ def _prepare(store: RunStore, plan: dict[str, Any]) -> list[dict[str, Any]]:
             or _hash(ep.read_bytes()) != evidence["sha256"]
         ):
             raise ValueError("修复证据缺失或摘要/页码不符")
-        before = path.read_bytes()
-        text = before.decode("utf-8")
+        if rel not in batches:
+            before = path.read_bytes()
+            if _hash(before) != edit["sha256"]:
+                raise ValueError(f"修复基线已变更：{rel}")
+            order.append(rel)
+            batches[rel] = {
+                "adapter": adapter,
+                "unit": edit["unit"],
+                "before": before,
+                "text": before.decode("utf-8"),
+                "baseline": edit["sha256"],
+            }
+        elif batches[rel]["baseline"] != edit["sha256"]:
+            raise ValueError(f"同文件多项修复须绑定同一基线：{rel}")
+        text = batches[rel]["text"]
         old, new = edit["old"], edit["new"]
-        if _hash(before) != edit["sha256"]:
-            raise ValueError(f"修复基线已变更：{rel}")
         if (
             text.startswith("\ufeff")
             or not isinstance(old, str)
@@ -150,12 +230,21 @@ def _prepare(store: RunStore, plan: dict[str, Any]) -> list[dict[str, Any]]:
             or text.count(old) != 1
         ):
             raise ValueError("修复须 UTF-8 无 BOM、非空且唯一精确旧字串，不允许歧义替换")
-        after = text.replace(old, new, 1).encode("utf-8")
-        _conservation(text, after.decode("utf-8"), markdown=path.suffix == ".md")
+        batches[rel]["text"] = text.replace(old, new, 1)
+    rows = []
+    for rel in order:
+        batch = batches[rel]
+        before, after_text = batch["before"], batch["text"]
+        adapter: RepairAdapter = batch["adapter"]
+        after = after_text.encode("utf-8")
+        if adapter.kind in {"notes_source", "notes_translation"}:
+            _notes_change(before.decode("utf-8"), after_text, adapter.kind)
+        else:
+            _conservation(before.decode("utf-8"), after_text, markdown=Path(rel).suffix == ".md")
         rows.append(
             {
                 "path": rel,
-                "unit": edit["unit"],
+                "unit": batch["unit"],
                 "before": before.hex(),
                 "after": after.hex(),
                 "old_sha256": _hash(before),
@@ -204,6 +293,34 @@ def _validate_overlay(store: RunStore, rows: list[dict[str, Any]]) -> None:
         flags = check_alignment(segments) + fidelity_flags(source, segments)
         if any(f.blocking for f in flags) or md_align_drift(target, segments):
             raise ValueError("修复全量预检失败：源保真或 md/align 漂移")
+    _validate_notes_binding(store, overlay)
+
+
+def _validate_notes_binding(store: RunStore, overlay: dict[str, str]) -> None:
+    """源注文改动必须与译注的 source_notes_sha256 同事务对齐。"""
+    source_rel, translation_rel = "structured/notes.json", "translation/notes.json"
+    if source_rel not in overlay and translation_rel not in overlay:
+        return
+    source_text = overlay.get(source_rel)
+    if source_text is None:
+        source_path = _inside(store, source_rel)
+        source_text = source_path.read_text(encoding="utf-8") if source_path.is_file() else None
+    if source_text is None:
+        return
+    translation_text = overlay.get(translation_rel)
+    if translation_text is None:
+        path = _inside(store, translation_rel)
+        if not path.is_file():
+            return
+        translation_text = path.read_text(encoding="utf-8")
+    try:
+        translation = json.loads(translation_text)
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"译注文件不是合法 JSON：{exc}") from None
+    expected = _hash(source_text.encode("utf-8"))
+    actual = str((translation or {}).get("source_notes_sha256") or "")
+    if actual != expected:
+        raise ValueError("译注 source_notes_sha256 与修复后的源注文不一致；须同事务更新摘要并重译")
 
 
 def _replace_bytes(path: Path, data: bytes) -> None:
@@ -221,7 +338,6 @@ def _replace_bytes(path: Path, data: bytes) -> None:
 
 
 def _journal_rows(store: RunStore, journal: dict[str, Any]) -> list[dict[str, Any]]:
-    allowed = _allowed(store)
     rows = journal.get("files")
     if not isinstance(rows, list) or not rows:
         raise ValueError("事务缺持久备份")
@@ -229,7 +345,8 @@ def _journal_rows(store: RunStore, journal: dict[str, Any]) -> list[dict[str, An
     for row in rows:
         _shape(row, {"path", "unit", "before", "after", "old_sha256", "new_sha256"}, "事务文件")
         path = _inside(store, row["path"])
-        if row["path"] not in allowed or allowed[row["path"]] != row["unit"] or row["path"] in seen:
+        adapter = _adapter(store, row["path"])
+        if adapter.unit != row["unit"] or row["path"] in seen:
             raise ValueError("事务目标不在当前单元中或重复")
         seen.add(row["path"])
         if (

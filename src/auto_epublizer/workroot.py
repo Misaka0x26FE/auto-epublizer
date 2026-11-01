@@ -26,13 +26,17 @@ def template_dir() -> Path:
     return Path(__file__).resolve().parents[2] / "template" / "work-root"
 
 
-def create_work_root(target: str | Path, *, force: bool = False) -> dict[str, object]:
+def create_work_root(
+    target: str | Path, *, force: bool = False, dry_run: bool = False
+) -> dict[str, object]:
     """在 ``target`` 生成标准长期工作区骨架。
 
     - 源：仓库内 ``template/work-root/``（缺失则报错，提示模板未随仓库提供）；
     - 已存在且非空时**只补缺失**（不覆盖）；``force=True`` 才覆盖同名文件；
+    - ``dry_run=True`` 只逐项预览，不创建目录/文件；
     - 目标存在但不是目录 → 报错。
-    返回 ``{"dir", "created": [...相对路径], "skipped": [...]}``。
+    返回 ``{"dir", "created", "skipped", "dry_run"}``；dry-run 下 ``created`` 为
+    ``would_create`` 的同一清单（不写盘，供旧调用直接比较）。
     """
     src = template_dir()
     if not src.is_dir():
@@ -47,13 +51,20 @@ def create_work_root(target: str | Path, *, force: bool = False) -> dict[str, ob
         rel = path.relative_to(src)
         dest = dest_root / rel
         if path.is_dir():
-            dest.mkdir(parents=True, exist_ok=True)
+            if not dry_run:
+                dest.mkdir(parents=True, exist_ok=True)
             continue
         rel_s = rel.as_posix()
         if dest.exists() and not force:
             skipped.append(rel_s)
             continue
-        dest.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(path, dest)
+        if not dry_run:
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(path, dest)
         created.append(rel_s)
-    return {"dir": str(dest_root), "created": created, "skipped": skipped}
+    return {
+        "dir": str(dest_root),
+        "created": created,
+        "skipped": skipped,
+        "dry_run": dry_run,
+    }

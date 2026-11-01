@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 from pathlib import Path
 
 import pytest
@@ -13,11 +14,15 @@ from auto_translator.glossary import (
     Glossary,
     GlossaryEntry,
     load_glossary_csv,
+    normalize,
     save_glossary_csv,
     terminology_hits,
     terms_in_text,
 )
-from auto_translator.glossary.csv_io import load_terminology_exemptions
+from auto_translator.glossary.csv_io import (
+    load_terminology_exemption_rows,
+    load_terminology_exemptions,
+)
 from auto_translator.review import g0_unit_flags
 
 
@@ -353,3 +358,71 @@ def test_missing_terminology_exemptions_preserves_term_check(tmp_path: Path) -> 
         exempt_sources=exemptions.get("ch01", {}),
     )
     assert any(flag.check == "terminology" and flag.blocking for flag in flags)
+
+
+def _digest(text: str) -> str:
+    return hashlib.sha256(normalize(text).encode("utf-8")).hexdigest()
+
+
+def test_occurrence_exemption_covers_one_position_and_other_row_still_blocks(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "terminology_exemptions.csv"
+    path.write_text(
+        "unit,source,reason,seq,note_id,occurrence,text_sha256,evidence\n"
+        f"ch01,First sentence,§5 书目体例,1,,1,{_digest('First sentence.')},analysis/style.md §5\n",
+        encoding="utf-8",
+    )
+    exemptions = load_terminology_exemption_rows(path)
+    assert load_terminology_exemptions(path) == {}
+    glossary = Glossary([_entry("First sentence", "首句", status=STATUS_CONFIRMED)])
+    rows = [
+        {"seq": 1, "src": "First sentence.", "tgt": "书目保留原文。"},
+        {"seq": 2, "src": "First sentence.", "tgt": "另一处未译。"},
+    ]
+    flags = g0_unit_flags(rows, glossary, exemptions=exemptions, unit_id="ch01")
+    advisory = [flag for flag in flags if flag.check == "terminology_exempt"]
+    blocking = [flag for flag in flags if flag.check == "terminology" and flag.blocking]
+    assert len(advisory) == 1 and advisory[0].data["seq"] == 1
+    assert advisory[0].data["scope"] == "occurrence"
+    assert len(blocking) == 1 and blocking[0].data["seq"] == 2
+    assert blocking[0].data["missing_occurrences"] == 1
+
+
+def test_occurrence_exemption_note_id_and_stale_digest(tmp_path: Path) -> None:
+    path = tmp_path / "terminology_exemptions.csv"
+    path.write_text(
+        "unit,source,reason,seq,note_id,occurrence,text_sha256,evidence\n"
+        f"ch01,First sentence,notes 体例,1,n-000001,1,{_digest('Old source text.')},notes/n-000001\n",
+        encoding="utf-8",
+    )
+    exemptions = load_terminology_exemption_rows(path)
+    glossary = Glossary([_entry("First sentence", "首句", status=STATUS_CONFIRMED)])
+    stale_flags = g0_unit_flags(
+        [{"seq": 1, "note_id": "n-000001", "src": "First sentence.", "tgt": "未译。"}],
+        glossary,
+        exemptions=exemptions,
+        unit_id="ch01",
+    )
+    assert any(flag.check == "terminology_exempt_stale" for flag in stale_flags)
+    assert any(flag.check == "terminology" and flag.blocking for flag in stale_flags)
+
+    # 摘要匹配但 note_id 不同：不得借用相邻注文的豁免。
+    other_note = g0_unit_flags(
+        [{"seq": 1, "note_id": "n-000002", "src": "First sentence.", "tgt": "未译。"}],
+        glossary,
+        exemptions=exemptions,
+        unit_id="ch01",
+    )
+    assert not any(flag.check == "terminology_exempt" for flag in other_note)
+    assert any(flag.check == "terminology" and flag.blocking for flag in other_note)
+
+
+def test_occurrence_exemption_requires_digest_and_evidence(tmp_path: Path) -> None:
+    path = tmp_path / "terminology_exemptions.csv"
+    path.write_text(
+        "unit,source,reason,seq,text_sha256,evidence\nch01,First sentence,理由,1,,\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="text_sha256 与 evidence"):
+        load_terminology_exemption_rows(path)

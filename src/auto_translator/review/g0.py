@@ -28,11 +28,19 @@ from __future__ import annotations
 
 import re
 from collections.abc import Mapping, Sequence
+from hashlib import sha256
 from typing import Any
 
 from auto_common.markdown import inline_code_chunks, markdown_chunks
 
-from ..glossary import Glossary, terminology_hits
+from ..glossary import (
+    Glossary,
+    count_source_occurrences,
+    count_target_occurrences,
+    normalize,
+    terminology_hits,
+)
+from ..glossary.csv_io import TerminologyExemption
 from .fidelity import content_blocks, is_heading_only
 from .models import G0Flag  # 数据模型归 models（C 组：消除 g0↔fidelity 双向依赖）
 
@@ -549,6 +557,8 @@ def g0_unit_flags(
     structured_md: str | None = None,
     translation_md: str | None = None,
     exempt_sources: Mapping[str, str] | None = None,
+    exemptions: Sequence[TerminologyExemption] | None = None,
+    unit_id: str = "",
     language_exempt: Sequence[tuple[Any, str]] | None = None,
     target_language: str = "zh-CN",
     source_language: str = "auto",
@@ -594,6 +604,7 @@ def g0_unit_flags(
     不阻断放行也不从报告里消失。
     """
     exempt_sources = exempt_sources or {}
+    exemption_rows = list(exemptions or [])
     language_exempt = list(language_exempt or [])
     heading_only = not rows and is_heading_only(structured_md) and is_heading_only(translation_md)
     flags = [] if heading_only else list(check_alignment(rows))
@@ -676,28 +687,129 @@ def g0_unit_flags(
                 )
             )
         for hit in terminology_hits(src, tgt, glossary):
-            if hit.source in exempt_sources:
-                # 按单元豁免（文献著录体例内保留德文，改译文也放行不了）：
-                # 降为 advisory **照样报出**，不阻断放行也不从报告里消失。
+            legacy_rows = [
+                row
+                for row in exemption_rows
+                if row.unit == unit_id and row.source == hit.source and not row.located
+            ]
+            if legacy_rows:
                 flags.append(
                     G0Flag(
                         "terminology_exempt",
-                        f"术语 {hit.source} 已按体例豁免（{hit.expected}）：{exempt_sources[hit.source]}",
+                        f"术语 {hit.source} 已按体例豁免（{hit.expected}）：{legacy_rows[0].reason}",
                         {
                             "seq": seq,
+                            "note_id": r.get("note_id"),
                             "source": hit.source,
                             "expected": hit.expected,
-                            "reason": exempt_sources[hit.source],
+                            "reason": legacy_rows[0].reason,
+                            "scope": "unit",
                         },
                         blocking=False,
                     )
                 )
                 continue
+            legacy = exempt_sources.get(hit.source)
+            if legacy:
+                # 按单元豁免（文献著录体例内保留德文，改译文也放行不了）：
+                # 降为 advisory **照样报出**，不阻断放行也不从报告里消失。
+                flags.append(
+                    G0Flag(
+                        "terminology_exempt",
+                        f"术语 {hit.source} 已按体例豁免（{hit.expected}）：{legacy}",
+                        {
+                            "seq": seq,
+                            "note_id": r.get("note_id"),
+                            "source": hit.source,
+                            "expected": hit.expected,
+                            "reason": legacy,
+                            "scope": "unit",
+                        },
+                        blocking=False,
+                    )
+                )
+                continue
+            digest = sha256(normalize(src).encode("utf-8")).hexdigest()
+            relevant = [
+                row
+                for row in exemption_rows
+                if row.unit == unit_id
+                and row.source == hit.source
+                and (row.seq is None or row.seq == seq)
+                and (row.note_id is None or row.note_id == r.get("note_id"))
+            ]
+            stale = [row for row in relevant if row.text_sha256 and row.text_sha256 != digest]
+            matched = [row for row in relevant if row not in stale]
+            if stale:
+                flags.append(
+                    G0Flag(
+                        "terminology_exempt_stale",
+                        f"术语 {hit.source} 的逐处例外已因源文改动失效：{stale[0].reason}",
+                        {
+                            "seq": seq,
+                            "note_id": r.get("note_id"),
+                            "source": hit.source,
+                            "expected": hit.expected,
+                            "reason": stale[0].reason,
+                            "exempted_sha256": stale[0].text_sha256,
+                            "actual_sha256": digest,
+                        },
+                        blocking=False,
+                    )
+                )
+            if matched:
+                source_count = count_source_occurrences(src, hit.source)
+                target_count = count_target_occurrences(tgt, hit.expected)
+                applied = min(len(matched), source_count)
+                missing = max(0, source_count - target_count - applied)
+                context = {
+                    "seq": seq,
+                    "note_id": r.get("note_id"),
+                    "source": hit.source,
+                    "expected": hit.expected,
+                    "reason": matched[0].reason,
+                    "scope": "occurrence",
+                    "occurrence": matched[0].occurrence,
+                    "source_occurrences": source_count,
+                    "target_occurrences": target_count,
+                    "exempted_occurrences": applied,
+                    "missing_occurrences": missing,
+                }
+                if missing == 0:
+                    flags.append(
+                        G0Flag(
+                            "terminology_exempt",
+                            f"术语 {hit.source} 的指定出现已按体例豁免（{hit.expected}）："
+                            f"{matched[0].reason}",
+                            context,
+                            blocking=False,
+                        )
+                    )
+                    continue
+                flags.append(
+                    G0Flag(
+                        "terminology",
+                        f"术语 {hit.source} 仍有 {missing} 处译文缺失 {hit.expected}"
+                        f"（已豁免 {applied}/{source_count} 处）",
+                        context,
+                    )
+                )
+                continue
+            source_count = count_source_occurrences(src, hit.source)
+            target_count = count_target_occurrences(tgt, hit.expected)
             flags.append(
                 G0Flag(
                     "terminology",
                     f"术语 {hit.source} 译文缺失 {hit.expected}",
-                    {"seq": seq, "source": hit.source, "expected": hit.expected},
+                    {
+                        "seq": seq,
+                        "note_id": r.get("note_id"),
+                        "source": hit.source,
+                        "expected": hit.expected,
+                        "source_occurrences": source_count,
+                        "target_occurrences": target_count,
+                        "missing_occurrences": max(0, source_count - target_count),
+                    },
                 )
             )
         same_language = (

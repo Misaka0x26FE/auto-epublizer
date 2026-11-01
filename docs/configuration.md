@@ -1,4 +1,4 @@
-<!-- i18n: source=configuration.zh.md sha256=2dfeb7c57d491da6e5b2c0d6641f9819e1abc28b87cadb9db863a36d16ff7ffc -->
+<!-- i18n: source=configuration.zh.md sha256=2f391ecf81d61b69145419b46fa2c20674c82699ce094a669347d3fa0c8f9796 -->
 > **English** | [中文](configuration.zh.md)
 
 # Configuration reference (target `config.yaml` schema)
@@ -65,8 +65,9 @@ paths:
 # ── generated cover (books without a source cover) ──────────
 cover:
   enabled: true           # the cover command is available; false = even explicit generation is refused
-  style: magadan          # only magadan today (off = build never uses a generated cover)
-  palette: indigo         # indigo|blue|maroon|purple|crimson|brown|green|ink
+  style: quarto           # quarto (default: full-bleed ground + reversed title) | magadan (previous look)
+  palette: ink            # quarto: ink|oxblood|forest|indigo|aubergine|slate|rust|paper
+                          # magadan: indigo|blue|maroon|purple|crimson|brown|green|ink
   size: a5                # same set as pdf --size: a5|32k|b5|16k
   dpi: 300                # PNG resolution (72–1200)
   imprint: "马加丹汉化组"  # signature at the bottom; empty string = no signature line
@@ -86,15 +87,23 @@ output:
 
 ## Generated cover
 
-`cover` produces the **Magadan-layout** typeset cover for books that have no usable source
-cover (plain-text/Markdown sources, or scans whose first page was never confirmed as the
-cover). It is pure deterministic typesetting (PyMuPDF, no LLM, no browser): headline blocks
-come from `publication.json` metadata plus the optional agent-written
+`cover` produces a typeset cover for books that have no usable source cover (plain-text or
+Markdown sources, or scans whose first page was never confirmed as the cover). It is pure
+deterministic typesetting (PyMuPDF, no LLM, no browser): headline blocks come from
+`publication.json` metadata plus the optional agent-written
 `preprocessing/cover-spec.json`, and the result is registered in
 `preprocessing/cover-generated.json`.
 
+Two layouts share one generator, selected by `cover.style`:
+
+| Style | Look |
+|---|---|
+| `quarto` (default, 界栏) | full-bleed ground + reversed, flush-left title + double hairline at the left edge + short accent rule + italic original title + credits bottom-left + signature bottom-right |
+| `magadan` | white page + full-width band at the top + vertical stripe on the right + right-aligned serif title group |
+
 ```bash
-auto-epublizer cover --workspace <ws> [--palette maroon] [--size a5] [--dpi 300] [--pdf] [--json]
+auto-epublizer cover --workspace <ws> [--style quarto|magadan] [--palette oxblood] \
+    [--size a5] [--dpi 300] [--pdf] [--json]
 auto-epublizer cover --workspace <ws> --remove
 ```
 

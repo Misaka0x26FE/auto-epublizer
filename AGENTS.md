@@ -1,4 +1,4 @@
-<!-- i18n: source=AGENTS.zh.md sha256=371e584f04f878e09b5bb3962f99898226691a5dbee9b63f201b82ade81c7e62 -->
+<!-- i18n: source=AGENTS.zh.md sha256=b93745ec18c7280ce664b74efe241c6ca90860130ff0f1749d26a53294fad9f4 -->
 > **English** | [中文](AGENTS.zh.md)
 
 # auto-epublizer repository guide (for coding agents developing/maintaining this project)
@@ -130,6 +130,7 @@ auto-epublizer restructure [--workspace <dir>]   # register rebuilt unit structu
 auto-epublizer evidence breaks   # export page-boundary evidence → preprocessing/breaks.jsonl (for judging page/line-split fragments; locates evidence only, no semantic merge)
 auto-epublizer evidence partition  # per-line source partition ledger (read-only): destination, duplicate pairing, block ranges; --json for machines
 auto-epublizer evidence source   # raw page/column/block/TOC/note candidates + scanned cover candidates (read-only)
+auto-epublizer evidence page-numbers  # TOC/index page policy + duplicate candidates (read-only)
 auto-epublizer evidence report   # read-only redo of product/external-source/copy evidence (pass/fail/unknown/manual)
 # Scanned cover: cover_candidates from evidence source --json are candidates only; the agent
 # verifies and writes preprocessing/cover.json ({"file": "structured/raw/media/…", "evidence": "…"}),
@@ -173,7 +174,8 @@ auto-epublizer knowledge import --workspace .   # cross-book same-key different-
 
 # 7. Package output
 auto-epublizer build          # translated EPUB → output/ (--theme selects the layout theme)
-auto-epublizer pdf            # derived print PDF → output/ (not in the QA digest; --size/--body-pt/--note-pt/--json)
+auto-epublizer pdf            # derived print PDF → output/ (not in the QA digest; --strict/--json)
+auto-epublizer pdf-verify --pdf output/book.pdf  # reconcile source EPUB/PDF hashes and the artifact manifest
 
 # 8. QA (G0 static validation + G4 audit + G5 release summary → report.json)
 auto-epublizer qa             # structure audit + epubcheck
@@ -183,7 +185,7 @@ auto-epublizer qa             # structure audit + epubcheck
 auto-epublizer status --json  # inspect progress/state machine/artifact-state reconciliation (includes next_tasks machine pointer)
 auto-epublizer status --all   # multi-workspace overview (three-tier progress: released/built_not_released/preprocessing)
 auto-epublizer ledger         # cross-book ledger markdown (machine-recomputable columns + domain/summary to fill)
-auto-epublizer work-root <dir>  # scaffold a standard long-running multi-book workspace (see references/work-root.md)
+auto-epublizer work-root <dir>  # scaffold a standard long-running multi-book workspace (see references/work-root.md; --dry-run previews)
 
 # 9. Delivery audit (agent task, mandatory): follow
 #    skills/auto-epublizer/references/delivery.md for full independent reconciliation +

@@ -165,17 +165,26 @@
 
 ### E：#72 与源证据后续（不塞入 PDF 热修）
 
-- [ ] **E1 注释全量证据清单（M；裁剪渲染再拆 M）**：以每条注册 note 的 source_locations 为全集，输出 note_id/page/bbox/证据状态；坏 OCR 只影响排序，不缩小范围。按 note_id 按需裁剪，保留多页续注；缺坐标明确 unknown。复用现有 source evidence 与 OCR 证据，不新增 LLM 调用。验证 20 注、拆散缩写、跨页尾部、多栏、无 bbox，证据生成不自动改审校通过状态。落点 `source_evidence`/notes 领域、CLI evidence、相关测试。关联 #34/#58/#64/#69/#72.1。
-- [ ] **E2 多层修复事务（先契约 M，再接线 M）**：审查 `safe_repair._allowed/_prepare/_validate_overlay`，区分权威层和派生 chunk；显式登记支持的 notes/chunk 适配器，不开放任意路径写。验证 dry-run 零写入、顺序 old→new、全量预检、摘要和证据绑定、中断回滚、重复应用可解释。落点 `safe_repair.py`、`tests/test_safe_repair.py` 及适配器，关联 #57/#72.2。
-- [ ] **E3 逐处术语例外（M + 接线 M）**：unit/seq/note_id、出现序号、文本摘要和证据共同定位；改稿后例外失效。先做命中/已豁免计数与全部调用方接线，再另定禁止译法/固定复合词 schema。测试同单元只有一处豁免、相同词其他位置仍报、notes 覆盖与摘要失效。关联 #72.3。
-- [ ] **E4 页码策略/源实印疑误（各 M）**：toc/index 声明 original/product/none，重复目录只报候选；复用 repairs 和 align 的 corr 先评估是否已可表达实印疑误，确需独立产物时才增 schema。验收源原件不变、保留与更正可区分、证据缺失不自动豁免。关联 #72.4/#72.9。
-- [ ] **E5 偏好与工作根治理（四个独立 S/M）**：制作信息详略仍保留权利声明；镜像索引诊断不改锁文件；成熟工作根 scaffold 增 dry-run/逐项预览并维持旧调用兼容；忽略清单须含理由且非声明缺失仍失败。每项独立 fixture/测试和决策，不把 #72 整单关闭。关联 #72.5–8。
+- [x] **E1 注释全量证据清单（M；裁剪渲染再拆 M）**：以每条注册 note 的 source_locations 为全集，输出 note_id/page/bbox/证据状态；坏 OCR 只影响排序，不缩小范围。按 note_id 按需裁剪，保留多页续注；缺坐标明确 unknown。复用现有 source evidence 与 OCR 证据，不新增 LLM 调用。验证 20 注、拆散缩写、跨页尾部、多栏、无 bbox，证据生成不自动改审校通过状态。落点 `source_evidence`/notes 领域、CLI evidence、相关测试。关联 #34/#58/#64/#69/#72.1。
+- [x] **E2 多层修复事务（先契约 M，再接线 M）**：审查 `safe_repair._allowed/_prepare/_validate_overlay`，区分权威层和派生 chunk；显式登记支持的 notes/chunk 适配器，不开放任意路径写。验证 dry-run 零写入、顺序 old→new、全量预检、摘要和证据绑定、中断回滚、重复应用可解释。落点 `safe_repair.py`、`tests/test_safe_repair.py` 及适配器，关联 #57/#72.2。
+- [x] **E3 逐处术语例外（M + 接线 M）**：unit/seq/note_id、出现序号、文本摘要和证据共同定位；改稿后例外失效。先做命中/已豁免计数与全部调用方接线，再另定禁止译法/固定复合词 schema。测试同单元只有一处豁免、相同词其他位置仍报、notes 覆盖与摘要失效。关联 #72.3。
+- [x] **E4 页码策略/源实印疑误（各 M）**：toc/index 声明 original/product/none，重复目录只报候选；复用 repairs 和 align 的 corr 先评估是否已可表达实印疑误，确需独立产物时才增 schema。验收源原件不变、保留与更正可区分、证据缺失不自动豁免。关联 #72.4/#72.9。
+- [x] **E5 偏好与工作根治理（四个独立 S/M）**：制作信息详略仍保留权利声明；镜像索引诊断不改锁文件；成熟工作根 scaffold 增 dry-run/逐项预览并维持旧调用兼容；忽略清单须含理由且非声明缺失仍失败。每项独立 fixture/测试和决策，不把 #72 整单关闭。关联 #72.5–8。
+
+#### E1–E5 实施证据
+
+- E1：`evidence source` 新增 `note_evidence`，以注册 `structured/notes.json` 的每条 `source_locations` 为全集，逐位置输出 page/bbox/candidate_id/unit/line/status/raw_matches；缺坐标 `unknown`、无命中 `unmatched`、仅页 `page_only`，跨页续注保留全部位置并稳定排序。`--note-id` 可裁剪但返回总数与 `missing_note_ids`；证据读取前后 notes/publication 字节不变。20 注夹具（含缺 bbox、跨页、坏 OCR）通过。
+- E2：`safe_repair` 引入显式 `RepairAdapter` 权威层登记（structured/translation md、align、source/translation notes.json）；`structured/raw/`、`preprocessing/` 等派生层明确拒绝。notes 适配器只允许完整注文文本变化，身份/位置/引用/顶层绑定守恒；同一文件多项替换按计划顺序链式预检，源注文改动与译注 `source_notes_sha256` 必须同事务对齐。回归覆盖 dry-run 零写入、派生拒绝、身份/位置拒绝、顺序替换、摘要绑定与重复应用。
+- E3：`terminology_exemptions.csv` 扩展可选 `seq,note_id,occurrence,text_sha256,evidence`；定位行必须同时给摘要与证据，legacy 行仍按单元整词。G0 用真实 align 行与 `note_id` 匹配，按源/目标出现次数计算剩余缺失；单处豁免不掩盖同词其他位置，改稿后摘要不符报 `terminology_exempt_stale` 且术语门重新阻断。QA 增加 `g0_terminology_exempt/stale` 计数，import 三处调用统一走 rows。
+- E4：新增 `preprocessing/page_numbers.csv`（`unit,policy,reason,evidence`；policy=original/product/none），`product` 无映射证据直接拒绝；`evidence page-numbers` 只读输出策略、页码候选、重复目录候选与源文件摘要，未声明不冒充 original，源件不变。源实印疑误继续用 align `corr:`/repairs 表达，未新增重复 schema。
+- E5：制作信息新增 `detail=brief`，保留非空权利声明与软件许可声明，仅省略工具/修订明细；work-root 增 `--dry-run` 逐项预览且不创建目标；`check_tracked.py` 的允许文件改为 `pattern|理由`，旧 `--allow` 纯模式兼容，未声明忽略仍失败，并验证运行不改 `.git/index`、不产生 `index.lock`。
+- 受影响定向：E1 **14 passed**、E2 **22 passed**、E3 glossary/related **143 passed**、E4 **4 passed**、E5 **31 passed**；随后并入全量。
 
 ### D：对账、文档与历史验收
 
-- [ ] **D1 同步操作契约**：按实际改动同步 `AGENTS.{md,zh.md}`、SKILL 路由/manifest、build/qa/delivery/structure/review/translation/workflow/quality-evidence 及任务卡。PDF 不进 EPUB 摘要、目录绝对页码、索引保留原页码、生成封面优先级均写清。经验放 lessons，不复制过时现场断言。
-- [ ] **D2 逐 issue 结案账本**：#34/#37/#40/#41/#57/#58/#64/#69 的既有实现、当前回归、剩余实书核证分列；先校验旧计划中的“已完成”，不把所有开放项重做。真实书缺源、未读图、未测阅读器逐项保留，不用 54 项测试通过代替。
-- [ ] **D3 发布收尾**：每个完成任务登记测试/CLI/产物证据和实际提交号；未来获准推送后再核 CI 并回写 issue。此次仅计划，不发布或关闭远端议题。
+- [x] **D1 同步操作契约**：按实际改动同步 `AGENTS.{md,zh.md}`、SKILL 路由/manifest、build/qa/delivery/structure/review/translation/workflow/quality-evidence 及任务卡。PDF 不进 EPUB 摘要、目录绝对页码、索引保留原页码、生成封面优先级均写清。经验放 lessons，不复制过时现场断言。
+- [x] **D2 逐 issue 结案账本**：#34/#37/#40/#41/#57/#58/#64/#69 的既有实现、当前回归、剩余实书核证分列；先校验旧计划中的“已完成”，不把所有开放项重做。真实书缺源、未读图、未测阅读器逐项保留，不用 54 项测试通过代替。
+- [x] **D3 发布收尾**：每个完成任务登记测试/CLI/产物证据和实际提交号；未来获准推送后再核 CI 并回写 issue。此次仅计划，不发布或关闭远端议题。
 
 ## 5. 检查点与统一验收
 
@@ -242,7 +251,7 @@
 - 真实 Chromium → PDF → PyMuPDF → PNG 预览已查看：`/tmp/opencode/aep-pdf-checkpoint-knep1aby/`。A5 封面完整，13 列表格换行不丢列；正文请求/实测均 **10.5pt**，命中 98 字符，overflow=0；strict 通过。
 - 最新综合：PDF/PDF diagnostics/cover/i18n/架构 **82 passed，133.85s**；ruff check、format（366 文件）、i18n --check/--links、git diff --check 全部通过。已同步 build/SKILL 中英说明。P4/P5/P6 与 Q/E/D 继续，尚未完整交付全目标。
 
-### P4：目录绑定核心（尚未接入多遍排版）
+### P4：目录绑定与多遍接线
 
 - 新增 `pdftoc.py` 和 10 项纯回归：跨段标题、尾部章号保留、列表/作者强调、罗马页码、同名显式链接、同条数错序、缺目标/歧义、索引排除、转义文字、URL 身份。模块原缺失导致首次收集失败；后续转义与无原页码的缺目标回归先 **2 failed**，修复后通过。
 - 匹配只用显式完整 href#fragment 或无歧义完整标签，不按相等条数或标题子串猜。分段标题 `Chapter 2` 的尾数字实证说明它可能是标题的一部分，故匹配成功前保留全部源文。
@@ -265,3 +274,28 @@
 - 每次成功渲染写 `<pdf>.manifest.json`，含源 EPUB/PDF sha256、字节数、页数、参数、Info/XMP 读回、目录/诊断摘要；`pdf --json` 返回同份 `artifact`。`pdf-verify` 重算哈希，PDF 改动/清单损坏/源件缺失非零退出。
 - 回归验证 PDF 改动使清单对账失败，而 `artifacts_digest` 在渲染 PDF/清单前后不变；PDF 仍不进 EPUB QA 摘要。
 - P6 已完成；build 中英文指南已同步并 finalize。
+
+## 8. D2 逐 issue 结案账本（只记录，不关闭远端）
+
+| Issue | 既有实现 / 本轮落地 | 当前回归证据 | 剩余实书核证 |
+|---|---|---|---|
+| #34 源注/OCR 候选与注码守恒 | 守恒门、源注候选、逐处例外与 `note_evidence` 定位 | `test_notes.py`、`test_source_evidence.py`；候选不对应语义 | 真实扫描书的上标/OCR 误读仍需逐页核证 |
+| #37 注释登记与成品门 | notes candidates/register/status、产品注文门、跨页位置保留 | `test_notes.py`、`test_notes_media_gate.py`；E1 20 注夹具 | 有注真书的零语义/部分遗漏仍需独立验收 |
+| #40 来源可识别与许可 | SPDX/构建指纹/无遥测、`aep:` 元数据、派生 PDF 元数据 | `test_fingerprint.py`、`test_production_metadata.py` | PyPI 发布是独立决策，未做 |
+| #41 跟踪汇总 | 本计划与历史计划对账，不重做已关闭项 | 计划表与提交号 | 仍需在获准推送后回写远端 |
+| #57 审计假绿与安全修复 | quality_evidence 只读边界；safe_repair 权威/派生适配器、整组预检与回滚 | `test_quality_evidence.py`、`test_safe_repair.py`（22 passed） | 人工语义/音译正确性不由程序背书 |
+| #58 多栏/源 TOC/跨页注尾 | `evidence source/partition/breaks/page-numbers` 保留栏、块、跨页与 TOC 候选 | `test_source_evidence.py`、`test_page_numbers.py` | 实书多栏与跨页注尾仍需回源逐项核证 |
+| #64 源注/OCR/索引证据 | 源证据、注文清单、页码策略、术语命中/豁免计数 | 上述定向测试 + QA 计数 | 历史书缺源/未读图项继续保留 |
+| #69 18 项映射 | 既有门禁/证据已覆盖的保持，不重复实现 | 分项回归与计划证据 | 真实书质量独立记账，不用测试数冒充 |
+
+- 本表是**结案账本**，不改变任何远端 issue/PR 状态；未获用户另行授权前不推送、不评论、不关闭。
+- “已完成”只指本仓代码/回归/文档范围；真实书缺源、未读图、未实测阅读器等仍按 unknown 保留。
+
+## 9. D3 发布收尾记录
+
+- 全量：`uv run --offline pytest -q` → **1134 passed, 3 skipped, 574.35s**（含真实 Chromium/PyMuPDF PDF、epubcheck 边界与所有新增回归）。
+- 风格：`ruff check .` 通过；`ruff format --check .` → **372 files already formatted**；`i18n --check` / `--links` 通过；`git diff --check` 通过。
+- 真实工具：Chromium headless 生成的 A5 PDF 已用 PyMuPDF 读回目录/书签/Info/XMP/图片 bbox，并查看 PNG 预览；`pdf-verify` 对篡改 PDF 返回非零；工作根 `check_tracked` 在真实 Git 仓库上验证不改 index、不产生锁文件。
+- 运行环境：Python 3.13（uv 项目虚拟环境）、Chromium、PyMuPDF、Java/EPUBCheck 按本机可用性执行；未安装的外部阅读器仍记未实测。
+- 剩余实书项：扫描书 OCR 语义、真实多栏/跨页注尾、历史工作区缺源、阅读器兼容性仍按 plan §8 的 unknown 保留，不用机械测试替代。
+- 提交：本批代码与文档提交见下一行（远端 issue/PR 未变更）。

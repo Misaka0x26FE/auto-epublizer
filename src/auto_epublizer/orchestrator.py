@@ -686,16 +686,25 @@ def repair_recover(store: RunStore) -> dict[str, Any]:
     return recover(store)
 
 
-def source_evidence(store: RunStore) -> dict[str, Any]:
-    """只读导出页/栏/块、源 TOC 与源注候选定位。"""
+def source_evidence(store: RunStore, *, note_ids: list[str] | None = None) -> dict[str, Any]:
+    """只读导出页/栏/块、源 TOC、源注候选与注册注文定位。"""
     from .preprocess.cover import collect_cover_candidates
     from .preprocess.source_evidence import collect_source_evidence
     from .quality_evidence import validate_workspace_paths
 
     validate_workspace_paths(store)
-    data = collect_source_evidence(store)
+    data = collect_source_evidence(store, note_ids=note_ids)
     data["cover_candidates"] = collect_cover_candidates(store)
     return data
+
+
+def page_number_evidence(store: RunStore) -> dict[str, Any]:
+    """只读目录/索引页码策略与候选；声明 original/product/none，不改源件。"""
+    from .preprocess.page_numbers import collect_page_number_evidence
+    from .quality_evidence import validate_workspace_paths
+
+    validate_workspace_paths(store)
+    return collect_page_number_evidence(store)
 
 
 def source_partition(store: RunStore) -> dict[str, Any]:
@@ -844,12 +853,14 @@ def import_translations(
         save_glossary_csv,
         write_conflicts_jsonl,
     )
-    from auto_translator.glossary.csv_io import load_terminology_exemptions
+    from auto_translator.glossary.csv_io import load_terminology_exemption_rows
     from auto_translator.review import check_alignment, g0_unit_flags, is_heading_only
     from auto_translator.translation.align import read_align
 
     pub = store.load_publication()
-    exemptions = load_terminology_exemptions(store.preprocessing_dir / "terminology_exemptions.csv")
+    exemptions = load_terminology_exemption_rows(
+        store.preprocessing_dir / "terminology_exemptions.csv"
+    )
     from .preprocess.artifacts import read_style_exemptions
 
     style_exemptions = read_style_exemptions(store)
@@ -1027,7 +1038,8 @@ def import_translations(
             structured_md=structured_md,
             translation_md=translation_md,
             **_g0_thresholds(config or Config()),
-            exempt_sources=exemptions.get(unit.id, {}),
+            exemptions=exemptions,
+            unit_id=unit.id,
             language_exempt=style_exemptions.get(unit.id, []),
             source_language=pub.meta.language or "auto",
             target_language=pub.meta.target_language or "zh-CN",
@@ -1047,6 +1059,7 @@ def import_translations(
                 "length",
                 "terminology",
                 "terminology_exempt",
+                "terminology_exempt_stale",
                 "language_exempt",
                 "length_review_exempt",
                 "marker",
@@ -1438,6 +1451,7 @@ def generate_cover(
     store: RunStore,
     *,
     out: str | None = None,
+    style: str | None = None,
     palette: str | None = None,
     imprint: str | None = None,
     size: str | None = None,
@@ -1457,7 +1471,16 @@ def generate_cover(
         raise OrchestrationError("生成封面已在配置中关闭（cover.enabled=false）")
     pub = store.load_publication()
     return cover_mod.generate(
-        store, pub, cfg, out=out, palette=palette, imprint=imprint, size=size, dpi=dpi, pdf=pdf
+        store,
+        pub,
+        cfg,
+        out=out,
+        style=style,
+        palette=palette,
+        imprint=imprint,
+        size=size,
+        dpi=dpi,
+        pdf=pdf,
     )
 
 
@@ -1539,12 +1562,14 @@ def g0_check(
 ) -> dict[str, Any]:
     """G0 零 token 静态校验（独立命令；翻译/导入后立即跑，不必等到 qa）。"""
     from auto_translator.glossary import Glossary, load_glossary_csv
-    from auto_translator.glossary.csv_io import load_terminology_exemptions
+    from auto_translator.glossary.csv_io import load_terminology_exemption_rows
     from auto_translator.review import g0_unit_flags
 
     cfg = config or Config()
     pub = store.load_publication()
-    exemptions = load_terminology_exemptions(store.preprocessing_dir / "terminology_exemptions.csv")
+    exemptions = load_terminology_exemption_rows(
+        store.preprocessing_dir / "terminology_exemptions.csv"
+    )
     from .preprocess.artifacts import read_style_exemptions
 
     style_exemptions = read_style_exemptions(store)
@@ -1574,7 +1599,8 @@ def g0_check(
             structured_md=structured_md,
             translation_md=translation_md,
             **_g0_thresholds(cfg),
-            exempt_sources=exemptions.get(unit.id, {}),
+            exemptions=exemptions,
+            unit_id=unit.id,
             language_exempt=style_exemptions.get(unit.id, []),
             source_language=pub.meta.language or "auto",
             target_language=pub.meta.target_language or "zh-CN",
@@ -1588,12 +1614,14 @@ def g0_check(
 def _collect_g0_flags(store: RunStore, config: Config | None = None) -> list[dict[str, Any]]:
     """对所有已对齐单元执行 G0 零 token 静态校验，返回告警（dict 列表）。"""
     from auto_translator.glossary import Glossary, load_glossary_csv
-    from auto_translator.glossary.csv_io import load_terminology_exemptions
+    from auto_translator.glossary.csv_io import load_terminology_exemption_rows
     from auto_translator.review import g0_unit_flags
 
     cfg = config or Config()
     glossary = Glossary(load_glossary_csv(store.analysis_dir / "glossary.csv"))
-    exemptions = load_terminology_exemptions(store.preprocessing_dir / "terminology_exemptions.csv")
+    exemptions = load_terminology_exemption_rows(
+        store.preprocessing_dir / "terminology_exemptions.csv"
+    )
     from .preprocess.artifacts import read_style_exemptions
 
     style_exemptions = read_style_exemptions(store)
@@ -1620,7 +1648,8 @@ def _collect_g0_flags(store: RunStore, config: Config | None = None) -> list[dic
             structured_md=structured_md,
             translation_md=translation_md,
             **_g0_thresholds(cfg),
-            exempt_sources=exemptions.get(unit.id, {}),
+            exemptions=exemptions,
+            unit_id=unit.id,
             language_exempt=style_exemptions.get(unit.id, []),
             source_language=pub.meta.language or "auto",
             target_language=pub.meta.target_language or "zh-CN",

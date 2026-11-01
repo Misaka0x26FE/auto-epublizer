@@ -39,20 +39,37 @@ def _pub(**meta) -> Publication:
     return Publication(slug="demo", meta=PublicationMeta(**payload))
 
 
-def _ink_rows(png: bytes, *, x_from: float = 0.03, x_to: float = 0.885) -> tuple[list, int, int]:
-    """按行统计深色像素，返回 (行区间列表, 宽, 高)；纯 pymupdf 读图，无额外依赖。"""
+def _pixels(png: bytes, dpi: int = 72):
     import pymupdf
 
     doc = pymupdf.open(stream=png, filetype="png")
-    pix = doc[0].get_pixmap(dpi=72)
-    width, height, n = pix.width, pix.height, pix.n
-    samples = pix.samples
+    pix = doc[0].get_pixmap(dpi=dpi)
+    return pix.samples, pix.width, pix.height, pix.n, pix.stride
+
+
+def _ink_rows(
+    png: bytes,
+    *,
+    x_from: float = 0.03,
+    x_to: float = 0.885,
+    light: bool = False,
+    dpi: int = 72,
+    threshold: int = 128,
+    y_to: float = 0.995,
+) -> tuple[list, int, int]:
+    """按行统计「有字」的像素（默认深字浅底；``light=True`` 用于浅字深底）。
+
+    返回 (行区间列表, 宽, 高)；纯 pymupdf 读图，无额外依赖。
+    """
+    samples, width, height, n, stride = _pixels(png, dpi)
     x0, x1 = int(width * x_from), int(width * x_to)
     runs: list[tuple[int, int]] = []
     current: list[int] | None = None
-    for y in range(height):
-        row = samples[y * pix.stride : y * pix.stride + width * n]
-        dark = any(row[x * n] < 128 for x in range(x0, x1))
+    for y in range(min(height, int(height * y_to))):
+        row = samples[y * stride : y * stride + width * n]
+        dark = any(
+            (row[x * n] > threshold) if light else (row[x * n] < threshold) for x in range(x0, x1)
+        )
         if dark:
             current = [y, y] if current is None else [current[0], y]
         elif current is not None:
@@ -79,7 +96,9 @@ def test_spec_uses_translated_title_and_source_title() -> None:
     assert spec.title == ["重构意义世界"]
     assert spec.original_title == ["Reordering of Meaningful Worlds"]
     assert spec.credits == ["朱莉娅 · 尤尔丘克 著", "OpenCode 译"]
-    assert spec.palette == "indigo"
+    assert spec.style == cv.DEFAULT_STYLE == "quarto"
+    assert spec.palette == "ink"
+    assert spec.colors == cv.STYLE_PALETTES["quarto"]["ink"]
     assert spec.imprint == "马加丹汉化组"
 
 
@@ -107,22 +126,32 @@ def test_spec_file_overrides_and_flattening() -> None:
             "lead": "前皇帝约翰尼斯 · 坎塔库泽努斯",
             "series": "拜占庭历史文献集成",
             "credits": ["[东罗马] 某人 著\n[德] 另一人 校订"],
-            "palette": "crimson",
+            "palette": "oxblood",
             "size": "b5",
         },
     )
     assert spec.title == ["史书"]
     assert spec.credits == ["[东罗马] 某人 著", "[德] 另一人 校订"]
     assert spec.series == ["拜占庭历史文献集成"]
-    assert spec.palette == "crimson"
+    assert spec.palette == "oxblood"
     assert round(spec.width) == round(176 * 72 / 25.4)
 
 
-def test_unknown_palette_and_size_are_explicit_errors() -> None:
+def test_unknown_palette_style_and_size_are_explicit_errors() -> None:
     with pytest.raises(cv.CoverError, match="未知色板"):
         cv.resolve_spec(_pub(), Config(), spec_file={}, palette="chartreuse")
     with pytest.raises(cv.CoverError, match="未知开本"):
         cv.resolve_spec(_pub(), Config(), spec_file={}, size="a9")
+    with pytest.raises(cv.CoverError, match="未知版式"):
+        cv.resolve_spec(_pub(), Config(), spec_file={}, style="baroque")
+
+
+def test_palette_names_are_style_scoped() -> None:
+    """magadan 的色板名不能当成 quarto 的用（反之亦然）。"""
+    with pytest.raises(cv.CoverError, match="未知色板"):
+        cv.resolve_spec(_pub(), Config(), spec_file={}, palette="crimson")  # magadan 才有的名字
+    spec = cv.resolve_spec(_pub(), Config(), spec_file={}, style="magadan", palette="crimson")
+    assert spec.colors["band"] == "#962311" and spec.colors["paper"] == "#FFFFFF"
 
 
 def test_missing_title_is_an_explicit_error() -> None:
@@ -159,12 +188,14 @@ def test_render_is_deterministic() -> None:
 
 
 def test_layout_matches_reference_proportions() -> None:
-    """色带 / 书名群 / 署名 的墨迹位置必须落在参考样张的同一比例上。"""
+    """magadan 版式：书名群起点与署名位置必须仍在参考样张的比例上（回归守护）。"""
     fonts = _fonts_or_skip()
     spec = cv.resolve_spec(
         _pub(creator="朱莉娅 · 尤尔丘克"),
         Config(),
         spec_file={"subtitle": "后苏联时期乌克兰对乌克兰\n民族主义者组织和乌克兰起义军的记忆"},
+        style="magadan",
+        palette="indigo",
     )
     png = cv.render_png(spec, fonts, dpi=72)
     runs, _w, h = _ink_rows(png)
@@ -176,6 +207,63 @@ def test_layout_matches_reference_proportions() -> None:
     assert title[0] == pytest.approx(0.310, abs=0.008)  # 书名群起点
     imprint = (runs[-1][0] / h, runs[-1][1] / h)
     assert imprint[0] == pytest.approx(0.919, abs=0.010)  # 底部署名
+
+
+def test_quarto_layout_proportions() -> None:
+    """quarto（默认）：整幅深底、书名从 0.255H 起、责任者贴 0.878H、署名在右下。"""
+    fonts = _fonts_or_skip()
+    spec = cv.resolve_spec(
+        _pub(creator="朱莉娅 · 尤尔丘克"),
+        Config(),
+        spec_file={"subtitle": "后苏联时期乌克兰对乌克兰\n民族主义者组织和乌克兰起义军的记忆"},
+    )
+    assert spec.style == "quarto"
+    png = cv.render_png(spec, fonts, dpi=72)
+    samples, w, h, n, stride = _pixels(png)
+    # 整幅底面：四角都是深色（不是白底 + 色块）
+    for xf, yf in ((0.5, 0.02), (0.5, 0.5), (0.97, 0.5), (0.5, 0.98)):
+        row = samples[int(h * yf) * stride : int(h * yf) * stride + w * n]
+        assert row[int(w * xf) * n] < 80, (xf, yf)
+    # 小字号在 72dpi 下本来就淡，量测放到 144dpi，阈值 90（底面 R≈23）
+    runs, _w, h2 = _ink_rows(png, x_from=0.10, x_to=0.90, light=True, dpi=144, threshold=90)
+    assert runs
+    title = next(run for run in runs if 0.20 < run[0] / h2 < 0.34)
+    assert title[0] / h2 == pytest.approx(0.255, abs=0.012)
+    credits = next(run for run in runs if 0.83 < run[0] / h2 < 0.90)
+    assert credits[1] / h2 == pytest.approx(0.878, abs=0.015)
+    assert runs[-1][0] / h2 == pytest.approx(0.940, abs=0.02)  # 右下署名
+
+
+def test_short_title_grows_and_long_title_wraps() -> None:
+    """「字少就大、字多就稳」：短书名放大到接近版心，长书名收到 0.75 倍后折行。"""
+    fonts = _fonts_or_skip()
+    measurer = cv._Measurer(fonts)
+    page_w = cv.resolve_spec(_pub(), Config(), spec_file={}).width
+    measure = page_w * (1 - 2 * cv.QUARTO_GEOM["margin"])
+
+    def title_size(text: str) -> float:
+        spec = cv.resolve_spec(
+            Publication(slug="d", meta=PublicationMeta(title=text, title_translated=text)),
+            Config(),
+            spec_file={},
+        )
+        texts, _rules, _fits = cv._quarto_layout(spec, measurer, fonts, 1.0)
+        return max(size for line, size, *_ in texts if line and size > 10)
+
+    base = cv.QUARTO_TYPE["title"] * page_w
+    assert title_size("史书") > base  # 短书名涨字号
+    assert title_size("晚期资本主义的文化逻辑与后现代主义的起源") < base  # 长书名收字号后折行
+    # 短书名也不至于撑爆版心
+    assert title_size("重构意义世界") <= base * cv.QUARTO_GEOM.get("title_max", 1.45) + 1e-6
+    assert measure > 0
+
+
+def test_paper_palette_is_light_ground() -> None:
+    """浅色版式：纸底墨字，同一套版式换色不换骨架。"""
+    spec = cv.resolve_spec(_pub(), Config(), spec_file={}, palette="paper")
+    field = int(spec.colors["field"].lstrip("#")[0:2], 16)
+    type_c = int(spec.colors["type"].lstrip("#")[0:2], 16)
+    assert field > 200 and type_c < 60  # 纸底墨字
 
 
 def test_png_and_pdf_share_the_same_page_size() -> None:
@@ -292,5 +380,6 @@ def test_cli_cover_json(tmp_path: Path) -> None:
     result = runner.invoke(app, ["cover", "--workspace", str(store.dir.parent), "--json"])
     assert result.exit_code == 0, result.output
     payload = json.loads(result.output)
-    assert payload["palette"] == "indigo"
+    assert payload["palette"] == "ink"
+    assert payload["style"] == "quarto"
     assert payload["file"] == cv.GENERATED_REL

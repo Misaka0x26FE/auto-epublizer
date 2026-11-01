@@ -110,6 +110,71 @@ def read_style_exemptions(
     return out
 
 
+def read_page_number_policies(store: RunStore) -> dict[str, dict[str, str]]:
+    """读取目录/索引页码策略（``preprocessing/page_numbers.csv``）。
+
+    列 ``unit,policy,reason,evidence``；``policy`` 仅 original|product|none。
+    ``product`` 必须有页码映射证据；缺证据不自动降级为 original。文件不存在即未声明。
+    """
+    path = store.preprocessing_dir / "page_numbers.csv"
+    if not path.is_file():
+        return {}
+    import csv
+    import io
+
+    known = {unit.id for unit in store.load_publication().units}
+    reader = csv.DictReader(io.StringIO(path.read_text(encoding="utf-8-sig")))
+    required = ("unit", "policy", "reason", "evidence")
+    missing = [field for field in required if field not in (reader.fieldnames or [])]
+    if missing:
+        raise ArtifactContractError(f"页码策略表缺少必需列：{', '.join(missing)}")
+    out: dict[str, dict[str, str]] = {}
+    for lineno, row in enumerate(reader, start=2):
+        unit = (row.get("unit") or "").strip()
+        policy = (row.get("policy") or "").strip().lower()
+        reason = (row.get("reason") or "").strip()
+        evidence = (row.get("evidence") or "").strip()
+        if not unit and not policy and not reason:
+            continue
+        if not unit or unit not in known:
+            raise ArtifactContractError(
+                f"页码策略表第 {lineno} 行 unit 不在 publication.json：{unit!r}",
+                artifact="preprocessing/page_numbers.csv",
+                line=lineno,
+                field="unit",
+            )
+        if policy not in {"original", "product", "none"}:
+            raise ArtifactContractError(
+                f"页码策略表第 {lineno} 行 policy 必须是 original/product/none：{policy!r}",
+                artifact="preprocessing/page_numbers.csv",
+                line=lineno,
+                field="policy",
+            )
+        if not reason:
+            raise ArtifactContractError(
+                f"页码策略表第 {lineno} 行 reason 不能为空",
+                artifact="preprocessing/page_numbers.csv",
+                line=lineno,
+                field="reason",
+            )
+        if policy == "product" and not evidence:
+            raise ArtifactContractError(
+                f"页码策略表第 {lineno} 行声明 product 时必须给出映射证据",
+                artifact="preprocessing/page_numbers.csv",
+                line=lineno,
+                field="evidence",
+            )
+        if unit in out:
+            raise ArtifactContractError(
+                f"页码策略表第 {lineno} 行 unit 重复：{unit}",
+                artifact="preprocessing/page_numbers.csv",
+                line=lineno,
+                field="unit",
+            )
+        out[unit] = {"policy": policy, "reason": reason, "evidence": evidence}
+    return out
+
+
 def read_repairs(store: RunStore) -> list[dict[str, Any]] | None:
     """读取语义整备留痕（preprocessing/repairs.jsonl；S2 契约）。
 

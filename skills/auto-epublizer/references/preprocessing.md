@@ -1,4 +1,4 @@
-<!-- i18n: source=preprocessing.zh.md sha256=1ae68b2a21af2374d1a4031871e3c95c317e23eef80471b318e2e80bbaa65fcb -->
+<!-- i18n: source=preprocessing.zh.md sha256=662a673c39dcb9ae6ee6e5e35508f3df471a1ca1a87726f3efbab3cec1ce52d1 -->
 > **English** | [中文](preprocessing.zh.md)
 
 # Preprocessing (fact collection + agent-authored understanding)
@@ -207,6 +207,16 @@ Complementary to provenance: catalog governs "whether anything was missed on the
 side", provenance governs "whether anything was untranslated on the translation side".
 When the facts to-do list has this item, it is recommended to write it; if not written,
 all checks are skipped.
+
+### 2.8 `page_numbers.csv` (optional: TOC/index page-number policy)
+
+Columns `unit,policy,reason,evidence`; `policy` is `original` (retain source page numbers),
+`product` (fill final product pages), or `none` (display no page numbers). `product` requires
+mapping evidence; an undeclared unit is not assumed to be `original`. `evidence page-numbers`
+read-only lists policies, candidate page numbers, duplicate-TOC candidates and source hashes;
+it **never edits source files or back-fills numbers**. Source misprints still use `corr:` in
+align or `repairs.jsonl` to distinguish retention from correction, and source numbers are not
+presented as product pages.
 
 ## 3. Completion criteria
 

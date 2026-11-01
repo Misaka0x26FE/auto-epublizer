@@ -1,4 +1,4 @@
-<!-- i18n: source=delivery.zh.md sha256=f78564625bdf7fed13d269436703aa5c6442c8c42190cf74f747731bf3f352f5 -->
+<!-- i18n: source=delivery.zh.md sha256=874926f4d86d99ea389f77623c505195b79dfc3b760816df4c13fe25fd28dabb -->
 > **English** | [中文](delivery.zh.md)
 
 # Delivery (delivery audit: mandatory full validation after qa and before delivery)
@@ -136,6 +136,12 @@ cannot stand in for content acceptance.
 Per `references/publishing.md`: product checklist + byte verification of distributed
 copies (all copies updated: local `output/`, backup, cloud/repository, etc.); update the
 distribution notes and version record.
+
+When delivering a print PDF: the PDF and `<pdf>.manifest.json` are **derived artifacts**
+outside the EPUB `qa` digest. Use `pdf-verify --pdf <path> --json` to reconcile the source
+EPUB/PDF hashes, page count and parameters, and record `pdf.sha256` in the delivery record.
+A corrupt manifest, missing source or changed PDF must fail; "the EPUB still builds" is not
+a substitute for derived-artifact reconciliation.
 
 ## 9. Distilling experience
 

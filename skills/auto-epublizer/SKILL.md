@@ -7,7 +7,7 @@ metadata:
   suite: auto-epublizer
   workspace_model: publication.json
 ---
-<!-- i18n: source=SKILL.zh.md sha256=424c776fb771d19d038f79198172aeae59d137a207bd9c481b999fdad844fb7a -->
+<!-- i18n: source=SKILL.zh.md sha256=fad87cfbc4fec88598df5eb159d2077ee6f1bcd5c702932a5aa0053297590ec7 -->
 > **English** | [中文](SKILL.zh.md)
 
 # auto-epublizer
@@ -71,7 +71,8 @@ work-root rather than accidentally calling a global namesake. Read only the curr
 | First use / safe reuse (mandatory before version/doctor) | `references/work-root.md` |
 | Fresh task / state routing / multi-stage request / command overview | `references/workflow.md` |
 | `status/build/qa/ledger/import/g0 --json`, error fields and exit codes | `references/workflow.md` |
-| Print PDF covers/plates/wide tables, font and overflow diagnostics, `pdf --strict --json` | `references/build.md` |
+| Print PDF covers/plates/wide tables, TOC absolute pages, publication metadata, `pdf --strict --json`, `pdf-verify` | `references/build.md` |
+| Notes evidence inventory, page-number policy, work-root dry-run/ignore reasons | `references/workflow.md`, `references/preprocessing.md`, `references/work-root.md` |
 | Weak-model path: machine next-task pointer (`status --json`) + atomic task cards | `references/taskcards/` |
 | Long-running work root, batch SHA256 delivery, retained ledger manual cells, link/ignore guards | `references/work-root.md` |
 | Preprocessing: read facts → write todo/capabilities/plan/global/units/terms/risks/report | `references/preprocessing.md` |

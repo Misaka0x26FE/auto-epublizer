@@ -255,8 +255,16 @@ def _generation_items(data: dict[str, Any], lang: str) -> str:
     return f"<li>{label}<ul>{''.join(items)}</ul></li>"
 
 
-def software_section(data: dict[str, Any], lang: str, *, heading: str = "h2") -> str:
-    """独立软件声明，不改动作者、译者和作品权利。"""
+def software_section(
+    data: dict[str, Any], lang: str, *, heading: str = "h2", detail: str = "full"
+) -> str:
+    """独立软件声明，不改动作者、译者和作品权利。
+
+    ``detail="brief"`` 只保留项目身份、软件许可声明与出版/版权字段；工具版本、
+    修订历史与处理工具明细省略，非空 rights 仍照常输出。
+    """
+    if detail not in {"full", "brief"}:
+        raise ValueError("制作信息详略只能是 full 或 brief")
     zh = lang.lower().startswith("zh")
     title = "制作工具与开源软件" if zh else "Production software and open-source tools"
     disclaimer = (
@@ -264,6 +272,15 @@ def software_section(data: dict[str, Any], lang: str, *, heading: str = "h2") ->
         if zh
         else "These licenses describe software only; they do not grant or change rights to this book, its translation or illustrations."
     )
+    project = data["project"]
+    if detail == "brief":
+        return (
+            '<section class="software-provenance">'
+            f"<{heading}>{title}</{heading}>"
+            f"<p>{_link(PROJECT_URL, PROJECT_NAME)} {escape(project['version'])} — {PROJECT_LICENSE}</p>"
+            f"<p>{disclaimer}</p>"
+            f"{_publication_block(data, lang, heading=heading)}</section>"
+        )
     tools = [*data["runtime"], *(data["processing_tools"] or [])]
     lines = []
     for tool in tools:
@@ -286,7 +303,6 @@ def software_section(data: dict[str, Any], lang: str, *, heading: str = "h2") ->
             if zh
             else "<p>No additional external parsing tool was used upstream.</p>"
         )
-    project = data["project"]
     revision = project.get("revision") or ("未记录" if zh else "unrecorded")
     dirty = " (modified source)" if project.get("dirty") else ""
     return (
@@ -317,14 +333,14 @@ def software_page_title(lang: str) -> str:
     return "制作信息" if lang.lower().startswith("zh") else "Production information"
 
 
-def software_page(data: dict[str, Any], lang: str) -> str:
+def software_page(data: dict[str, Any], lang: str, *, detail: str = "full") -> str:
     title = software_page_title(lang)
     text = (
         '<?xml version="1.0" encoding="utf-8"?>\n'
         f'<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="{escape(lang, quote=True)}">'
         '<head><meta charset="utf-8"/><meta name="auto-epublizer:generated" content="build-info"/>'
         f'<link rel="stylesheet" href="style.css"/><title>{title}</title></head>'
-        f"<body>{software_section(data, lang, heading='h1')}</body></html>"
+        f"<body>{software_section(data, lang, heading='h1', detail=detail)}</body></html>"
     )
     return stamp_document(text, data, lang)
 

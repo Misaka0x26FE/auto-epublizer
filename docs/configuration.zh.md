@@ -59,8 +59,9 @@ paths:
 # ── 生成式封面（没有源封面的书）──────────────────────────────
 cover:
   enabled: true           # cover 命令可用；false=连显式生成也拒绝
-  style: magadan          # 目前只有 magadan（off=构建期不取用生成封面）
-  palette: indigo         # indigo|blue|maroon|purple|crimson|brown|green|ink
+  style: quarto           # quarto（界栏，默认：整幅深底 + 反白书名）| magadan（旧版式）
+  palette: ink            # quarto：ink|oxblood|forest|indigo|aubergine|slate|rust|paper
+                          # magadan：indigo|blue|maroon|purple|crimson|brown|green|ink
   size: a5                # 与 pdf --size 同一组：a5|32k|b5|16k
   dpi: 300                # PNG 分辨率（72–1200）
   imprint: "马加丹汉化组"  # 底部署名；空串=不画署名行
@@ -80,13 +81,21 @@ output:
 
 ## 生成式封面
 
-`cover` 给**没有可用源封面**的书（纯文本/Markdown 源，或扫描件首页图从未被确认）出一套
-**Magadan 版式**的排版封面。纯确定性排版（PyMuPDF，无 LLM、无浏览器）：文字来自
-`publication.json` 元数据与可选的、由 agent 手写的 `preprocessing/cover-spec.json`，
-成品登记在 `preprocessing/cover-generated.json`。
+`cover` 给**没有可用源封面**的书（纯文本/Markdown 源，或扫描件首页图从未被确认）出排版
+封面。纯确定性排版（PyMuPDF，无 LLM、无浏览器）：文字来自 `publication.json` 元数据与
+可选的、由 agent 手写的 `preprocessing/cover-spec.json`，成品登记在
+`preprocessing/cover-generated.json`。
+
+两套版式共用一个生成器，由 `cover.style` 选：
+
+| 版式 | 样子 |
+|---|---|
+| `quarto`（默认，界栏） | 整幅底面 + 反白左对齐大字书名 + 左侧双线界栏 + 短横 + 斜体原文名 + 左下责任者 + 右下署名 |
+| `magadan` | 白底 + 顶部通栏色带 + 右侧竖色条 + 右对齐宋体书名群 |
 
 ```bash
-auto-epublizer cover --workspace <ws> [--palette maroon] [--size a5] [--dpi 300] [--pdf] [--json]
+auto-epublizer cover --workspace <ws> [--style quarto|magadan] [--palette oxblood] \
+    [--size a5] [--dpi 300] [--pdf] [--json]
 auto-epublizer cover --workspace <ws> --remove
 ```
 

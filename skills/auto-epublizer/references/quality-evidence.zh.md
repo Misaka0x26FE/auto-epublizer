@@ -18,6 +18,12 @@ report/state/events。JSON 含规则版本、输入摘要、每项 scope、`pass
 page/bbox/font_size/column、facts 中源 TOC、单元角色及独立源注候选。缺失精度为 null，
 重复匹配全部列入 raw_matches 并标 ambiguous，不取首个位置；代码字面量不作注释候选。
 页边界同时列两端页号与全部单元/块定位，缺页号或不连续时不宣称续文候选。
+`note_evidence` 以注册 `structured/notes.json` 的每条 `source_locations` 为全集，逐位置
+给 page/bbox/candidate_id/unit/line/status/raw_matches；跨页续注保留全部位置，缺坐标
+unknown、无命中 unmatched、仅页 page_only；`--note-id` 只裁剪输出并返回 missing 列表，
+不改变证据或审校状态。
+`evidence page-numbers` 只读输出目录/索引的 `original|product|none` 声明、页码候选、
+重复目录候选与源文件摘要；未声明不等于 original，重复目录只报候选，不改源件。
 raw/facts 未提供的信息不从文件名或字体阈值猜测；源注是否齐全仍须逐页人工核证。
 
 `evidence report` 的 product_residue 扫描全包 XHTML/HTML（含语义 aside 和非 spine
@@ -68,12 +74,17 @@ auto-epublizer repair recover --workspace <dir>                     # 回滚未�
 }
 ```
 
-目标仅限当前单元登记的 structured/translation Markdown 及 translation/align JSONL；
-不接收 source、publication、术语/人工表或 EPUB。每文件一条非空、唯一精确替换，
-多处修改须先人工形成唯一的大字串，不做全局正则替换。译文须提交一致的 md/align。
-整组内存预检源保真、align 完整性和 md/align 漂移，保守保护注码、插入标记、链接、
-数字、代码及标题层级；原文拉丁词不得删除。合法但超出此边界的编辑需独立处理和审计，
-不放宽此工具来迁就。源证据页码只记录批准依据，不证明工具已阅读源页。
+目标仅限显式登记的权威适配器：当前单元登记的 structured/translation Markdown、
+translation/align JSONL，以及 `structured/notes.json` / `translation/notes.json`；
+`structured/raw/`、`preprocessing/` 等派生 chunk 明确拒绝，不接收 source、publication、
+术语/人工表或 EPUB。同一文件可列多处精确替换，按计划顺序链式预检（每步仍须唯一、
+非空、UTF-8 无 BOM）；`sha256` 始终指该文件的基线。译文须提交一致的 md/align。
+notes 适配器只允许完整注文文本（`source_markdown`/`target_markdown`）变化，note_id、
+scope、source_locations、references 与顶层绑定摘要保持守恒；源注文改动必须与译注
+`source_notes_sha256` 同事务对齐。整组内存预检源保真、align 完整性和 md/align 漂移，
+保守保护注码、插入标记、链接、数字、代码及标题层级；原文拉丁词不得删除。合法但超出
+此边界的编辑需独立处理和审计，不放宽此工具来迁就。源证据页码只记录批准依据，不证明
+工具已阅读源页。
 
 实际写入先在 `preprocessing/repair-transactions/<plan-sha256>.json` 持久化全部旧/新字节
 及摘要，再逐件替换，文件及目录 fsync 后才登记 applied。普通写失败整组回滚；强制中断

@@ -23,6 +23,8 @@ class QaResult:
     # G5 交付验收（聚合 G0–G3）
     g0_flags: list[dict[str, Any]] = field(default_factory=list)
     g0_terminology_open: int = 0  # 术语命中告警数：真实缺陷，必须清零才能放行
+    g0_terminology_exempt: int = 0  # 已按明文体例/逐处证据豁免的 advisory 数
+    g0_terminology_stale: int = 0  # 逐处豁免因改稿失效的 advisory 数
     g0_structure_open: int = 0  # 标记/脚注守恒等结构违例数：真实缺陷，必须清零才能放行
     glossary_conflicts_open: int = 0  # 术语冲突未裁决数：真实缺陷，必须清零才能放行
     catalog_unresolved_open: int = 0  # 源盘点未决项数（catalog.csv 存在时才检查）
@@ -129,6 +131,8 @@ def generate_report(
     g0_terminology_open = sum(
         1 for f in flags if f.get("check") == "terminology" and f.get("blocking", True)
     )
+    g0_terminology_exempt = sum(1 for f in flags if f.get("check") == "terminology_exempt")
+    g0_terminology_stale = sum(1 for f in flags if f.get("check") == "terminology_exempt_stale")
     g0_structure_open = sum(
         1 for f in flags if f.get("blocking", True) and f.get("check") in _STRUCT_CHECKS
     )
@@ -253,6 +257,8 @@ def generate_report(
         passed=passed,
         g0_flags=[dict(f) for f in flags],
         g0_terminology_open=g0_terminology_open,
+        g0_terminology_exempt=g0_terminology_exempt,
+        g0_terminology_stale=g0_terminology_stale,
         g0_structure_open=g0_structure_open,
         glossary_conflicts_open=glossary_conflicts_open,
         catalog_unresolved_open=catalog_unresolved_open,

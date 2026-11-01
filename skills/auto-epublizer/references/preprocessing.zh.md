@@ -173,6 +173,14 @@ note 必填理由）、`absent`（**源件本身不含**，如题注所指插图
 catalog 管「源侧有没有漏收」，provenance 管「译侧有没有漏译」。
 facts 待办有该项时建议写；不写则全部检查跳过。
 
+### 2.8 `page_numbers.csv`（可选：目录/索引页码策略）
+
+列 `unit,policy,reason,evidence`：`policy` 只取 `original`（保留原版页码）、
+`product`（回填最终产品页码）或 `none`（不显示页码）。`product` 必须给出映射证据；
+未声明的单元不等于 `original`。`evidence page-numbers` 只读列出策略、候选页码、
+重复目录候选与源文件摘要，**不改源件、不自动回填**。源实印疑误仍用 align 的
+`corr:`/`repairs.jsonl` 区分保留与更正，不把原版数字伪装成产品页码。
+
 ## 3. 完成判据
 
 - `auto-epublizer status --json` 的 `preprocessing_complete == true`

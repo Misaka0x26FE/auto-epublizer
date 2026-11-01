@@ -1,11 +1,15 @@
 > **中文** | [English](cover.md)
 
-# 生成式封面（Magadan 版式）
+# 生成式封面（quarto 默认 / magadan 可选）
 
 面向**没有可用封面**的书：纯文本 / Markdown / DOCX / HTML 源本来就没有封面图；扫描件
 首页图未必是封面（`preprocessing/cover.json` 未确认就不算）。这类书在书架上、锁屏上
-是空白。本流程给它们一套统一排版封面：白底 + 顶部通栏色带 + 右侧竖色条 + 右对齐宋体
-书名群 + 底部行书署名。
+是空白。本流程给它们一套统一排版封面，两套版式共用同一个生成器：
+
+| 版式 | 中文名 | 样子 |
+|---|---|---|
+| `quarto`（**默认**） | 界栏 | 整幅深色底面 + 反白左对齐大字书名 + 左侧双线界栏 + 短横 + 斜体原文名 + 左下责任者 + 右下署名 |
+| `magadan` | — | 白底 + 顶部通栏色带 + 右侧竖色条 + 右对齐宋体书名群（沿用参考样张的实测比例） |
 
 > **源封面优先**：`preprocessing/cover.json` 确认过的源封面永远不被生成封面顶替。
 > 生成封面只补「确实没有封面」这一种情况。
@@ -15,8 +19,8 @@
 先查三件事，再决定要不要生成（顺序不能倒）：
 
 1. `preprocessing/cover.json` 是否存在 —— 存在=agent 已核证的源封面，**不做生成**；
-2. cover 单元的 Markdown 里是否已有 `![…]` 图片引用（在 `structured/` 与 `translation/`
-   两侧看），且图片文件真实存在 —— 有就不用生成；
+2. cover 单元的 Markdown 里是否已有 `![…]` 图片引用（`structured/` 与 `translation/`
+   两侧都要看），且图片文件真实存在 —— 有就不用生成；
 3. 两者都没有 → 这本书缺封面，可以生成。
 
 ```bash
@@ -38,9 +42,10 @@
 ## 生成 / 撤销
 
 ```bash
-"$AEP_CLI" cover --workspace <ws>                       # 默认：indigo 色板、a5、300dpi
-"$AEP_CLI" cover --workspace <ws> --palette maroon --pdf # 换色板 + 附带印刷 PDF
-"$AEP_CLI" cover --workspace <ws> --json                 # 机器可读（design_digest/字体/文字）
+"$AEP_CLI" cover --workspace <ws>                        # 默认：quarto 版式、ink 色板、a5、300dpi
+"$AEP_CLI" cover --workspace <ws> --style magadan        # 换回旧版式
+"$AEP_CLI" cover --workspace <ws> --palette oxblood --pdf
+"$AEP_CLI" cover --workspace <ws> --json                 # 机器可读（style/design_digest/字体/文字）
 "$AEP_CLI" cover --workspace <ws> --remove               # 撤销（源封面不受影响）
 ```
 
@@ -49,12 +54,72 @@
 | 文件 | 作用 |
 |---|---|
 | `structured/raw/media/cover-generated.png` | 成品图；build 时按 `media/cover-generated.png` 进 EPUB |
-| `preprocessing/cover-generated.json` | 登记：`design_digest`、`sha256`、字体、实际排进去的文字 |
+| `preprocessing/cover-generated.json` | 登记：`style`、`design_digest`、`sha256`、字体、实际排进去的文字 |
 | `structured/raw/media/cover-generated.pdf` | 仅 `--pdf` 时生成，用于印刷核对（不进 EPUB） |
 
 生成后正常 `build`：`properties="cover-image"` 与 `<meta name="cover">` 自动写入，
 事件里出现 `cover_generated_used`。**没有登记就不会凭空多出封面**——build 只会「用」
-和「同步」已有登记，不会替你决定这本书该有封面。
+和「同步」已有登记。
+
+## 版式一：quarto（默认「界栏」）
+
+设计逻辑，按重要性：
+
+1. **整幅底面**，只有一种底色，靠**色板**分家（见下表）。同一批书摆在一起是一套，
+   但每本颜色不同，不会像复制粘贴。
+2. **左对齐、大字**。中文字少就更要撑住版面，所以字号按内容自适应：
+   短书名放到版心的 88%（最多 1.45 倍基准），长书名收到 0.75 倍基准后折行——
+   「字少就大、字多就稳」。
+3. **左侧双线界栏**（一粗一细，通高）是这套版式的记号：像版框/书口，但不抢戏。
+4. **标题下短横**（30% 版心宽）分隔书名与副书名；**原文名用斜体**、压到 60% 浓度，
+   中文与原文一眼分层。
+5. **责任者在左下、署名在右下**，页脚细线收底：署名（行书）是这套封面的落款。
+
+### 色板（quarto）
+
+| 色板 | 底面 | 文字 | 强调 |
+|---|---|---|---|
+| `ink`（默认） | `#171A20` 墨黑 | `#F5F0E6` | `#C9A227` 金 |
+| `oxblood` | `#5B1B22` 绛 | `#F2EADD` | `#D8B26E` |
+| `forest` | `#1D3A2F` 松绿 | `#F1EDDF` | `#CBB27A` |
+| `indigo` | `#1B2A55` 靛 | `#F3EFE4` | `#C9B37E` |
+| `aubergine` | `#3A2340` 紫 | `#F3ECEE` | `#D9A7A0` |
+| `slate` | `#22333B` 石板 | `#F0EEE7` | `#A8C3B5` |
+| `rust` | `#6B2E17` 赭 | `#F5EDDF` | `#E3C08A` |
+| `paper` | `#F4EFE3` 纸（浅色版） | `#1A1A1A` | `#8A2B2B` |
+
+浅色 `paper` 是给「同一批里的轻书」用的：纸底墨字，印得省、看着轻，骨架完全一样。
+
+### 比例（quarto，`src/auto_epublizer/cover.py` 的 `QUARTO_GEOM`/`QUARTO_TYPE`）
+
+| 元素 | 比例 |
+|---|---|
+| 版心 | 左右各留 `9.0%W`（版心宽 `82%W`） |
+| 左侧界栏 | 主线 `6.2%W`，细线在其左 3.4pt；自 `6.5%H` 到 `94.5%H` |
+| 丛书名基线 | `8.5%H`（前缀一个小色点） |
+| 书名墨迹顶 | `25.5%H` |
+| 基准字号 / 副书名 / 原文名 / 原文副名 / 责任者 | `10.5 / 2.15 / 1.92 / 1.55 / 1.35 %W` |
+| 书名下短横 | 书名底 + `3.0%H`，长 `30%W` |
+| 责任者末行墨迹底 | `87.8%H` |
+| 页脚细线 / 署名基线 | `90.6%H` / `94.0%H` |
+
+书名群长到快碰上责任者时，整块按 0.90 一档自动缩排（最多三档），**绝不叠字**。
+
+## 版式二：magadan（旧版式）
+
+白底 + 顶部通栏色带 + 右侧竖色条 + 右对齐书名群，比例实测自参考样张。
+需要接近那批书的观感时用 `--style magadan`。
+
+色板：`indigo`（默认）/`blue`（蓝带金边）/`maroon`/`purple`/`crimson`/`brown`/`green`/`ink`。
+
+| 元素 | 比例 |
+|---|---|
+| 通栏色带 | 距顶 `1.35%H`，高 `5.28%H`，通栏到页右 |
+| 右侧竖色条 | 左边 `89.7%W`，宽 `2.1%W`（右边留 `8.2%W` 白） |
+| 版心右边界 | `88.2%W` |
+| 书名群起点 | `30.99%H` |
+| 书名 / 副书名 / 原文名 / 原文副名 / 责任者 | `7.67 / 3.75 / 3.83 / 2.95 / 2.94 %W` |
+| 署名 | 中心 `47%W`，墨迹顶 `91.91%H` |
 
 ## 设计稿 `preprocessing/cover-spec.json`（可选，agent 手写）
 
@@ -63,6 +128,7 @@
 
 ```json
 {
+  "style": "quarto",
   "series": "拜占庭历史文献集成",
   "lead": "前皇帝约翰尼斯 · 坎塔库泽努斯",
   "title": "史书",
@@ -71,7 +137,7 @@
   "original_subtitle": "Anxieties of Power in the Islamic Republic",
   "credits": ["[东罗马] 约翰尼斯 · 坎塔库泽努斯 著", "[德] 卢多维库斯 · 叔彭努斯 校订"],
   "imprint": "马加丹汉化组",
-  "palette": "crimson",
+  "palette": "oxblood",
   "size": "a5"
 }
 ```
@@ -80,6 +146,7 @@
 
 | 字段 | 缺省来源 |
 |---|---|
+| `style` | 配置 `cover.style`（默认 `quarto`）；命令行 `--style` 优先 |
 | `title` | `meta.title_translated` → `meta.title`；两者都空 → 报错「没有书名」 |
 | `original_title` | `meta.title`（与展示书名相同则**不印**，避免同一行重复两遍） |
 | `subtitle` / `original_subtitle` | 空（**不从 `description` 切句子**——那是语义猜测） |
@@ -96,20 +163,9 @@
 3. **换行用 `\n` 或数组**：换行是排版决定（哪一行断在哪里），由你决定，不要指望自动折行
    断在好看的位置。
 
-## 配色与开本
+## 开本与 dpi
 
-| 色板 | 主色（通栏色带） | 侧条 |
-|---|---|---|
-| `indigo`（默认，最常用） | `#0D1168` | 同色 |
-| `blue` 蓝 + 金边 | `#2C5F9E` | `#FECB00` |
-| `maroon` 绛红 | `#612326` | 同色 |
-| `purple` 墨紫 | `#4B2C65` | 同色 |
-| `crimson` 朱红 | `#962311` | 同色 |
-| `brown` 赭褐 | `#5A2B1B` | 同色 |
-| `green` 松绿 | `#236243` | 同色 |
-| `ink` 墨黑 | `#1A1A1A` | 同色 |
-
-开本与 `pdf --size` 同一组：`a5`（148×210，默认）/ `32k` / `b5` / `16k`。
+`a5`（148×210，默认）/ `32k` / `b5` / `16k`，与 `pdf --size` 同一组。
 `--dpi` 默认 300（A5 → 1749×2481，EPUB 封面足够）。
 
 ## 字体
@@ -118,29 +174,15 @@
 |---|---|---|
 | 中文宋体（必需） | 思源宋体 Noto Serif CJK / Source Han Serif / 宋体 | **直接报错**（没有中文就无法排版） |
 | 拉丁衬线（可选） | Nimbus Roman → Times New Roman → Liberation Serif | 原文书名改用中文字体排，输出里明说 |
-| 行书署名（可选） | 志莽行书 → 马善政 → 龙藏 → 华文行楷 | 署名降级为宋体（版式位置不变），输出里明说 |
+| 拉丁斜体（可选） | 拉丁衬线的同族斜体（`-Italic`/`-Oblique`） | quarto 的原文名退回正体（仍是拉丁衬线） |
+| 行书署名（可选） | 志莽行书 → 马善政 → 龙藏 → 华文行楷 | 署名降级为宋体（位置不变），输出里明说 |
 
 显式指定：配置 `cover.font_serif` / `cover.font_latin` / `cover.imprint_font`（文件路径）。
 `"$AEP_CLI" doctor` 的 `cover-fonts` 一行给出实际选中的文件与缺失项。
 
-> 行书字体是 OFL 授权的思源之外的第三方字库，**不随本仓库分发**。想要毛笔署名，
-> 装一款（如 [Zhi Mang Xing](https://fonts.google.com/specimen/Zhi+Mang+Xing)）到系统字体目录，
+> 行书字体是第三方 OFL 字库，**不随本仓库分发**。想要毛笔署名，装一款
+> （如 [Zhi Mang Xing](https://fonts.google.com/specimen/Zhi+Mang+Xing)）到系统字体目录，
 > 或用 `cover.imprint_font` 指到 `.ttf`。
-
-## 版式（不要手改比例）
-
-比例写在 `src/auto_epublizer/cover.py` 的 `GEOM`/`TYPE`/`GAPS`/`INK`，全部实测自参考样张：
-
-| 元素 | 比例 |
-|---|---|
-| 通栏色带 | 距顶 `1.35%H`，高 `5.28%H`，通栏到页右 |
-| 右侧竖色条 | 左边缘 `89.7%W`，宽 `2.1%W`（右边留 `8.2%W` 白） |
-| 版心 | 右边界 `88.2%W` |
-| 书名群起点 | `30.99%H`（书名墨迹顶） |
-| 书名 / 副书名 / 原文名 / 原文副 / 责任者 | `7.67 / 3.75 / 3.83 / 2.95 / 2.94 %W` |
-| 署名 | 垂直居中于 `47%W`，墨迹顶 `91.91%H` |
-
-改这些常数等于改版式：改完必须重跑 `tests/test_cover_render.py`（含墨迹位置对版断言）。
 
 ## 红线
 
@@ -156,7 +198,8 @@
 | 现象 / 事件 | 含义 | 处理 |
 |---|---|---|
 | `没有书名，无法生成封面` | `meta.title` 与 `meta.title_translated` 都空 | 先 `meta --title`，或写 `cover-spec.json` 的 `title` |
-| `未知色板 / 未知开本` | 名字拼错 | 按上表取值 |
+| `未知版式` | `style` 写错 | 只有 `quarto` / `magadan` |
+| `未知色板 / 未知开本` | 名字拼错，或拿了另一套版式的色板名 | 按上表取；magadan 的 `crimson` 在 quarto 里没有 |
 | `找不到中文字体` | 系统无 CJK 字体 | 装 `fonts-noto-cjk` 或配 `cover.font_serif` |
 | `⚠ 未找到行书字库` | 行书缺失，已降级宋体 | 装行书字体或配 `cover.imprint_font`；接受降级也可以 |
 | 事件 `cover_regenerated` | 元数据/设计稿变了，构建期已重绘 | 正常；确认封面文字确实跟着变了 |

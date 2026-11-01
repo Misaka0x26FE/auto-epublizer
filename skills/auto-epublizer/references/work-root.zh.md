@@ -60,7 +60,8 @@ export AEP_CLI="$AEP_ROOT/auto-epublizer/.venv/bin/auto-epublizer"
 源码校验在 fetch 前完成，dirty 检查包含 tracked 与 untracked 文件；本地 ahead/divergent、
 错误分支、错误 origin 或错误仓库根均停止。fetch 后再次检查祖先关系，只允许 fast-forward；
 网络、依赖或其他命令失败也停止。`work-root` 仍是现有 CLI 命令，复制唯一权威模板
-`template/work-root/`，**不加 `--force`**，已有文件只保留/补缺，不覆盖。
+`template/work-root/`，**不加 `--force`**，已有文件只保留/补缺，不覆盖；可先加
+`--dry-run` 逐项预览 `+ 新建` / `= 跳过`，预演不创建目录也不写文件。
 不要与其他进程并发修改该 checkout；成功后再执行下面命令：
 
 ```bash
@@ -162,11 +163,13 @@ Markdown 脚注正文中的真实链接与普通 HTML 文档链接也会核对�
 列出 missing/无法归类并按顶层汇总 ignored。每本书有独立 Git 时逐本检查，不要求工作根
 也必须入库；嵌套仓库内容需对其根单独检查。未跟踪、缺失、无法归类及意外忽略均失败。
 
-独立的默认允许忽略规则**仅** `docs/__pycache__/**` 和 `outbox/*/epub/**`，
-不把 `.gitignore` 自身当允许清单。故 `outbox/batch/secret.txt` 和 `.tr/draft.txt` 即使被
-Git 忽略也会失败。核证后用可重复 `--allow '精确/模式'` 或 `--allow-file <独立规则文件>`
-添加规则（一行一条、`#` 注释；`*` 不跨路径段、`**` 可跨层、尾 `/` 允许子树）。
-不接受 `.gitignore` 作为独立规则文件。失败不等于应把文件入库：先检查内容与保密边界，
-应忽略者添加精确允许规则，**绝不要为消警把 secret 加 Git**。工具不执行 `git add`。
+独立的默认允许忽略规则**仅** `docs/__pycache__/**` 和 `outbox/*/epub/**`，每条都带
+可核证理由，不把 `.gitignore` 自身当允许清单。故 `outbox/batch/secret.txt` 和 `.tr/draft.txt`
+即使被 Git 忽略也会失败。核证后用可重复 `--allow '精确/模式'` 或
+`--allow-file <独立规则文件>` 添加规则（一行一条 `pattern|理由`、`#` 注释；`*` 不跨路径段、
+`**` 可跨层、尾 `/` 允许子树；缺 `|理由` 直接失败）。旧纯模式 `--allow pattern` 仍兼容，
+但允许文件必须写理由。不接受 `.gitignore` 作为独立规则文件。失败不等于应把文件入库：
+先检查内容与保密边界，应忽略者添加精确允许规则，**绝不要为消警把 secret 加 Git**。
+工具只读，不执行 `git add`、不写 `.git/index`、不创建 `index.lock`。
 
 这些脚本不替代逐书 QA 或内容核证；四项操作失败均退出非零，不自动修文件或制造放行证据。

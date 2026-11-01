@@ -94,6 +94,7 @@ auto-epublizer restructure [--workspace <dir>]   # 登记重建的单元结构�
 auto-epublizer evidence breaks   # 导出页边界证据 → preprocessing/breaks.jsonl（判读跨页/断行碎片；只定位证据，不做语义合并）
 auto-epublizer evidence partition  # 源行分区账本（只读）：逐行去向/重复对次/跨块区间，--json 供机器读
 auto-epublizer evidence source   # 原始页/栏/块/TOC/注文候选 + 扫描封面候选（只读）
+auto-epublizer evidence page-numbers  # 目录/索引页码策略与重复候选（只读）
 auto-epublizer evidence report   # 成品/外部源/副本的只读重做证据（pass/fail/unknown/manual）
 # 扫描件封面：evidence source --json 里的 cover_candidates 只是候选；agent 核证后写
 # preprocessing/cover.json（{"file": "structured/raw/media/…", "evidence": "…"}），build 才登记
@@ -130,7 +131,8 @@ auto-epublizer knowledge import --workspace .   # 跨书同键异译外置到统
 
 # 7. 封装输出
 auto-epublizer build          # 译文 EPUB → output/（--theme 选排版主题）
-auto-epublizer pdf            # 派生印刷版 PDF → output/（不入 qa 摘要；--size/--body-pt/--note-pt/--json）
+auto-epublizer pdf            # 派生印刷版 PDF → output/（不入 qa 摘要；--strict/--json）
+auto-epublizer pdf-verify --pdf output/book.pdf  # 核对源 EPUB/PDF 哈希与派生清单
 
 # 8. 质检（G0 静态校验 + G4 审计 + G5 汇总放行 → report.json）
 auto-epublizer qa             # 结构审计 + epubcheck（有注书另跑独立成品注释门；notes_open 阻断放行）
@@ -139,7 +141,7 @@ auto-epublizer qa             # 结构审计 + epubcheck（有注书另跑独立
 auto-epublizer status --json  # 查看进度/状态机/产物-状态对账（含 next_tasks 机器指针）
 auto-epublizer status --all   # 多工作区总览（三档进度：released/built_not_released/preprocessing）
 auto-epublizer ledger         # 跨书台账 markdown（机器可重算列 + 待填领域/摘要）
-auto-epublizer work-root <dir>  # 生成标准长期多书工作区（见 references/work-root.md）
+auto-epublizer work-root <dir>  # 生成标准长期多书工作区（见 references/work-root.md；--dry-run 逐项预览）
 
 # 9. 交付审计（agent 任务，强制）：按 skills/auto-epublizer/references/delivery.md
 #    做全量独立对账 + 抽样验证 + 人肉核对 → 写 reviews/delivery-<ts>.md

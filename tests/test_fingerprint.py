@@ -226,6 +226,27 @@ def test_software_section_renders_new_blocks_in_both_languages() -> None:
     assert en.index("Publication and rights information") < en.index("Generation models (LLM)")
 
 
+def test_brief_production_info_keeps_rights_and_disclaimer() -> None:
+    data = fingerprint.build_fingerprint(
+        Publication(
+            slug="b",
+            meta=PublicationMeta(
+                title="测试书",
+                rights="© 2026 作者。保留所有权利。",
+                processing_tools=[{"name": "pandoc", "version": "3.1.3", "license": "GPL-2.0"}],
+            ),
+        )
+    )
+    brief = fingerprint.software_section(data, "zh-CN", detail="brief")
+    assert "版权与出版信息" in brief
+    assert "© 2026 作者。保留所有权利。" in brief
+    assert "以下许可仅说明软件" in brief
+    assert "pandoc" not in brief and "Revision:" not in brief
+    assert "保留所有权利" in fingerprint.software_section(data, "zh-CN")
+    with pytest.raises(ValueError, match="full 或 brief"):
+        fingerprint.software_section(data, "zh-CN", detail="minimal")
+
+
 def test_valid_accepts_new_optional_keys_without_loosening_identity() -> None:
     """_valid 接受新增可选键，但不放宽任何既有身份校验。"""
     data = fingerprint.build_fingerprint(Publication(slug="b"))

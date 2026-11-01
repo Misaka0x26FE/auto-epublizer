@@ -270,16 +270,24 @@ def ledger(
 def work_root(
     directory: str = typer.Argument(..., help="目标目录（将在此生成标准长期工作区）"),
     force: bool = typer.Option(False, "--force", help="覆盖已存在的同名文件"),
+    dry_run: bool = typer.Option(False, "--dry-run", help="只逐项预览将新建/跳过的文件，不写盘"),
 ) -> None:
     """生成标准长期多书工作区骨架（inbox/sources/workspaces/docs/references + 规范/配置/说明）。"""
     from .workroot import WorkRootError, create_work_root
 
     try:
-        result = create_work_root(directory, force=force)
+        result = create_work_root(directory, force=force, dry_run=dry_run)
     except WorkRootError as e:
         raise typer.Exit(f"生成失败：{e}") from None
-    console.print(f"[green]长期工作区已生成：[/green]{result['dir']}")
+    prefix = "[yellow]预演（未写盘）：[/yellow]" if dry_run else "[green]长期工作区已生成：[/green]"
+    console.print(f"{prefix}{result['dir']}")
     console.print(f"  新建 {len(result['created'])} 项；跳过 {len(result['skipped'])} 项")
+    if dry_run:
+        for item in result["created"]:
+            console.print(f"  + {item}")
+        for item in result["skipped"]:
+            console.print(f"  = {item}")
+        return
     console.print(f"  各组件功能与用法见 {result['dir']}/README.md（下一步把待处理源放入 inbox/）")
 
 
@@ -320,21 +328,47 @@ def repair_recover_cmd(
 @evidence_app.command("source")
 def evidence_source_cmd(
     workspace: str | None = typer.Option(None, "--workspace", help="工作区目录"),
+    note_id: list[str] | None = typer.Option(
+        None, "--note-id", help="只输出指定 note_id 的证据，可重复；不缩小未选注的范围"
+    ),
     json_output: bool = typer.Option(False, "--json", help="输出只读源证据 JSON"),
     config: str | None = typer.Option(None, "--config", help="配置文件路径"),
 ) -> None:
     """保留原始页/栏/块和源 TOC；只给候选，不自动合并或删改。"""
     store = _store_from(workspace, load_config(config or _CONFIG_PATH))
     try:
-        data = orch.source_evidence(store)
+        data = orch.source_evidence(store, note_ids=note_id)
     except (ValueError, OSError, orch.OrchestrationError) as exc:
         raise typer.Exit(f"源证据读取失败：{exc}") from None
     if json_output:
         _emit_json(json.dumps(data, ensure_ascii=False, indent=2))
     else:
+        registered = data["note_evidence"]
         console.print(
-            f"源证据：{len(data['blocks'])} 块，{len(data['note_candidates'])} 注释候选；须人工核证"
+            f"源证据：{len(data['blocks'])} 块，{len(data['note_candidates'])} 注释候选；"
+            f"已注册注文 {registered.get('selected', 0)}/{registered.get('total', 0)} 条；须人工核证"
         )
+
+
+@evidence_app.command("page-numbers")
+def evidence_page_numbers_cmd(
+    workspace: str | None = typer.Option(None, "--workspace", help="工作区目录"),
+    json_output: bool = typer.Option(False, "--json", help="只读页码策略证据 JSON"),
+    config: str | None = typer.Option(None, "--config", help="配置文件路径"),
+) -> None:
+    """只读声明目录/索引页码策略；重复目录只报候选，不改源件。"""
+    store = _store_from(workspace, load_config(config or _CONFIG_PATH))
+    try:
+        data = orch.page_number_evidence(store)
+    except (ValueError, OSError, orch.OrchestrationError) as exc:
+        raise typer.Exit(f"页码策略读取失败：{exc}") from None
+    if json_output:
+        _emit_json(json.dumps(data, ensure_ascii=False, indent=2))
+        return
+    console.print(
+        f"页码策略：{len(data['units'])} 个目录/索引单元，"
+        f"重复目录候选 {len(data['duplicate_toc_candidates'])} 组；仅声明，不改源件"
+    )
 
 
 @evidence_app.command("report")
@@ -550,8 +584,16 @@ def build(
 def cover(
     workspace: str | None = typer.Option(None, "--workspace", help="工作区目录"),
     out: str | None = typer.Option(None, "-o", "--out", help="额外导出 PNG 路径（登记仍在工作区）"),
+    style: str | None = typer.Option(
+        None, "--style", help="版式：quarto（界栏，默认）/ magadan（旧版式）"
+    ),
     palette: str | None = typer.Option(
-        None, "--palette", help="色板（indigo/blue/maroon/purple/crimson/brown/green/ink）"
+        None,
+        "--palette",
+        help=(
+            "色板：quarto=ink/oxblood/forest/indigo/aubergine/slate/rust/paper；"
+            "magadan=indigo/blue/maroon/purple/crimson/brown/green/ink"
+        ),
     ),
     imprint: str | None = typer.Option(None, "--imprint", help="底部署名（空串=不画署名）"),
     size: str | None = typer.Option(None, "--size", help="开本（a5/32k/b5/16k）"),
@@ -561,7 +603,7 @@ def cover(
     json_out: bool = typer.Option(False, "--json", help="机器可读输出"),
     config: str | None = typer.Option(None, "--config", help="配置文件路径"),
 ) -> None:
-    """生成 Magadan 版式书封（没有源封面的书用；构建时自动写 cover-image）。"""
+    """生成书封（默认 quarto/界栏版式；没有源封面的书用，构建时自动写 cover-image）。"""
     cfg = load_config(config or _CONFIG_PATH)
     store = _store_from(workspace, cfg)
     if remove:
@@ -578,6 +620,7 @@ def cover(
         record = orch.generate_cover(
             store,
             out=out,
+            style=style,
             palette=palette,
             imprint=imprint,
             size=size,

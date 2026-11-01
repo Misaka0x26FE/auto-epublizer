@@ -258,6 +258,37 @@ def test_tracked_reconciles_subpath_ignores_without_staging(root: Path) -> None:
     assert git(root, "diff", "--cached", "--name-only").stdout == before
 
 
+def test_tracked_allow_file_requires_reason_and_keeps_git_index_untouched(
+    root: Path, tmp_path: Path
+) -> None:
+    git(root, "init")
+    (root / ".gitignore").write_text(".tr/\n", encoding="utf-8")
+    git(root, "add", ".")
+    draft = root / ".tr" / "draft.txt"
+    draft.parent.mkdir(parents=True, exist_ok=True)
+    draft.write_text("fixture", encoding="utf-8")
+    allow = tmp_path / "ignored-allow.txt"
+
+    allow.write_text(".tr/draft.txt\n", encoding="utf-8")
+    missing_reason = run(root, "check_tracked", "--repo", root, "--allow-file", allow)
+    assert missing_reason.returncode == 1
+    assert "缺少 |理由" in missing_reason.stderr
+
+    allow.write_text(".tr/draft.txt|本地草稿，不入库\n", encoding="utf-8")
+    index = root / ".git" / "index"
+    before = index.read_bytes()
+    passed = run(root, "check_tracked", "--repo", root, "--allow-file", allow)
+    assert passed.returncode == 0, passed.stderr
+    assert "本地草稿" in passed.stdout
+    assert index.read_bytes() == before
+    assert not (root / ".git" / "index.lock").exists()
+
+    (root / ".tr" / "secret.txt").write_text("not declared", encoding="utf-8")
+    denied = run(root, "check_tracked", "--repo", root, "--allow-file", allow)
+    assert denied.returncode == 1
+    assert "意外忽略：.tr/secret.txt" in denied.stdout
+
+
 def test_tracked_reports_untracked_missing_and_independent_book(root: Path) -> None:
     book = root / "workspaces" / "independent"
     book.mkdir()

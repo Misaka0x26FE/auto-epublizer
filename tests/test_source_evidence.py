@@ -69,6 +69,82 @@ def test_breaks_record_both_pages_and_never_claim_gap_is_continuation(tmp_path: 
     assert row["candidate"] is False
 
 
+def test_registered_note_evidence_keeps_all_locations_and_unknowns(tmp_path: Path) -> None:
+    import hashlib
+
+    store, raw = _ws(tmp_path)
+    (raw / "page-001.json").write_text(
+        json.dumps(
+            {
+                "page_idx": 1,
+                "blocks": [
+                    {"type": "text", "text": "first", "bbox": [10, 20, 90, 40]},
+                    {"type": "text", "text": "continued", "bbox": [10, 100, 90, 120]},
+                ],
+            }
+        )
+    )
+    (raw / "page-002.json").write_text(
+        json.dumps(
+            {"page_idx": 2, "blocks": [{"type": "text", "text": "tail", "bbox": [12, 30, 80, 50]}]}
+        )
+    )
+    notes = [
+        {
+            "note_id": "n-000001",
+            "source_locations": [{"kind": "page", "page": 1, "bbox": [10, 20, 90, 40]}],
+        },
+        {
+            "note_id": "n-000002",
+            "source_locations": [
+                {"kind": "page", "page": 1, "bbox": [10, 100, 90, 120]},
+                {"kind": "page", "page": 2, "text_block": "continued on the next page"},
+            ],
+        },
+        {
+            "note_id": "n-000003",
+            "source_locations": [{"kind": "page", "page": 2}],
+        },
+        {
+            "note_id": "n-000004",
+            "source_locations": [{"kind": "page", "page": 2, "bbox": [99, 99, 120, 130]}],
+        },
+        {"note_id": "n-000005", "source_locations": [{"kind": "page"}]},
+    ]
+    notes.extend(
+        {"note_id": f"n-{index:06d}", "source_locations": [{"kind": "page", "page": 2}]}
+        for index in range(6, 21)
+    )
+    data = {"schema_version": "1", "inventory": "present", "notes": notes, "references": []}
+    notes_path = store.structured_dir / "notes.json"
+    notes_path.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+    before = {path: path.read_bytes() for path in (notes_path, store.publication_path)}
+
+    result = orch.source_evidence(store)
+    inventory = result["note_evidence"]
+    assert inventory["registered"] is True
+    assert inventory["total"] == 20 and len(inventory["notes"]) == 20
+    assert inventory["sha256"] == hashlib.sha256(notes_path.read_bytes()).hexdigest()
+
+    by_id = {note["note_id"]: note for note in inventory["notes"]}
+    assert by_id["n-000001"]["evidence_status"] == "located"
+    assert by_id["n-000001"]["locations"][0]["raw_matches"][0]["bbox"] == [10, 20, 90, 40]
+    assert by_id["n-000002"]["location_count"] == 2
+    assert [loc["status"] for loc in by_id["n-000002"]["locations"]] == ["located", "page_only"]
+    assert by_id["n-000003"]["evidence_status"] == "page_only"
+    assert by_id["n-000004"]["evidence_status"] == "unmatched"
+    assert by_id["n-000005"]["evidence_status"] == "unknown"
+    # 坏 OCR/缺坐标只影响排序，不缩小清单；未知坐标排在最后。
+    assert inventory["notes"][-1]["note_id"] == "n-000005"
+
+    filtered = orch.source_evidence(store, note_ids=["n-000002", "n-999999"])
+    assert [note["note_id"] for note in filtered["note_evidence"]["notes"]] == ["n-000002"]
+    assert filtered["note_evidence"]["missing_note_ids"] == ["n-999999"]
+    assert filtered["note_evidence"]["total"] == 20
+
+    assert all(path.read_bytes() == payload for path, payload in before.items())
+
+
 def test_product_residue_census_includes_asides_and_backmatter(tmp_path: Path) -> None:
     from test_quality_evidence import _report
 
