@@ -1,14 +1,17 @@
-<!-- i18n: source=cover.zh.md sha256=832126325d659eeb3b00b5fc0ad3282dabf1b1d3a3bd7409d6b056a6cb344f6c -->
+<!-- i18n: source=cover.zh.md sha256=450cdbe66f23c5b9bed5c08e665980bb802e85fd6045f1906b6a2f28d50a672b -->
 > **English** | [中文](cover.zh.md)
 
-# Generated cover (quarto, 界栏)
+# Generated cover (quarto 界栏 / hanze-academic 汉译学术本)
 
 For books with **no usable cover**: plain text / Markdown / DOCX / HTML sources have no cover
 image at all, and a scanned book's first page is not automatically its cover (a candidate only
 becomes one after `preprocessing/cover.json` is confirmed). Such books show up blank on the
-shelf and lock screen. This flow gives them one shared typeset cover: `quarto` (界栏) —
-full-bleed ground, reversed flush-left title, double hairline at the left edge, a short accent
-rule, italic original title, credits bottom-left, signature bottom-right.
+shelf and lock screen. This flow gives them two shared typeset covers; pick one per book group:
+
+| Layout | Name | Look | For |
+|---|---|---|---|
+| `quarto` (default) | 界栏 | full-bleed ground, reversed flush-left title, double hairline at the left edge, short rule, italic original title | modern academic/humanities; a series is told apart by palette |
+| `hanze-academic` | 汉译学术本 | cream paper grain, double frame, centred four-block text, optional motif | translated classics/research editions; one accent colour per book |
 
 > **The previous layout is disabled**: `magadan` (white page + band/stripe) is no longer
 > offered. Writing `style: magadan` in config or a design sheet is an explicit error, never a
@@ -56,19 +59,41 @@ generated cover — never take "looks like a cover" as evidence.
 ## Generate / remove
 
 ```bash
-"$AEP_CLI" cover --workspace <ws>                        # defaults: quarto, ink palette, a5, 300dpi
+"$AEP_CLI" cover --workspace <ws>                        # defaults: quarto, ink palette, a5, 300dpi, PNG
 "$AEP_CLI" cover --workspace <ws> --palette oxblood --pdf
-"$AEP_CLI" cover --workspace <ws> --json                 # machine-readable (style/design_digest/fonts/text)
+"$AEP_CLI" cover --workspace <ws> --json                 # machine-readable (style/format/design_digest/fonts/text)
 "$AEP_CLI" cover --workspace <ws> --remove               # remove (source cover untouched)
+
+# hanze-academic (issue #100's layout; --template is an alias of --style)
+"$AEP_CLI" cover --workspace <ws> --template hanze-academic \
+  --accent "#7A2222" --motif globe \
+  --series "STUDIES IN CRITICAL SOCIAL SCIENCES · 229" \
+  --subtitle "世界市场中的社会运动史与批判" \
+  --note-line "内部研究译本　不公开分发"
 ```
+
+The command line only supplies fields metadata cannot carry (series line, motif, accent,
+disclaimer); title, credits, and the imprint line still come from `publication.json`.
+`--accent` / `--motif` / `--series` / `--subtitle` / `--publisher-line` / `--note-line` /
+`--credit-role` are **stored in the registration**, so build-time re-rendering reuses them —
+`auto_sync` never wipes a command-line-styled cover.
 
 Artifacts:
 
 | File | Role |
 |---|---|
-| `structured/raw/media/cover-generated.png` | the image; build publishes it as `media/cover-generated.png` |
-| `preprocessing/cover-generated.json` | registration: `style`, `design_digest`, `sha256`, fonts, the text actually set |
+| `structured/raw/media/cover-generated.png` / `.jpg` | the image; build publishes it as `media/cover-generated.{png,jpg}` |
+| `preprocessing/cover-generated.json` | registration: `style`, `format`, `overrides`, `design_digest`, `sha256`, fonts, the text actually set |
 | `structured/raw/media/cover-generated.pdf` | only with `--pdf`; for print proofing (not in the EPUB) |
+
+**Output format**: `--format png|jpeg`; empty means the layout default — `quarto` uses PNG
+(crisp flat colour), `hanze-academic` uses JPEG q92 (photographic paper grain, much smaller).
+Switching format deletes the other suffix, so two versions never coexist.
+
+| Layout | Default | Why |
+|---|---|---|
+| quarto | `png` | large flat areas and reversed type stay clean losslessly |
+| hanze-academic | `jpeg` (q92) | the grain is continuous tone; JPEG is roughly a quarter of the PNG |
 
 Afterwards `build` writes `properties="cover-image"` and `<meta name="cover">`, and logs
 `cover_generated_used`. **Without a registration no cover appears**: build only *uses* and
@@ -124,6 +149,57 @@ skeleton.
 If the title group would collide with the credits, the whole block scales by 0.90 per step (at
 most three steps) — it never overlaps.
 
+## Layout two: hanze-academic 汉译学术本 (issue #100)
+
+A 1600×2400 design canvas (A5 at 300dpi, ≈10.8 px/mm). **Coordinates are written in design
+pixels and the whole board is scaled and centred at render time**, so changing the trim only
+changes the paper margin — the layout never distorts.
+
+### Frame and paper
+
+| Element | Value (design px) |
+|---|---|
+| Paper | cream `#F0E7D4` + fine grain + low-frequency mottling + brown vignette (pure Python, deterministic, no numpy/PIL) |
+| Outer frame | `[58,58,1558,2342]`, 3px, accent |
+| Inner frame | `[72,72,1544,2328]`, 1px, gold `#A38248` |
+| Corner ticks | 46px inward from each inner corner, 2px gold |
+
+### Four text blocks (top to bottom, all centred)
+
+| Line | Design y | Size | Colour | Tracking |
+|---|---|---|---|---|
+| Series line (small English caps) | 150 | 30 | muted `#6A6252` | 5 |
+| Rule (gold, half-width 300 + centre dot) | 205 | — | gold | — |
+| Chinese title | ink top 250 | 168→96 adaptive (wraps only if still too wide) | accent | 10 |
+| Chinese subtitle | 500 | 60 | ink `#22201C` | 6 |
+| Original title | 620 | 55 | `#4A4E3C` | 3 |
+| Original subtitle (up to 2 lines) | from 680 | 40 | `#5E5242` | 1 |
+| Credits | from 930 | 42 | ink | 2 |
+| Foot rule (gold, half-width 330) | 1720 | — | gold | — |
+| Signature "马加丹汉化组　译" | 1800 | 68 | ink | 10 |
+| Series mark "汉 译 学 术 本" | 1896 | 40 | muted | 6 |
+| Imprint "BRILL · 2023" | 2020 | 34 | muted | 8 |
+| Disclaimer | 2080 | 30 | `#7E6E58` | 2 |
+
+Blocks are positioned by **ink top and pushed down in order**: a wrapped title moves every
+later block down instead of overlapping it.
+
+### Motif band (`--motif`, 1000–1650)
+
+| Value | Drawing | For |
+|---|---|---|
+| `none` (default) | nothing | frame and type only; do not invent a motif |
+| `globe` | graticule globe (r≈236; 15/30/45/60/75° meridians + parallels + heavy equator), two orbit arcs, six nodes | world market / global history |
+| `arch` | equilateral pointed arch (two arcs of radius = arch width meeting at the apex) + three-light tracery + apex trefoil, overlaid with 46px manuscript ruling | monastic / manuscript / medieval |
+
+Accent per book (`--accent`, or a `--palette` preset): ochre `#7A2222` / forest `#1A3E2C` /
+moss `#1B3428` / ink `#22201C` / navy `#1F3350` / plum `#5B2140`.
+
+> **Small type obeys the same floor**: the issue's original 27–34px lines render at only
+> 10–13px at 600px wide, so `TYPE` lifts them to the 14px equivalent through `MIN_TYPE_FRAC`
+> (skeleton unchanged). `tests/test_cover_hanze.py::test_hanze_legibility_floor_at_600px`
+> guards it.
+
 ## The previous layout (disabled)
 
 The `magadan` layout (white page + band + stripe + right-aligned title group) is **disabled**:
@@ -154,17 +230,38 @@ an error.
 }
 ```
 
+The hanze-academic sheet has a few extra fields (leave unused ones out):
+
+```json
+{
+  "style": "hanze-academic",
+  "palette": "ochre",
+  "series": "STUDIES IN CRITICAL SOCIAL SCIENCES · 229",
+  "subtitle": "世界市场中的社会运动史与批判",
+  "original_title": "Global Marx",
+  "original_subtitle": "History and Critique of the Social Movement in the World Market",
+  "credits": ["[德] 马蒂亚斯 · 米德尔 等 著"],
+  "motif": "globe",
+  "series_mark": "汉 译 学 术 本",
+  "publisher_line": "BRILL · 2023",
+  "note_line": "内部研究译本　不公开分发",
+  "credit_role": "译"
+}
+```
+
 Defaults when a field is absent:
 
 | Field | Default source |
 |---|---|
-| `style` | config `cover.style` (default `quarto`); `--style` wins |
+| `style` | config `cover.style` (default `quarto`); `--style`/`--template` wins; `quarto` or `hanze-academic` |
 | `title` | `meta.title_translated` → `meta.title`; both empty → error "no title" |
 | `original_title` | `meta.title` (omitted when identical to the displayed title) |
 | `subtitle` / `original_subtitle` | empty (**never slice sentences out of `description`**) |
 | `credits` | `creator 著` + `translator 译`, one per line |
 | `imprint` | config `cover.imprint` (default "马加丹汉化组"; empty string = none) |
-| `palette` / `size` | config `cover.palette` / `cover.size` |
+| `palette` / `size` | config `cover.palette` / `cover.size` (empty palette = layout default: quarto→`ink`, hanze→`ochre`) |
+| `format` | config `cover.format`; empty = layout default (quarto→png, hanze→jpeg) |
+| `accent` / `motif` / `series_mark` / `publisher_line` / `note_line` / `credit_role` | hanze only: accent, motif, series mark, imprint line, disclaimer, signature suffix (CLI flags override) |
 
 Three rules for writing the design sheet:
 
@@ -212,7 +309,10 @@ Explicit paths: config `cover.font_serif` / `cover.font_latin` / `cover.imprint_
 | Symptom / event | Meaning | Action |
 |---|---|---|
 | `没有书名，无法生成封面` | both title fields are empty | run `meta --title`, or set `title` in the design sheet |
-| `未知版式 … 已停用` | `style: magadan` (or any other name) | drop the field; only `quarto` exists |
+| `未知版式 … 已停用` | `style: magadan` (or any other name) | drop the field; only `quarto` / `hanze-academic` exist |
+| `未知主色` | a quarto palette name (e.g. `oxblood`) on hanze | use a hanze preset (ochre/forest/moss/ink/navy/plum) or `--accent #RRGGBB` |
+| `未知意象` | misspelled `--motif` | use `none` / `globe` / `arch` |
+| `未知封面格式` | misspelled `--format` | use `png` / `jpeg` |
 | `未知色板 / 未知开本` | misspelled, or a palette from the retired layout | use the table above (`crimson` belonged to the old one) |
 | `找不到中文字体` | no CJK font | install `fonts-noto-cjk` or set `cover.font_serif` |
 | `⚠ 未找到行书字库` | brush font missing, degraded | install one or set `cover.imprint_font`; accepting the fallback is fine |

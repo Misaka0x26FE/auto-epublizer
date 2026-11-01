@@ -1,11 +1,15 @@
 > **中文** | [English](cover.md)
 
-# 生成式封面（quarto「界栏」）
+# 生成式封面（quarto「界栏」/ hanze-academic「汉译学术本」）
 
 面向**没有可用封面**的书：纯文本 / Markdown / DOCX / HTML 源本来就没有封面图；扫描件
 首页图未必是封面（`preprocessing/cover.json` 未确认就不算）。这类书在书架上、锁屏上
-是空白。本流程给它们一套统一排版封面：`quarto`（中文名「界栏」）——整幅深色底面 +
-反白左对齐大字书名 + 左侧双线界栏 + 短横 + 斜体原文名 + 左下责任者 + 右下署名。
+是空白。本流程给它们两套统一排版封面，按书群选一套（同一批书用同一套）：
+
+| 版式 | 中文名 | 观感 | 适合 |
+|---|---|---|---|
+| `quarto`（默认） | 界栏 | 整幅深色底面 + 反白左对齐大字书名 + 左侧双线界栏 + 短横 + 斜体原文名 | 现代学术/人文，一套书靠色板分家 |
+| `hanze-academic` | 汉译学术本 | 米色纸纹 + 双线框 + 居中四段式文字 + 可选意象区 | 汉译经典/研究译本，一本书一个主色 |
 
 > **旧版式已停用**：早先的 `magadan`（白底 + 色带/色条）不再提供。配置或设计稿里写
 > `style: magadan` 会明确报错「已停用」，不会静默换版式。
@@ -50,19 +54,40 @@
 ## 生成 / 撤销
 
 ```bash
-"$AEP_CLI" cover --workspace <ws>                        # 默认：quarto、ink 色板、a5、300dpi
+"$AEP_CLI" cover --workspace <ws>                        # 默认：quarto、ink 色板、a5、300dpi、PNG
 "$AEP_CLI" cover --workspace <ws> --palette oxblood --pdf
-"$AEP_CLI" cover --workspace <ws> --json                 # 机器可读（style/design_digest/字体/文字）
+"$AEP_CLI" cover --workspace <ws> --json                 # 机器可读（style/format/design_digest/字体/文字）
 "$AEP_CLI" cover --workspace <ws> --remove               # 撤销（源封面不受影响）
+
+# 汉译学术本（issue #100 的版式；--template 是 --style 的别名）
+"$AEP_CLI" cover --workspace <ws> --template hanze-academic \
+  --accent "#7A2222" --motif globe \
+  --series "STUDIES IN CRITICAL SOCIAL SCIENCES · 229" \
+  --subtitle "世界市场中的社会运动史与批判" \
+  --note-line "内部研究译本　不公开分发"
 ```
+
+命令行只补元数据里没有的字段（丛书行、意象、主色、免责行）；书名/责任者/出版行照旧
+从 `publication.json` 取。`--accent` / `--motif` / `--series` / `--subtitle` /
+`--publisher-line` / `--note-line` / `--credit-role` 这些覆盖会**记进登记**，构建期自动
+重绘时照用——不会因为 `auto_sync` 把命令行调过的版式抹掉。
 
 产物：
 
 | 文件 | 作用 |
 |---|---|
-| `structured/raw/media/cover-generated.png` | 成品图；build 时按 `media/cover-generated.png` 进 EPUB |
-| `preprocessing/cover-generated.json` | 登记：`style`、`design_digest`、`sha256`、字体、实际排进去的文字 |
+| `structured/raw/media/cover-generated.png` / `.jpg` | 成品图；build 时按 `media/cover-generated.{png,jpg}` 进 EPUB |
+| `preprocessing/cover-generated.json` | 登记：`style`、`format`、`overrides`、`design_digest`、`sha256`、字体、实际排进去的文字 |
 | `structured/raw/media/cover-generated.pdf` | 仅 `--pdf` 时生成，用于印刷核对（不进 EPUB） |
+
+**输出格式**：`--format png|jpeg`，留空按版式取默认——`quarto` 用 PNG（色块锐利），
+`hanze-academic` 用 JPEG q92（纸纹照片感、体积小）。换格式会删掉另一种后缀的旧件，
+不会留下两版封面。
+
+| 版式 | 默认格式 | 说明 |
+|---|---|---|
+| quarto | `png` | 大色块 + 反白字，PNG 无损更干净 |
+| hanze-academic | `jpeg`（q92） | 纸纹是连续色调，JPEG 体积约为 PNG 的 1/4 |
 
 生成后正常 `build`：`properties="cover-image"` 与 `<meta name="cover">` 自动写入，
 事件里出现 `cover_generated_used`。**没有登记就不会凭空多出封面**——build 只会「用」
@@ -113,6 +138,54 @@
 
 书名群长到快碰上责任者时，整块按 0.90 一档自动缩排（最多三档），**绝不叠字**。
 
+## 版式二：hanze-academic「汉译学术本」（issue #100）
+
+1600×2400 设计画布（A5 300dpi 比例，毫米↔像素 ≈10.8），**版面坐标按设计像素写死、
+渲染时整体等比缩放居中**：换开本只是纸边留白变化，版式不变形。
+
+### 框线与纸底
+
+| 元素 | 参数（设计画布 px） |
+|---|---|
+| 纸纹 | 米色 `#F0E7D4` + 细噪声 + 低频斑块 + 边缘棕晕影（纯 Python 生成，确定性，不依赖 numpy/PIL） |
+| 外框 | `[58,58,1558,2342]`，3px，主色（accent） |
+| 内框 | `[72,72,1544,2328]`，1px，金 `#A38248` |
+| 四角短线 | 从内框四角向内 46px，2px 金 |
+
+### 四段式文字（自上而下，全部居中）
+
+| 行 | 设计 y | 字号 | 色 | 字距 |
+|---|---|---|---|---|
+| 丛书行（英文小字） | 150 | 30 | 次级墨 `#6A6252` | 5 |
+| 分隔线（金，半宽 300 + 中央圆点） | 205 | — | 金 | — |
+| 中文主书名 | 墨迹顶 250 | 168→96 自适应（超宽才折行） | 主色 | 10 |
+| 中文副题 | 500 | 60 | 墨 `#22201C` | 6 |
+| 英文原题 | 620 | 55 | `#4A4E3C` | 3 |
+| 英文副题（最多 2 行） | 680 起 | 40 | `#5E5242` | 1 |
+| 编者/责任者行 | 930 起 | 42 | 墨 | 2 |
+| 底线（金，半宽 330） | 1720 | — | 金 | — |
+| 署名「马加丹汉化组　译」 | 1800 | 68 | 墨 | 10 |
+| 书系签「汉 译 学 术 本」 | 1896 | 40 | 次级墨 | 6 |
+| 出版行「BRILL · 2023」 | 2020 | 34 | 次级墨 | 8 |
+| 免责行 | 2080 | 30 | `#7E6E58` | 2 |
+
+正文块**按墨迹顶定位并顺序顺延**：书名折行时后续各段自动下移，绝不叠字。
+
+### 意象区（`--motif`，1000–1650）
+
+| 值 | 图案 | 用途 |
+|---|---|---|
+| `none`（默认） | 不画 | 只出框与字；不确定就别硬凑意象 |
+| `globe` | 经纬网地球（r≈236，15/30/45/60/75 度经线椭圆 + 纬线 + 加粗赤道）+ 两条环形航线 + 6 个节点 | 世界市场/全球史 |
+| `arch` | 等边尖拱（两段半径=拱宽的圆弧交于顶点）+ 三分窗棂 + 拱顶三叶饰，叠 46px 间距手抄本横格 | 修院/抄本/中世纪 |
+
+主色取书（`--accent` 直给，或用 `--palette` 里的预设）：赭红 `#7A2222` / 深绿 `#1A3E2C` /
+墨绿 `#1B3428` / 墨黑 `#22201C` / 藏青 `#1F3350` / 紫红 `#5B2140`。
+
+> **小字同样受底线约束**：issue 原稿的 27–34px 小字在 600px 宽下只有 10–13px，已在
+> `TYPE` 表里按 `MIN_TYPE_FRAC` 抬到 14px 等效（版式骨架不动）。这条由
+> `tests/test_cover_hanze.py::test_hanze_legibility_floor_at_600px` 拦住。
+
 ## 旧版式（已停用）
 
 `magadan` 版式（白底 + 顶部色带 + 右侧色条 + 右对齐书名群）**已停用**：代码里不再有这条
@@ -141,17 +214,38 @@
 }
 ```
 
+汉译学术本的设计稿多几个字段（不用的留空即可）：
+
+```json
+{
+  "style": "hanze-academic",
+  "palette": "ochre",
+  "series": "STUDIES IN CRITICAL SOCIAL SCIENCES · 229",
+  "subtitle": "世界市场中的社会运动史与批判",
+  "original_title": "Global Marx",
+  "original_subtitle": "History and Critique of the Social Movement in the World Market",
+  "credits": ["[德] 马蒂亚斯 · 米德尔 等 著"],
+  "motif": "globe",
+  "series_mark": "汉 译 学 术 本",
+  "publisher_line": "BRILL · 2023",
+  "note_line": "内部研究译本　不公开分发",
+  "credit_role": "译"
+}
+```
+
 缺省取值的规则（不传就按这个来）：
 
 | 字段 | 缺省来源 |
 |---|---|
-| `style` | 配置 `cover.style`（默认 `quarto`）；命令行 `--style` 优先 |
+| `style` | 配置 `cover.style`（默认 `quarto`）；命令行 `--style`/`--template` 优先；可选 `quarto`/`hanze-academic` |
 | `title` | `meta.title_translated` → `meta.title`；两者都空 → 报错「没有书名」 |
 | `original_title` | `meta.title`（与展示书名相同则**不印**，避免同一行重复两遍） |
 | `subtitle` / `original_subtitle` | 空（**不从 `description` 切句子**——那是语义猜测） |
 | `credits` | `creator 著` + `translator 译`，一行一个 |
 | `imprint` | 配置 `cover.imprint`（默认「马加丹汉化组」；空串=不画署名） |
-| `palette` / `size` | 配置 `cover.palette` / `cover.size` |
+| `palette` / `size` | 配置 `cover.palette` / `cover.size`（palette 留空按版式默认：quarto→`ink`，hanze→`ochre`） |
+| `format` | 配置 `cover.format`；留空按版式默认（quarto→png，hanze→jpeg） |
+| `accent` / `motif` / `series_mark` / `publisher_line` / `note_line` / `credit_role` | 仅 hanze：主色、意象、书系签、出版行、免责行、署名后缀（命令行同名选项覆盖） |
 
 写设计稿的三条纪律：
 
@@ -197,7 +291,10 @@
 | 现象 / 事件 | 含义 | 处理 |
 |---|---|---|
 | `没有书名，无法生成封面` | `meta.title` 与 `meta.title_translated` 都空 | 先 `meta --title`，或写 `cover-spec.json` 的 `title` |
-| `未知版式 … 已停用` | 写了 `style: magadan`（或别的名字） | 删掉该字段；现在只有 `quarto` |
+| `未知版式 … 已停用` | 写了 `style: magadan`（或别的名字） | 删掉该字段；现在只有 `quarto` / `hanze-academic` |
+| `未知主色` | hanze 用了 quarto 的色板名（如 `oxblood`） | 用 hanze 预设（ochre/forest/moss/ink/navy/plum）或 `--accent #RRGGBB` |
+| `未知意象` | `--motif` 拼错 | 取 `none` / `globe` / `arch` |
+| `未知封面格式` | `--format` 拼错 | 取 `png` / `jpeg` |
 | `未知色板 / 未知开本` | 名字拼错，或用了已停用版式的色板名 | 按上表取（`crimson` 是旧版式的） |
 | `找不到中文字体` | 系统无 CJK 字体 | 装 `fonts-noto-cjk` 或配 `cover.font_serif` |
 | `⚠ 未找到行书字库` | 行书缺失，已降级宋体 | 装行书字体或配 `cover.imprint_font`；接受降级也可以 |

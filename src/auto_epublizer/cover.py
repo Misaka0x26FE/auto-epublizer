@@ -55,10 +55,24 @@ SPEC_FILE = "preprocessing/cover-spec.json"
 #: 生成封面登记（CLI 写）：文件 + 摘要 + 设计摘要，用于构建期同步与过期判定。
 RECORD_FILE = "preprocessing/cover-generated.json"
 #: 生成封面的落盘位置（与其它媒体同目录，build 直接按 EPUB 相对路径引用）。
-GENERATED_REL = "structured/raw/media/cover-generated.png"
+GENERATED_STEM = "structured/raw/media/cover-generated"
+#: 输出格式：PNG（版式色块锐利）或 JPEG（纸纹照片感、体积小；hanze-academic 默认）。
+FORMATS: tuple[str, ...] = ("png", "jpeg")
+JPEG_QUALITY = 92
 
-#: 唯一版式名（旧的 magadan 版式已停用；记录与摘要里仍保留该字段以便追溯）。
+
+def generated_rel(fmt: str = "png") -> str:
+    """生成封面在工作区内的相对路径（按格式换后缀）。"""
+    return f"{GENERATED_STEM}.jpg" if fmt == "jpeg" else f"{GENERATED_STEM}.png"
+
+
+GENERATED_REL = generated_rel("png")
+
+#: 版式名：quarto（界栏，默认）与 hanze-academic（汉译学术本，issue #100）。
+#: 旧的 magadan 版式已停用；记录与摘要里仍保留 style 字段以便追溯。
 STYLE = "quarto"
+DEFAULT_STYLE = "quarto"
+STYLES: tuple[str, ...] = ("quarto", "hanze-academic")
 
 #: 可辨认底线：600px 宽的成品上，最小字号的字身不得低于 14px（CJK 衬线）。
 LEGIBILITY_EM_PX = 14.0
@@ -216,6 +230,16 @@ class CoverSpec:
     lead: list[str] = field(default_factory=list)
     series: list[str] = field(default_factory=list)
     imprint: str = ""
+    #: 署名后缀（「马加丹汉化组　译」里的「译」）；空串=只写署名
+    credit_role: str = "译"
+    #: 仅 hanze-academic：意象种类（none / globe / arch）
+    motif: str = "none"
+    #: 仅 hanze-academic：书系签（默认「汉 译 学 术 本」）
+    series_mark: str = ""
+    #: 仅 hanze-academic：出版行（如「BRILL · 2023」）
+    publisher_line: str = ""
+    #: 仅 hanze-academic：免责行（如「内部研究译本　不公开分发」）
+    note_line: str = ""
     style: str = STYLE
     palette: str = "ink"
 
@@ -235,6 +259,11 @@ class CoverSpec:
                 self.lead,
                 self.series,
                 self.imprint,
+                self.credit_role,
+                self.motif,
+                self.series_mark,
+                self.publisher_line,
+                self.note_line,
             ],
         }
         raw = json.dumps(payload, ensure_ascii=False, sort_keys=True)
@@ -442,20 +471,37 @@ def _default_credits(meta: Any) -> list[str]:
     return lines
 
 
+def resolve_format(style_name: str, fmt: str | None = None, cfg: Any = None) -> str:
+    """决定输出格式：显式 > 配置 > 版式默认（hanze 用 JPEG，其余 PNG）。"""
+    name = str(fmt or getattr(getattr(cfg, "cover", None), "format", "") or "").strip().lower()
+    if not name:
+        name = "jpeg" if style_name == "hanze-academic" else "png"
+    if name in ("jpg", "jpeg"):
+        return "jpeg"
+    if name == "png":
+        return "png"
+    raise CoverError(f"未知封面格式：{name}（可选 {', '.join(FORMATS)}）")
+
+
 def resolve_spec(
     pub: Any,
     cfg: Any,
     *,
     spec_file: dict[str, Any] | None = None,
+    overrides: dict[str, Any] | None = None,
     palette: str | None = None,
     imprint: str | None = None,
     size: str | None = None,
     style: str | None = None,
 ) -> CoverSpec:
-    """元数据 + 设计稿 + 命令行覆盖 → CoverSpec（不渲染、不落盘）。"""
+    """元数据 + 设计稿 + 命令行覆盖 → CoverSpec（不渲染、不落盘）。
+
+    ``spec_file`` 是 agent 手写的设计稿；``overrides`` 是命令行一次性覆盖
+    （``--accent``/``--motif``/``--series`` 等），后者优先。
+    """
     from auto_epublizer.pdfexport import SIZES
 
-    overrides = spec_file or {}
+    overrides = {**(spec_file or {}), **(overrides or {})}
     meta = pub.meta
 
     title_text = str(overrides.get("title") or meta.title_translated or meta.title or "").strip()
@@ -470,14 +516,42 @@ def resolve_spec(
         source_title = str(meta.title or "").strip()
         original = source_title if source_title and source_title != title_text else ""
 
-    style_name = str(style or overrides.get("style") or cfg.cover.style or STYLE)
-    if style_name != STYLE:
-        hint = "（旧版式 magadan 已停用，统一用 quarto/界栏）" if style_name == "magadan" else ""
-        raise CoverError(f"未知版式：{style_name}{hint}；本版只支持 {STYLE}")
-    palette_name = str(palette or overrides.get("palette") or cfg.cover.palette or "ink")
-    if palette_name not in PALETTES:
-        raise CoverError(f"未知色板：{palette_name}（可选 {', '.join(PALETTES)}）")
-    colors = dict(PALETTES[palette_name])
+    style_name = str(style or overrides.get("style") or cfg.cover.style or DEFAULT_STYLE)
+    if style_name == "magadan":
+        raise CoverError("旧版式 magadan 已停用，统一用 quarto/界栏 或 hanze-academic/汉译学术本")
+    if style_name not in STYLES:
+        raise CoverError(f"未知版式：{style_name}（可选 {', '.join(STYLES)}）")
+
+    palette_name = str(
+        palette
+        or overrides.get("palette")
+        or cfg.cover.palette
+        or ("ink" if style_name == "quarto" else "ochre")
+    )
+    if style_name == "quarto":
+        if palette_name not in PALETTES:
+            raise CoverError(f"未知色板：{palette_name}（可选 {', '.join(PALETTES)}）")
+        colors = dict(PALETTES[palette_name])
+    else:
+        from . import cover_hanze as hz
+
+        accent = str(overrides.get("accent") or "").strip()
+        if not accent and palette_name in hz.ACCENTS:
+            accent = hz.ACCENTS[palette_name]
+        if not accent:
+            raise CoverError(
+                f"未知主色：{palette_name}（可选 {', '.join(hz.ACCENTS)}，或直接用 --accent #RRGGBB）"
+            )
+        colors = {
+            "paper": hz.PAPER,
+            "gold": hz.GOLD,
+            "ink": hz.INK_C,
+            "muted": hz.MUTED,
+            "faint": hz.FAINT,
+            "orig": hz.ORIG,
+            "orig_sub": hz.ORIG_SUB,
+            "accent": accent,
+        }
 
     size_name = str(size or overrides.get("size") or cfg.cover.size or "a5").lower()
     if size_name not in SIZES:
@@ -486,9 +560,27 @@ def resolve_spec(
     width = mm_w * 72 / 25.4
     height = mm_h * 72 / 25.4
 
-    imprint_text = (
-        imprint if imprint is not None else (overrides.get("imprint") or cfg.cover.imprint or "")
-    )
+    if imprint is not None:
+        imprint_text = imprint
+    elif "imprint" in overrides:
+        imprint_text = str(overrides["imprint"])
+    else:
+        imprint_text = cfg.cover.imprint or ""
+
+    from . import cover_hanze as _hz
+
+    motif = str(overrides.get("motif") or "none").lower()
+    if motif in ("", "off", "none"):
+        motif = "none"
+    elif motif not in _hz.MOTIFS:
+        raise CoverError(f"未知意象：{motif}（可选 {', '.join(_hz.MOTIFS)}）")
+    series_mark = str(overrides.get("series_mark") or "")
+    publisher_line = str(overrides.get("publisher_line") or "").strip()
+    if not publisher_line and style_name == "hanze-academic":
+        bits = [str(meta.publisher or "").strip(), str(meta.date or "").strip()]
+        publisher_line = " · ".join(b for b in bits if b)
+    if style_name == "hanze-academic" and not series_mark:
+        series_mark = "汉 译 学 术 本"
 
     return CoverSpec(
         width=width,
@@ -502,7 +594,12 @@ def resolve_spec(
         lead=_lines(overrides.get("lead") or ""),
         series=_lines(overrides.get("series") or ""),
         imprint=str(imprint_text).strip(),
-        style=STYLE,
+        credit_role=str(overrides.get("credit_role") or "译"),
+        motif=motif,
+        series_mark=series_mark,
+        publisher_line=publisher_line,
+        note_line=str(overrides.get("note_line") or ""),
+        style=style_name,
         palette=palette_name,
     )
 
@@ -825,7 +922,16 @@ def _quarto_layout(
 
 
 def _draw(spec: CoverSpec, fonts: Fonts) -> pymupdf.Document:
-    """把设计画到一页上：整幅底面 + 反白书名 + 双线界栏 + 短横 + 斜体原文名。"""
+    """按 ``spec.style`` 分派到具体版式。"""
+    if spec.style == "hanze-academic":
+        from . import cover_hanze
+
+        return cover_hanze.draw(spec, fonts)
+    return _draw_quarto(spec, fonts)
+
+
+def _draw_quarto(spec: CoverSpec, fonts: Fonts) -> pymupdf.Document:
+    """quarto（界栏）：整幅底面 + 反白书名 + 双线界栏 + 短横 + 斜体原文名。"""
     measurer = _Measurer(fonts)
     W, H = spec.width, spec.height
     scale = 1.0
@@ -884,16 +990,24 @@ def _draw(spec: CoverSpec, fonts: Fonts) -> pymupdf.Document:
     return doc
 
 
-def render_png(spec: CoverSpec, fonts: Fonts, *, dpi: int = 300) -> bytes:
-    """渲染为 PNG 字节（确定性：同输入同输出）。"""
+def render_image(spec: CoverSpec, fonts: Fonts, *, dpi: int = 300, fmt: str = "png") -> bytes:
+    """渲染为位图字节（确定性：同输入同输出）；``fmt`` 取 png / jpeg。"""
     if dpi < 72 or dpi > 1200:
         raise CoverError(f"dpi 超出范围（72–1200）：{dpi}")
+    fmt = resolve_format(spec.style, fmt)
     doc = _draw(spec, fonts)
     try:
         pixmap = doc[0].get_pixmap(dpi=dpi)
+        if fmt == "jpeg":
+            return pixmap.tobytes("jpg", jpg_quality=JPEG_QUALITY)
         return pixmap.tobytes("png")
     finally:
         doc.close()
+
+
+def render_png(spec: CoverSpec, fonts: Fonts, *, dpi: int = 300) -> bytes:
+    """渲染为 PNG 字节（``render_image`` 的薄包装，保留旧名字）。"""
+    return render_image(spec, fonts, dpi=dpi, fmt="png")
 
 
 def render_pdf(spec: CoverSpec, fonts: Fonts) -> bytes:
@@ -942,26 +1056,43 @@ def generate(
     dpi: int | None = None,
     pdf: bool = False,
     fonts: Fonts | None = None,
+    overrides: dict[str, Any] | None = None,
+    fmt: str | None = None,
 ) -> dict[str, Any]:
-    """生成封面并登记（CLI 入口）；返回含路径、尺寸、字体与降级信息的记录。"""
-    spec = resolve_spec(
-        pub,
-        cfg,
-        spec_file=read_spec_file(store),
-        palette=palette,
-        imprint=imprint,
-        size=size,
-        style=style,
-    )
+    """生成封面并登记（CLI 入口）；返回含路径、尺寸、字体与降级信息的记录。
+
+    ``overrides`` 是一次性设计覆盖（``--accent``/``--motif``/``--series`` 等），
+    会原样存进登记，构建期重绘时照用，避免「命令行调过的版式被 auto_sync 抹掉」。
+    """
+    one_shot = {
+        k: v
+        for k, v in {
+            "style": style,
+            "palette": palette,
+            "size": size,
+            **(overrides or {}),
+        }.items()
+        if v not in (None, "")
+    }
+    if imprint is not None and str(imprint).strip():
+        one_shot["imprint"] = imprint
+    spec = resolve_spec(pub, cfg, spec_file=read_spec_file(store), overrides=one_shot)
     fonts = fonts or find_fonts(
         cjk=cfg.cover.font_serif, latin=cfg.cover.font_latin, script=cfg.cover.imprint_font
     )
     dpi = int(dpi or cfg.cover.dpi)
-    png = render_png(spec, fonts, dpi=dpi)
+    fmt = resolve_format(spec.style, fmt, cfg)
+    data = render_image(spec, fonts, dpi=dpi, fmt=fmt)
 
-    target = generated_path(store)
+    rel = generated_rel(fmt)
+    target = store.dir / rel
     target.parent.mkdir(parents=True, exist_ok=True)
-    target.write_bytes(png)
+    target.write_bytes(data)
+    # 换过格式就把另一种后缀的旧件清掉，免得 build 看到两版封面
+    for other in FORMATS:
+        stale = store.dir / generated_rel(other)
+        if stale != target and stale.is_file():
+            stale.unlink()
     pdf_path = target.with_suffix(".pdf")
     pdf_bytes = render_pdf(spec, fonts) if pdf else None
     if pdf_bytes is not None:
@@ -970,7 +1101,7 @@ def generate(
         # 额外导出（不改变登记位置）：--out 只是「顺手另存一份」
         exported = Path(out)
         exported.parent.mkdir(parents=True, exist_ok=True)
-        exported.write_bytes(png)
+        exported.write_bytes(data)
         record_export = exported.as_posix()
         if pdf_bytes is not None:
             exported.with_suffix(".pdf").write_bytes(pdf_bytes)
@@ -991,11 +1122,13 @@ def generate(
         "palette": spec.palette,
         "size_mm": [round(spec.width * 25.4 / 72, 2), round(spec.height * 25.4 / 72, 2)],
         "dpi": dpi,
-        "file": GENERATED_REL,
-        "pdf": "structured/raw/media/cover-generated.pdf" if pdf_bytes else None,
+        "format": fmt,
+        "file": rel,
+        "pdf": f"{GENERATED_STEM}.pdf" if pdf_bytes else None,
         "export": record_export,
-        "sha256": _digest(png),
+        "sha256": _digest(data),
         "design_digest": spec.digest(),
+        "overrides": one_shot,
         "fonts": fonts.describe(),
         "text": {
             "title": spec.title,
@@ -1006,6 +1139,11 @@ def generate(
             "lead": spec.lead,
             "series": spec.series,
             "imprint": spec.imprint,
+            "motif": spec.motif,
+            "series_mark": spec.series_mark,
+            "publisher_line": spec.publisher_line,
+            "note_line": spec.note_line,
+            "credit_role": spec.credit_role,
         },
     }
     (store.dir / RECORD_FILE).write_text(
@@ -1030,25 +1168,38 @@ def sync_for_build(store: RunStore, pub: Any, cfg: Any) -> dict[str, Any] | None
     record = read_record(store)
     if record is None:
         return None
-    path = store.dir / str(record.get("file") or "")
+    rel = str(record.get("file") or "")
+    path = store.dir / rel
     if not path.is_file():
-        store.log_event("cover_generated_missing", file=str(record.get("file")))
+        store.log_event("cover_generated_missing", file=rel)
         return None
-    if str(record.get("file")) != GENERATED_REL:
+    if rel not in (generated_rel("png"), generated_rel("jpeg")):
         # 登记指向别处（agent 用 --out 导出到工作区外）：只认标准位置
-        store.log_event("cover_generated_external", file=str(record.get("file")))
+        store.log_event("cover_generated_external", file=rel)
         return None
     data = path.read_bytes()
-    spec = resolve_spec(pub, cfg, spec_file=read_spec_file(store))
+    stored = record.get("overrides")
+    spec = resolve_spec(
+        pub,
+        cfg,
+        spec_file=read_spec_file(store),
+        overrides=stored if isinstance(stored, dict) else {},
+    )
     if record.get("design_digest") != spec.digest():
         if not cfg.cover.auto_sync:
-            store.log_event("cover_generated_stale", file=GENERATED_REL)
+            store.log_event("cover_generated_stale", file=rel)
             return None
-        refreshed = generate(store, pub, cfg, dpi=cfg.cover.dpi)
-        data = (store.dir / GENERATED_REL).read_bytes()
-        store.log_event(
-            "cover_regenerated", file=GENERATED_REL, design=refreshed["design_digest"][:12]
+        refreshed = generate(
+            store,
+            pub,
+            cfg,
+            dpi=cfg.cover.dpi,
+            fmt=record.get("format"),
+            overrides=stored if isinstance(stored, dict) else None,
         )
+        rel = refreshed["file"]
+        data = (store.dir / rel).read_bytes()
+        store.log_event("cover_regenerated", file=rel, design=refreshed["design_digest"][:12])
     elif record.get("sha256") != _digest(data):
-        store.log_event("cover_generated_tampered", file=GENERATED_REL)
-    return {"epub_path": f"media/{Path(GENERATED_REL).name}", "data": data}
+        store.log_event("cover_generated_tampered", file=rel)
+    return {"epub_path": f"media/{Path(rel).name}", "data": data}

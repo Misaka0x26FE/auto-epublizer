@@ -85,17 +85,21 @@ class OutputConfig(BaseModel):
 
 
 class CoverConfig(BaseModel):
-    """生成式书封（Magadan 版式）设置；只影响「没有源封面」的书。
+    """生成式书封设置；只影响「没有源封面」的书。
 
+    ``style`` 选版式：``quarto``（界栏，默认）或 ``hanze-academic``（汉译学术本）。
     ``imprint`` 是底部署名（译制组/出版方），空串=不画署名行。
     字体留空即按系统字体发现（思源宋体 / Nimbus Roman / 志莽行书一类），
     显式给路径时以路径为准。
     """
 
     enabled: bool = True  # cover 命令可用；关掉则连显式生成一并拒绝
-    style: str = "quarto"  # 只有 quarto（界栏）；旧版 magadan 已停用（写成它会报错）
-    palette: str = "ink"  # quarto: ink/oxblood/forest/indigo/aubergine/slate/rust/paper
+    style: str = "quarto"  # quarto（界栏）/ hanze-academic（汉译学术本）；旧版 magadan 已停用
+    palette: str = ""  # 空=按版式默认（quarto: ink / hanze: ochre）
+    format: str = ""  # 空=按版式默认（quarto: png / hanze: jpeg q92）；可写 png / jpeg
     size: str = "a5"  # 与 pdf --size 同一组开本
+    dpi: int = Field(300, ge=72, le=1200)
+    imprint: str = "马加丹汉化组"
     dpi: int = Field(300, ge=72, le=1200)
     imprint: str = "马加丹汉化组"
     imprint_font: str = ""  # 行书字体文件；空=自动发现

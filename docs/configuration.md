@@ -1,4 +1,4 @@
-<!-- i18n: source=configuration.zh.md sha256=9af6619174d190d8033de17b7852f7521713da7b10742ef319c08941fee95522 -->
+<!-- i18n: source=configuration.zh.md sha256=8413322f94635ac0448efe4a605f184095a538978d5efa60d5d2c5b4ce8fa446 -->
 > **English** | [中文](configuration.zh.md)
 
 # Configuration reference (target `config.yaml` schema)
@@ -65,10 +65,12 @@ paths:
 # ── generated cover (books without a source cover) ──────────
 cover:
   enabled: true           # the cover command is available; false = even explicit generation is refused
-  style: quarto           # only quarto (界栏); the previous magadan layout is disabled (naming it errors)
-  palette: ink            # ink|oxblood|forest|indigo|aubergine|slate|rust|paper
+  style: quarto           # quarto (界栏) / hanze-academic (汉译学术本); the magadan layout is disabled
+  palette: ""             # empty = layout default; quarto: ink|oxblood|forest|indigo|aubergine|slate|rust|paper
+                          #                         hanze: ochre|forest|moss|ink|navy|plum
+  format: ""              # empty = layout default (quarto: png / hanze: jpeg q92); or png|jpeg
   size: a5                # same set as pdf --size: a5|32k|b5|16k
-  dpi: 300                # PNG resolution (72–1200)
+  dpi: 300                # raster resolution (72–1200)
   imprint: "马加丹汉化组"  # signature at the bottom; empty string = no signature line
   imprint_font: ""        # brush font file; empty = auto-discovery (Zhi Mang Xing / Ma Shan Zheng / …)
   font_serif: ""          # CJK serif file; empty = auto-discovery (Noto Serif CJK / Songti)
@@ -93,10 +95,12 @@ deterministic typesetting (PyMuPDF, no LLM, no browser): headline blocks come fr
 `preprocessing/cover-spec.json`, and the result is registered in
 `preprocessing/cover-generated.json`.
 
-One layout (`quarto`, 界栏): full-bleed ground + reversed flush-left title + double hairline at
-the left edge + short accent rule + italic original title + credits bottom-left + signature
-bottom-right. The previous `magadan` layout is **disabled**; asking for it is an explicit error
-rather than a silent style switch.
+Two layouts (use one per book group): `quarto` (default, 界栏) — full-bleed ground + reversed
+flush-left title + double hairline at the left edge + short accent rule + italic original title
++ credits bottom-left + signature bottom-right; and `hanze-academic` (汉译学术本) — paper grain
++ double frame + centred four-block text + optional motif (`globe`/`arch`), one accent colour per
+book, JPEG q92 by default. The previous `magadan` layout is **disabled**; asking for it is an
+explicit error rather than a silent style switch.
 
 **Legibility floor**: covers are read down to 600px wide (smaller resolutions are out of
 scope). Every type size is therefore at least 14px at that width — `MIN_TYPE_FRAC` = 14/600 ≈
@@ -105,7 +109,10 @@ layout ratios is fine; pushing any size below that line is a defect.
 
 ```bash
 auto-epublizer cover --workspace <ws> [--palette oxblood] [--size a5] [--dpi 300] \
-    [--size a5] [--dpi 300] [--pdf] [--json]
+    [--pdf] [--json] [--format png|jpeg]
+auto-epublizer cover --workspace <ws> --template hanze-academic \
+    [--accent "#7A2222"] [--motif none|globe|arch] [--series "STUDIES · 229"] \
+    [--subtitle "…"] [--publisher-line "BRILL · 2023"] [--note-line "内部研究译本"]
 auto-epublizer cover --workspace <ws> --remove
 ```
 

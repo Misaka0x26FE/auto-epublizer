@@ -7,7 +7,7 @@ metadata:
   suite: auto-epublizer
   workspace_model: publication.json
 ---
-<!-- i18n: source=SKILL.zh.md sha256=fad87cfbc4fec88598df5eb159d2077ee6f1bcd5c702932a5aa0053297590ec7 -->
+<!-- i18n: source=SKILL.zh.md sha256=38249ba34e992f1ff83018d0f1bd4dcb438dd6cd9dc3ae54f72a0163f70c788d -->
 > **English** | [中文](SKILL.zh.md)
 
 # auto-epublizer
@@ -86,7 +86,7 @@ work-root rather than accidentally calling a global namesake. Read only the curr
 | Pre-delivery full validation (after qa, before delivery; mandatory) | `references/delivery.md` |
 | `evidence report/source --json` read-only evidence; `repair apply/recover` approved repairs and pending recovery | `references/quality-evidence.md` |
 | EPUB packaging, code/raw HTML, SVG/media identity, software fingerprint, production credits and nav/NCX entry | `references/build.md` |
-| Books without a source cover: generated cover (Magadan layout), `cover-spec.json` design sheet, palettes/trim sizes, font fallback, source cover wins | `references/cover.md` |
+| Books without a source cover: generated covers (`quarto` 界栏 / `hanze-academic` 汉译学术本), `cover-spec.json` design sheet, palettes/trim sizes/formats, font fallback, source cover wins | `references/cover.md` |
 | epubcheck + unpack audit, independent body/note reconciliation, segmentation advisory, report invalidation | `references/qa.md` |
 | Genre profile (novel/academic/paper/poetry/newspaper) application | `references/style.md` |
 | Complete release-conditions set / error-code quick reference / troubleshooting interpretation | `references/invariants.md` |

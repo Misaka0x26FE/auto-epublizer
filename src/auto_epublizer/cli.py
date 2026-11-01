@@ -585,22 +585,48 @@ def cover(
     workspace: str | None = typer.Option(None, "--workspace", help="工作区目录"),
     out: str | None = typer.Option(None, "-o", "--out", help="额外导出 PNG 路径（登记仍在工作区）"),
     style: str | None = typer.Option(
-        None, "--style", help="版式：quarto（界栏，唯一；旧版 magadan 已停用）"
+        None,
+        "--style",
+        "--template",
+        help="版式：quarto（界栏，默认）或 hanze-academic（汉译学术本）；旧版 magadan 已停用",
     ),
     palette: str | None = typer.Option(
         None,
         "--palette",
-        help="色板：ink/oxblood/forest/indigo/aubergine/slate/rust/paper",
+        help="配色：quarto 取 ink/oxblood/forest/indigo/aubergine/slate/rust/paper；"
+        "hanze 取 ochre/forest/moss/ink/navy/plum",
+    ),
+    accent: str | None = typer.Option(
+        None, "--accent", help="hanze 主色（#RRGGBB），覆盖 --palette 的主色"
+    ),
+    motif: str | None = typer.Option(
+        None, "--motif", help="hanze 意象区：none（默认）/globe（经纬网地球）/arch（尖拱窗）"
+    ),
+    series: str | None = typer.Option(
+        None, "--series", help="hanze 丛书行（英文小字，如 STUDIES IN … · 229）"
+    ),
+    subtitle: str | None = typer.Option(None, "--subtitle", help="中文副题（元数据里没有时补）"),
+    publisher_line: str | None = typer.Option(
+        None, "--publisher-line", help="hanze 出版行（缺省取 publisher · date）"
+    ),
+    note_line: str | None = typer.Option(
+        None, "--note-line", help="hanze 免责行（如「内部研究译本　不公开分发」）"
+    ),
+    credit_role: str | None = typer.Option(
+        None, "--credit-role", help="署名后缀（默认「译」；给空串则只写署名）"
+    ),
+    fmt: str | None = typer.Option(
+        None, "--format", help="输出格式：png/jpeg（hanze 默认 jpeg q92，其余 png）"
     ),
     imprint: str | None = typer.Option(None, "--imprint", help="底部署名（空串=不画署名）"),
     size: str | None = typer.Option(None, "--size", help="开本（a5/32k/b5/16k）"),
-    dpi: int | None = typer.Option(None, "--dpi", help="PNG 分辨率（72–1200，默认 300）"),
+    dpi: int | None = typer.Option(None, "--dpi", help="位图分辨率（72–1200，默认 300）"),
     pdf_out: bool = typer.Option(False, "--pdf", help="同时输出印刷用 PDF"),
     remove: bool = typer.Option(False, "--remove", help="撤销生成封面（源封面不受影响）"),
     json_out: bool = typer.Option(False, "--json", help="机器可读输出"),
     config: str | None = typer.Option(None, "--config", help="配置文件路径"),
 ) -> None:
-    """生成书封（默认 quarto/界栏版式；没有源封面的书用，构建时自动写 cover-image）。"""
+    """生成书封（quarto/界栏 或 hanze-academic/汉译学术本；构建时自动写 cover-image）。"""
     cfg = load_config(config or _CONFIG_PATH)
     store = _store_from(workspace, cfg)
     if remove:
@@ -624,6 +650,20 @@ def cover(
             dpi=dpi,
             pdf=pdf_out,
             config=cfg,
+            overrides={
+                k: v
+                for k, v in {
+                    "accent": accent,
+                    "motif": motif,
+                    "series": series,
+                    "subtitle": subtitle,
+                    "publisher_line": publisher_line,
+                    "note_line": note_line,
+                    "credit_role": credit_role,
+                }.items()
+                if v is not None
+            },
+            fmt=fmt,
         )
     except (ValueError, OSError, orch.OrchestrationError) as exc:
         raise typer.Exit(f"封面生成失败：{exc}") from None
@@ -634,7 +674,7 @@ def cover(
     console.print(
         f"[green]封面已生成：[/green]{store.dir / record['file']}"
         f"[dim]（{size_mm[0]}×{size_mm[1]} mm，{record['dpi']} dpi，"
-        f"色板 {record['palette']}）[/dim]"
+        f"{record.get('style', '')}/{record['palette']}，{record.get('format', 'png')}）[/dim]"
     )
     if record.get("pdf"):
         console.print(f"[green]印刷 PDF：[/green]{store.dir / record['pdf']}")

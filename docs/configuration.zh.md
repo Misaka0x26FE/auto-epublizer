@@ -59,10 +59,12 @@ paths:
 # ── 生成式封面（没有源封面的书）──────────────────────────────
 cover:
   enabled: true           # cover 命令可用；false=连显式生成也拒绝
-  style: quarto           # 只有 quarto（界栏）；旧版 magadan 已停用（写成它会明确报错）
-  palette: ink            # ink|oxblood|forest|indigo|aubergine|slate|rust|paper
+  style: quarto           # quarto（界栏）/ hanze-academic（汉译学术本）；旧版 magadan 已停用
+  palette: ""             # 空=按版式默认；quarto: ink|oxblood|forest|indigo|aubergine|slate|rust|paper
+                          #                     hanze: ochre|forest|moss|ink|navy|plum
+  format: ""              # 空=按版式默认（quarto: png / hanze: jpeg q92）；也可写 png|jpeg
   size: a5                # 与 pdf --size 同一组：a5|32k|b5|16k
-  dpi: 300                # PNG 分辨率（72–1200）
+  dpi: 300                # 位图分辨率（72–1200）
   imprint: "马加丹汉化组"  # 底部署名；空串=不画署名行
   imprint_font: ""        # 行书字体文件；空=自动发现（志莽行书/马善政/…）
   font_serif: ""          # 中文宋体文件；空=自动发现（思源宋体/宋体）
@@ -93,9 +95,18 @@ output:
 ≥14px —— `MIN_TYPE_FRAC` = 14/600 ≈ 2.34% 页宽，由代码夹紧并由
 `tests/test_cover_render.py` 拦住。改比例可以，把任何字号压到这条线下就是缺陷。
 
+两套版式（同一批书用同一套）：
+
+- `quarto`（默认，界栏）：整幅深底 + 反白左对齐书名 + 左侧双线界栏，一套书靠色板分家；
+- `hanze-academic`（汉译学术本）：纸纹 + 双线框 + 居中四段式 + 可选意象区（`globe`/`arch`），
+  主色取书。默认输出 JPEG q92，`format` 可改。
+
 ```bash
 auto-epublizer cover --workspace <ws> [--palette oxblood] [--size a5] [--dpi 300] \
-    [--size a5] [--dpi 300] [--pdf] [--json]
+    [--pdf] [--json] [--format png|jpeg]
+auto-epublizer cover --workspace <ws> --template hanze-academic \
+    [--accent "#7A2222"] [--motif none|globe|arch] [--series "STUDIES · 229"] \
+    [--subtitle "…"] [--publisher-line "BRILL · 2023"] [--note-line "内部研究译本"]
 auto-epublizer cover --workspace <ws> --remove
 ```
 

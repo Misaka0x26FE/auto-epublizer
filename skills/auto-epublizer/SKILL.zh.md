@@ -73,7 +73,7 @@ CLI 无法探测），据此选 ingest 路由（见 `references/ingest.md`）。
 | 交付前全量校验（qa 之后、交付之前，强制） | `references/delivery.zh.md` |
 | `evidence report/source --json` 只读证据；`repair apply/recover` 批准修复及未决恢复 | `references/quality-evidence.zh.md` |
 | EPUB 封装、代码/raw HTML、SVG/媒体身份、软件指纹、制作页署名与 nav/NCX 入口 | `references/build.md` |
-| 无源封面的书：生成式封面（Magadan 版式）、`cover-spec.json` 设计稿、色板/开本、字体降级、源封面优先 | `references/cover.md` |
+| 无源封面的书：生成式封面（`quarto` 界栏 / `hanze-academic` 汉译学术本）、`cover-spec.json` 设计稿、色板/开本/格式、字体降级、源封面优先 | `references/cover.md` |
 | epubcheck + 解包审计、正文/注文独立对账、注释分段疑点 advisory、报告失效 | `references/qa.md` |
 | 文体档案（novel/academic/paper/poetry/newspaper）应用 | `references/style.md` |
 | 放行条件全集 / 错误码速查 / 排障判读 | `references/invariants.md` |

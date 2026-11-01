@@ -1458,8 +1458,10 @@ def generate_cover(
     dpi: int | None = None,
     pdf: bool = False,
     config: Config | None = None,
+    overrides: dict[str, Any] | None = None,
+    fmt: str | None = None,
 ) -> dict[str, Any]:
-    """生成书封（quarto/界栏版式，PNG，可选 PDF）并登记；返回登记记录。
+    """生成书封（quarto/界栏 或 hanze-academic/汉译学术本）并登记；返回登记记录。
 
     这是**显式**动作：只有跑过它（或工作区里已有 ``preprocessing/cover-generated.json``）
     的书，build 才会把生成封面写进 cover-image——「没有源封面」不等于「必须造封面」。
@@ -1481,6 +1483,8 @@ def generate_cover(
         size=size,
         dpi=dpi,
         pdf=pdf,
+        overrides=overrides,
+        fmt=fmt,
     )
 
 
@@ -1491,12 +1495,21 @@ def delete_cover(store: RunStore) -> dict[str, Any]:
     record = cover_mod.read_record(store)
     if record is None:
         raise OrchestrationError("没有生成封面可撤销")
-    pdf_rel = cover_mod.GENERATED_REL.rsplit(".", 1)[0] + ".pdf"
-    for rel in (cover_mod.RECORD_FILE, cover_mod.GENERATED_REL, pdf_rel):
+    pdf_rel = cover_mod.GENERATED_STEM + ".pdf"
+    rels = [
+        cover_mod.RECORD_FILE,
+        *(cover_mod.generated_rel(f) for f in cover_mod.FORMATS),
+        pdf_rel,
+    ]
+    if record.get("file"):
+        rels.append(str(record["file"]))
+    for rel in dict.fromkeys(rels):
         path = store.dir / rel
         if path.is_file():
             path.unlink()
-    store.log_event("cover_generated_removed", file=cover_mod.GENERATED_REL)
+    store.log_event(
+        "cover_generated_removed", file=str(record.get("file") or cover_mod.GENERATED_REL)
+    )
     return {"removed": True}
 
 
@@ -1531,12 +1544,20 @@ def _generated_cover_state(store: RunStore, pub: Any, cfg: Config) -> dict[str, 
         record = cover_mod.read_record(store)
         if record is None:
             return None
-        spec = cover_mod.resolve_spec(pub, cfg, spec_file=cover_mod.read_spec_file(store))
+        stored = record.get("overrides")
+        spec = cover_mod.resolve_spec(
+            pub,
+            cfg,
+            spec_file=cover_mod.read_spec_file(store),
+            overrides=stored if isinstance(stored, dict) else {},
+        )
     except ValueError as exc:
         return {"error": str(exc)}
-    path = store.dir / cover_mod.GENERATED_REL
+    rel = str(record.get("file") or cover_mod.GENERATED_REL)
+    path = store.dir / rel
     return {
-        "file": cover_mod.GENERATED_REL,
+        "file": rel,
+        "format": record.get("format") or "png",
         "exists": path.is_file(),
         "palette": record.get("palette"),
         "dpi": record.get("dpi"),
