@@ -1174,3 +1174,29 @@ def test_collect_media_image_with_code_in_alt(tmp_path: Path) -> None:
     out2, files2, dropped2 = collect_media("`![x](media/pic.png)`", media_root)
     assert files2 == [] and dropped2 == []
     assert "`![x](media/pic.png)`" in out2
+
+
+def test_cover_landmark_makes_non_linear_cover_reachable(tmp_path: Path) -> None:
+    """非线性的封面文档必须有链接可达（EPUBCheck OPF-096，真实书复验发现）。"""
+    pub = _pub()
+    entries = [
+        {"id": "cover", "kind": "cover", "region": "cover", "title": "封面"},
+        {"id": "ch01", "kind": "chapter", "region": "body", "title": "第一章"},
+    ]
+    content = [
+        ("cover.xhtml", render_document("封面", "![封面](media/cover.png)\n", lang="zh-CN")),
+        ("ch01.xhtml", render_document("第一章", "正文。", lang="zh-CN")),
+    ]
+    out = build_epub(
+        pub,
+        entries,
+        content,
+        lang="zh-CN",
+        modified="2026-01-01T00:00:00Z",
+        out_path=tmp_path / "c.epub",
+        media_files=[("media/cover.png", b"PNGDATA")],
+        cover_media="media/cover.png",
+    )
+    with zipfile.ZipFile(out) as zf:
+        landmarks = zf.read("OEBPS/landmarks.xhtml").decode("utf-8")
+    assert '<a epub:type="cover" href="cover.xhtml">封面</a>' in landmarks

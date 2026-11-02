@@ -5,9 +5,11 @@
 from __future__ import annotations
 
 from .align import align_rows, read_align, split_sentences, write_align
+from .align_proposal import propose_alignment
 
 __all__ = [
     "align_rows",
+    "propose_alignment",
     "read_align",
     "split_sentences",
     "write_align",

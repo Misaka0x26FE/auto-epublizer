@@ -202,8 +202,11 @@ report.json 落盘的计数字段只有 `inserts_missing_files`（进放行门�
   重 build；`W_RESIDUE` 提示字面 `[^` 残留时即定义缺失。
 - `E_EPUB_PARA_LOST` → 成品缺失译文段落（正文探针 `epub_coverage` < 1.0）：
   从报告中定位 `unit:段`，核对 translation md 与 structured 后重 build。
-- `E_ALIGN_MD_DRIFT` → 译文正文与对照表不一致（一侧缺内容）：以 align 为准核对并
-  重写 md，重跑 `import`。
+- `E_ALIGN_MD_DRIFT` → 译文正文与对照表不一致（一侧缺内容），或块边界与 import 登记的
+  `meta.align_structure` 基线不符（全文归一化相等但段落被合并/拆分/换块）：以 align 为准
+  核对并重写 md，拆并句确认后重跑 `import` 重新登记基线。
+  历史单元没有基线时报告 `align_structure_unknown`（迁移可见性，不阻断放行），第一次
+  成功 `import` 后登记。
 - `W_DELIVERY_AUDIT_MISSING` → 全部单元已构建但无交付记录：按
   `references/delivery.md` 执行交付审计并写 `reviews/delivery-<ts>.md`。
 - `W_REPAIR_UNRESOLVED` → 语义整备有未决修复（`preprocessing/repairs.jsonl`
@@ -215,6 +218,9 @@ report.json 落盘的计数字段只有 `inserts_missing_files`（进放行门�
 - `provenance_incomplete` →
   - `E_UNIT_MISSING`：spine 缺单元——检查该单元译文/源文是否存在、是否为空壳被跳过；
   - `E_MEDIA_LOST`/`E_MEDIA_ORDER`：译文丢图或图片顺序变了——对照 `structured/` 原文补齐；
-  - 覆盖率 < 1.0：`report.json` 无逐段清单，跑 `g0` 看告警定位漏译段落；
+  - 覆盖率 < 1.0：读取 `report.json` / `qa --json` 的 `coverage_missing`（`unit:段序`）及
+    `coverage_missing_details`（unit、从 1 开始的正文块序 block、工作区相对 path、压缩空白后的
+    前 30 字 preview）；文本输出显示前 5 处，JSON 保留全部缺段。段序属于源文正文块，不是
+    文件行号或 align seq。纯转换无对齐时覆盖率仍为 null、清单为空，不表示已核验翻译覆盖；
   - `E_TOC_FLAT`：源文有层级（单元 level 链或正文子标题）但目录扁平——确认源单元 `level`
     已登记（重跑 init/preprocess）；单元内子标题锚点自 2026-09-29 起参与期望序列对账。

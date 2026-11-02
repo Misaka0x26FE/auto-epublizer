@@ -9,6 +9,24 @@ import pytest
 from auto_translator.glossary import Glossary
 from auto_translator.review import g0_unit_flags
 from auto_translator.review.fidelity import fidelity_flags
+from auto_translator.review.g0 import count_footnote_refs, footnote_numbers
+
+
+@pytest.mark.parametrize("tail", ["........551", "…....200", "．·．.226", ".......... [431]"])
+def test_toc_leader_pages_are_not_note_references(tail: str) -> None:
+    source = "Глава XII " + tail
+    assert count_footnote_refs(source) == 0
+    assert footnote_numbers(source) == set()
+    flags = g0_unit_flags([{"seq": 1, "src": source, "tgt": "第十二章"}], Glossary())
+    assert not [f for f in flags if f.check in {"footnote", "footnote_suspect"}]
+
+
+def test_toc_leader_does_not_exempt_real_notes_in_same_text() -> None:
+    source = "Contents ........551\nIntroduction.7\nAppendix[^ref-1]"
+    assert count_footnote_refs(source) == 1
+    assert footnote_numbers(source) == {7}
+    flags = g0_unit_flags([{"seq": 1, "src": source, "tgt": "目录\n导言\n附录"}], Glossary())
+    assert any(f.check == "footnote" and f.blocking for f in flags)
 
 
 @pytest.mark.parametrize(

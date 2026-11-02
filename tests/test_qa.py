@@ -592,6 +592,20 @@ def test_audit_theme_violations(tmp_path: Path) -> None:
     assert not result.ok
 
 
+def test_audit_theme_rejects_external_css(tmp_path: Path) -> None:
+    """按书样式不得引入 @import/url()：审计独立拦截（zip 注入模拟）。"""
+    out = _make_epub(tmp_path)
+    bad_css = b"p { margin: 0; }\n@import url(https://example.com/x.css);\n"
+    out2 = out.with_name("external.epub")
+    with zipfile.ZipFile(out) as zin, zipfile.ZipFile(out2, "w") as zout:
+        for item in zin.infolist():
+            data = bad_css if item.filename == "OEBPS/style.css" else zin.read(item.filename)
+            zout.writestr(item, data)
+    result = audit_epub(out2)
+    assert "E_THEME_EXTERNAL" in {finding.code for finding in result.findings}
+    assert not result.ok
+
+
 def test_audit_heading_skip_residue_anchor(tmp_path: Path) -> None:
     """P2 audit：标题跳级 / 残留 / 内部锚点（zip 注入模拟）。"""
     out = _make_epub(tmp_path)

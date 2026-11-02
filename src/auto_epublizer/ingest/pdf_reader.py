@@ -335,6 +335,7 @@ def _page_blocks(page: fitz.Page, *, rtl: bool = False) -> list[dict]:
         if block.get("type") != 0:
             continue
         lines: list[str] = []
+        line_boxes: list[dict] = []
         max_size = 0.0
         math_font: str | None = None
         math_font_chars = 0
@@ -354,6 +355,8 @@ def _page_blocks(page: fitz.Page, *, rtl: bool = False) -> list[dict]:
             if text.strip():
                 lines.append(text)
                 max_size = max(max_size, line_size)
+                if line.get("bbox"):
+                    line_boxes.append({"text": text, "bbox": list(line["bbox"])})
         text = "\n".join(lines)
         if not text.strip():
             continue
@@ -363,6 +366,8 @@ def _page_blocks(page: fitz.Page, *, rtl: bool = False) -> list[dict]:
             "text": text,
             "font_size": max_size,
         }
+        if line_boxes:
+            entry["lines"] = line_boxes
         if math_font is not None:
             entry["math_font"] = math_font
             entry["math_font_chars"] = math_font_chars

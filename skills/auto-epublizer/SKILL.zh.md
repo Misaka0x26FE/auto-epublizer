@@ -56,18 +56,18 @@ CLI 无法探测），据此选 ingest 路由（见 `references/ingest.md`）。
 | 场景 | 读 |
 |---|---|
 | 首次使用 / 安全续用（必须先于 version/doctor） | `references/work-root.md` |
-| 全新任务 / 状态路由 / 多阶段请求 / 命令总览 | `references/workflow.md` |
+| 全新任务 / 状态路由 / 多阶段请求 / 命令总览 / 旧批次归档（`archive` 预览、`--apply`、`--recover`） | `references/workflow.md` |
 | `status/build/qa/ledger/import/g0 --json`、错误字段与退出码 | `references/workflow.md` |
-| 印刷 PDF 封面/图版/宽表、目录绝对页码、出版元数据、`pdf --strict --json`、`pdf-verify` | `references/build.md` |
+| 印刷 PDF 封面/图版/宽表、目录绝对页码/`build --toc-page`、按书 `output.css`、出版元数据、`pdf --strict --json`、`pdf-verify` | `references/build.md` |
 | 注文证据清单、页码策略、工作根 dry-run/忽略理由 | `references/workflow.md`、`references/preprocessing.md`、`references/work-root.md` |
 | 弱模型路径：机器「下一任务」指针（`status --json`）+ 原子任务卡 | `references/taskcards/` |
 | 长期多书：工作根生成、批次 SHA256 交付、台账人工列保留、断链/忽略对账工具 | `references/work-root.md` |
 | 预处理：读 facts → 撰写 todo/capabilities/plan/global/units/terms/risks/report | `references/preprocessing.md` |
-| 文件解析：PDF / 扫描 PDF / EPUB / DOCX / HTML / TXT / MD / OCR | `references/ingest.md` |
+| 文件解析：PDF / 扫描 PDF / EPUB / DOCX / HTML / TXT / MD / OCR；`evidence layout/toc` 版面与目录来源证据 | `references/ingest.md`、`references/build.md` |
 | 语义整备：解析缺陷修复 / OCR 修正 / 结构重切（信号触发；OCR 必做） | `references/repair.md` |
 | 四层结构归类、清洗、页眉页脚/页码剔除、溯源 | `references/structure.md` |
 | 分层理解、术语播种、语言/体裁检测 | `references/analysis.md` |
-| 切片翻译、纯标题空 align、`unit,source,reason` 术语豁免及三入口 advisory | `references/translation.md` |
+| 切片翻译、纯标题空 align、`align-propose/align-apply` 重对齐提案与事务、`hygiene` 只读卫生扫描、`unit,source,reason` 术语豁免及三入口 advisory | `references/translation.md` |
 | 注释结构化与绑定、稳定 ref、注号碰撞/孤注宿主、完整注文与代码字面量边界 | `references/notes.md` |
 | 六道关 QC（G0–G5）、blocking/advisory 处理 | `references/review.md` |
 | 交付前全量校验（qa 之后、交付之前，强制） | `references/delivery.zh.md` |

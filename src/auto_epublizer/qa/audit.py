@@ -773,6 +773,12 @@ def audit_epub(
                 result.add("error", "E_THEME_FONT", "style.css 设置了字号（应由阅读器决定）")
             if re.search(r"(?<![-\w])color\s*:", css):
                 result.add("error", "E_THEME_COLOR", "style.css 设置了颜色（应由阅读器处理）")
+            if re.search(r"@import\b|url\s*\(", css, flags=re.IGNORECASE):
+                result.add(
+                    "error",
+                    "E_THEME_EXTERNAL",
+                    "style.css 含 @import/url() 外部或包内资源引用（按书样式不允许）",
+                )
 
         # 5c. 媒体审计（postprocessing-spec P1）：alt 空值/缺失、格式兼容、超大/超宽超高
         for name in names:

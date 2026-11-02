@@ -1,4 +1,4 @@
-<!-- i18n: source=qa.zh.md sha256=11b369b224e357a1e960e56decbe11ee019d2252ec8ca14608bb4203af4e72b1 -->
+<!-- i18n: source=qa.zh.md sha256=8c6559ff27017df161938a6b1b779c132ba7d3f47592b0d4ec34f968dfe7b7c9 -->
 > **English** | [中文](qa.zh.md)
 
 # QA (epubcheck + unpack audit)
@@ -240,7 +240,12 @@ the provenance result object and are not persisted — when a count is needed, t
   `epub_coverage` < 1.0): locate `unit:paragraph` from the report, check the translation
   md against structured, and rebuild.
 - `E_ALIGN_MD_DRIFT` → translation body inconsistent with the alignment (one side missing
-  content): check against align as authoritative, rewrite the md, and rerun `import`.
+  content), or block boundaries no longer match the `meta.align_structure` baseline
+  registered by import (normalized full text equal, but paragraphs were merged/split/moved):
+  check against align as authoritative, rewrite the md, and rerun `import` to register the
+  baseline once split/merge is confirmed. Historical units without a baseline appear as
+  `align_structure_unknown` (migration visibility, not a release blocker) and register on the
+  first successful `import`.
 - `W_DELIVERY_AUDIT_MISSING` → all units built but no delivery record: perform the
   delivery audit per `references/delivery.md` and write `reviews/delivery-<ts>.md`.
 - `W_REPAIR_UNRESOLVED` → semantic repair has an unresolved fix (status=unresolved in
@@ -257,8 +262,12 @@ the provenance result object and are not persisted — when a count is needed, t
     exists and whether it was skipped as an empty shell;
   - `E_MEDIA_LOST`/`E_MEDIA_ORDER`: the translation dropped an image or the image order
     changed — supplement against the `structured/` source text;
-  - coverage < 1.0: `report.json` has no per-paragraph list; run `g0` and use its warnings
-    to locate omitted paragraphs;
+  - coverage < 1.0: read `coverage_missing` (`unit:block`) and `coverage_missing_details`
+    from `report.json` / `qa --json`. Details contain unit, 1-based source body block,
+    workspace-relative path, and a whitespace-collapsed preview of up to 30 characters.
+    Text output shows the first five locations; JSON keeps every missing block. The block
+    number is neither a file line nor an align seq. Conversion without alignment still
+    has null coverage and empty lists, not a verified translation-coverage result;
   - `E_TOC_FLAT`: the source text has hierarchy (unit level chain or in-body sub-headings)
     but the TOC is flat — confirm the source unit `level` is registered (rerun init/preprocess);
     since 2026-09-29 in-unit sub-heading anchors participate in the expected-sequence reconciliation.

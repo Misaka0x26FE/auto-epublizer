@@ -15,7 +15,7 @@ from xml.etree import ElementTree as ET
 from auto_common.markdown import inline_code_chunks, markdown_chunks
 from auto_common.workspace import RunStore
 from auto_translator.review.fidelity import fidelity_flags
-from auto_translator.review.g0 import md_align_drift
+from auto_translator.review.g0 import align_structure_status, md_align_drift
 from auto_translator.translation.align import read_align
 
 from .build import slug_file
@@ -259,6 +259,9 @@ def collect_quality_evidence(
                 **census,
             )
             opf_path, spine = _package_documents(zf)
+            structure_baselines = {
+                unit.id: (unit.meta or {}).get("align_structure") for unit in pub.units
+            }
             for entry in entries:
                 uid = str(entry["id"])
                 rel = str(entry.get("rel_path") or "")
@@ -295,13 +298,28 @@ def collect_quality_evidence(
                     )
                 target_path = store.translation_dir / rel
                 if rows and target_path.is_file():
-                    drift = md_align_drift(target_path.read_text(encoding="utf-8"), rows)
+                    md_text = target_path.read_text(encoding="utf-8")
+                    drift = md_align_drift(md_text, rows)
+                    structure_status, structure_message = align_structure_status(
+                        md_text,
+                        rows,
+                        structure_baselines.get(uid),
+                        title=str(entry.get("title") or "") or None,
+                    )
+                    if structure_status == "changed" and structure_message:
+                        drift = [*drift, structure_message]
                     add(
                         f"md_align:{uid}",
-                        "fail" if drift else "pass",
+                        "fail" if drift else ("pass" if structure_status == "ok" else "unknown"),
                         uid,
                         findings=drift,
                         rows=len(rows),
+                        structure_status=structure_status,
+                        **(
+                            {"reason": "no registered block baseline"}
+                            if structure_status == "unknown" and not drift
+                            else {}
+                        ),
                     )
                 else:
                     add(

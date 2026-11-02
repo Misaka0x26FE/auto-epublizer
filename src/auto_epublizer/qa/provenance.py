@@ -30,7 +30,7 @@ from xml.etree import ElementTree as ET
 from auto_common.markdown import inline_code_chunks, markdown_chunks
 from auto_translator.review.fidelity import content_blocks as _paragraphs
 from auto_translator.review.fidelity import norm_text as _norm
-from auto_translator.review.g0 import md_align_drift
+from auto_translator.review.g0 import align_structure_status, md_align_drift
 from auto_translator.translation.align import read_align
 
 from ..build import nav_depth_sequence, nav_toc_entries, slug_file, subheading_anchors
@@ -57,8 +57,14 @@ class ProvenanceResult:
     units_order_ok: bool = True
     coverage: float | None = None
     coverage_missing: list[str] = field(default_factory=list)  # "<unit>:<段落序>"
+    coverage_missing_details: list[dict[str, Any]] = field(default_factory=list)
     media_lost: list[str] = field(default_factory=list)  # "<unit>:<basename>"
     media_order_violations: list[str] = field(default_factory=list)
+    # 块边界基线（B2）：有基线且不一致进 align_md_drift（error）；无基线/映射歧义
+    # 的历史单元记 unknown，不推测曾经有几段，也不阻断放行。
+    align_structure_unknown: list[str] = field(default_factory=list)
+    # 生成式目录页（D2）：独立对账/ lint 结果（advisory，不单独阻断放行）
+    toc_page_findings: list[str] = field(default_factory=list)
     toc_depths_expected: list[int] = field(default_factory=list)
     toc_depths_nav: list[int] = field(default_factory=list)
     toc_flat: bool = False
@@ -534,11 +540,14 @@ def audit_provenance(
         doc_text: dict[str, str] = {}
         doc_imgs: dict[str, Counter[str]] = {}
         doc_fn: dict[str, int] = {}
+        generated_toc: dict[str, str] = {}
         for name in expected_names:
             zpath = doc_path.get(name)
             if not zpath or zpath not in zip_names:
                 continue
             html = zf.read(zpath).decode("utf-8")
+            if 'data-aep="generated-toc"' in html:
+                generated_toc[name] = html
             prose = _ProseText(strip_markers=False)
             prose.feed(html)
             prose.close()
@@ -549,6 +558,59 @@ def audit_provenance(
                 if (member := epub_member_path(zpath, src)) is not None and member in zip_names
             )
             doc_fn[name] = prose.footnotes
+        if generated_toc:
+            from ..build.toc_page import read_toc_pages
+            from .toc_page import check_generated_toc, expected_toc
+
+            expected_toc_entries = expected_toc(
+                store, expected, nav_depth=nav_depth, prefer_translation=prefer_translation
+            )
+            try:
+                toc_pages = read_toc_pages(store)
+            except ValueError as exc:
+                result.toc_page_findings.append(f"toc_pages_invalid：{exc}")
+                toc_pages = {}
+            from .toc_page import actual_toc, normalize_label
+
+            source_labels = {
+                normalize_label(item["label"]) for item in expected_toc_entries if not item["href"]
+            }
+            for toc_name, html in generated_toc.items():
+                result.toc_page_findings.extend(
+                    check_generated_toc(html, expected_toc_entries, pages=toc_pages)
+                )
+                links = actual_toc(html)
+                actual_labels = {normalize_label(item["label"]) for item in links}
+                for label in sorted(source_labels - actual_labels):
+                    result.add(
+                        "error",
+                        "E_TOC_SOURCE_LOST",
+                        f"生成目录丢失原目录条目：{label}",
+                    )
+                for item in links:
+                    href = str(item.get("href") or "")
+                    if not href:
+                        continue
+                    target, _, fragment = href.partition("#")
+                    if target:
+                        member = (Path(opf_dir) / unquote(target)).as_posix()
+                    else:
+                        member = doc_path.get(toc_name, "")
+                    if member not in zip_names:
+                        result.add(
+                            "error",
+                            "E_TOC_BROKEN_LINK",
+                            f"目录链接目标不存在：{href}",
+                        )
+                        continue
+                    if fragment and f'id="{fragment}"' not in zf.read(member).decode(
+                        "utf-8", "replace"
+                    ):
+                        result.add(
+                            "error",
+                            "E_TOC_BROKEN_LINK",
+                            f"目录链接锚点不存在：{href}",
+                        )
 
     spine_docs = [Path(unquote(h)).name for h in spine]
     spine_set = set(spine_docs)
@@ -615,6 +677,8 @@ def audit_provenance(
         text = doc_text.get(name)
         if text is None:
             continue  # 文档缺失已由 units_missing 覆盖
+        if name in generated_toc:
+            continue  # 目录页是结构视图，按独立目录对账，不做 md 段落探针
         rel = e.get("rel_path") or ""
         tgt_path = translation_dir / rel
         md_path = (
@@ -667,6 +731,14 @@ def audit_provenance(
     total_paras = 0
     covered_paras = 0
     has_align = False
+    baselines = (
+        {
+            unit.id: (unit.meta or {}).get("align_structure")
+            for unit in store.load_publication().units
+        }
+        if store.exists()
+        else {}
+    )
     for e in expected:
         rows = read_align(store.unit_align_path(e["id"]))
         if not rows:
@@ -677,10 +749,17 @@ def audit_provenance(
         # （如丢图片段/脚注）而 align 未同步——防缺陷直达成品
         tgt_path = translation_dir / rel
         if tgt_path.is_file():
-            for d in md_align_drift(
-                tgt_path.read_text(encoding="utf-8"), rows, title=str(e.get("title") or "") or None
-            ):
+            md_text = tgt_path.read_text(encoding="utf-8")
+            title = str(e.get("title") or "") or None
+            for d in md_align_drift(md_text, rows, title=title):
                 result.align_md_drift.append(f"{e['id']}: {d}")
+            status, message = align_structure_status(
+                md_text, rows, baselines.get(e["id"]), title=title
+            )
+            if status == "changed" and message:
+                result.align_md_drift.append(f"{e['id']}: {message}")
+            elif status == "unknown":
+                result.align_structure_unknown.append(e["id"])
         src_concat = _norm("".join(r.get("src") or "" for r in rows))
         for i, para in enumerate(_paragraphs((structured_dir / rel).read_text(encoding="utf-8"))):
             total_paras += 1
@@ -688,6 +767,14 @@ def audit_provenance(
                 covered_paras += 1
             else:
                 result.coverage_missing.append(f"{e['id']}:{i + 1}")
+                result.coverage_missing_details.append(
+                    {
+                        "unit": e["id"],
+                        "block": i + 1,
+                        "path": f"structured/{rel}",
+                        "preview": " ".join(para.split())[:30],
+                    }
+                )
     if has_align and total_paras:
         result.coverage = covered_paras / total_paras
     if result.align_md_drift:

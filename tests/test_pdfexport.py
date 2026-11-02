@@ -513,6 +513,228 @@ def _toc_epub(tmp_path: Path, *, list_style: bool = False, stray: bool = False) 
     )
 
 
+def _long_toc_epub(tmp_path: Path) -> Path:
+    label = "A Very Long Title With Subtitle And Author Name"
+    opf = _OPF.replace(
+        "</manifest>",
+        '<item id="toc-body" href="front/contents.xhtml" media-type="application/xhtml+xml"/></manifest>',
+    ).replace('<itemref idref="cover"/>', '<itemref idref="cover"/><itemref idref="toc-body"/>')
+    nav = (
+        '<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops">'
+        '<head><title>Navigation</title></head><body><nav epub:type="toc"><ol>'
+        f'<li><a href="text/ch01.xhtml#real">{label}</a></li>'
+        "</ol></nav></body></html>"
+    )
+    contents = (
+        "<html><head><title>Contents</title></head><body><h1>Contents</h1>"
+        "<p>Contents</p><p>§</p>"
+        "<p>A Very Long Title With</p><p>Subtitle And Author Name 9</p>"
+        "</body></html>"
+    )
+    chapter = (
+        "<html><head><title>Long</title></head><body><h1>Long</h1>"
+        '<div style="page-break-before:always"><h2 id="real">LONG_TARGET</h2>'
+        "<p>The long-title target page.</p></div></body></html>"
+    )
+    return _variant(
+        _mini_epub(tmp_path),
+        {
+            "OEBPS/content.opf": opf,
+            "OEBPS/nav.xhtml": nav,
+            "OEBPS/front/contents.xhtml": contents,
+            "OEBPS/text/ch01.xhtml": chapter,
+        },
+    )
+
+
+@pytest.mark.skipif(pdfexport.find_chromium() is None, reason="需要 Chromium/Chrome")
+def test_index_two_columns_cip_no_indent_and_cjk_emphasis(tmp_path: Path) -> None:
+    """E5：索引分栏、CIP 不缩进、中文强调正体加粗而拉丁强调保留斜体。"""
+    entries = "".join(
+        f"<p>Entry {index:03d} — 索引条目 {index}，页码 {index + 1}。</p>" for index in range(80)
+    )
+    index = (
+        "<html><head><title>Index</title></head><body><section class='chapter'>"
+        f"<h1>Index</h1>{entries}"
+        "<p>BODY_TEXT 中文<em>强调语</em>与拉丁<em>Latin emphasis</em>。</p>"
+        "</section></body></html>"
+    )
+    cip = (
+        "<html><head><title>Copyright</title></head><body><section class='chapter'>"
+        "<h1>Copyright</h1><p>CIP_TEXT 图书在版编目数据。</p></section></body></html>"
+    )
+    epub = _variant(
+        _mini_epub(tmp_path),
+        {
+            "OEBPS/text/ch01.xhtml": index,
+            "OEBPS/ch02.xhtml": cip,
+        },
+    )
+    result = pdfexport.render(epub, tmp_path / "index.pdf")
+    with pymupdf.open(result.out) as doc:
+        index_page = next(page for page in doc if "Entry 000" in page.get_text())
+        entry_words = [word for word in index_page.get_text("words") if word[4] == "Entry"]
+        assert min(word[0] for word in entry_words) < 150
+        assert max(word[0] for word in entry_words) > 200
+        cip_page = next(page for page in doc if "CIP_TEXT" in page.get_text())
+        body_page = next(page for page in doc if "BODY_TEXT" in page.get_text())
+        cip_word = next(word for word in cip_page.get_text("words") if word[4] == "CIP_TEXT")
+        body_word = next(word for word in body_page.get_text("words") if word[4] == "BODY_TEXT")
+        assert cip_word[0] < body_word[0] - 10
+        assert "强调语" in "".join(page.get_text() for page in doc)
+    transformed = pdfexport._mark_cjk_emphasis(
+        "<p>中文<em>强调语</em>与拉丁<em>Latin emphasis</em>。</p>"
+    )
+    assert '<span class="cjk-em">强调语</span>' in transformed
+    assert "<em>Latin emphasis</em>" in transformed
+    assert "span.cjk-em { font-style: normal; font-weight: 600; }" in pdfexport.CSS_TEMPLATE
+
+
+@pytest.mark.skipif(pdfexport.find_chromium() is None, reason="需要 Chromium/Chrome")
+def test_running_heads_follow_section_roles_and_truncate(tmp_path: Path) -> None:
+    """E4：封面无页眉页脚；章节首页不重复页眉；正文页眉对章名并截断；页码保持绝对页序。"""
+    long_title = "A Very Long Chapter Title That Must Be Truncated In The Running Header " * 2
+    paragraphs = "".join(f"<p>Paragraph {index} of the chapter body.</p>" for index in range(48))
+    ch1 = (
+        f"<html><head><title>{long_title}</title></head><body><section class='chapter'>"
+        f"<h1>{long_title}</h1>{paragraphs}<p>CH1_LAST</p></section></body></html>"
+    )
+    ch2 = (
+        "<html><head><title>Second Chapter</title></head><body><section class='chapter'>"
+        f"<h1>Second Chapter</h1>{paragraphs}<p>CH2_LAST</p></section></body></html>"
+    )
+    epub = _variant(
+        _mini_epub(tmp_path),
+        {"OEBPS/text/ch01.xhtml": ch1, "OEBPS/ch02.xhtml": ch2},
+    )
+    result = pdfexport.render(epub, tmp_path / "heads.pdf")
+    with pymupdf.open(result.out) as doc:
+
+        def head_text(page: pymupdf.Page) -> str:
+            return " ".join(word[4] for word in page.get_text("words") if word[1] < 35)
+
+        def folio_text(page: pymupdf.Page) -> str:
+            return " ".join(word[4] for word in page.get_text("words") if word[1] > 560)
+
+        assert not head_text(doc[0]) and not folio_text(doc[0])
+        first_ch1 = next(
+            p for p in doc if "Paragraph 0 " in p.get_text() and "CH1_LAST" not in p.get_text()
+        )
+        assert not head_text(first_ch1)
+        assert folio_text(first_ch1) == str(first_ch1.number + 1)
+        second_ch1 = doc[first_ch1.number + 1]
+        assert head_text(second_ch1).endswith("...")
+        assert head_text(second_ch1).startswith("A Very Long Chapter")
+        assert folio_text(second_ch1) == str(second_ch1.number + 1)
+        first_ch2 = next(
+            p for p in doc if "Paragraph 0 " in p.get_text() and p.number > first_ch1.number
+        )
+        assert "Second Chapter" not in head_text(first_ch2)
+        second_ch2 = doc[first_ch2.number + 1]
+        assert head_text(second_ch2) == "Second Chapter"
+        assert folio_text(second_ch2) == str(second_ch2.number + 1)
+
+
+@pytest.mark.skipif(pdfexport.find_chromium() is None, reason="需要 Chromium/Chrome")
+@pytest.mark.parametrize("size", ["a5", "32k"])
+def test_plate_fits_both_trims_without_duplication(tmp_path: Path, size: str) -> None:
+    """E3：两种开本下图版只绘一次、不越出纸面；标题与后续正文不被拆成孤页规则仍生效。"""
+    epub = _variant(
+        _mini_epub(tmp_path),
+        {
+            "OEBPS/text/ch01.xhtml": '<html xmlns="http://www.w3.org/1999/xhtml"><head><title>Plate</title></head><body><h1>Plate</h1><figure class="imgfig"><img src="../media/plate.png"/><figcaption>PLATE_CAPTION</figcaption></figure><p>AFTER_PLATE text.</p></body></html>',
+            "OEBPS/media/plate.png": _raster_png(804, 1293),
+        },
+    )
+    result = pdfexport.render(epub, tmp_path / f"plate-{size}.pdf", pdfexport.PrintStyle(size=size))
+    with pymupdf.open(result.out) as doc:
+        images = [info for page in doc for info in page.get_image_info() if info["width"] == 804]
+        assert len(images) == 1
+        page = next(page for page in doc if "PLATE_CAPTION" in page.get_text())
+        x0, y0, x1, y1 = images[0]["bbox"]
+        assert x0 >= 0 and y0 >= 0 and x1 <= page.rect.width + 1
+        assert y1 <= page.rect.height + 1
+        assert "AFTER_PLATE" in "".join(p.get_text() for p in doc)
+    assert "page-break-after: avoid" in pdfexport.CSS_TEMPLATE
+
+
+@pytest.mark.skipif(pdfexport.find_chromium() is None, reason="需要 Chromium/Chrome")
+def test_generated_toc_rows_right_align_page_numbers(tmp_path: Path) -> None:
+    """E3：目录行题名在左、页码贴右，长题名也不把页码挤到下一行。"""
+    rows = (
+        '<div class="toc-row"><a href="text/ch01.xhtml#real">Alpha</a>'
+        '<span class="toc-dots"></span><span class="toc-page">3</span></div>'
+        '<div class="toc-row"><a href="ch02.xhtml">A very long chapter title that wraps '
+        "across the line in a narrow text area</a>"
+        '<span class="toc-dots"></span><span class="toc-page">12</span></div>'
+    )
+    contents = (
+        f"<html><head><title>Contents</title></head><body><h1>Contents</h1>{rows}</body></html>"
+    )
+    epub = _variant(_toc_epub(tmp_path), {"OEBPS/front/contents.xhtml": contents})
+    result = pdfexport.render(epub, tmp_path / "toc-rows.pdf")
+    with pymupdf.open(result.out) as doc:
+        page = next(page for page in doc if "Alpha" in page.get_text())
+        words = page.get_text("words")
+        label = next(word for word in words if word[4] == "Alpha")
+        number = next(word for word in words if word[4] == "3")
+        assert number[0] > label[2]
+        assert abs(number[1] - label[1]) < 4
+        assert number[2] > page.rect.width * 0.7
+        long_number = next(word for word in words if word[4] == "12")
+        last_word = next(word for word in words if word[4] == "area")
+        assert long_number[0] > last_word[2]
+        assert abs(long_number[1] - last_word[1]) < 4
+        assert long_number[2] > page.rect.width * 0.7
+    assert ".toc-dots" in pdfexport.CSS_TEMPLATE
+    assert "border-bottom: 1px dotted" in pdfexport.CSS_TEMPLATE
+
+
+@pytest.mark.skipif(pdfexport.find_chromium() is None, reason="需要 Chromium/Chrome")
+def test_mixed_script_uses_latin_first_with_cjk_fallback(tmp_path: Path) -> None:
+    """E1：拉丁字形优先、CJK 回落；’ 与中文标点读回，且无脚本/字体错配告警。"""
+    paragraph = (
+        "l’État and Marx’s legacy survive in print: "
+        "中文标点与拉丁文混排必须各自成体，并保持足够长度用于正文样本核验。"
+    )
+    chapter = (
+        "<html><head><title>Mixed</title></head><body><section class='chapter'>"
+        f"<h1>Mixed</h1><p>{paragraph}</p></section></body></html>"
+    )
+    result = pdfexport.render(
+        _variant(_mini_epub(tmp_path), {"OEBPS/text/ch01.xhtml": chapter}),
+        tmp_path / "mixed.pdf",
+    )
+    script_fonts = result.diagnostics["script_fonts"]
+    latin = [name for name in script_fonts["latin"] if script_fonts["latin"][name]]
+    cjk = [name for name in script_fonts["cjk"] if script_fonts["cjk"][name]]
+    assert latin and all(
+        any(hint in name.casefold() for hint in ("nimbus", "liberation", "dejavu"))
+        for name in latin
+    ), latin
+    assert cjk and all(
+        any(hint in name.casefold() for hint in ("cjk", "songti", "simsun")) for name in cjk
+    ), cjk
+    codes = {finding["code"] for finding in result.diagnostics["findings"]}
+    assert not {"W_PDF_FONT_LATIN_USES_CJK", "W_PDF_FONT_CJK_USES_LATIN"} & codes
+    with pymupdf.open(result.out) as doc:
+        text = "".join(page.get_text() for page in doc)
+    assert "l’État" in text and "Marx’s" in text and "中文标点" in text
+
+
+@pytest.mark.skipif(pdfexport.find_chromium() is None, reason="需要 Chromium/Chrome")
+def test_long_toc_title_with_hint_lines_gets_final_page(tmp_path: Path) -> None:
+    label = "A Very Long Title With Subtitle And Author Name"
+    result = pdfexport.render(_long_toc_epub(tmp_path), tmp_path / "long-toc.pdf")
+    with pymupdf.open(result.out) as doc:
+        page = next(page.number + 1 for page in doc if "LONG_TARGET" in page.get_text())
+        toc_text = next(page.get_text() for page in doc if "Contents" in page.get_text())
+        assert re.search(rf"Author Name\s*(?:—\s*)?{page}(?!\d)", toc_text), (page, toc_text)
+        assert any(title == label and target == page for _, title, target in doc.get_toc())
+        assert "Contents" in toc_text and "§" in toc_text
+    assert result.toc["converged"] is True
+
+
 @pytest.mark.skipif(pdfexport.find_chromium() is None, reason="需要 Chromium/Chrome")
 @pytest.mark.parametrize("list_style", [False, True])
 def test_print_toc_and_bookmarks_use_final_fragment_pages_not_title_echoes(
@@ -535,7 +757,9 @@ def test_print_toc_and_bookmarks_use_final_fragment_pages_not_title_echoes(
         for label, page in actual.items():
             assert re.search(rf"{label}\s*(?:—\s*)?{page}(?!\d)", toc_text), (label, page, toc_text)
             assert any(title == label and target == page for _, title, target in doc.get_toc())
-        assert "Original index Alpha 123, Beta 456." in "".join(page.get_text() for page in doc)
+        assert re.sub(r"\s+", "", "Original index Alpha 123, Beta 456.") in re.sub(
+            r"\s+", "", "".join(page.get_text() for page in doc)
+        )
         assert "AEPANCHOR" not in "".join(page.get_text() for page in doc)
     assert result.toc["converged"] is True and result.toc["rounds"] >= 2
     assert epub.read_bytes() == original
@@ -922,3 +1146,24 @@ def test_cli_pdf_rejects_unknown_size(tmp_path: Path) -> None:
     result = CliRunner().invoke(app, ["pdf", "--workspace", str(store.dir), "--size", "folio"])
     assert result.exit_code == 1
     assert "未知开本" in result.output
+
+
+def test_cjk_running_head_is_not_dots() -> None:
+    """中文页眉必须用可承载汉字的字体（审查 P2：helv 只出圆点）。"""
+    doc = pymupdf.open()
+    doc.new_page(width=420, height=595)
+    doc.new_page(width=420, height=595)
+    pdfexport.stamp_folios(
+        doc, cover=False, section_titles={1: "第一章 奴隶劳动"}, section_pages={1: 1}
+    )
+    page = doc[1]
+    spans = [
+        span
+        for block in page.get_text("dict")["blocks"]
+        for line in block.get("lines", [])
+        for span in line.get("spans", [])
+        if span["bbox"][3] < 40
+    ]
+    assert spans, "第二页应有页眉"
+    assert "第一章" in "".join(span["text"] for span in spans)
+    assert all("Helvetica" not in span["font"] for span in spans)

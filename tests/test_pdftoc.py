@@ -73,6 +73,65 @@ def test_equal_counts_in_a_different_order_do_not_pair_by_position() -> None:
     assert "Beta 20" in result.html and "Alpha 10" in result.html
 
 
+def test_page_number_digit_growth_replaces_old_digits() -> None:
+    """页码从 1 位变 2 位时，旧数字必须整体替换，不能残留。"""
+    entries = [(1, "Chapter One", "OEBPS/ch01.xhtml")]
+    result = rewrite_toc(
+        "<p>Chapter One 9</p>",
+        entries,
+        {"OEBPS/ch01.xhtml": 10},
+        owner_href="OEBPS/toc.xhtml",
+    )
+    assert "Chapter One 10" in result.html
+    assert "Chapter One 9" not in result.html
+    assert result.updates[0]["old_page"] == "9"
+
+
+def test_toc_hint_lines_are_not_treated_as_entries() -> None:
+    """Contents/§ 提示行没有页码，不能吞掉后续条目的页码或被当未定位。"""
+    entries = [(1, "§ 1 Early", "OEBPS/ch01.xhtml")]
+    result = rewrite_toc(
+        "<p>Contents</p><p>§</p><p>§ 1 Early 7</p>",
+        entries,
+        {"OEBPS/ch01.xhtml": 21},
+        owner_href="OEBPS/toc.xhtml",
+    )
+    assert "§ 1 Early 21" in result.html
+    assert ">Contents</p>" in result.html
+    assert not [f for f in result.findings if f["code"].startswith("E_")]
+
+
+def test_long_title_spanning_three_blocks_keeps_page_at_end() -> None:
+    entries = [(1, "A Very Long Title With Subtitle And Author Name", "OEBPS/ch01.xhtml")]
+    result = rewrite_toc(
+        "<p>A Very Long Title</p><p>With Subtitle</p><p>And Author Name 5</p>",
+        entries,
+        {"OEBPS/ch01.xhtml": 123},
+        owner_href="OEBPS/toc.xhtml",
+    )
+    assert "And Author Name 123" in result.html
+    assert "With Subtitle" in result.html
+    assert not result.findings
+
+
+def test_two_section_entries_are_matched_by_label_not_position() -> None:
+    entries = [
+        (1, "§ 1 Early", "OEBPS/ch01.xhtml#s1"),
+        (1, "§ 2 Late", "OEBPS/ch02.xhtml#s2"),
+    ]
+    result = rewrite_toc(
+        "<p>§ 2 Late 40</p><p>§ 1 Early 3</p>",
+        entries,
+        {"OEBPS/ch01.xhtml#s1": 12, "OEBPS/ch02.xhtml#s2": 44},
+        owner_href="OEBPS/toc.xhtml",
+    )
+    assert "§ 1 Early 12" in result.html and "§ 2 Late 44" in result.html
+    assert {u["href"] for u in result.updates} == {
+        "OEBPS/ch01.xhtml#s1",
+        "OEBPS/ch02.xhtml#s2",
+    }
+
+
 def test_ambiguous_or_unlocated_toc_entries_do_not_borrow_nearby_pages() -> None:
     entries = [
         (1, "Introduction", "OEBPS/a.xhtml"),

@@ -274,6 +274,22 @@ auto-epublizer status --workspace <dir> --json
   `preprocessing`）、单元数与词数；`ledger` 渲染成表，领域/摘要两列由 agent 填。
   **数字绝不手维护**——可随时重算核对。
 
+## 多批次 outbox 归档（维护）
+
+`auto-epublizer archive <outbox> [--json]` 只读预览旧批次：
+
+- 身份与版本只读 `MANIFEST.md` 的显式字段（书名/作品/slug + 版本）；缺失、无法解析或
+  「终版」之类不猜最新，列入未决；
+- 同一本书保留版本最高的一期，其余列入待归档；同版但 MANIFEST 字节不同记冲突，整组不动；
+- `.archive/` 已有的同名同版批次识别为 `already_archived`，避免重复打包；
+- 默认只输出保留/待移动/冲突/未决清单；`--apply` 才移动、改写 `docs/**/*.md` 中
+  `outbox/<批次>/` 链接、补齐 `.gitignore` 的 `outbox/.archive/*/epub|pdf/` 规则。
+- 事务先写 `outbox/.archive/.transactions/<id>.json`，失败按日志回滚移动/链接/忽略规则；
+  中断后 `archive <outbox> --recover` 显式恢复。目标已存在不覆盖；重跑幂等（`up_to_date`）。
+- `outbox` 路径不存在或不是目录、以及显式 `--docs` 指向不存在的目录时，直接报中文错误并非零退出；
+  不会返回空计划，也不会顺手创建 `.gitignore` 规则。同级默认 `docs` 缺失属正常情况。
+- 测试只在临时工作根执行，不自动 `git add`/`commit`；`.gitignore` 用 `git check-ignore` 核验。
+
 ## 故障排查
 
 | 现象 | 处理 |

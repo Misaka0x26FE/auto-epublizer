@@ -1,4 +1,4 @@
-<!-- i18n: source=ingest.zh.md sha256=54af2b3362a2b24be34700d29de08f06c09d15d66be64162cd2b52e96d9288ec -->
+<!-- i18n: source=ingest.zh.md sha256=281baf05cc9562de3b62589a68347bc061b2d856bab36f5aa5059d2c92620329 -->
 > **English** | [中文](ingest.zh.md)
 
 # Ingest (file parsing)
@@ -162,6 +162,11 @@ and refer to `lessons/2026-09-11-epub-nonlinear-spine-tables.md`.
 - Page blocks support four types: `text` / `image` / `table` / `formula` (retaining bbox)
   — for the extraction of illustrations/tables/formulas and their md representation see
   `docs/pdf-content-spec.md`; the corresponding description files land in `raw/inserts/`.
+- Layout paragraph candidates: `auto-epublizer evidence layout --workspace <dir> --json`
+  prints each page's column number, block order, character range, font size, estimated line
+  height, indent/list/quote class and same-paragraph continuation candidates. Pages without
+  `bbox` are explicitly `unknown`; candidates are for agent verification only, never reorder
+  two-column/RTL text or hard-split by character count.
 
 ## Intermediates
 

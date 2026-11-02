@@ -132,6 +132,16 @@ def test_provenance_happy_path(tmp_path: Path) -> None:
     assert result.coverage == 1.0
     assert result.units_missing == [] and result.units_order_ok
     assert result.media_lost == [] and not result.toc_flat
+    report = generate_report(
+        "book",
+        _audit_ok(),
+        EpubcheckResult(available=True, ran=True, errors=0, warnings=0, returncode=0),
+        provenance=result.to_dict(),
+    ).to_dict()
+    assert report["coverage_missing"] == []
+    assert report["coverage_missing_details"] == []
+    # 未登记块边界基线：历史/直建工作区显式 unknown，不阻断也不猜段数
+    assert report["align_structure_unknown"] == ["ch01", "ch02"]
 
 
 def test_provenance_missing_unit(tmp_path: Path) -> None:
@@ -196,6 +206,11 @@ def test_provenance_coverage_gap(tmp_path: Path) -> None:
         provenance=result.to_dict(),
     )
     assert not report.released and report.released_reason == "provenance_incomplete"
+    payload = report.to_dict()
+    assert payload["coverage_missing"] == ["ch01:2"]
+    assert payload["coverage_missing_details"] == [
+        {"unit": "ch01", "block": 2, "path": "structured/body/ch01.md", "preview": "第二段。"}
+    ]
 
 
 def test_provenance_toc_flat(tmp_path: Path) -> None:

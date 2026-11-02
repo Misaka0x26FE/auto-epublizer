@@ -1,4 +1,4 @@
-<!-- i18n: source=quality-evidence.zh.md sha256=1745f101f1dba8ad5f0212eede0c9802b2d18bea1613c9d4fd991131c21901aa -->
+<!-- i18n: source=quality-evidence.zh.md sha256=17190671b89975374452bef6ca2f2b6d0a37b31af0053a4a665cef47122a7de2 -->
 > **English** | [中文](quality-evidence.zh.md)
 
 # Evidence and safe-repair contract
@@ -58,7 +58,11 @@ produce manual candidates, never automatic edits or definitive defect judgements
 
 Restore page→column→line order, entries and page continuations before freezing structure
 and verifying names. Reconcile source TOC, units, top-level nav, subheadings and landmarks
-separately. Header echoes are candidates, not deletion instructions; removing table tags
+separately. Header echoes are candidates, not deletion instructions: only short lines repeating
+at page top/bottom of a body unit, no larger than body type, qualify. Keep lines in a title
+page, half-title or cover that repeat the book title, never remove heading segments as running
+headers, and record source page, block and reason for each deletion (see
+`lessons/2026-11-01-titlepage-echo-deletion.md`). Removing table tags
 does not restore a falsely detected bibliography table.
 
 An index is not a bibliography. Do not blanket-exempt an index when the user requires

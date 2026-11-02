@@ -137,7 +137,7 @@ qa 不放行。`inputs_digest` 可用 `python -c` 调
 |---|---|
 | 长度比 | `0.30 ≤ len(tgt)/len(src) ≤ 3.0`（G0 告警，advisory） |
 | **插入标记守恒** | **`{fig:NNN}` 等标记 src/tgt 单元级总量一致（硬缺陷；未清零 G5 报 `structure_open`）** |
-| **脚注守恒** | **pandoc `[^label]` 与句末数字注码总量一致（硬缺陷，同上）** |
+| **脚注守恒** | **pandoc `[^label]` 与句末数字注码总量一致（硬缺陷，同上）**；四个以上连续点状字形引导的行尾页码不计普通数字注码，编号差集同样排除；三点省略号后的注码及显式引用仍保留，不整类豁免目录/索引 |
 | **标题守恒** | **structured 与 translation 的 h1~h6 逐层计数一致（硬缺陷，同上；issue #12）——丢小节标题/换级会让目录节点在成品中丢失或错位** |
 | **术语冲突** | **`glossary_conflicts_open == 0`（裁决写回 glossary.csv 前 qa 不放行，`glossary_conflict_open`）** |
 | **术语命中** | **0（G0 `terminology` 是真实缺陷，不是 advisory——译文缺了术语表源词；必须逐条核验清零，否则 G5 不放行，`released_reason=terminology_open`）** |

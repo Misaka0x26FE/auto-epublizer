@@ -1,4 +1,4 @@
-<!-- i18n: source=workflow.zh.md sha256=ccd0ffb2d66d4fb4da6e33063741e81537d79224130d6d5ec9abe46529e1d03e -->
+<!-- i18n: source=workflow.zh.md sha256=51a8d0dff1b3405a02557fb1cbfed324c379923c4bdd7e3014602bf71976d3ad -->
 > **English** | [中文](workflow.zh.md)
 
 # Workflow (stage routing + command overview)
@@ -306,6 +306,29 @@ Keep one separate workspace per book; `status --all` and `ledger` are the cross-
 - `status --all --json` recomputes per-book `progress` (`released` / `built_not_released` /
   `preprocessing`), unit counts and words; `ledger` renders them as a table whose
   domain/summary columns the agent fills. **Never hand-maintain the numbers** — recompute.
+
+## Multi-batch outbox archiving (maintenance)
+
+`auto-epublizer archive <outbox> [--json]` previews old batches read-only:
+
+- identity and version come only from explicit `MANIFEST.md` fields (book/work/slug + version);
+  missing, unparseable or "final"-style values are unresolved, never guessed as latest;
+- for each book the highest version is kept and the rest are listed for archiving; the same
+  version with different MANIFEST bytes is a conflict and the whole group is left untouched;
+- a batch already present in `.archive/` with the same book/version is reported as
+  `already_archived` so it is not packed twice;
+- By default it only prints keep/move/conflict/unresolved lists; `--apply` moves batches,
+  rewrites `outbox/<batch>/` links under `docs/**/*.md`, and adds the
+  `outbox/.archive/*/epub|pdf/` rules to `.gitignore`.
+- A transaction journal is written to `outbox/.archive/.transactions/<id>.json` first; failures
+  roll back moves, links and ignore rules. After an interruption,
+  `archive <outbox> --recover` restores explicitly. Existing targets are never overwritten, and
+  re-running is idempotent (`up_to_date`).
+- A missing `outbox` path, one that is not a directory, or an explicit `--docs` pointing at a
+  missing directory is a Chinese error with a non-zero exit: no empty plan is returned and no
+  `.gitignore` rule is created. A missing default sibling `docs` is normal.
+- Tests run only in a temporary work root and never `git add`/`commit`; `.gitignore` is verified
+  with `git check-ignore`.
 
 ## Troubleshooting
 

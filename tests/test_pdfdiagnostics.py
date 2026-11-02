@@ -78,3 +78,23 @@ def test_raster_overflow_is_reported_without_using_image_bytes_as_text_evidence(
         assert any(
             f["code"] == "E_PDF_OVERFLOW" and f["kind"] == "image" for f in result["findings"]
         )
+
+
+def test_hanging_closing_punctuation_is_advisory_not_overflow() -> None:
+    """CJK 行尾收标点悬挂（≤0.62em）是排版常态，不应算越界错误（真实书 11 页误报）。"""
+    with pymupdf.open() as doc:
+        page = doc.new_page(width=420, height=595)
+        page.insert_text((370, 80), "）", fontsize=10.5, fontname="china-s")
+        result = _diagnose(doc, "<p>正文句子。</p>")
+        assert result["overflow_count"] == 0
+        assert not any(f["code"] == "E_PDF_OVERFLOW" for f in result["findings"])
+        assert any(f["code"] == "W_PDF_PUNCT_HANG" for f in result["findings"])
+
+
+def test_punctuation_overflow_beyond_one_em_is_still_an_error() -> None:
+    with pymupdf.open() as doc:
+        page = doc.new_page(width=420, height=595)
+        page.insert_text((400, 80), "）", fontsize=10.5)
+        result = _diagnose(doc, "<p>正文句子。</p>")
+        assert result["overflow_count"] == 1
+        assert any(f["code"] == "E_PDF_OVERFLOW" for f in result["findings"])

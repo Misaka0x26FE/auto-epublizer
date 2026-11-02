@@ -534,6 +534,15 @@ def _render_landmarks(
         "bodymatter": "正文",
         "backmatter": "附录",
     }
+    zh = str(lang or "").lower().startswith("zh")
+    cover = next(
+        (e for e in content_entries if e.get("kind") == "cover" or e.get("region") == "cover"),
+        None,
+    )
+    if cover is not None:
+        # 封面在 spine 里 linear="no"，没有任何链接就触发 EPUBCheck OPF-096；
+        # 地标是唯一不污染正文的落点。
+        landmarks.append(("cover", f"{slug_file(cover['id'])}.xhtml", "封面" if zh else "Cover"))
     for region in ("frontmatter", "bodymatter", "backmatter"):
         for e in content_entries:
             raw = e.get("region")
@@ -724,6 +733,7 @@ def build_epub(
     cover_media: str | None = None,
     nav_depth: int = 3,
     render_mode: str | None = None,
+    book_css: str = "",
 ) -> Path:
     """把内容文档 + 媒体资源封装为确定性标准 EPUB 3，返回输出路径。
 
@@ -743,7 +753,11 @@ def build_epub(
     out_path = Path(out_path)
     out_path.parent.mkdir(parents=True, exist_ok=True)
     ts = _parse_modified(modified)
-    css = _STYLE_CSS + theme_css(theme)
+    if book_css:
+        from .bookcss import validate_book_css
+
+        validate_book_css(book_css)
+    css = _STYLE_CSS + theme_css(theme) + book_css
     # 制作信息属于软件附页，不是源书单元；不覆盖作者、译者或作品版权。
     fingerprint = build_fingerprint(pub)
     names = {fn for fn, _ in content_files}

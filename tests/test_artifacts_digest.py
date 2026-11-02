@@ -345,3 +345,24 @@ def test_external_epub_alias_retarget_invalidates_report(
     alias.unlink()
     alias.symlink_to(second)
     assert report_state(store)["stale"] is True
+
+
+def test_book_css_change_invalidates_report(tmp_path: Path) -> None:
+    """修改按书 CSS 必须让旧报告过期（审查 P2）。"""
+    src = tmp_path / "book.md"
+    src.write_text("# Chapter I\n\nBody.\n", encoding="utf-8")
+    store = orch.init(str(src), workspace_dir=tmp_path / "ws")
+    css = store.preprocessing_dir / "book.css"
+    css.parent.mkdir(parents=True, exist_ok=True)
+    css.write_text("p { text-indent: 2em; }\n", encoding="utf-8")
+    from auto_common.config import Config, OutputConfig
+
+    cfg = Config(output=OutputConfig(css="preprocessing/book.css"))
+    epub = orch.build(store, config=cfg)
+    report = orch.qa(store, epub_path=str(epub), config=cfg)
+    assert report["released"] is True, report.get("released_reason")
+    assert report_state(store)["stale"] is False
+    before = artifacts_digest(store)
+    css.write_text("p { text-indent: 3em; }\n", encoding="utf-8")
+    assert artifacts_digest(store) != before
+    assert report_state(store)["stale"] is True

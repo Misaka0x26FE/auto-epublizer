@@ -188,6 +188,15 @@ def _is_measure_ref(text: str, end_index: int) -> bool:
     return bool(_MEASURE_AFTER_RE.match(text, end_index))
 
 
+def _is_leader_page(text: str, number_start: int, end: int) -> bool:
+    """长点引导线后的行尾页码；保留三点省略号和显式引用的语义。"""
+    # 四个以上点状字形才作为版式证据，...1 / ……1 仍按原注码口径处理。
+    prefix = text[text.rfind("\n", 0, number_start) + 1 : number_start]
+    return bool(
+        re.search(r"[.．·…]{4,}[ \t]*$", prefix) and re.match(r"[ \t]*(?:\r?\n|$)", text[end:])
+    )
+
+
 def count_footnote_refs(text: str) -> int:
     """统计句末注码（脚注引用）数量（PDF 文字层数字式注码）。
 
@@ -205,7 +214,9 @@ def count_footnote_refs(text: str) -> int:
     return sum(
         1
         for m in _FOOTNOTE_REF_RE.finditer(text)
-        if not _is_abbrev_dot(text, m.start()) and not _is_measure_ref(text, m.end())
+        if not _is_abbrev_dot(text, m.start())
+        and not _is_measure_ref(text, m.end())
+        and not _is_leader_page(text, m.start(1), m.end())
     )
 
 
@@ -225,9 +236,15 @@ def footnote_numbers(text: str) -> set[int]:
     text = text or ""
     out: set[int] = set()
     for m in _FOOTNOTE_REF_RE.finditer(text):
-        if not _is_abbrev_dot(text, m.start()) and not _is_measure_ref(text, m.end()):
+        if (
+            not _is_abbrev_dot(text, m.start())
+            and not _is_measure_ref(text, m.end())
+            and not _is_leader_page(text, m.start(1), m.end())
+        ):
             out.add(int(m.group(1)))
     for m in _FOOTNOTE_SUPER_RE.finditer(text):
+        if _is_leader_page(text, m.start(2), m.end()):
+            continue
         punct_pos = m.start(1)
         punct = m.group(1)
         if punct in ".．,," and punct_pos > 0 and text[punct_pos - 1].isdigit():
@@ -241,6 +258,8 @@ def footnote_numbers(text: str) -> set[int]:
             continue  # 前导零（’000 千分位刻度）不是注号
         out.add(int(token))
     for m in _FOOTNOTE_BRACKET_RE.finditer(text):
+        if _is_leader_page(text, m.start(), m.end()):
+            continue
         token = m.group(1)
         if token.startswith("0"):
             continue  # 000 之类占位/千分位残片
@@ -373,6 +392,65 @@ def _strip_def_blocks(text: str) -> str:
     return "".join(out)
 
 
+def _align_compare_input(
+    md_text: str, rows: list[dict[str, Any]], title: str | None
+) -> tuple[str, list[dict[str, Any]]]:
+    """漂移比对与块身份推导共用同一输入：标题容错行、脚注定义整块容错。"""
+    ordered = sorted(rows, key=lambda r: int(r.get("seq") or 0))
+    if title:
+        tn = _drift_norm(title)
+        if tn:
+            for idx, r in enumerate(ordered):
+                if tn in (
+                    _drift_norm(str(r.get("tgt") or "")),
+                    _drift_norm(str(r.get("src") or "")),
+                ):
+                    ordered.pop(idx)
+                    break
+    align_has_defs = any(_FN_DEF_PREFIX.match(str(r.get("tgt") or "").lstrip()) for r in ordered)
+    return (md_text if align_has_defs else _strip_def_blocks(md_text)), ordered
+
+
+def align_block_spans(
+    md_text: str, rows: list[dict[str, Any]], *, title: str | None = None
+) -> tuple[list[dict[str, Any]], list[str]]:
+    """按漂移比对的同一输入推导块区间（import 登记基线用）。"""
+    from .blocks import block_spans
+
+    md_input, ordered = _align_compare_input(md_text, rows, title)
+    return block_spans(md_input, ordered)
+
+
+def align_structure_status(
+    md_text: str,
+    rows: list[dict[str, Any]],
+    baseline: str | None,
+    *,
+    title: str | None = None,
+) -> tuple[str, str | None]:
+    """块边界身份对账（B2）：``ok`` / ``changed`` / ``unknown``。
+
+    全文归一化相等时块仍可能被合并、拆分或换块；有登记基线就必须比对基线。
+    无基线（历史工作区）或块↔句映射有歧义时返回 ``unknown``，不推测曾经有几段。
+    """
+    from .blocks import block_spans, structure_digest
+
+    md_input, ordered = _align_compare_input(md_text, rows, title)
+    spans, issues = block_spans(md_input, ordered)
+    if issues:
+        return "unknown", "块身份无法确定：" + "；".join(issues[:3])
+    if not baseline:
+        return "unknown", None
+    current = structure_digest(spans)
+    if current == baseline:
+        return "ok", None
+    return (
+        "changed",
+        f"块边界与登记基线不一致（当前 {len(spans)} 块；"
+        f"基线 {baseline[:12]} / 当前 {current[:12]}；拆并句后须 import 重新登记）",
+    )
+
+
 def md_align_drift(
     md_text: str, rows: list[dict[str, Any]], *, title: str | None = None
 ) -> list[str]:
@@ -387,21 +465,10 @@ def md_align_drift(
     而 md 的标题由 build 从单元 title 渲染）；align 不含脚注定义行时，md 侧定义块
     整段忽略（「align 只收句级正文」的约定）；align 含定义行时严格比对定义文本。
 
-    返回差异摘要列表（空列表 = 一致）。只描述「哪侧缺内容」，不改文本。
+    返回差异摘要列表（空列表 = 一致）。只描述「哪侧缺内容」，不改文本。块边界
+    变化由 :func:`align_structure_status` 按登记基线另查（全文相等时本函数无告警）。
     """
-    ordered = sorted(rows, key=lambda r: int(r.get("seq") or 0))
-    if title:
-        tn = _drift_norm(title)
-        if tn:
-            for idx, r in enumerate(ordered):
-                if tn in (
-                    _drift_norm(str(r.get("tgt") or "")),
-                    _drift_norm(str(r.get("src") or "")),
-                ):
-                    ordered.pop(idx)
-                    break
-    align_has_defs = any(_FN_DEF_PREFIX.match(str(r.get("tgt") or "").lstrip()) for r in ordered)
-    md_input = md_text if align_has_defs else _strip_def_blocks(md_text)
+    md_input, ordered = _align_compare_input(md_text, rows, title)
     md_norm = _drift_norm(md_input)
     # 按行拼接（而不是无分隔 `"".join`）：`_HEADING_LINE` 是逐行正则，若拼接串里没有
     # 换行，位于串首的 `## ` 标题行会把**整串**吃掉 → 误报「align 0 字符」并阻断

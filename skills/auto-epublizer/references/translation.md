@@ -1,4 +1,4 @@
-<!-- i18n: source=translation.zh.md sha256=579304e11bd75656be3089949d6d3d5dca2a73d340889c6169bff5046d0c6366 -->
+<!-- i18n: source=translation.zh.md sha256=67c4fb8e666f3c6d34630ed69306cd4355e99aef4bd8b8a87854861a780404bd -->
 > **English** | [中文](translation.zh.md)
 
 # Translation (chunk translation + sentence alignment + terminology loop)
@@ -52,6 +52,76 @@ Empty align is allowed only when **both existing, nonempty** `structured/` and
 `translation/` documents contain only canonical ATX heading lines and blanks. Missing/empty
 source, body immediately after a heading without a blank, or extra target body is not exempt.
 Import and G0/QA share this test; per-level `heading` conservation still applies.
+
+### Block identity (paragraph ↔ contiguous seq range)
+
+Paragraph identity is **not a column in align**: every row is still a sentence. Blocks come
+from `content_blocks` (headings and pure comments skipped, fenced code its own block, block
+numbers from 1, the same split used by coverage and source fidelity). One block maps to a
+**contiguous** `seq` range; several sentences per block are normal, and splitting/merging
+sentences changes the count, not the block identity.
+
+- Allowed: one block with many sentences; one sentence split across rows (`note=split`);
+  duplicated text taking one row each in order; newline/indent-only changes.
+- Structural change: merging/splitting blocks, adding/removing blocks, reordering, or putting
+  one sentence into two blocks — import must register a new baseline.
+- When derivation fails (missing sentence, wrong order) report an issue instead of guessing
+  boundaries; a historical workspace without a baseline is `unknown`.
+- The baseline is a hash over block number/kind/seq range/block-text digest
+  (`review/blocks.py:structure_digest`), written to `meta.align_structure` on the unit in
+  `publication.json` by a successful import. Newlines inside a block do not invalidate it.
+  `qa`/delivery audit re-derive and compare: a mismatch with a baseline is a block-boundary
+  defect (`E_ALIGN_MD_DRIFT`); a missing baseline or ambiguous mapping is
+  `align_structure_unknown` and does not block migrating historical books.
+  `import --force` re-registers it.
+- **Source and target blocks are numbered independently and need not match in count**: source
+  blocks serve fidelity/coverage, target blocks serve md↔align drift, and the two connect only
+  through each align row's `src`. "Rows = paragraphs" or "normalized full text is equal" never
+  substitutes for checking block boundaries.
+
+### Read-only rebuild proposal
+
+`auto-epublizer align-propose --workspace <dir> [--unit ch01]` prints JSON and writes no formal
+file: `mappings[]` carries `status` (`exact` / `merge` / `split` / `propose` / `unmatched`),
+`source_blocks`, `seq_range`, reused verified `rows`, `uncovered` source blocks and `issues`.
+
+- Correspondence comes from overlapping block and seq ranges, not cross-language text
+  similarity; duplication, OCR gaps and heavy rewriting are never auto-accepted.
+- `propose` means no align row covers that target block: candidates only, no rows; sentence
+  ownership after splitting is confirmed by the agent before align is written.
+- A proposal is not an applied result; writing goes through the explicit B4 transaction
+  (the `repair apply --apply` family).
+
+### Explicit apply and recovery
+
+```bash
+auto-epublizer align-apply plan.json --workspace <dir>          # read-only precheck (default)
+auto-epublizer align-apply plan.json --workspace <dir> --apply  # explicit write
+```
+
+The plan binds SHA-256 values for the source, `translation/` and `align/`; a failed precheck
+or a file changed after the precheck is rejected. Before writing, a transaction journal with
+the old bytes is persisted; any failure restores the whole group. On success the baseline and
+import digests are re-registered, and `reviewed`/`built` fall back to `aligned` — old review
+and product conclusions are invalidated with the digests, so import/review/build must run
+again. `already_applied` is returned only when both align bytes and baseline match; changed
+files are never replayed.
+
+### Read-only hygiene scan
+
+`auto-epublizer hygiene --workspace <dir> [--unit ch01]` prints JSON (`writes: false`) with
+`unit`, `block`, `seq_range`, `context` and candidate types: residual source-language words,
+unbalanced quotes/brackets, adjacent duplicated words, half sentences, overlong blocks and
+suspected tail loss. `translation/notes.json` is scanned too (with `note_id`).
+
+- Everything is **advisory**: candidates are located, never judged semantically, rewritten or
+  treated as a substitute for agent review.
+- Negative controls: fenced/inline code is ignored; bibliography/index/glossary units are
+  skipped; abbreviation dots do not raise half sentences; a colon lead-in followed by a block
+  does not raise tail loss; quotes pair across the whole unit, so cross-paragraph quotations
+  are allowed.
+- Candidates need human verification; confirmed defects go through `repair apply`/rebuild,
+  never bulk edits from scanner output.
 
 ## Handling special segments (PDF content-extraction artifacts)
 

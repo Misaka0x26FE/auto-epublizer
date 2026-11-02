@@ -186,6 +186,190 @@ def test_llm_commands_removed(tmp_path: Path) -> None:
         assert "No such command" in result.output
 
 
+def test_qa_flags_block_boundary_change_after_import(tmp_path: Path) -> None:
+    """#87/B2：import 后把两段合成一段（全文归一化仍相等）必须被 qa 定位。"""
+    src = tmp_path / "book.md"
+    src.write_text(
+        "# Chapter I\n\nFirst sentence here.\n\nSecond sentence here.\n", encoding="utf-8"
+    )
+    _invoke("init", str(src), "--workspace", str(tmp_path / "ws"))
+    book = tmp_path / "ws/book"
+    target = book / "translation/body/ch01.md"
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text("# 第一章\n\n第一句话。\n\n第二句话。\n", encoding="utf-8")
+    align = book / "translation/align/ch01.jsonl"
+    align.parent.mkdir(parents=True, exist_ok=True)
+    rows = [
+        {"seq": 1, "src": "First sentence here.", "tgt": "第一句话。", "note": None},
+        {"seq": 2, "src": "Second sentence here.", "tgt": "第二句话。", "note": None},
+    ]
+    align.write_text(
+        "".join(json.dumps(row, ensure_ascii=False) + "\n" for row in rows), encoding="utf-8"
+    )
+    _invoke("import", "--workspace", str(book))
+    assert store_baseline(book)  # 基线已随 import 登记
+
+    target.write_text("# 第一章\n\n第一句话。第二句话。\n", encoding="utf-8")
+    _invoke("build", "--workspace", str(book))
+    payload = json.loads(_invoke("qa", "--json", "--workspace", str(book)).stdout)
+    assert payload["align_md_drift"] >= 1
+    assert not payload["released"]
+    messages = json.dumps(payload["provenance_findings"], ensure_ascii=False)
+    assert "块边界" in messages
+
+
+def store_baseline(book: Path) -> str:
+    data = json.loads((book / "publication.json").read_text(encoding="utf-8"))
+    return str(data["units"][0]["meta"].get("align_structure") or "")
+
+
+def test_align_propose_is_read_only(tmp_path: Path) -> None:
+    """B3：提案只读，返回映射与未覆盖块，不改工作区任何文件。"""
+    src = tmp_path / "book.md"
+    src.write_text("# Chapter I\n\nFirst sentence.\n", encoding="utf-8")
+    _invoke("init", str(src), "--workspace", str(tmp_path / "ws"))
+    book = tmp_path / "ws/book"
+    target = book / "translation/body/ch01.md"
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text("# 第一章\n\n第一句。\n", encoding="utf-8")
+    align = book / "translation/align/ch01.jsonl"
+    align.parent.mkdir(parents=True, exist_ok=True)
+    align.write_text(
+        json.dumps(
+            {"seq": 1, "src": "First sentence.", "tgt": "第一句。", "note": None},
+            ensure_ascii=False,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    before = {path: path.stat().st_mtime_ns for path in book.rglob("*") if path.is_file()}
+    payload = json.loads(_invoke("align-propose", "--workspace", str(book)).stdout)
+    assert payload["writes"] is False
+    assert payload["units"][0]["mappings"][0]["status"] == "exact"
+    assert payload["units"][0]["uncovered"] == []
+    after = {path: path.stat().st_mtime_ns for path in book.rglob("*") if path.is_file()}
+    assert before == after
+
+
+def test_align_apply_cli_dry_run(tmp_path: Path) -> None:
+    """B4：CLI 默认只读预检，计划绑定翻译/对照表摘要。"""
+    import hashlib
+
+    src = tmp_path / "book.md"
+    src.write_text("# Chapter I\n\nFirst sentence here.\n", encoding="utf-8")
+    _invoke("init", str(src), "--workspace", str(tmp_path / "ws"))
+    book = tmp_path / "ws/book"
+    target = book / "translation/body/ch01.md"
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text("# 第一章\n\n第一句。\n", encoding="utf-8")
+    align = book / "translation/align/ch01.jsonl"
+    align.parent.mkdir(parents=True, exist_ok=True)
+    align.write_text(
+        json.dumps(
+            {"seq": 1, "src": "First sentence here.", "tgt": "第一句。", "note": None},
+            ensure_ascii=False,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    _invoke("import", "--workspace", str(book))
+    pub = json.loads((book / "publication.json").read_text(encoding="utf-8"))
+    plan = {
+        "schema_version": "1",
+        "rule_version": "align-rebuild-1",
+        "source_sha256": pub["meta"]["source_sha256"],
+        "units": [
+            {
+                "unit": "ch01",
+                "translation_sha256": hashlib.sha256(target.read_bytes()).hexdigest(),
+                "align_sha256": hashlib.sha256(align.read_bytes()).hexdigest(),
+                "rows": [
+                    {"seq": 1, "src": "First sentence here.", "tgt": "第一句。", "note": "rebuilt"}
+                ],
+                "approved": True,
+            }
+        ],
+    }
+    plan_path = tmp_path / "plan.json"
+    plan_path.write_text(json.dumps(plan, ensure_ascii=False), encoding="utf-8")
+    before = align.read_bytes()
+    payload = json.loads(_invoke("align-apply", str(plan_path), "--workspace", str(book)).stdout)
+    assert payload["status"] == "dry_run"
+    assert align.read_bytes() == before
+
+
+def test_hygiene_cli_is_read_only(tmp_path: Path) -> None:
+    """C1：卫生扫描输出候选 JSON，不改译文。"""
+    src = tmp_path / "book.md"
+    src.write_text("# Chapter I\n\nBody.\n", encoding="utf-8")
+    _invoke("init", str(src), "--workspace", str(tmp_path / "ws"))
+    book = tmp_path / "ws/book"
+    target = book / "translation/body/ch01.md"
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text("# 第一章\n\n他说“没有说完。\n", encoding="utf-8")
+    before = target.read_bytes()
+    payload = json.loads(_invoke("hygiene", "--workspace", str(book)).stdout)
+    assert payload["writes"] is False
+    assert payload["counts"]["unbalanced_quote"] == 1
+    assert target.read_bytes() == before
+
+
+def test_evidence_layout_cli_is_read_only(tmp_path: Path) -> None:
+    """C2：evidence layout 输出只读版面候选。"""
+    src = tmp_path / "book.md"
+    src.write_text("# Chapter I\n\nBody.\n", encoding="utf-8")
+    _invoke("init", str(src), "--workspace", str(tmp_path / "ws"))
+    book = tmp_path / "ws/book"
+    raw = book / "structured/raw/page-001.json"
+    raw.parent.mkdir(parents=True, exist_ok=True)
+    raw.write_text(
+        json.dumps(
+            {
+                "page_idx": 1,
+                "blocks": [
+                    {
+                        "type": "text",
+                        "text": "左栏。",
+                        "bbox": [50, 100, 250, 140],
+                        "font_size": 10,
+                    },
+                    {
+                        "type": "text",
+                        "text": "右栏。",
+                        "bbox": [320, 100, 520, 140],
+                        "font_size": 10,
+                    },
+                ],
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    before = raw.read_bytes()
+    payload = json.loads(_invoke("evidence", "layout", "--workspace", str(book), "--json").stdout)
+    assert payload["writes"] is False
+    assert payload["pages"][0]["columns"] == 2
+    assert raw.read_bytes() == before
+
+
+def test_evidence_toc_cli_is_read_only(tmp_path: Path) -> None:
+    """D1：目录来源模型输出结构视图与原版行去向，不改工作区。"""
+    src = tmp_path / "book.md"
+    src.write_text(
+        "# Contents\n\nChapter One 3\n\n# Part One\n\nBody.\n\n## Chapter One\n\nBody.\n",
+        encoding="utf-8",
+    )
+    _invoke("init", str(src), "--workspace", str(tmp_path / "ws"))
+    book = tmp_path / "ws/book"
+    pub = book / "publication.json"
+    before = pub.read_bytes()
+    payload = json.loads(_invoke("evidence", "toc", "--workspace", str(book), "--json").stdout)
+    assert payload["writes"] is False
+    assert payload["nodes"]
+    assert payload["original"][0]["entries"][0]["label"] == "Chapter One"
+    assert pub.read_bytes() == before
+
+
 def test_qa_prints_release_reason(tmp_path: Path) -> None:
     """回归 #8：放行失败时控制台必须给出原因（否则只能去翻 report.json）。"""
     src = tmp_path / "book.md"
@@ -203,6 +387,26 @@ def test_qa_prints_release_reason(tmp_path: Path) -> None:
     _invoke("build", "--workspace", str(book))
     out = _invoke("qa", "--workspace", str(book)).output
     assert "G5 放行：否（原因：catalog_open）" in out
+
+
+def test_qa_exposes_missing_source_blocks_in_json_and_text(tmp_path: Path) -> None:
+    """#90：真实 QA 链路导出缺段身份和预览，不需调用私有复算函数。"""
+    src = tmp_path / "book.md"
+    src.write_text("# 第一章\n\n第一段。\n\n遗漏的第二段。\n", encoding="utf-8")
+    _invoke("init", str(src), "--workspace", str(tmp_path / "ws"))
+    book = tmp_path / "ws/book"
+    align = book / "translation/align/ch01.jsonl"
+    align.parent.mkdir(parents=True, exist_ok=True)
+    align.write_text(json.dumps({"seq": 1, "src": "第一段。", "tgt": "第一段。"}) + "\n")
+    _invoke("build", "--workspace", str(book))
+    payload = json.loads(_invoke("qa", "--json", "--workspace", str(book)).stdout)
+    assert payload["coverage_missing"] == ["ch01:2"]
+    assert payload["coverage_missing_details"][0]["preview"] == "遗漏的第二段。"
+    saved = json.loads((book / "report.json").read_text())
+    assert saved["coverage_missing_details"] == payload["coverage_missing_details"]
+    output = _invoke("qa", "--workspace", str(book)).stdout
+    assert "ch01:2" in output
+    assert "遗漏的第二段。" in output
 
 
 def test_meta_command_updates_fields(tmp_path: Path) -> None:

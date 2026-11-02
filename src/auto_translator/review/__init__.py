@@ -12,10 +12,13 @@ G1–G3 的语义审校由操作 CLI 的 agent 完成：agent 按 G0–G3 语义
 
 from __future__ import annotations
 
+from .blocks import block_spans, structure_digest
 from .convergence import ConvergenceResult, ConvergenceState, advance, summarize
 from .fidelity import all_lines, content_blocks, fidelity_flags, is_heading_only, norm_text
 from .g0 import (
     MIN_SRC_CHARS,
+    align_block_spans,
+    align_structure_status,
     annotate_correction_notes,
     apply_corrections,
     check_alignment,
@@ -47,9 +50,12 @@ __all__ = [
     "MIN_SRC_CHARS",
     "Patch",
     "advance",
+    "align_block_spans",
+    "align_structure_status",
     "all_lines",
     "annotate_correction_notes",
     "apply_corrections",
+    "block_spans",
     "check_alignment",
     "content_blocks",
     "count_footnote_defs",
@@ -71,6 +77,7 @@ __all__ = [
     "parse_md_tables",
     "repair_missing_hyphens",
     "strip_copyright_boilerplate",
+    "structure_digest",
     "summarize",
     "table_shape_flags",
 ]

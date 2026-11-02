@@ -1,4 +1,4 @@
-<!-- i18n: source=review.zh.md sha256=a75c7b8888cbd24b3923bd8f5de21913d30d807a9b65db2e7690e1a535442099 -->
+<!-- i18n: source=review.zh.md sha256=dc42b5518252d4f95c80f48e78ff7495584f5a592215985a4416c6b24b067dae -->
 > **English** | [中文](review.zh.md)
 
 # Review (six-gate QC operational guide)
@@ -160,7 +160,7 @@ insidious quality problem"; after arbitration write back to `analysis/glossary.c
 |---|---|
 | Length ratio | `0.30 ≤ len(tgt)/len(src) ≤ 3.0` (G0 warning, advisory) |
 | **Insert marker conservation** | **`{fig:NNN}` etc. markers consistent in src/tgt unit-level totals (hard defect; if not cleared, G5 reports `structure_open`)** |
-| **Footnote conservation** | **pandoc `[^label]` and sentence-final numeric note references consistent in total (hard defect, as above)** |
+| **Footnote conservation** | **pandoc `[^label]` and sentence-final numeric note references consistent in total (hard defect, as above)**; line-final page numbers after at least four consecutive dot-like leader characters are excluded from numeric counts and number-set differences. References after a three-dot ellipsis and explicit references remain checked; TOC/index units are not blanket-exempt |
 | **Heading conservation** | **per-level (h1~h6) counts consistent between structured and translation (hard defect, as above; issue #12) — lost sub-headings or shifted levels make TOC nodes disappear from or misplace in the product** |
 | **Terminology conflict** | **`glossary_conflicts_open == 0` (qa does not release before arbitration is written back to glossary.csv, `glossary_conflict_open`)** |
 | **Terminology hit** | **0 (G0 `terminology` is a real defect, not advisory — the translation is missing a glossary source term; it must be verified and cleared item by item, otherwise G5 does not release, `released_reason=terminology_open`)** |

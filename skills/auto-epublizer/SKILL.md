@@ -7,7 +7,7 @@ metadata:
   suite: auto-epublizer
   workspace_model: publication.json
 ---
-<!-- i18n: source=SKILL.zh.md sha256=38249ba34e992f1ff83018d0f1bd4dcb438dd6cd9dc3ae54f72a0163f70c788d -->
+<!-- i18n: source=SKILL.zh.md sha256=03aaead8668fe7ede080b4687ab650aabd198bb39891011379ab12ecc5ba5131 -->
 > **English** | [中文](SKILL.zh.md)
 
 # auto-epublizer
@@ -69,18 +69,18 @@ work-root rather than accidentally calling a global namesake. Read only the curr
 | Scenario | Read |
 |---|---|
 | First use / safe reuse (mandatory before version/doctor) | `references/work-root.md` |
-| Fresh task / state routing / multi-stage request / command overview | `references/workflow.md` |
+| Fresh task / state routing / multi-stage request / command overview / old-batch archiving (`archive` preview, `--apply`, `--recover`) | `references/workflow.md` |
 | `status/build/qa/ledger/import/g0 --json`, error fields and exit codes | `references/workflow.md` |
-| Print PDF covers/plates/wide tables, TOC absolute pages, publication metadata, `pdf --strict --json`, `pdf-verify` | `references/build.md` |
+| Print PDF covers/plates/wide tables, TOC absolute pages/`build --toc-page`, per-book `output.css`, publication metadata, `pdf --strict --json`, `pdf-verify` | `references/build.md` |
 | Notes evidence inventory, page-number policy, work-root dry-run/ignore reasons | `references/workflow.md`, `references/preprocessing.md`, `references/work-root.md` |
 | Weak-model path: machine next-task pointer (`status --json`) + atomic task cards | `references/taskcards/` |
 | Long-running work root, batch SHA256 delivery, retained ledger manual cells, link/ignore guards | `references/work-root.md` |
 | Preprocessing: read facts → write todo/capabilities/plan/global/units/terms/risks/report | `references/preprocessing.md` |
-| File parsing: PDF / scanned PDF / EPUB / DOCX / HTML / TXT / MD / OCR | `references/ingest.md` |
+| File parsing: PDF / scanned PDF / EPUB / DOCX / HTML / TXT / MD / OCR; `evidence layout/toc` layout and TOC provenance | `references/ingest.md`, `references/build.md` |
 | Semantic repair: parse-defect repair / OCR fixes / structural re-split (signal-triggered; mandatory for OCR) | `references/repair.md` |
 | Four-layer structure classification, cleaning, running head/footer and page-number removal, provenance | `references/structure.md` |
 | Layered understanding, terminology seeding, language/genre detection | `references/analysis.md` |
-| Chunk translation, heading-only empty align, `unit,source,reason` exemptions and three-entry advisory visibility | `references/translation.md` |
+| Chunk translation, heading-only empty align, `align-propose/align-apply` realignment proposal and transaction, `hygiene` read-only scan, `unit,source,reason` exemptions and three-entry advisory visibility | `references/translation.md` |
 | Note structuring/binding, stable refs, label collisions/orphan hosts, complete notes and code-literal boundaries | `references/notes.md` |
 | Six-gate QC (G0–G5), blocking/advisory handling | `references/review.md` |
 | Pre-delivery full validation (after qa, before delivery; mandatory) | `references/delivery.md` |

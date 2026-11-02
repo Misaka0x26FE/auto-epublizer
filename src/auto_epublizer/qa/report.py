@@ -39,6 +39,8 @@ class QaResult:
     released_reason: str = ""  # ok | epubcheck_not_run | epubcheck_errors | audit_failed | unresolved_confirmed | provenance_incomplete
     # 溯源审计（postprocessing-spec §3.2）
     provenance_coverage: float | None = None
+    coverage_missing: list[str] = field(default_factory=list)
+    coverage_missing_details: list[dict[str, Any]] = field(default_factory=list)
     units_missing: int = 0
     units_order_ok: bool = True
     media_lost: int = 0
@@ -47,6 +49,10 @@ class QaResult:
     inserts_missing_files: int = 0
     # 交付审计 S1：md↔align 一致性 + EPUB 呈现对账（error 级发现已在 provenance_findings）
     align_md_drift: int = 0
+    # 无块边界基线的历史单元（迁移可见性，不阻断放行；有基线且不一致计入 align_md_drift）
+    align_structure_unknown: list[str] = field(default_factory=list)
+    # 生成式目录页（D2）独立对账/lint：advisory，不单独阻断放行
+    toc_page_findings: list[str] = field(default_factory=list)
     epub_media_missing: int = 0
     epub_footnotes_missing: int = 0
     epub_coverage: float | None = None
@@ -149,6 +155,8 @@ def generate_report(
     inserts_missing_files = int(prov.get("inserts_missing_files") or 0)
     # 交付审计 S1：md↔align 一致性 + EPUB 媒体/脚注/段落呈现对账
     align_md_drift = len(prov.get("align_md_drift") or [])
+    align_structure_unknown = list(prov.get("align_structure_unknown") or [])
+    toc_page_findings = list(prov.get("toc_page_findings") or [])
     epub_media_missing = len(prov.get("epub_media_missing") or [])
     epub_footnotes_missing = len(prov.get("epub_footnotes_missing") or [])
     epub_coverage = prov.get("epub_coverage")
@@ -272,6 +280,10 @@ def generate_report(
         released=released,
         released_reason=reason,
         provenance_coverage=round(coverage, 6) if coverage is not None else None,
+        coverage_missing=list((provenance or {}).get("coverage_missing") or []),
+        coverage_missing_details=[
+            dict(item) for item in (provenance or {}).get("coverage_missing_details") or []
+        ],
         units_missing=units_missing,
         units_order_ok=units_order_ok,
         media_lost=media_lost,
@@ -279,6 +291,8 @@ def generate_report(
         toc_flat=toc_flat,
         inserts_missing_files=inserts_missing_files,
         align_md_drift=align_md_drift,
+        align_structure_unknown=align_structure_unknown,
+        toc_page_findings=toc_page_findings,
         epub_media_missing=epub_media_missing,
         epub_footnotes_missing=epub_footnotes_missing,
         epub_coverage=round(epub_coverage, 6) if epub_coverage is not None else None,

@@ -226,14 +226,42 @@ class RunStore:
             )
         }
 
-    def record_unit_content(self, unit_id: str) -> None:
-        """成功导入后登记三层摘要；旧工作区无摘要时不推断历史身份。"""
+    def record_unit_content(self, unit_id: str, *, align_structure: str | None = None) -> None:
+        """成功导入后登记三层摘要；旧工作区无摘要时不推断历史身份。
+
+        ``align_structure``：块边界基线（``review/blocks.py:structure_digest``）；
+        仅当块↔句映射无歧义时写入，历史缺基线保持 unknown。
+        """
         with self.state_lock():
             pub = Publication.model_validate(read_json(self.publication_path))
             unit = pub.unit(unit_id)
             if unit is None:
                 raise ValueError(f"单元不存在：{unit_id}")
             unit.meta["import_digests"] = self.unit_content_digests(unit)
+            if align_structure is not None:
+                unit.meta["align_structure"] = align_structure
+            atomic_write_json(self.publication_path, pub.model_dump(mode="json"))
+
+    def record_output_config(self, *, css: str = "") -> None:
+        """登记最近一次成功构建的按书样式路径（报告摘要输入）。"""
+        with self.state_lock():
+            pub = Publication.model_validate(read_json(self.publication_path))
+            pub.config.css = css
+            atomic_write_json(self.publication_path, pub.model_dump(mode="json"))
+
+    def restore_unit_registration(self, unit_id: str, *, status: str, meta: dict[str, Any]) -> None:
+        """事务回滚专用：把单元的状态与 meta 精确恢复到登记前的快照。
+
+        与 ``record_unit_content`` 不同，这里允许把 ``align_structure`` 等键恢复为
+        「原本不存在」，也原样恢复 ``import_digests``，避免回滚后摘要仍是新值。
+        """
+        with self.state_lock():
+            pub = Publication.model_validate(read_json(self.publication_path))
+            unit = pub.unit(unit_id)
+            if unit is None:
+                raise ValueError(f"单元不存在：{unit_id}")
+            unit.status = status
+            unit.meta = json.loads(json.dumps(meta))
             atomic_write_json(self.publication_path, pub.model_dump(mode="json"))
 
     def set_units(self, units: list[Any]) -> None:

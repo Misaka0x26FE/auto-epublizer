@@ -50,6 +50,26 @@ def test_import_registers_agent_products_and_advances_state(tmp_path: Path) -> N
     assert epub.is_file()
 
 
+def test_import_registers_block_baseline(tmp_path: Path) -> None:
+    """B2：#87 的块边界基线随 import 登记；合并段落即使全文相等也能定位。"""
+    from auto_translator.review import align_structure_status
+    from auto_translator.translation.align import read_align
+
+    store = _workspace(tmp_path)
+    _write_agent_products(store)
+    orch.import_translations(store)
+    unit = store.load_publication().units[0]
+    baseline = unit.meta.get("align_structure")
+    assert isinstance(baseline, str) and len(baseline) == 64
+
+    target = store.translation_dir / "body/ch01.md"
+    merged = "# 第一章\n\n第一句话。第二句话。\n"
+    target.write_text(merged, encoding="utf-8")
+    rows = read_align(store.unit_align_path("ch01"))
+    status, message = align_structure_status(merged, rows, baseline, title=unit.title)
+    assert status == "changed" and message and "块边界" in message
+
+
 def test_import_blocks_on_broken_align(tmp_path: Path) -> None:
     store = _workspace(tmp_path)
     _write_agent_products(store, broken=True)

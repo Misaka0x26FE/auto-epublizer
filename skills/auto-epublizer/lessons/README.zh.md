@@ -27,6 +27,7 @@
 
 | 文档 | 主题 | 状态 |
 |---|---|---|
+| [2026-11-01-titlepage-echo-deletion.md](2026-11-01-titlepage-echo-deletion.zh.md) | 书名页书名/副题被当页眉回声删除：正文单元才可清回声、书名页整页保留、删除须带源页块与理由 | 已修复判据边界（structure/classify.py + tests）+ 现场恢复经验 |
 | [2026-11-01-pdf-toc-anchors-and-artifact-manifest.md](2026-11-01-pdf-toc-anchors-and-artifact-manifest.zh.md) | 印刷 PDF 目录/书签绑定最终片段页；唯一定位标记；暂存原子发布与派生件清单 | 已修复（#73/#82/#60 后续）+ 经验留存 |
 | [2026-10-27-scanned-academic-false-green.md](2026-10-27-scanned-academic-false-green.zh.md) | 扫描学术书 18 类机械假绿：双栏人物表、尾注清点、审校覆盖与禁止凑数/占位修复 | 经验与待开发方案（#68/#69），不代表代码修复或原书重新验收 |
 | [2026-09-05-baka-tsuki-html-figures.md](2026-09-05-baka-tsuki-html-figures.zh.md) | Baka-Tsuki 源站 HTML 的插图段结构（figure>a>img 三行）在 ingest/build 的保真与复原 | 已修复（1766e7a 等）+ 经验留存 |

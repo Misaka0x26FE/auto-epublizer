@@ -1,4 +1,4 @@
-<!-- i18n: source=build.zh.md sha256=17df60b37e6ca8b8da1b80f367cd0d9e4ae229f61616e0c0679c8e8039eb9ed5 -->
+<!-- i18n: source=build.zh.md sha256=eac658a2cd2b48f9ec592766777c0a072cdd818b17338bf2eca237b765f77edb -->
 > **English** | [中文](build.zh.md)
 
 # Build (EPUB packaging)
@@ -62,6 +62,53 @@ OPF `aep:render-mode` records the actual build entry: `source` (source only) or 
 - Default: `output/<slug>.epub`
 - `-o` can override the output path.
 
+## TOC source model (D1, read-only)
+
+`auto-epublizer evidence toc --workspace <dir> --json` exports two **separate** sources:
+
+- `nodes`: the structure view — `unit`/`parent`/`order`/`level`/`label`/`href`; in-unit
+  sub-heading anchors carry the complete `file.xhtml#fragment`. A TOC page is a structure
+  view, not translated prose: it may be reordered by the unit tree and its entry boundaries
+  may change.
+- `original`: the TOC unit's original lines (`line`/`text`/`label`/`page`/`page_kind`). Only
+  an exact same label binds a destination (`unit_exact`/`anchor_exact`); duplicates or
+  missing targets are `ambiguous`/`unresolved`, and a `§` line without a body anchor is
+  `section_anchor_absent`. No heading is invented from the `§` marker.
+- `unresolved`: entries missing a target, ambiguous, or lacking an anchor, each with line
+  number and reason.
+- `page_display`: original page numbers appear only when `preprocessing/page_numbers.csv`
+  declares `original`; undeclared or `none` stays blank, never pretending to be the original
+  pagination.
+
+Original TOC lines are source evidence only; generating the clickable TOC page and the
+independent reconciliation belong to D2 (build generation + lint).
+
+## TOC page generation and independent check (D2)
+
+With `build --toc-page` / `output.toc_page: true`, the `toc` unit is no longer copied from
+source TOC lines:
+
+- A hierarchical `<nav epub:type="toc" data-aep="generated-toc">` is rendered from the unit
+  tree plus in-unit sub-heading anchors; labels come from translated unit titles, entry order
+  matches the nav/`output.nav_depth` projection, and links carry `file.xhtml#fragment`.
+- Page numbers come only from `preprocessing/toc_pages.csv` (`unit,page`): absent means
+  blank, missing rows are never guessed, and invalid/duplicate/unknown units fail.
+- The product carries `data-aep="generated-toc"`; `provenance` then skips the md paragraph
+  probe for that page and checks order/depth/label/href against an **independent expected
+  tree** recomputed from publication units and md anchors. Findings land in
+  `report.json.toc_page_findings` (advisory, not a standalone release block):
+  `toc_compressed` (≥2 `<br/>` inside one `<p>`), `toc_no_links`, `toc_count`,
+  `toc_entry_*`, `toc_missing_pages`.
+- Source entries the structural tree does not cover are **never dropped**: the generator
+  keeps them as link-less `span.toc-plain` rows (no page number, no target), and the
+  independent expected tree includes them too.
+- **Blocking findings** (`provenance_findings` at error level, which fail release):
+  `E_TOC_SOURCE_LOST` (a source TOC entry is missing from the product TOC page) and
+  `E_TOC_BROKEN_LINK` (a TOC link targets a missing document, or its `#fragment` does not
+  exist in the target). Other structural differences stay advisory in `toc_page_findings`.
+- The generator never judges its own product; a TOC page is a structure view and may be
+  reordered, but must still match the independent expected tree item by item.
+
 ## Notes
 
 - **Media reference boundary** (2026-10, group D fix): the build only collects media that
@@ -88,6 +135,13 @@ OPF `aep:render-mode` records the actual build entry: `source` (source only) or 
 - **Theme** (`--theme` / `config.output.theme`): `standard` (serif + 1.7 line spacing + indent + justified + centered headings,
   default) / `compact` (sans-serif + 1.4 + no indent) / `spacious` (serif + 2.0). Only controls typographic fine-tuning;
   no specific font names/colors/font sizes (audit blocks them: `E_THEME_FONT`/`E_THEME_COLOR`).
+- **Per-book style** (`--css` / `config.output.css`): a constrained workspace CSS file (e.g.
+  `preprocessing/book.css`) appended after the theme layer. Only indentation/spacing/line-height/
+  alignment/font-weight typographic properties are allowed; concrete font names, sizes, colors,
+  backgrounds, `@` rules and `url()` are rejected (`E_THEME_*`, plus `E_THEME_EXTERNAL` for
+  external references). The path must be workspace-relative (symlinks resolved inside), at most
+  64 KiB; the build logs `book_css_used` (path/sha256) and the style enters `artifacts_digest`
+  through the EPUB bytes.
 - **Cover**: the first image of the cover unit automatically becomes `cover-image` (`<meta name="cover">` +
   spine `linear="no"`); when there is no cover source image, audit warns `W_NO_COVER` (provenance).
   A **scanned cover** (#63) is never taken from page 1 automatically: `evidence source --json` lists
@@ -130,17 +184,17 @@ OPF `aep:render-mode` records the actual build entry: `source` (source only) or 
 
 ## Print PDF (`pdf`, derived artifact)
 
-Cover identity comes from package cover landmarks/semantics or an exact match to the registered cover-image resource, including nonlinear cover documents. An image-only registration produces a separate print cover page; other nonlinear appendices are not included automatically. Ambiguous cover identities fail rather than guessing from a filename containing cover or duplicating the cover. SVG graphics and existing cover text are retained.
+Cover identity comes from package cover landmarks/semantics or an exact match to the registered cover-image resource, including nonlinear cover documents. An image-only registration produces a separate print cover page; other nonlinear appendices are not included automatically. Ambiguous cover identities fail rather than guessing from a filename containing cover or duplicating the cover. SVG graphics and existing cover text are retained. Running heads/folios (E4): the cover has neither; each section start page does not repeat the running head; later body pages show the section title truncated to the available width with `...`; the folio is always the absolute PDF page number, hiding a page does not renumber, and bookmark/TOC pages stay unchanged.
 
 The cover occupies absolute page 1 without a folio. Without a cover, the first body page is numbered 1 and keeps its normal margins. Cover geometry uses millimetres rather than 100vh, with a 0.5mm paper-rounding allowance to keep images inside the actual page.
 
-Plate image height is budgeted from page size, top/bottom margins, and caption font/line height; images immediately after headings also reserve heading space. Short captions stay with their images; overlong captions may continue without drawing the image twice. Legitimate repeated references to the same source image remain repeated: resource deduplication is not a presentation audit.
+Plate image height is budgeted from page size, top/bottom margins, and caption font/line height; images immediately after headings also reserve heading space. Short captions stay with their images; overlong captions may continue without drawing the image twice. Legitimate repeated references to the same source image remain repeated: resource deduplication is not a presentation audit. (E3: on both A5 and 32k trims a plate is drawn once and never leaves the paper; `h1`–`h4` keep `page-break-after: avoid` so a heading is not orphaned.)
 
 Marker removal removes only positioning text, preserving underlying raster pixels and vector graphics. Resource URLs are decoded once and re-encoded for the browser so filename characters such as `#` are not mistaken for fragments.
 
-Tables are constrained to the text area; cells may wrap, and table paragraphs inherit the table font rather than shrinking fonts arbitrarily by column count. JSON `diagnostics` separately reports requested/observed body and note sizes, source/matched character counts and distributions. Source paragraph prefixes bind PDF spans; the character-weighted mode requires at least 24 normalized matched characters and a 60% modal share. Ambiguous body/note prefixes, insufficient samples and unmatched text remain unknown, not a body-font guess from the whole-document median.
+Tables are constrained to the text area; cells may wrap, and table paragraphs inherit the table font rather than shrinking fonts arbitrarily by column count. JSON `diagnostics` separately reports requested/observed body and note sizes, source/matched character counts and distributions. Source paragraph prefixes bind PDF spans; the character-weighted mode requires at least 24 normalized matched characters and a 60% modal share. Ambiguous body/note prefixes, insufficient samples and unmatched text remain unknown, not a body-font guess from the whole-document median. Mixed scripts: the body stack is Latin-first (Nimbus Roman → Liberation Serif → DejaVu Serif), then falls back to CJK (Noto Serif CJK SC → Songti); EPUB themes keep generic families. Diagnostics count latin/cjk characters by the real family from the FontDescriptor: Latin text in a CJK family reports `W_PDF_FONT_LATIN_USES_CJK`, CJK text in a Latin family reports `W_PDF_FONT_CJK_USES_LATIN` — locatable signals for missing fonts or a bad fallback.
 
-A measured font deviation above 5%, paper-size deviation above 1pt, or text/raster bounds more than 2pt outside the text area produces findings and notes. Overflow examples are capped at 100, with full counts/page sets retained. `--strict` exits nonzero on confirmed errors and preserves the previous PDF. Unknown font measurements remain unknown, not a claim of success. Diagnostics do not replace manual completeness, vector-graphic, table-semantic or glyph-readability acceptance.
+A measured font deviation above 5%, paper-size deviation above 1pt, or text/raster bounds more than 2pt outside the text area produces findings and notes. Overflow examples are capped at 100, with full counts/page sets retained. A CJK closing punctuation mark (`)〕】》」』，。；：？！` etc.) hanging past the right margin by up to 0.62em is an advisory `W_PDF_PUNCT_HANG` rather than overflow (hanging is normal typesetting); a larger overhang, or text containing prose, still reports `E_PDF_OVERFLOW`. `--strict` exits nonzero on confirmed errors and preserves the previous PDF. Unknown font measurements remain unknown, not a claim of success. Diagnostics do not replace manual completeness, vector-graphic, table-semantic or glyph-readability acceptance.
 
 ```bash
 auto-epublizer pdf --workspace <dir> [--epub <path>] [-o <out.pdf>] \
@@ -157,7 +211,8 @@ auto-epublizer pdf --workspace <dir> [--epub <path>] [-o <out.pdf>] \
 - **Resources**: `src`/`href` are relocated per chapter directory (a subdirectory chapter's
   `../media/x.png` cannot be mismatched); remote/out-of-package references are dropped and
   recorded in `notes`; `script`/`on*` are always removed.
-- **Bookmarks and TOC pages**: only the OPF item with `properties="nav"` and only the `epub:type="toc"` nav. Section start pages come from invisible locator marks (redacted after mapping); TOC rows and fragment bookmarks bind by full `href#fragment` identity to an anchor injected at the real id and use absolute page numbers from the final PDF, never a page-wide title substring or the section start page. TOC rewriting converges in at most three renders. Unlocated rows keep the source number but are explicitly labelled "original page, unlocated" in the product and reported as an error; non-convergence reports `E_PDF_TOC_UNSTABLE`. OPF3 `meta refines` translators never become the author.
+- **Bookmarks and TOC pages**: only the OPF item with `properties="nav"` and only the `epub:type="toc"` nav. Section start pages come from invisible locator marks (redacted after mapping); TOC rows and fragment bookmarks bind by full `href#fragment` identity to an anchor injected at the real id and use absolute page numbers from the final PDF, never a page-wide title substring or the section start page. Multi-block long titles match by the joined full label; hint lines without page numbers (Contents/§) never pair, page-digit growth replaces the old number as a whole, and § entries bind by label, not position. TOC rewriting converges in at most three renders. Unlocated rows keep the source number but are explicitly labelled "original page, unlocated" in the product and reported as an error; non-convergence reports `E_PDF_TOC_UNSTABLE`. OPF3 `meta refines` translators never become the author. Generated TOC pages (D2) use "label + dot leader + right-aligned page number"; a wrapped long label keeps the leader and number on its last line. Rewritten TOC fragments serialize as HTML, never XML self-closing `<span/>` (which swallows following nodes and breaks the leader layout).
+- **Index / CIP / CJK emphasis (E5)**: sections titled `Index`/`索引` (including name/place/subject indexes) render in two columns with `h1` spanning both; `Copyright`/`CIP`/版权 sections drop first-line indentation; `<em>`/`<i>` containing CJK becomes `span.cjk-em` (upright semibold) while Latin semantic emphasis stays italic.
 - **Publication metadata**: `dc:publisher`, `dc:date`, `dc:rights`, `dc:language`, `dc:subject`, `dc:description`, `dc:identifier` are written verbatim to XMP (`dc:rights` is not truncated). Authors go to `dc:creator` and translators to `aep:translators`. Info carries only standard short fields: `/Title`←`dc:title`, `/Author`←authors (semicolon-joined, translators excluded), `/Subject`←description, `/Keywords`←subjects; `/CreationDate` and `/ModDate` are the **generation time**, not the `dc:date` publication date. Empty fields stay empty rather than being invented.
 - **Artifact manifest**: every successful render writes `<pdf>.manifest.json` (schema, source EPUB/PDF sha256 and byte counts, PDF pages, actual parameters, Info/XMP read-back, TOC and diagnostics summaries). `pdf --json` returns the same `artifact`. `auto-epublizer pdf-verify --pdf <path> [--json]` recomputes the EPUB and PDF bytes and exits nonzero when the PDF changed, the manifest is corrupt, or the source is missing. Both PDF and manifest live under `output/` and remain outside the EPUB `artifacts_digest`: re-rendering does not change report state; the derived manifest carries the reconciliation.
 - **Parameters**: body 4–24 pt, notes 4–20 pt, line height 1.0–3.0; non-finite or out-of-range

@@ -176,6 +176,18 @@ def artifacts_digest(store: Any, *, epub_path: str | Path | None = None) -> str:
         if path.is_file():
             h.update(_file_sha256(path).encode())
         h.update(b"\n")
+    # 按书样式：路径来自最近一次成功构建的登记，字节取当前文件（改样式即过期）。
+    css_rel = str(getattr(getattr(pub, "config", None), "css", "") or "")
+    h.update(b"book_css:")
+    h.update(css_rel.encode())
+    if css_rel:
+        css_path = store.dir / css_rel
+        h.update(b":")
+        if css_path.is_file():
+            h.update(_file_sha256(css_path).encode())
+        else:
+            h.update(b"missing")
+    h.update(b"\n")
     # 注释登记绑定状态（登记摘要决定成品注释门与译注要求，F2）
     h.update(b"notes_summary:")
     h.update(json.dumps(getattr(pub, "notes", None), ensure_ascii=False, sort_keys=True).encode())

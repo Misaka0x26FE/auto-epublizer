@@ -1,4 +1,4 @@
-<!-- i18n: source=README.zh.md sha256=c64e5315db899af8fa7c8ecad19472cb152d010f920c4fa6f4289b7350023f6f -->
+<!-- i18n: source=README.zh.md sha256=4f5ce5cda1d6266c7355c687ea1a18b4c89ca23d63ec3f711a1d871881ff7236 -->
 > **English** | [中文](README.zh.md)
 
 # Lessons (distilled field experience)
@@ -32,6 +32,7 @@ downstream agents to directly consult and handle when they encounter the same ty
 
 | Document | Topic | Status |
 |---|---|---|
+| [2026-11-01-titlepage-echo-deletion.md](2026-11-01-titlepage-echo-deletion.md) | Title-page title/subtitle deleted as a header echo: echo removal only for body units, keep the whole title page, record source page/block and reason | Boundary fixed (structure/classify.py + tests) + field-recovery experience |
 | [2026-11-01-pdf-toc-anchors-and-artifact-manifest.md](2026-11-01-pdf-toc-anchors-and-artifact-manifest.md) | Print PDF TOC/bookmarks bind to final fragment pages; unique locator markers; staged atomic publish and derived-artifact manifest | fixed (#73/#82/#60 follow-up) + experience retained |
 | [2026-10-27-scanned-academic-false-green.md](2026-10-27-scanned-academic-false-green.md) | 18 mechanical false-green cases in scanned academic books: two-column people lists, source-note inventory, review shadowing, no padding or placeholder repairs | Lessons and proposed development (#68/#69), not code fixes or renewed book acceptance |
 | [2026-09-05-baka-tsuki-html-figures.md](2026-09-05-baka-tsuki-html-figures.md) | Baka-Tsuki source-site HTML illustration paragraph structure (three lines figure>a>img) fidelity and restoration in ingest/build | fixed (1766e7a etc.) + experience retained |

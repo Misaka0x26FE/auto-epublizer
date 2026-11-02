@@ -122,6 +122,9 @@ ingest 会把多出的那层 `media/` 拍平到 `raw/media/`、把引用改写�
 - 无文字层的扫描件：`page.get_pixmap(dpi)` 渲染 PNG → OCR → 作为该页文本块（`ocr:true`）。
 - 页面块支持四种 type：`text` / `image` / `table` / `formula`（保留 bbox）——插图/表格/公式
   的提取与 md 表示见 `docs/pdf-content-spec.md`；对应描述文件落 `raw/inserts/`。
+- 版面段落候选：`auto-epublizer evidence layout --workspace <dir> --json` 只读输出每页的
+  栏号、块序、字符范围、字号、估算行高、缩进/列表/引文分类和同段续行候选。无 `bbox`
+  的页明确 `unknown`；候选只供 agent 核证，不重排双栏/RTL，也不按字符数硬切原文。
 
 ## 中间产物
 

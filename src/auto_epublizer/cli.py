@@ -325,6 +325,49 @@ def repair_recover_cmd(
     _emit_json(json.dumps(data, ensure_ascii=False, indent=2))
 
 
+@evidence_app.command("layout")
+def evidence_layout_cmd(
+    workspace: str | None = typer.Option(None, "--workspace", help="工作区目录"),
+    json_output: bool = typer.Option(False, "--json", help="输出只读版面候选 JSON"),
+    config: str | None = typer.Option(None, "--config", help="配置文件路径"),
+) -> None:
+    """只读导出栏/缩进/段落边界候选（C2）；不改源文或结构。"""
+    try:
+        store = _store_from(workspace, load_config(config or _CONFIG_PATH))
+        data = orch.layout_candidates(store)
+    except (ValueError, OSError) as exc:
+        raise typer.Exit(f"版面证据读取失败：{exc}") from None
+    if json_output:
+        _emit_json(json.dumps(data, ensure_ascii=False, indent=2))
+        return
+    console.print(
+        f"版面候选：{data['page_count']} 页，未知 {len(data['unknown_pages'])} 页，"
+        f"块类型 {data['counts']}；只读，须人工核证"
+    )
+
+
+@evidence_app.command("toc")
+def evidence_toc_cmd(
+    workspace: str | None = typer.Option(None, "--workspace", help="工作区目录"),
+    json_output: bool = typer.Option(False, "--json", help="输出只读目录来源模型 JSON"),
+    config: str | None = typer.Option(None, "--config", help="配置文件路径"),
+) -> None:
+    """只读导出目录结构视图与原版目录行去向（D1）。"""
+    try:
+        store = _store_from(workspace, load_config(config or _CONFIG_PATH))
+        data = orch.toc_model(store)
+    except (ValueError, OSError) as exc:
+        raise typer.Exit(f"目录模型读取失败：{exc}") from None
+    if json_output:
+        _emit_json(json.dumps(data, ensure_ascii=False, indent=2))
+        return
+    console.print(
+        f"目录模型：{len(data['nodes'])} 个节点，原版条目 "
+        f"{sum(len(item['entries']) for item in data['original'])} 条，"
+        f"未决 {len(data['unresolved'])} 条；只读，须人工核证"
+    )
+
+
 @evidence_app.command("source")
 def evidence_source_cmd(
     workspace: str | None = typer.Option(None, "--workspace", help="工作区目录"),
@@ -535,12 +578,22 @@ def build(
     nav_depth: int | None = typer.Option(
         None, "--nav-depth", help="目录最大嵌套深度（1–6，默认取配置 output.nav_depth）"
     ),
+    toc_page: bool | None = typer.Option(
+        None, "--toc-page/--no-toc-page", help="生成可点击目录页（覆盖配置 output.toc_page）"
+    ),
+    css: str | None = typer.Option(
+        None, "--css", help="按书样式 CSS（工作区内相对路径，覆盖配置 output.css）"
+    ),
     config: str | None = typer.Option(None, "--config", help="配置文件路径"),
     json_output: bool = typer.Option(False, "--json", help="输出成品路径与源文回退单元 JSON"),
 ) -> None:
     """从译文（缺省回退源文）封装 EPUB。"""
     try:
         cfg = load_config(config or _CONFIG_PATH)
+        if toc_page is not None:
+            cfg.output.toc_page = toc_page
+        if css is not None:
+            cfg.output.css = css
         store = _store_from(workspace, cfg)
         out = orch.build(
             store,
@@ -829,6 +882,25 @@ def qa(
         )
     for finding in report.get("review_findings") or []:
         typer.echo(f"  {finding['code']}：{finding['path']}：{finding['message']}")
+    missing = report.get("coverage_missing") or []
+    if missing:
+        typer.echo(f"  逐段覆盖率 {report.get('provenance_coverage')}（缺 {len(missing)} 段）：")
+        previews = {
+            f"{item['unit']}:{item['block']}": item["preview"]
+            for item in report.get("coverage_missing_details") or []
+        }
+        for location in missing[:5]:
+            typer.echo(f"    {location}：{previews.get(location, '')}")
+    unknown = report.get("align_structure_unknown") or []
+    if unknown:
+        typer.echo(
+            f"  块边界基线未知 {len(unknown)} 单元（历史工作区，未阻断）：" + "、".join(unknown[:8])
+        )
+    toc_findings = report.get("toc_page_findings") or []
+    if toc_findings:
+        typer.echo(f"  目录页对账（advisory）{len(toc_findings)} 条：")
+        for finding in toc_findings[:5]:
+            typer.echo(f"    {finding}")
 
 
 @app.command()
@@ -1169,10 +1241,130 @@ def g0(
     )
 
 
+@app.command("align-apply")
+def align_apply(
+    plan: str = typer.Argument(..., help="对照表重建计划 JSON 路径"),
+    workspace: str | None = typer.Option(None, "--workspace", help="工作区目录"),
+    config: str | None = typer.Option(None, "--config", help="配置文件路径"),
+    apply: bool = typer.Option(False, "--apply", help="实际写入（缺省只读预检）"),
+) -> None:
+    """应用对照表重建计划（B4）：默认 dry-run，写入失败回滚。"""
+    try:
+        store = _store_from(workspace, load_config(config or _CONFIG_PATH))
+        data = json.loads(Path(plan).read_text(encoding="utf-8"))
+        result = orch.apply_align_rebuild(store, data, apply=apply)
+    except (ValueError, OSError, json.JSONDecodeError, typer.BadParameter) as e:
+        _command_error(e, json_output=True)
+    _emit_json(json.dumps(result, ensure_ascii=False, indent=2))
+
+
+@app.command()
+def hygiene(
+    unit: str | None = typer.Option(None, "--unit", help="只扫描指定单元（缺省全部）"),
+    workspace: str | None = typer.Option(None, "--workspace", help="工作区目录"),
+    config: str | None = typer.Option(None, "--config", help="配置文件路径"),
+) -> None:
+    """只读卫生扫描（C1）：输出候选 JSON，不改任何文本。"""
+    try:
+        store = _store_from(workspace, load_config(config or _CONFIG_PATH))
+        result = orch.hygiene_scan(store, unit_id=unit)
+    except (ValueError, OSError, typer.BadParameter) as e:
+        _command_error(e, json_output=True)
+    _emit_json(json.dumps(result, ensure_ascii=False, indent=2))
+
+
+@app.command("archive")
+def archive_cmd(
+    outbox: str = typer.Argument(..., help="outbox 根目录"),
+    docs: str | None = typer.Option(
+        None, "--docs", help="待改链接的 docs 目录（默认 outbox 同级 docs）"
+    ),
+    gitignore: str | None = typer.Option(
+        None, "--gitignore", help=".gitignore 路径（默认 outbox 同级）"
+    ),
+    apply: bool = typer.Option(False, "--apply", help="实际移动/改写（缺省只读预览）"),
+    recover: bool = typer.Option(False, "--recover", help="恢复未完成归档事务"),
+    json_output: bool = typer.Option(False, "--json", help="输出 JSON"),
+) -> None:
+    """旧批次归档（F1 预览 / F2 显式事务）：按 MANIFEST 身份/版本分组。"""
+    try:
+        from . import archive as archive_mod
+
+        if recover:
+            data = archive_mod.recover_archive(outbox)
+        else:
+            data = archive_mod.apply_archive_transaction(
+                outbox, docs_dir=docs, gitignore=gitignore, apply=apply
+            )
+    except (ValueError, OSError) as exc:
+        raise typer.Exit(f"归档失败：{exc}") from None
+    if json_output:
+        _emit_json(json.dumps(data, ensure_ascii=False, indent=2))
+        return
+    if data.get("status") in {"applied", "up_to_date", "recovered", "nothing_to_recover"}:
+        console.print(
+            f"归档：{data.get('status')}；移动 {len(data.get('moved') or [])}，"
+            f"链接文件 {data.get('link_files', 0)}，忽略规则 "
+            f"{'已更新' if data.get('gitignore_changed') else '无变化'}"
+        )
+        return
+    console.print(
+        f"归档预览：顶层 {data['current_total']} / 已归档 {data['archived_total']}；"
+        f"保留 {len(data['keep'])}，待归档 {len(data['moves'])}，"
+        f"冲突 {len(data['conflicts'])}，未决 {len(data['unresolved'])}，"
+        f"链接文件 {len(data['link_edits'])}；只读，未移动任何文件"
+    )
+
+
 @app.command()
 def version() -> None:
     """显示版本。"""
     console.print(f"auto-epublizer {__version__}")
+
+
+@app.command("align-propose")
+def align_propose(
+    unit: str | None = typer.Option(None, "--unit", help="只处理指定单元（缺省全部）"),
+    workspace: str | None = typer.Option(None, "--workspace", help="工作区目录"),
+    config: str | None = typer.Option(None, "--config", help="配置文件路径"),
+) -> None:
+    """只读生成对照表重建提案（B3）：默认 JSON 输出，不写任何正式文件。"""
+    try:
+        store = _store_from(workspace, load_config(config or _CONFIG_PATH))
+        pub = store.load_publication()
+        from auto_translator.translation.align import read_align
+        from auto_translator.translation.align_proposal import propose_alignment
+
+        proposals = []
+        for entry in pub.units:
+            if unit and entry.id != unit:
+                continue
+            rel = (entry.meta or {}).get("rel_path")
+            if not rel:
+                continue
+            src = store.structured_dir / str(rel)
+            tgt = store.translation_dir / str(rel)
+            if not src.is_file() or not tgt.is_file():
+                continue
+            proposals.append(
+                {
+                    "unit": entry.id,
+                    **propose_alignment(
+                        src.read_text(encoding="utf-8"),
+                        tgt.read_text(encoding="utf-8"),
+                        read_align(store.unit_align_path(entry.id)),
+                    ),
+                }
+            )
+    except (ValueError, OSError, typer.BadParameter) as e:
+        _command_error(e, json_output=True)
+    _emit_json(
+        json.dumps(
+            {"workspace": str(store.dir), "writes": False, "units": proposals},
+            ensure_ascii=False,
+            indent=2,
+        )
+    )
 
 
 # ── 统一术语库/知识库（跨工作区持久化 + git 持续维护）────────────────────────

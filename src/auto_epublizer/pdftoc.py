@@ -331,7 +331,9 @@ def rewrite_toc(
         result.findings.append(
             {"level": "warning", "code": "W_PDF_TOC_NO_ROWS", "document": owner_href}
         )
+    # 输出会作为 HTML 解析（Chromium）：不能用 XML 自闭合写法，否则 `<span/>`
+    # 会吞掉后续节点（目录行点线/页码布局失效）。
     result.html = escape(root.text or "", quote=False) + "".join(
-        etree.tostring(node, encoding="unicode") for node in root
+        etree.tostring(node, encoding="unicode", method="html") for node in root
     )
     return result

@@ -60,6 +60,42 @@ OPF 的 `aep:render-mode` 记录本次实际构建入口：`source`（纯源文�
 - 默认：`output/<slug>.epub`
 - `-o` 可覆盖输出路径。
 
+## 目录页来源模型（D1，只读）
+
+`auto-epublizer evidence toc --workspace <dir> --json` 导出两份**分开**的来源：
+
+- `nodes`：结构视图——`unit`/`parent`/`order`/`level`/`label`/`href`；单元内子标题锚点带
+  完整 `file.xhtml#fragment`。目录页是结构视图，不是译文段落，允许按单元树重排、改条目边界。
+- `original`：目录单元逐行的原本条目（`line`/`text`/`label`/`page`/`page_kind`），只有
+  **完全同名**才绑定目标（`unit_exact`/`anchor_exact`）；重复或找不到记 `ambiguous`/`unresolved`，
+  `§` 段没有正文锚点时记 `section_anchor_absent`，不从 `§` 字样自动造标题。
+- `unresolved`：缺目标、多义或缺锚点的条目，逐条给行号与原因。
+- `page_display`：只有 `preprocessing/page_numbers.csv` 声明 `original` 时才显示原书页码；
+  未声明或 `none` 一律留空，不冒充原版页码。
+
+原版目录行只作来源证据；生成可点击目录页与独立对账见 D2（build 生成 + lint）。
+
+## 目录页生成与独立对账（D2）
+
+`build --toc-page` / `output.toc_page: true` 打开后，`toc` 单元不再照抄源目录行：
+
+- 按单元树 + 单元内子标题锚点渲染分级 `<nav epub:type="toc" data-aep="generated-toc">`；
+  标签取已译单元标题，条目顺序与 nav/`output.nav_depth` 投影一致；可点链接带
+  `file.xhtml#fragment`。
+- 页码只读 `preprocessing/toc_pages.csv`（`unit,page`）：缺省不显示，缺行不猜；
+  非法/重复/未知单元直接报错。
+- 成品带 `data-aep="generated-toc"`，`provenance` 识别后跳过该页的 md 段落探针，改用
+  **独立期望树**（从 publication 单元与 md 锚点重算）核对顺序/层级/标签/href，
+  findings 记 `report.json.toc_page_findings`（advisory，不单独阻断放行）：
+  `toc_compressed`（`<p>` 内 ≥2 个 `<br/>`）、`toc_no_links`、`toc_count`、
+  `toc_entry_*`、`toc_missing_pages`。
+- 原目录中未被结构树覆盖的条目**不得丢失**：生成器把它们保留为无链接的
+  `span.toc-plain` 条目（不再有页码/链接），独立期望树同样包含这些条目。
+- **阻断项**（`provenance_findings` 的 error，直接使放行失败）：`E_TOC_SOURCE_LOST`
+  （原目录条目在成品目录中缺失）、`E_TOC_BROKEN_LINK`（目录链接指向不存在的文档，
+  或 `#fragment` 在目标文档中不存在）。其余结构差异仍是 `toc_page_findings` advisory。
+- 生成器不读取自身成品做判定；目录页是结构视图，允许重排，但仍须与独立期望树逐条一致。
+
 ## 说明
 
 - **媒体引用边界**（2026-10 D 组修复）：构建只收集 `structured/raw/media/` **之内**（解析符号链接后仍在目录内）的媒体；`../…`、绝对路径、指向工作区外的符号链接一律**拒绝读取**并记入 `events.jsonl` 的 `media_dropped`，随后由 provenance 以 `E_MEDIA_EPUB_LOST` 阻断放行（不静默丢图）。
@@ -71,6 +107,11 @@ OPF 的 `aep:render-mode` 记录本次实际构建入口：`source`（纯源文�
 - **主题**（`--theme` / `config.output.theme`）：`standard`（serif+1.7 行距+缩进+两端对齐+标题居中，
   默认）/ `compact`（sans-serif+1.4+无缩进）/ `spacious`（serif+2.0）。只控排版微调，
   无具体字体名/颜色/字号（audit 会拦：`E_THEME_FONT`/`E_THEME_COLOR`）。
+- **按书样式**（`--css` / `config.output.css`）：工作区内受限 CSS（如
+  `preprocessing/book.css`），追加在主题层之后。只允许缩进/段距/行距/对齐/字重等排版属性；
+  具体字体名、字号、颜色、背景、`@` 规则与 `url()` 一律拒绝（`E_THEME_*`；外部引用另有
+  `E_THEME_EXTERNAL`）。路径必须是工作区内相对文件（解析符号链接后仍在界内），上限 64 KiB；
+  构建事件记 `book_css_used`（path/sha256），样式最终随 EPUB 字节进入 `artifacts_digest`。
 - **封面**：cover 单元的首个图片自动成为 `cover-image`（`<meta name="cover">` +
   spine `linear="no"`）；无封面源图时 audit 提示 `W_NO_COVER`（provenance）。
   **扫描件封面**（#63）不自动取第 1 页图：`evidence source --json` 的 `cover_candidates`
@@ -79,8 +120,7 @@ OPF 的 `aep:render-mode` 记录本次实际构建入口：`source`（纯源文�
   build 才按既有 cover-image 路径登记（媒体字节原样）；声明 cover 单元却无可解析图片 →
   `events.jsonl` 记 `cover_without_image`，`status --json` 的 `cover.missing=true`。
 - **注释**：标准 EPUB `noteref` + `footnote`/`endnote` 语义、完整内容、可解析链接与回链、资源身份和有效登记绑定均为强制离线核证项（见 `references/notes.md`）。是否弹窗由阅读器实现和用户设置决定；始终保留可读注释区及往返跳转 fallback。
-- **目录层级**：源文标题层级（`level`）→ nav 嵌套 `<ol>` + NCX 嵌套 navPoint；
-  **单元内子标题锚点**（2026-09-29 起）：单元内 h2+ 标题自动获得稳定 id
+- **目录层级**：源文标题层级（`level`）→ nav 嵌套 `<ol>` + NCX 嵌套 navPoint；  **单元内子标题锚点**（2026-09-29 起）：单元内 h2+ 标题自动获得稳定 id
   （`{unit_id}-h{n}`；显式 `{#id}` 优先），以 `file.xhtml#anchor` 作为单元条目的
   子级进 nav/NCX——译文中应保留这些子标题（g0 `heading` 守恒门校验）；
   **目录深度投影**（`--nav-depth` / `config.output.nav_depth`，默认 3，1–6）：超出
@@ -120,12 +160,13 @@ auto-epublizer pdf --workspace <dir> [--epub <path>] [-o <out.pdf>] \
 - **资源**：每章按章节目录重定位 `src`/`href`（子目录章节的 `../media/x.png` 不会错配）；
   远程/包外引用丢弃并在 `notes` 留痕；`script`/`on*` 一律移除。
 - **封面身份**：优先使用包内 cover 地标/语义文档，或与登记 cover-image 精确对应的封面文档，封面可为非线性 spine 项；只有封面图登记时生成独立印刷封面页。其余非线性附件不自动纳入；存在多个封面身份时报错，不按文件名含 cover 猜测，也不重复添加。SVG 封面保留图形与已有文本。
-- **封面与页码**：封面置于绝对第 1 页且无页脚号；无封面时正文首页从 1 编号，并保留版心边距。封面用毫米版面而非 100vh，保留 0.5mm 纸张取整余量，避免图像越过实际纸边。
-- **图版**：图片高度由开本、上下边距、图注字号/行距预留计算，紧跟标题的大图另留标题空间。短图注与图版同页；超长图注可续页，图片不重复绘制。同一图片在源文中合法引用多次仍保留多次，不以资源去重代替呈现对账。
+- **封面与页码**：封面置于绝对第 1 页且无页脚号；无封面时正文首页从 1 编号，并保留版心边距。封面用毫米版面而非 100vh，保留 0.5mm 纸张取整余量，避免图像越过实际纸边。 **页眉页脚角色（E4）**：封面无页眉页脚；每个区段首页不重复页眉；后续正文页页眉为区段章名，按可用宽度截断并加 `...`；页脚始终是 PDF 绝对页序，隐藏封面页码不重编号，书签/目录页码不受影响。
+- **图版**：图片高度由开本、上下边距、图注字号/行距预留计算，紧跟标题的大图另留标题空间。短图注与图版同页；超长图注可续页，图片不重复绘制。同一图片在源文中合法引用多次仍保留多次，不以资源去重代替呈现对账。（E3：A5/32 开图版均只绘一次、不越出纸面；`h1`–`h4` 保持 `page-break-after: avoid`，不让标题落成孤页。）
 - **定位标记清除**：仅移除定位文字，不擦除覆盖区的图像像素或矢量图形；URL 资源路径只解码一次并重新编码供浏览器使用，`#` 等文件名字符不被当成 fragment。
-- **宽表与实测诊断**：表格限定版心宽度，单元格允许换行，表内段落继承表字号，不按列数任意缩小字体。`--json` 的 `diagnostics` 分别报告 body/notes 的请求字号、实测字号、源/命中字符数与分布：通过源段落前缀绑定 PDF span，取字符加权众数；至少命中 24 个归一化字符、众数占比 ≥60% 才记 measured。正文/注文前缀同形、样本不足或未匹配均为 unknown，不靠全书中位数猜测正文。
-- **严格模式**：实测字号相对请求值偏差 >5%、纸张尺寸偏差 >1pt，或正文/图片超出版心 >2pt，记具体 finding（含页码/bbox，越界样例最多 100 条但总数/页集合完整），在 `notes` 提示；`--strict` 遇已确认 error 非零退出并保留旧 PDF。未知字号保持 unknown，不冒充已测通过；诊断不等价于全部图文、矢量图形、表格语义或字形可读性的人工验收。
-- **书签与目录页码**：只读 OPF 的 `properties="nav"` 且只取 `epub:type="toc"`。区段起始页由不可见定位标记确定（映射后 redaction 清除）；目录行和片段书签用完整 `href#fragment` 身份绑定到真实 id 处注入的锚点，取最终 PDF 的绝对页序，不按整页标题子串或区段起始页猜。目录最多三遍渲染收敛；未定位条目保留源数字并在成品该行明确标注「原版页码，未定位」且记 error，收敛失败记 `E_PDF_TOC_UNSTABLE`。OPF3 `meta refines` 的译者不进 author。
+- **宽表与实测诊断**：表格限定版心宽度，单元格允许换行，表内段落继承表字号，不按列数任意缩小字体。`--json` 的 `diagnostics` 分别报告 body/notes 的请求字号、实测字号、源/命中字符数与分布：通过源段落前缀绑定 PDF span，取字符加权众数；至少命中 24 个归一化字符、众数占比 ≥60% 才记 measured。正文/注文前缀同形、样本不足或未匹配均为 unknown，不靠全书中位数猜测正文。混排字体：正文族拉丁优先（Nimbus Roman→Liberation Serif→DejaVu Serif），再回落 CJK（Noto Serif CJK SC→Songti）；EPUB 主题仍用 generic family。诊断按 FontDescriptor 实际族名统计 latin/cjk 用字：拉丁字落在 CJK 族记 `W_PDF_FONT_LATIN_USES_CJK`，CJK 字落在拉丁族记 `W_PDF_FONT_CJK_USES_LATIN`（缺字体/错回落的可定位信号）。
+- **严格模式**：实测字号相对请求值偏差 >5%、纸张尺寸偏差 >1pt，或正文/图片超出版心 >2pt，记具体 finding（含页码/bbox，越界样例最多 100 条但总数/页集合完整），在 `notes` 提示；CJK 行尾收标点（`）〕】》」』，。；：？！` 等）悬出右边距不超过 0.62em 时记 advisory `W_PDF_PUNCT_HANG`，不计入越界错误（悬挂是排版常态）；超过该幅度或含正文文字仍记 `E_PDF_OVERFLOW`。`--strict` 遇已确认 error 非零退出并保留旧 PDF。未知字号保持 unknown，不冒充已测通过；诊断不等价于全部图文、矢量图形、表格语义或字形可读性的人工验收。
+- **书签与目录页码**：只读 OPF 的 `properties="nav"` 且只取 `epub:type="toc"`。区段起始页由不可见定位标记确定（映射后 redaction 清除）；目录行和片段书签用完整 `href#fragment` 身份绑定到真实 id 处注入的锚点，取最终 PDF 的绝对页序，不按整页标题子串或区段起始页猜。目录最多三遍渲染收敛；跨块长题名按合并后的完整标签匹配，`Contents`/`§` 等无页码提示行不参与配对，页码位数变化整体替换旧数字，`§` 条目按标签而不是位置对应；未定位条目保留源数字并在成品该行明确标注「原版页码，未定位」且记 error，收敛失败记 `E_PDF_TOC_UNSTABLE`。OPF3 `meta refines` 的译者不进 author。目录页（D2 生成）按「题名 + 点线 + 右对齐页码」排版，长题名换行后点线与页码仍贴末行；改写后的目录片段按 HTML 序列化，不能用 XML 自闭合 `<span/>`（否则会吞掉后续节点、点线布局失效）。
+- **索引/CIP/中文强调（E5）**：区段标题为 `Index`/`索引`（含人名/地名/主题索引）时排两栏，`h1` 跨栏；`Copyright`/`CIP`/`版权` 区段段落取消首行缩进；`<em>`/`<i>` 内含汉字时改为 `span.cjk-em`（正体加粗），拉丁语义强调仍保留斜体。
 - **出版元数据**：`dc:publisher`、`dc:date`、`dc:rights`、`dc:language`、`dc:subject`、`dc:description`、`dc:identifier` 原样写入 XMP（`dc:rights` 不截断）；`dc:creator` 中作者进 `dc:creator`、译者进 `aep:translators`。Info 只写标准短字段：`/Title`←`dc:title`、`/Author`←作者（分号连接，不含译者）、`/Subject`←描述、`/Keywords`←主题（分号连接）；`/CreationDate`、`/ModDate` 是**生成时间**，不冒充 `dc:date` 出版日期。空字段保持空，不补造。
 - **派生清单与核对**：每次成功排版写 `<pdf>.manifest.json`（schema、源 EPUB/PDF 的 sha256 与字节数、PDF 页数、实际参数、Info/XMP 读回、目录与诊断摘要）。`pdf --json` 回传同一份 `artifact`。`auto-epublizer pdf-verify --pdf <path> [--json]` 重算源 EPUB 与 PDF 字节；PDF 被改动、清单损坏或源件缺失时非零退出。PDF 与清单都在 `output/`，仍不进入 EPUB `artifacts_digest`，所以重排不改报告状态，靠派生清单对账。
 - **参数**：正文 4–24 pt、注文 4–20 pt、行距 1.0–3.0；非有限/越界直接拒绝。输出与输入

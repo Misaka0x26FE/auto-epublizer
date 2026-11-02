@@ -1,4 +1,4 @@
-<!-- i18n: source=AGENTS.zh.md sha256=b93745ec18c7280ce664b74efe241c6ca90860130ff0f1749d26a53294fad9f4 -->
+<!-- i18n: source=AGENTS.zh.md sha256=7b0da908d65af9851147f30bba610837258e7c62ffaab92b629a4f354e9a4f66 -->
 > **English** | [中文](AGENTS.zh.md)
 
 # auto-epublizer repository guide (for coding agents developing/maintaining this project)
@@ -161,6 +161,9 @@ auto-epublizer import [--unit <id>] [--terms preprocessing/terms.csv] [--reviewe
                                  # blocking validation on reviewed/built units (post-delivery
                                  # revision re-registration; pass keeps state, failure rolls back to aligned)
 auto-epublizer g0                # validate after translation/import (verify terminology individually; reasoned per-unit exemptions are advisory)
+auto-epublizer align-propose --workspace .           # read-only realignment proposal: block→contiguous seq map, ambiguity, uncovered
+auto-epublizer align-apply plan.json [--apply]       # preflight by default; --apply writes md/align transactionally, rolling back the whole group on failure
+auto-epublizer hygiene --workspace .                 # read-only typographic hygiene scan (whitespace/punctuation/mixed script), writes=false
 
 
 # 6. Review (agent task): the agent performs G1–G3 semantic review itself and writes
@@ -176,6 +179,7 @@ auto-epublizer knowledge import --workspace .   # cross-book same-key different-
 auto-epublizer build          # translated EPUB → output/ (--theme selects the layout theme)
 auto-epublizer pdf            # derived print PDF → output/ (not in the QA digest; --strict/--json)
 auto-epublizer pdf-verify --pdf output/book.pdf  # reconcile source EPUB/PDF hashes and the artifact manifest
+auto-epublizer archive <outbox> [--apply|--recover]  # archive old batches: read-only preview by default; --apply moves, rewrites links, extends ignore rules transactionally
 
 # 8. QA (G0 static validation + G4 audit + G5 release summary → report.json)
 auto-epublizer qa             # structure audit + epubcheck

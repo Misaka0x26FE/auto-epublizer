@@ -19,6 +19,7 @@
 
 | 文档 | 状态 | 内容 |
 |---|---|---|
+| [2026-11-01-issue-pr-followup.md](2026-11-01-issue-pr-followup.md) | 实施中 | 38 个开放 issue / 17 个历史 PR 增量对账；诊断、段落与逐句对齐、目录、书版 PDF、归档分批计划；#92/#99/#100 既有能力优先验收 |
 | [2026-10-31-issue-pr-update.md](2026-10-31-issue-pr-update.md) | 已完成（本仓范围） | 21 个开放 issue 与全部 18 个历史 PR 对账；状态/CLI/PDF 目录元数据/注文证据/修复事务/页码策略/工作根治理与双语指南已落地；全量 1134 passed / 3 skipped，实书 unknown 项见 §8 |
 | [2026-10-29-structured-document-stack.md](2026-10-29-structured-document-stack.md) | 已完成（`ad1461f`） | markdown-it-py token 解析、EPUBCheck JSON 诊断、OCR 坐标/置信度、Pandoc AST 试点、Hypothesis 性质测试与固定工具 CI |
 | [2026-10-27-issue-pr-triage.md](2026-10-27-issue-pr-triage.md) | 已交付（main `10597f1`；§6 工作树已被清理，§7 为重做与推送记录） | #68 审校账本、#65 `$$` 候选、PR66 单项列表、PR67 PDF D1–D3、#62/#58 源分区、#63 扫描封面；证据与未验证范围见 §7 |

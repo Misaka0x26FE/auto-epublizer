@@ -116,6 +116,8 @@ class ConfigSnapshot(BaseModel):
     """init 时固化的关键运行配置，续跑时优先使用，避免配置漂移。"""
 
     target_language: str = "zh-CN"
+    # 最近一次成功构建使用的按书样式（工作区内相对路径）；空=未使用。
+    css: str = ""
 
 
 class Unit(BaseModel):

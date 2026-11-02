@@ -442,6 +442,12 @@ def _render_and_pack(
 
     cfg = config or Config()
     nav_depth = nav_depth if nav_depth is not None else cfg.output.nav_depth
+    book_css = ""
+    book_css_sha: str | None = None
+    if cfg.output.css:
+        from .build.bookcss import read_book_css
+
+        book_css, book_css_sha = read_book_css(store, cfg.output.css)
     out_path = Path(output) if output else store.output_dir / f"{pub.slug}.epub"
     media_root = store.structured_dir / "raw" / "media"
     content = []
@@ -454,6 +460,17 @@ def _render_and_pack(
     render_inputs = _render_inputs(store, entries, mode=render_mode)
     notes_ctx = _load_notes_context(store, pub, entries=entries, render_inputs=render_inputs)
     note_plan = notes_ctx.get("plan") if notes_ctx is not None else None
+    toc_doc = None
+    if cfg.output.toc_page:
+        from .build.toc_page import generated_toc_document
+
+        toc_doc = generated_toc_document(
+            store,
+            entries,
+            lang=lang,
+            nav_depth=nav_depth,
+            prefer_translation=prefer_translation,
+        )
 
     def _note_items_for(unit_id: str) -> list[NoteItem]:
         """按同一计划渲染该宿主的注文，不再另行推断文本来源。"""
@@ -490,6 +507,11 @@ def _render_and_pack(
         return items
 
     for e in entries:
+        if toc_doc is not None and e["id"] == toc_doc["unit"]:
+            e["anchors"] = []
+            built_ids.append(e["id"])
+            content.append((toc_doc["name"], toc_doc["html"]))
+            continue
         render_input = render_inputs.get(str(e["id"]))
         if render_input is None:
             continue
@@ -604,6 +626,7 @@ def _render_and_pack(
         cover_media=cover_media,
         nav_depth=nav_depth,
         render_mode=render_mode,
+        book_css=book_css,
     )
     # 状态推进：只把**确实打包了译文**的单元推进为 built。
     # 源文回退（无译文）的单元保持原状态——否则 import 会把 built 当「已完成」永久
@@ -612,6 +635,9 @@ def _render_and_pack(
         if prefer_translation and uid in fallback_ids:
             continue
         store.set_unit_status(uid, "built")
+    if book_css_sha:
+        store.log_event("book_css_used", path=cfg.output.css, sha256=book_css_sha)
+    store.record_output_config(css=cfg.output.css or "")
     store.log_event(
         event, slug=pub.slug, output=str(out_path), fallback_units=sorted(set(fallback_ids))
     )
@@ -679,11 +705,41 @@ def repair_apply(store: RunStore, plan: dict[str, Any], *, apply: bool = False) 
     return apply_plan(store, plan, apply=apply)
 
 
+def apply_align_rebuild(
+    store: RunStore, plan: dict[str, Any], *, apply: bool = False
+) -> dict[str, Any]:
+    """路由对照表重建事务（B4）：默认只读预检。"""
+    from .align_rebuild import apply_align_rebuild as _apply
+
+    return _apply(store, plan, apply=apply)
+
+
+def hygiene_scan(store: RunStore, *, unit_id: str | None = None) -> dict[str, Any]:
+    """路由只读卫生扫描（C1）：候选只定位，不改文本。"""
+    from .hygiene import scan_workspace
+
+    return scan_workspace(store, unit_id=unit_id)
+
+
 def repair_recover(store: RunStore) -> dict[str, Any]:
     """路由未决事务恢复。"""
     from .safe_repair import recover
 
     return recover(store)
+
+
+def layout_candidates(store: RunStore) -> dict[str, Any]:
+    """路由只读版面段落候选（C2）：坐标/栏/缩进证据，不重排原文。"""
+    from .preprocess.layout import collect_layout_candidates
+
+    return collect_layout_candidates(store)
+
+
+def toc_model(store: RunStore) -> dict[str, Any]:
+    """路由只读目录来源模型（D1）：结构视图与原版目录行分开。"""
+    from .toc_model import build_toc_model
+
+    return build_toc_model(store)
 
 
 def source_evidence(store: RunStore, *, note_ids: list[str] | None = None) -> dict[str, Any]:
@@ -1084,11 +1140,30 @@ def import_translations(
             failed.append({"unit": unit.id, "errors": errors})
             continue
         # 勘误先例留痕：按句 src 命中的已知讹误补 note（corr:wrong→right）并写回
-        from auto_translator.review import annotate_correction_notes
+        from auto_translator.review import (
+            align_block_spans,
+            annotate_correction_notes,
+            structure_digest,
+        )
         from auto_translator.translation.align import write_align
 
+        spans, structure_issues = align_block_spans(translation_md or "", rows, title=unit.title)
+        structure_baseline: str | None = None
+        if structure_issues:
+            # 块↔句映射有歧义：不写猜测的基线（保持 unknown），交 agent 复核
+            warned.append(
+                {
+                    "unit": unit.id,
+                    "check": "align_structure",
+                    "message": "块身份未登记：" + "；".join(structure_issues[:3]),
+                    "blocking": False,
+                }
+            )
+        else:
+            structure_baseline = structure_digest(spans)
+
         write_align(align_path, annotate_correction_notes(rows))
-        store.record_unit_content(unit.id)
+        store.record_unit_content(unit.id, align_structure=structure_baseline)
         if was_done and force:
             # 重校验通过：保持原状态（不回退，护住审校/构建结论）
             revalidated.append(unit.id)

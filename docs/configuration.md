@@ -1,4 +1,4 @@
-<!-- i18n: source=configuration.zh.md sha256=8413322f94635ac0448efe4a605f184095a538978d5efa60d5d2c5b4ce8fa446 -->
+<!-- i18n: source=configuration.zh.md sha256=f69696dc3cec6d8b829d350901f673163fdf8bba8c0548115de214d04188ee66 -->
 > **English** | [中文](configuration.zh.md)
 
 # Configuration reference (target `config.yaml` schema)
@@ -84,6 +84,9 @@ output:
                           # only layout micro-adjustments (generic font family/line spacing/indent/alignment), no concrete font name/color/size
   nav_depth: 3            # maximum TOC nesting depth (1–6, docs/epub-template-spec.md §3 projection)
                           # overly deep units do not enter nav/NCX, but are kept in the spine reading order and anchors
+  toc_page: false         # generate a clickable TOC page (D2): the toc unit is rendered from the unit tree,
+                          # not copied from source TOC lines; page numbers only from preprocessing/toc_pages.csv
+  css: ""                 # per-book style: workspace-relative constrained CSS (spacing only; no font/size/color/URL)
 ```
 
 ## Generated cover

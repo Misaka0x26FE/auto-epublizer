@@ -348,3 +348,29 @@ def test_delete_cover_removes_whichever_format_was_written(tmp_path: Path) -> No
     orch.delete_cover(store)
     assert not (store.dir / cv.generated_rel("jpeg")).exists()
     assert not (store.dir / cv.RECORD_FILE).exists()
+
+
+def test_hanze_pdf_shows_title_and_translator_credits(tmp_path: Path) -> None:
+    """G1：封面 PDF 文本层可见书名与译者署名（不靠 grep 位图）。"""
+    import re
+    import unicodedata
+
+    import pymupdf
+
+    store = _workspace(tmp_path)
+    pub = store.load_publication()
+    pub.meta.title = "马克思主义与中世纪研究"
+    pub.meta.translator = "马加丹汉化组"
+    pub.meta.publisher = "BRILL"
+    pub.meta.date = "2024"
+    store.save_publication(pub)
+    record = orch.generate_cover(store, style="hanze-academic", pdf=True)
+    assert record["pdf"]
+    pdf_path = next(store.dir.rglob("cover-generated.pdf"))
+    with pymupdf.open(pdf_path) as doc:
+        text = unicodedata.normalize(
+            "NFKC", re.sub(r"\s+", "", "".join(page.get_text() for page in doc))
+        )
+    assert "马克思主义与中世纪研究" in text
+    assert "马加丹汉化组" in text and "译" in text
+    assert "BRILL" in text and "2024" in text

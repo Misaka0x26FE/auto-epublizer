@@ -170,28 +170,37 @@ def clean_header_footer(
 ) -> list[SourceSegment]:
     """按 source_page 分组，剔除跨页重复的页眉页脚短行。
 
-    同一文本在 >=50% 的页首或页末出现即视为页眉/页脚。
+    同一文本在 >=50% 的页首或页末出现即视为页眉/页脚。**只删除页首/页末的那次出现**：
+    同文若也出现在页中，那是正文（书名页书名、章内引文等），不是版式家具；
+    标题段（``kind == "heading"``）保留其结构角色，即使与页眉同文。
     """
-    groups: dict[int, list[SourceSegment]] = {}
-    for s in segments:
-        groups.setdefault(s.meta.get("source_page") or 0, []).append(s)
+    positions: dict[int, list[int]] = {}
+    for i, s in enumerate(segments):
+        positions.setdefault(s.meta.get("source_page") or 0, []).append(i)
 
-    pages = sorted(groups)
+    pages = sorted(positions)
     if len(pages) < min_pages:
         return segments
 
     header_candidates: dict[str, int] = {}
     footer_candidates: dict[str, int] = {}
+    boundary: set[int] = set()
     for pg in pages:
-        segs = groups[pg]
-        text_segs = [s for s in segs if s.kind != KIND_HEADING and _short(s.source.strip())]
-        if text_segs:
-            header_candidates[text_segs[0].source.strip()] = (
-                header_candidates.get(text_segs[0].source.strip(), 0) + 1
-            )
-            footer_candidates[text_segs[-1].source.strip()] = (
-                footer_candidates.get(text_segs[-1].source.strip(), 0) + 1
-            )
+        text_idx = [
+            i
+            for i in positions[pg]
+            if segments[i].kind != KIND_HEADING and _short(segments[i].source.strip())
+        ]
+        if not text_idx:
+            continue
+        first, last = text_idx[0], text_idx[-1]
+        boundary.update((first, last))
+        header_candidates[segments[first].source.strip()] = (
+            header_candidates.get(segments[first].source.strip(), 0) + 1
+        )
+        footer_candidates[segments[last].source.strip()] = (
+            footer_candidates.get(segments[last].source.strip(), 0) + 1
+        )
 
     threshold = max(2, int(len(pages) * 0.5))
     drop = {t for t, n in header_candidates.items() if n >= threshold}
@@ -202,9 +211,9 @@ def clean_header_footer(
 
     out: list[SourceSegment] = []
     idx = 0
-    for s in segments:
+    for i, s in enumerate(segments):
         text = s.source.strip()
-        if _short(text) and text in drop:
+        if i in boundary and s.kind != KIND_HEADING and _short(text) and text in drop:
             continue
         s = s.model_copy(update={"index": idx})
         out.append(s)
@@ -213,7 +222,14 @@ def clean_header_footer(
 
 
 def clean_unit(unit: SourceUnit) -> SourceUnit:
-    """对单元应用页码剔除与页眉页脚清洗。"""
+    """对单元应用页码剔除与页眉页脚清洗。
+
+    书名页/封面整页都是内容：书名、副题、编者、出版年都可能与「页眉」或「页码」
+    同形（issue #97），因此这两类单元原样保留，不做版式家具剔除。
+    """
+    _region, kind = _classify_title(unit.title)
+    if kind in {"cover", "titlepage"}:
+        return unit
     segments = strip_page_numbers(unit.segments)
     segments = clean_header_footer(segments)
     return unit.model_copy(update={"segments": segments})

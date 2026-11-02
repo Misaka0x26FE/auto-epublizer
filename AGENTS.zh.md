@@ -120,6 +120,9 @@ auto-epublizer import [--unit <id>] [--terms preprocessing/terms.csv] [--reviewe
                                  # --force 对 reviewed/built 单元重跑阻断校验（交付后修订重登记；
                                  # 通过保持原状态，失败回退 aligned）
 auto-epublizer g0                # 翻译/导入后立即静态校验（术语逐条核证；有理由的按单元豁免为 advisory）
+auto-epublizer align-propose --workspace .            # 只读重对齐提案：块→连续 seq 映射、歧义与未覆盖
+auto-epublizer align-apply plan.json [--apply]        # 默认预检；--apply 事务写 md/align，失败整组回滚
+auto-epublizer hygiene --workspace .                  # 只读排版卫生扫描（空白/标点/混排等），writes=false
 
 
 # 6. 审校（agent 任务）：agent 按 G1–G3 语义自行审校，写 reviews/review-<ts>/
@@ -133,6 +136,7 @@ auto-epublizer knowledge import --workspace .   # 跨书同键异译外置到统
 auto-epublizer build          # 译文 EPUB → output/（--theme 选排版主题）
 auto-epublizer pdf            # 派生印刷版 PDF → output/（不入 qa 摘要；--strict/--json）
 auto-epublizer pdf-verify --pdf output/book.pdf  # 核对源 EPUB/PDF 哈希与派生清单
+auto-epublizer archive <outbox> [--apply|--recover]  # 旧批次归档：默认只读预览；--apply 事务移动/改链接/补忽略规则
 
 # 8. 质检（G0 静态校验 + G4 审计 + G5 汇总放行 → report.json）
 auto-epublizer qa             # 结构审计 + epubcheck（有注书另跑独立成品注释门；notes_open 阻断放行）

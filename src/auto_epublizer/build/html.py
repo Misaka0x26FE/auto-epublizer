@@ -857,6 +857,51 @@ def subheading_anchors(md: str, unit_id: str) -> list[dict[str, Any]]:
     return anchors
 
 
+def render_toc_document(
+    title: str,
+    nodes: list[dict[str, Any]],
+    *,
+    lang: str,
+    pages: dict[str, str] | None = None,
+) -> str:
+    """渲染生成式目录页（D2）：分级可点击条目，不照抄源目录行。
+
+    ``nodes``：``[{"unit","label","href","children"}]``；``pages`` 是
+    ``unit -> 原书页码`` 的显式映射，缺省不显示页码。产物带
+    ``data-aep="generated-toc"`` 标记，供 provenance 跳过 md↔成品段落探针并改用
+    独立目录对账。
+    """
+
+    def render(items: list[dict[str, Any]]) -> str:
+        parts = ["<ol>"]
+        for item in items:
+            page = (pages or {}).get(str(item.get("unit") or ""))
+            suffix = (
+                f'<span class="toc-dots"></span><span class="toc-page">{escape(str(page))}</span>'
+                if page
+                else ""
+            )
+            label = escape(plain_label(item["label"]))
+            if item.get("href"):
+                lead = f'<a href="{escape(item["href"], quote=True)}">{label}</a>'
+            else:
+                lead = f'<span class="toc-plain">{label}</span>'
+            parts.append(f'<li><div class="toc-row">{lead}{suffix}</div>')
+            children = item.get("children") or []
+            if children:
+                parts.append(render(children))
+            parts.append("</li>")
+        parts.append("</ol>")
+        return "".join(parts)
+
+    body = (
+        f"<h1>{escape(plain_label(title))}</h1>\n"
+        '<nav epub:type="toc" id="toc-page" data-aep="generated-toc" '
+        f'aria-label="{escape(plain_label(title), quote=True)}">{render(nodes)}</nav>'
+    )
+    return _page(title, body, lang=lang)
+
+
 def render_document(
     title: str,
     md_text: str,

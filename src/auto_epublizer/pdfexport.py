@@ -40,6 +40,7 @@ from html import escape, unescape
 from math import isfinite
 from pathlib import Path
 from string import Template
+from unicodedata import normalize as unicode_normalize
 from urllib.parse import quote, unquote, urlsplit
 from xml.etree import ElementTree as ET
 from xml.sax.saxutils import escape as xml_escape
@@ -52,6 +53,53 @@ from .pdftoc import canonical_href, inject_anchor_markers, is_toc_document, rewr
 from .pdftoc import member_href as _member_href
 
 BODY_RE = re.compile(r"<body[^>]*>(.*)</body>", re.S | re.I)
+_INDEX_LABELS = {
+    "索引",
+    "index",
+    "人名索引",
+    "地名索引",
+    "主题索引",
+    "indexofnames",
+    "indexofplaces",
+}
+_CIP_LABELS = {"版权", "版权页", "cip", "copyright", "copyrightpage", "图书在版编目"}
+_CJK_INLINE = re.compile(r"[\u3400-\u9fff]")
+_EMPHASIS_RE = re.compile(r"<(em|i)(\s[^>]*)?>(.*?)</\1>", re.S | re.I)
+
+
+def _document_label(text: str) -> str:
+    return "".join(unicode_normalize("NFKC", text or "").casefold().split()).rstrip(".…·")
+
+
+def _section_kind(title: str) -> str:
+    label = _document_label(title)
+    if label in _INDEX_LABELS:
+        return "index"
+    if label in _CIP_LABELS:
+        return "cip"
+    return ""
+
+
+def _mark_cjk_emphasis(inner: str) -> str:
+    """CJK 强调不用伪斜体：<em>/<i> 内含汉字时改为 cjk-em（加粗、正体）。"""
+
+    def convert(segment: str) -> str:
+        def replace(match: re.Match[str]) -> str:
+            body = match.group(3)
+            text = re.sub(r"<[^>]+>", "", body)
+            if not _CJK_INLINE.search(text):
+                return match.group(0)
+            attrs = match.group(2) or ""
+            return f'<span class="cjk-em"{attrs}>{body}</span>'
+
+        return _EMPHASIS_RE.sub(replace, segment)
+
+    parts = re.split(r"(<code\b.*?</code>|<pre\b.*?</pre>)", inner, flags=re.S | re.I)
+    return "".join(
+        part if re.match(r"<(?:code|pre)\b", part, re.I) else convert(part) for part in parts
+    )
+
+
 ASIDE_RE = re.compile(r"<aside\b[^>]*>.*?</aside>", re.S | re.I)
 BACKLINK_RE = re.compile(r"<p>\s*<a\b[^>]*epub:type=\"backlink\"[^>]*>.*?</a>\s*</p>", re.S | re.I)
 FNLABEL_RE = re.compile(r"<p>\s*\[([^\]]{1,8})\]\s*</p>\s*<p>", re.S | re.I)
@@ -102,7 +150,17 @@ CSS_TEMPLATE = r"""/* 印刷版式：${page_note}，正文 ${body_pt} pt、注�
 @page { size: ${size_css}; margin: ${margins}; }
 ${first_page}
 html, body { margin: 0; padding: 0; }
-body { font-family: "Noto Serif CJK SC", "Songti SC", serif; font-size: ${body_pt}pt;
+/* 目录行（E3）：题名 + 点线 + 右对齐页码；长题名换行后点线/页码仍贴末行。 */
+.toc-row { display: flex; align-items: flex-end; width: 100%; }
+.toc-row > a { flex: 0 1 auto; min-width: 0; overflow-wrap: anywhere; }
+.toc-row .toc-dots { flex: 1 1 2em; min-width: 1.2em; border-bottom: 1px dotted #777;
+    margin: 0 0.35em 0.18em; }
+.toc-row .toc-page { flex: none; font-variant-numeric: tabular-nums; }
+nav[data-aep="generated-toc"] ol { list-style: none; margin: 0; padding-left: 1.1em; }
+nav[data-aep="generated-toc"] > ol { padding-left: 0; }
+nav[data-aep="generated-toc"] li { margin: 0.18em 0; page-break-inside: avoid; }
+body { font-family: "Nimbus Roman", "Liberation Serif", "DejaVu Serif",
+       "Noto Serif CJK SC", "Songti SC", serif; font-size: ${body_pt}pt;
        line-height: ${line_height}; text-align: justify; }
 p { font-size: ${body_pt}pt; line-height: ${line_height}; text-indent: 2em; margin: 0;
     text-align: justify; }
@@ -130,6 +188,10 @@ table th, table td { overflow-wrap: anywhere; word-break: normal; }
 table p { font-size: inherit; text-indent: 0; }
 table.data th, table.data td { padding: 0.12em 0.4em; }
 section.chapter { page-break-after: always; }
+section.index { column-count: 2; column-gap: 2em; }
+section.index h1 { column-span: all; }
+section.cip p { text-indent: 0; }
+span.cjk-em { font-style: normal; font-weight: 600; }
 section.chapter:last-of-type { page-break-after: auto; }
 section.cover { page-break-after: auto; width: 100%; height: 100%; margin: 0; padding: 0;
     display: flex; flex-direction: column; position: relative; min-height: 0; }
@@ -232,6 +294,7 @@ class PdfResult:
 @dataclass
 class PrintEvidence:
     toc_documents: list[dict] = field(default_factory=list)
+    section_titles: dict[int, str] = field(default_factory=dict)
     anchors: dict[str, str] = field(default_factory=dict)
     findings: list[dict] = field(default_factory=list)
 
@@ -608,9 +671,11 @@ def build_print_html(
         if not body:
             raise ValueError(f"spine 文档没有 body：{href}")
         inner = _rewrite_resources(prepare_asides(body.group(1)), href, root, notes)
+        inner = _mark_cjk_emphasis(inner)
         inner = _strip_active(inner)
         title_match = TITLE_RE.search(html)
         title = unescape(title_match.group(1)) if title_match else ""
+        evidence.section_titles[index] = title
         if is_toc_document(inner, title=title, declared=href in package.toc_hrefs):
             record = {"document": href, "updates": [], "findings": []}
             if page_map is not None:
@@ -628,7 +693,9 @@ def build_print_html(
         if href == package.cover_href:
             parts.append(f'<section class="cover">{marker}{inner}</section>')
             continue
-        parts.append(f'<section class="chapter">{marker}{inner}</section>')
+        kind = _section_kind(title)
+        classes = "chapter" + (f" {kind}" if kind else "")
+        parts.append(f'<section class="{classes}">{marker}{inner}</section>')
     # 样式表：按包内声明选第一个 text/css（多章子目录也不做首章猜测）
     stylesheet = next(
         (item["href"] for item in package.manifest.values() if item["media-type"] == "text/css"),
@@ -794,8 +861,46 @@ def attach_outline(
     return toc
 
 
-def stamp_folios(doc: pymupdf.Document, *, font_size: float = 9, cover: bool = True) -> None:
-    """Number every page but the cover, centred in the bottom margin."""
+def _running_font(text: str) -> tuple[str, pymupdf.Font]:
+    """按标题文字选字体：含 CJK 用内置中文字体（Helvetica 只会画出圆点）。"""
+    if any(ord(char) > 0x2E7F for char in text):
+        try:
+            return "china-s", pymupdf.Font("china-s")
+        except Exception:  # noqa: BLE001 - 字体不可用时退回 Helvetica 但不静默误画
+            return "helv", pymupdf.Font("helv")
+    return "helv", pymupdf.Font("helv")
+
+
+def _fit_running_title(
+    text: str, *, max_width: float, font_size: float, font: pymupdf.Font | None = None
+) -> str:
+    title = " ".join(str(text or "").split())
+    if not title:
+        return ""
+    measure = font if font is not None else pymupdf.Font("helv")
+    if measure.text_length(title, fontsize=font_size) <= max_width:
+        return title
+    suffix = "..."  # Helvetica/WinAnsi 没有 …，用三点保证可读且不落成替代字形
+    while title and measure.text_length(title + suffix, fontsize=font_size) > max_width:
+        title = title[:-1]
+    return (title + suffix) if title else ""
+
+
+def stamp_folios(
+    doc: pymupdf.Document,
+    *,
+    font_size: float = 9,
+    cover: bool = True,
+    section_titles: dict[int, str] | None = None,
+    section_pages: dict[int, int] | None = None,
+) -> None:
+    """页脚绝对页码 + 正文页眉章名；封面无页眉页脚，章节首页不重复页眉。
+
+    页码始终按 PDF 绝对页序（``index + 1``），隐藏页眉/页脚不重编号。页眉放在
+    上边距内，长章名按可用宽度截断并加省略号；首页与无章名页不画页眉。
+    """
+    titles = section_titles or {}
+    starts = section_pages or {}
     for index in range(1 if cover else 0, doc.page_count):
         page = doc[index]
         page.insert_text(
@@ -804,6 +909,28 @@ def stamp_folios(doc: pymupdf.Document, *, font_size: float = 9, cover: bool = T
             fontsize=font_size,
             fontname="helv",
             color=(0.35, 0.35, 0.35),
+        )
+        page_no = index + 1
+        section = max((n for n, start in starts.items() if start <= page_no), default=None)
+        if section is None or page_no == starts.get(section):
+            continue
+        raw_title = titles.get(section, "")
+        fontname, font = _running_font(str(raw_title))
+        title = _fit_running_title(
+            raw_title,
+            max_width=page.rect.width - 100,
+            font_size=8.0,
+            font=font,
+        )
+        if not title:
+            continue
+        width = font.text_length(title, fontsize=8.0)
+        page.insert_text(
+            ((page.rect.width - width) / 2, 24),
+            title,
+            fontsize=8.0,
+            fontname=fontname,
+            color=(0.45, 0.45, 0.45),
         )
 
 
@@ -1218,7 +1345,12 @@ def render(
                 extra=list(evidence.anchors.values()),
                 prefix=marker_prefix,
             )
-            stamp_folios(doc, cover=cover)
+            stamp_folios(
+                doc,
+                cover=cover,
+                section_titles=evidence.section_titles,
+                section_pages=section_pages,
+            )
             written = 0
             if bookmarks:
                 toc = attach_outline(

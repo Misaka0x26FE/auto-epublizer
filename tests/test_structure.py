@@ -9,6 +9,7 @@ from auto_epublizer.ingest.models import SourceDocument, SourceSegment, SourceUn
 from auto_epublizer.structure import (
     classify_units,
     clean_header_footer,
+    clean_unit,
     rebuild_structure,
     strip_page_numbers,
     write_structured,
@@ -147,6 +148,30 @@ def test_clean_header_footer_keeps_distinct() -> None:
     assert len(out) == 3
 
 
+def test_clean_header_footer_only_drops_page_boundary_occurrences() -> None:
+    """页首跨页重复的是页眉；页中同文是正文，不能连带删除（issue #97 同类）。"""
+    segs = []
+    for pg in (1, 2, 3):
+        segs.append(_seg("书名", pg))
+        segs.append(_seg(f"第{pg}页正文", pg))
+        segs.append(_seg("书名", pg))
+        segs.append(_seg(f"第{pg}页末", pg))
+    out = clean_header_footer(segs, min_pages=3)
+    assert [s.source for s in out].count("书名") == 3
+
+
+def test_clean_header_footer_keeps_heading_segments() -> None:
+    """标题段与页眉同文时仍是结构标题，不能按页眉删除。"""
+    segs = []
+    for pg in (1, 2, 3):
+        segs.append(_seg("第一章 导论", pg))
+        segs.append(_seg(f"正文{pg}", pg))
+        segs.append(_seg("第一章 导论", pg, kind="heading"))
+    out = clean_header_footer(segs, min_pages=3)
+    assert [s.source for s in out].count("第一章 导论") == 3
+    assert [s.kind for s in out if s.source == "第一章 导论"] == ["heading"] * 3
+
+
 def test_rebuild_structure_entries() -> None:
     doc = SourceDocument(
         title="B",
@@ -156,6 +181,21 @@ def test_rebuild_structure_entries() -> None:
     entries = rebuild_structure(doc, pub)
     assert entries[0]["id"] == "ch01"
     assert entries[0]["region"] == "body"
+
+
+def test_clean_unit_keeps_title_page_content() -> None:
+    """书名页的出版年/页码同形行是内容，不按家具剔除（#97 建议的 kind 排除）。"""
+    unit = SourceUnit(
+        id="front-titlepage",
+        title="Title Page",
+        segments=[
+            _seg("Marxism and Medieval Studies", 4),
+            _seg("2024", 4),
+            _seg("5", 4),
+        ],
+    )
+    out = clean_unit(unit)
+    assert [s.source for s in out.segments] == ["Marxism and Medieval Studies", "2024", "5"]
 
 
 def test_write_structured(tmp_path: Path) -> None:
@@ -169,6 +209,41 @@ def test_write_structured(tmp_path: Path) -> None:
     write_structured(store, doc, entries)
     assert (store.structured_dir / "body/ch01.md").is_file()
     assert (store.structured_dir / "body/ch02.md").is_file()
+
+
+def test_title_page_title_and_subtitle_survive_structure_rebuild(tmp_path: Path) -> None:
+    """#97：书名页的书名/副题/编者必须原字节进入 structured/（不得当页眉回声删除）。"""
+    src = tmp_path / "book.md"
+    src.write_text("# 第一章\n\n正文。\n", encoding="utf-8")
+    store = init_workspace(src, workspace_dir=tmp_path / "ws")
+    doc = SourceDocument(
+        title="Marxism and Medieval Studies",
+        units=[
+            SourceUnit(
+                id="spine001",
+                title="Title Page",
+                segments=[
+                    _seg("Marxism and Medieval Studies", 4, kind="heading"),
+                    _seg("Marxist Historiography in East Central Europe", 4),
+                    _seg("Edited by", 4),
+                    _seg("Martin Nodl / Piotr Węcowski / Dušan Zupka", 4),
+                    _seg("LEIDEN | BOSTON", 4),
+                ],
+                meta={"heading_level": 1},
+            )
+        ],
+    )
+    entries = rebuild_structure(doc, store.load_publication())
+    write_structured(store, doc, entries)
+    md = (store.structured_dir / entries[0]["rel_path"]).read_text(encoding="utf-8")
+    for line in (
+        "Marxism and Medieval Studies",
+        "Marxist Historiography in East Central Europe",
+        "Edited by",
+        "Martin Nodl / Piotr Węcowski / Dušan Zupka",
+        "LEIDEN | BOSTON",
+    ):
+        assert line in md, md
 
 
 def test_write_structured_writes_front_and_back(tmp_path: Path) -> None:

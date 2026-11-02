@@ -82,6 +82,10 @@ class OutputConfig(BaseModel):
     about_page: bool = True
     theme: str = "standard"  # standard | compact | spacious（epub-template-spec §5）
     nav_depth: int = Field(3, ge=1, le=6)  # 目录最大嵌套深度（epub-template-spec §3 投影）
+    # 生成可点击目录页（D2）：打开后 toc 单元按单元树渲染，不再照抄源目录行。
+    toc_page: bool = False
+    # 按书样式（E2）：工作区内受限 CSS 相对路径（缩进/段距/行距等排版微调）。
+    css: str = ""
 
 
 class CoverConfig(BaseModel):

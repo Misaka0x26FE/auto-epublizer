@@ -8,7 +8,7 @@
 
 from __future__ import annotations
 
-from .classify import classify_units, clean_header_footer, strip_page_numbers
+from .classify import classify_units, clean_header_footer, clean_unit, strip_page_numbers
 from .rebuild import (
     StructureError,
     count_empty_units,
@@ -22,6 +22,7 @@ __all__ = [
     "StructureError",
     "classify_units",
     "clean_header_footer",
+    "clean_unit",
     "count_empty_units",
     "rebuild_structure",
     "skip_empty_unit",

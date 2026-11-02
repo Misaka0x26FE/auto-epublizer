@@ -78,6 +78,9 @@ output:
                           # 仅排版微调（泛化字族/行距/缩进/对齐），无具体字体名/颜色/字号
   nav_depth: 3            # 目录最大嵌套深度（1–6，docs/epub-template-spec.md §3 投影）
                           # 超深单元不进 nav/NCX，但保留在 spine 阅读顺序与锚点中
+  toc_page: false         # 生成可点击目录页（D2）：toc 单元按单元树渲染，不照抄源目录行；
+                          # 页码只读 preprocessing/toc_pages.csv（unit,page），缺省留空
+  css: ""                 # 按书样式：工作区内受限 CSS 相对路径（缩进/段距/行距等，禁止字体/字号/颜色/URL）
 ```
 
 ## 生成式封面
@@ -87,9 +90,7 @@ output:
 可选的、由 agent 手写的 `preprocessing/cover-spec.json`，成品登记在
 `preprocessing/cover-generated.json`。
 
-只有一套版式（`quarto`，界栏）：整幅底面 + 反白左对齐大字书名 + 左侧双线界栏 + 短横 +
-斜体原文名 + 左下责任者 + 右下署名。旧版 `magadan` **已停用**：点名它会得到明确报错，
-不会静默换成别的版式。
+旧版 `magadan` **已停用**：点名它会得到明确报错，不会静默换成别的版式。
 
 **可辨认底线**：封面按 600px 宽看（更小的分辨率不考虑），所以每个字号在该宽度下都
 ≥14px —— `MIN_TYPE_FRAC` = 14/600 ≈ 2.34% 页宽，由代码夹紧并由

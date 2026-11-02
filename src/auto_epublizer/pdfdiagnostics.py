@@ -4,6 +4,7 @@
 
 from __future__ import annotations
 
+import re
 import unicodedata
 from collections import Counter
 from dataclasses import dataclass, field
@@ -13,6 +14,30 @@ from typing import Any
 import pymupdf
 
 _PREFIX = 24
+_CJK_CHAR = re.compile(r"[\u3400-\u9fff\u3040-\u30ff\uac00-\ud7af]")
+_LATIN_CHAR = re.compile(r"[A-Za-z\u00c0-\u00d6\u00d8-\u00f6\u00f8-\u00ff]")
+_CJK_FONT_HINTS = (
+    "cjk",
+    "songti",
+    "simsun",
+    "simhei",
+    "heiti",
+    "kaiti",
+    "fangsong",
+    "noto serif sc",
+    "noto sans sc",
+    "source han",
+)
+_LATIN_FONT_HINTS = (
+    "nimbus",
+    "liberation",
+    "dejavu",
+    "times",
+    "georgia",
+    "garamond",
+    "palatino",
+    "book antiqua",
+)
 _VOID = {
     "area",
     "base",
@@ -27,6 +52,46 @@ _VOID = {
     "source",
     "wbr",
 }
+
+
+def _font_family(doc: pymupdf.Document, xref: int) -> str:
+    """从 FontDescriptor/FontName（或 BaseFont）取真实字体族，去掉子集前缀。"""
+    try:
+        obj = doc.xref_object(xref, compressed=False)
+    except Exception:  # noqa: BLE001 - 损坏对象按未知处理
+        return ""
+    descriptor = re.search(r"/FontDescriptor\s+(\d+)\s+0\s+R", obj)
+    if descriptor:
+        try:
+            desc = doc.xref_object(int(descriptor.group(1)), compressed=False)
+        except Exception:  # noqa: BLE001
+            desc = ""
+        name = re.search(r"/FontName\s*/([^\s/\[\]()<>]+)", desc)
+        if name:
+            return name.group(1).split("+", 1)[-1]
+    base = re.search(r"/BaseFont\s*/([^\s/\[\]()<>]+)", obj)
+    return base.group(1).split("+", 1)[-1] if base else ""
+
+
+_CLOSING_PUNCT = set("。，、；：？！）〕】》」』”’…,.;:?!)]}%·")
+
+
+def _is_closing_punct(text: str) -> bool:
+    """整段只由收标点组成（允许空白），用于区分行尾悬挂与真正越界。"""
+    stripped = (text or "").strip()
+    return bool(stripped) and all(ch in _CLOSING_PUNCT for ch in stripped)
+
+
+def _page_font_families(doc: pymupdf.Document, page: pymupdf.Page) -> dict[str, str]:
+    families: dict[str, str] = {}
+    for entry in page.get_fonts(full=True):
+        xref, *_rest = entry
+        name = entry[4] if len(entry) > 4 else ""
+        family = _font_family(doc, int(xref))
+        if name:
+            families[str(name)] = family
+        families[f"({xref} 0 R)"] = family
+    return families
 
 
 def _normal(text: str) -> str:
@@ -133,6 +198,8 @@ def diagnose_pdf(
 ) -> dict[str, Any]:
     """实测字号（字符加权众数）、纸张尺寸和越界位置；证据不足明确 unknown。"""
     counts: dict[str, Counter] = {"body": Counter(), "notes": Counter()}
+    script_fonts: dict[str, Counter] = {"latin": Counter(), "cjk": Counter()}
+    font_finding_keys: set[tuple[str, str]] = set()
     findings: list[dict[str, Any]] = []
     overflow_pages: set[int] = set()
     overflow_count = 0
@@ -142,6 +209,27 @@ def diagnose_pdf(
     def check_box(page: pymupdf.Page, bbox: tuple, kind: str, text: str = "") -> None:
         nonlocal overflow_count
         x0, y0, x1, y1 = bbox
+        right = page.rect.width - outer
+        if (
+            kind == "text"
+            and x1 > right + 2
+            and x0 >= inner - 2
+            and y0 >= top - 2
+            and y1 <= page.rect.height - bottom + 2
+            and _is_closing_punct(text)
+            and x1 <= right + max(2.0, 0.62 * max(1.0, y1 - y0))
+        ):
+            findings.append(
+                {
+                    "level": "warning",
+                    "code": "W_PDF_PUNCT_HANG",
+                    "page": page.number + 1,
+                    "kind": kind,
+                    "bbox": list(bbox),
+                    "text": text[:80],
+                }
+            )
+            return
         if (
             x0 < inner - 2
             or x1 > page.rect.width - outer + 2
@@ -163,6 +251,7 @@ def diagnose_pdf(
                 )
 
     for page in doc:
+        page_families = _page_font_families(doc, page)
         if abs(page.rect.width - width) > 1 or abs(page.rect.height - height) > 1:
             findings.append(
                 {
@@ -189,8 +278,57 @@ def diagnose_pdf(
             ]
             _sample_spans(spans, samples, counts)
             for span in spans:
-                if span["text"].strip():
-                    check_box(page, span["bbox"], "text", span["text"])
+                text = span["text"]
+                if text.strip():
+                    check_box(page, span["bbox"], "text", text)
+                alias = str(span.get("font") or "")
+                xref_match = re.search(r"\((\d+) 0 R\)", alias)
+                font = (
+                    page_families.get(f"({xref_match.group(1)} 0 R)", "")
+                    if xref_match
+                    else page_families.get(alias, alias)
+                )
+                font = font or alias
+                lower = font.casefold()
+                font_kind = (
+                    "cjk"
+                    if any(hint in lower for hint in _CJK_FONT_HINTS)
+                    else "latin"
+                    if any(hint in lower for hint in _LATIN_FONT_HINTS)
+                    else "unknown"
+                )
+                cjk_chars = len(_CJK_CHAR.findall(text))
+                latin_chars = len(_LATIN_CHAR.findall(text))
+                if cjk_chars:
+                    script_fonts["cjk"][font] += cjk_chars
+                if latin_chars:
+                    script_fonts["latin"][font] += latin_chars
+                if latin_chars >= 3 and font_kind == "cjk":
+                    key = ("W_PDF_FONT_LATIN_USES_CJK", font)
+                    if key not in font_finding_keys:
+                        font_finding_keys.add(key)
+                        findings.append(
+                            {
+                                "level": "warning",
+                                "code": key[0],
+                                "page": page.number + 1,
+                                "font": font,
+                                "text": text[:80],
+                            }
+                        )
+                if cjk_chars >= 2 and font_kind == "latin":
+                    key = ("W_PDF_FONT_CJK_USES_LATIN", font)
+                    if key not in font_finding_keys:
+                        font_finding_keys.add(key)
+                        findings.append(
+                            {
+                                "level": "warning",
+                                "code": key[0],
+                                "page": page.number + 1,
+                                "font": font,
+                                "text": text[:80],
+                            }
+                        )
     fonts: dict[str, dict[str, Any]] = {}
     for kind, expected in (("body", body_pt), ("notes", note_pt)):
         distribution = counts[kind]
@@ -231,5 +369,11 @@ def diagnose_pdf(
         "findings": findings,
         "font_tolerance": 0.05,
         "bbox_tolerance_pt": 2,
-        "scope": ["source_bound_paragraph_fonts", "text_span_bounds", "raster_draw_bounds"],
+        "script_fonts": {kind: dict(counter) for kind, counter in script_fonts.items()},
+        "scope": [
+            "source_bound_paragraph_fonts",
+            "mixed_script_font_fallback",
+            "text_span_bounds",
+            "raster_draw_bounds",
+        ],
     }

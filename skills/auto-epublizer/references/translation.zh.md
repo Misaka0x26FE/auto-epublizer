@@ -45,6 +45,60 @@ translation/
 
 空 align 仅在现有、非空的 `structured/` 与 `translation/` 文档**双方都只有规范 ATX 标题行和空行**时允许；缺失/空源文、标题后无空行紧接正文或译文多出正文均不适用。import 与 G0/QA 共用此判定，`heading` 逐层守恒仍须通过。
 
+### 块身份（段落 ↔ 连续句区间）
+
+段落身份**不写进 align 列**：每行仍是句。块由 `content_blocks` 定义（跳过标题/纯注释，
+围栏代码独立成块，块号从 1 起，与逐段覆盖率、源保真用同一切块）。一个块对应 align 的
+一段**连续** `seq`；多句同块是常态，拆句/并句只改句数，不改块身份。
+
+- 合法：一段多句；一句拆成多行（`note=split`）；重复句按顺序各占各行；只改换行/缩进。
+- 结构变化：块合并/拆分、块增删、乱序、把一句分到两个块——须由 import 重新登记基线。
+- 推导失败（缺句、顺序不符）输出 issue，不猜边界；历史工作区没有基线时状态为 unknown。
+- 基线是块号/类型/seq 区间/块文本摘要的哈希（`review/blocks.py:structure_digest`），
+  import 成功时写入 `publication.json` 单元的 `meta.align_structure`；只改块内换行不会使基线失效。
+  `qa`/交付审计重新推导并比对：有基线不一致报块边界缺陷（`E_ALIGN_MD_DRIFT`），无基线或
+  映射歧义报 `align_structure_unknown`，不阻断历史书迁移。`import --force` 会重新登记。
+- **源块与译块各自编号，不要求数量相等**：源块身份用于源保真/覆盖率，译块身份用于
+  md↔align 漂移；二者只通过 align 的 `src` 句建立对应。不能用「行数=段数」或
+  「全文归一化相等」代替边界核对。
+
+### 只读重建提案
+
+`auto-epublizer align-propose --workspace <dir> [--unit ch01]` 输出 JSON 且不写任何正式文件：
+`mappings[]` 给出 `status`（`exact` / `merge` / `split` / `propose` / `unmatched`）、
+`source_blocks`、`seq_range`、复用的已核验 `rows`、`uncovered` 源块和 `issues`。
+
+- 对应关系由块与 seq 区间重叠建立，不做跨语言字面相似判断；重复句、OCR 缺行、大幅改写
+  不会被自动认可。
+- `propose` 表示该译文块没有 align 行覆盖：只列候选，不出行；拆句源归属由 agent 核证后
+  再写 align。
+- 提案不是应用结果；写入必须走 B4 的显式事务（`repair apply --apply` 同族入口）。
+
+### 显式应用与恢复
+
+```bash
+auto-epublizer align-apply plan.json --workspace <dir>          # 默认只读预检
+auto-epublizer align-apply plan.json --workspace <dir> --apply  # 明确写入
+```
+
+计划绑定源件、`translation/`、`align/` 的 SHA-256；预检不通过或预检后文件变化即拒绝。
+写入前先落含旧字节的事务日志，任一失败整组恢复旧件；成功后重新登记
+`meta.align_structure` 与导入摘要，并把 `reviewed`/`built` 回退到 `aligned`——
+旧审校与成品结论随摘要失效，须重走 `import`/审校/构建。`already_applied` 只在
+对照表字节与新基线都一致时返回，不重放已变化的文件。
+
+### 只读卫生扫描
+
+`auto-epublizer hygiene --workspace <dir> [--unit ch01]` 输出 JSON（`writes: false`），
+逐条给出 `unit`、`block`、`seq_range`、`context` 和候选类型：残留原语词、引号/括号失衡、
+相邻重复词、半句边界、超长段、疑似丢尾。译注 `translation/notes.json` 一并扫描（带
+`note_id`）。
+
+- 全部为 **advisory**：只定位候选，不判断词义、不改文本、不替代 agent 审校。
+- 负对照：围栏/行内代码不参与；书目/索引/术语表单元跳过；缩写点不报半句；
+  冒号引导句的下一块存在时不报丢尾；引号在整单元范围配对，允许跨段引文。
+- 候选要人工核证；确属缺陷走 `repair apply`/重建流程，不能按扫描器输出批量改写。
+
 ## 特殊段处理（PDF 内容提取产物）
 
 PDF ingest 会产出三类非纯文本段（来源见 `references/ingest.md`；描述文件在
