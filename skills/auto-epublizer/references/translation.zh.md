@@ -82,10 +82,15 @@ auto-epublizer align-apply plan.json --workspace <dir> --apply  # 明确写入
 ```
 
 计划绑定源件、`translation/`、`align/` 的 SHA-256；预检不通过或预检后文件变化即拒绝。
-写入前先落含旧字节的事务日志，任一失败整组恢复旧件；成功后重新登记
-`meta.align_structure` 与导入摘要，并把 `reviewed`/`built` 回退到 `aligned`——
-旧审校与成品结论随摘要失效，须重走 `import`/审校/构建。`already_applied` 只在
-对照表字节与新基线都一致时返回，不重放已变化的文件。
+写入前先落含旧字节、旧状态与旧 meta 的事务日志，任一失败整组恢复文件与登记；成功后
+重新登记 `meta.align_structure` 与导入摘要，并把 `reviewed`/`built` 回退到 `aligned`。
+`already_applied` 按「当前对照表字节与基线都已等于计划结果」判定，原计划成功后重试幂等。
+
+- **中断与恢复**：存在 `pending`/`rollback_incomplete` 日志时，普通命令（含 `status`）
+  报“存在未决重对齐事务”并停止写操作；`align-apply --recover`（或 `repair recover`）
+  读取日志恢复文件与单元状态，全部成功才写 `rolled_back`，否则保持
+  `rollback_incomplete` 并以非零退出，修复故障后可再次恢复。
+- 状态恢复失败不会被吞掉：任一步失败都报“回滚未完成”，不宣称已回滚。
 
 ### 只读卫生扫描
 

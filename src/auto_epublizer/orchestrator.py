@@ -722,10 +722,21 @@ def hygiene_scan(store: RunStore, *, unit_id: str | None = None) -> dict[str, An
 
 
 def repair_recover(store: RunStore) -> dict[str, Any]:
-    """路由未决事务恢复。"""
+    """路由未决事务恢复：修复事务 + 重对齐事务（两者各自日志）。"""
+    from .align_rebuild import recover_align_rebuild
     from .safe_repair import recover
 
-    return recover(store)
+    repair = recover(store)
+    align = recover_align_rebuild(store)
+    if align["status"] == "nothing_to_recover":
+        return repair
+    status = "rolled_back" if align["status"] == "recovered" else align["status"]
+    return {
+        "status": status,
+        "transactions": int(repair.get("transactions") or 0) + int(align["transactions"]),
+        "repair": repair,
+        "align": align,
+    }
 
 
 def layout_candidates(store: RunStore) -> dict[str, Any]:

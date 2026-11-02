@@ -88,10 +88,10 @@ def expected_toc(
     toc_entries = [entry for entry in visible if entry.get("kind") == "toc"]
     if toc_entries:
         labels = "\n".join(_norm(item["label"]) for item in flat)
-        for line in _source_lines(store, toc_entries[0], prefer_translation):
-            if line in labels:
+        for label, key in _source_lines(store, toc_entries[0], prefer_translation):
+            if key in labels:
                 continue
-            flat.append({"depth": 1, "unit": "", "label": line, "href": ""})
+            flat.append({"depth": 1, "unit": "", "label": label, "href": ""})
     return flat
 
 
@@ -103,17 +103,18 @@ def _norm(text: str) -> str:
     return value
 
 
-def _source_lines(store: RunStore, entry: dict[str, Any], prefer: bool) -> list[str]:
-    """原目录单元的条目行（去 markdown 标记）；与生成器各自实现，避免互相背书。"""
+def _source_lines(store: RunStore, entry: dict[str, Any], prefer: bool) -> list[tuple[str, str]]:
+    """原目录条目行：``(显示文本, 比较键)``；独立实现，避免与生成器互相背书。"""
     text = _md(store, entry, prefer)
-    lines: list[str] = []
+    lines: list[tuple[str, str]] = []
     for raw in text.splitlines():
         line = raw.strip().lstrip("#").strip()
         if not line or all(ch in ".…·。．-— " for ch in line):
             continue
-        value = _norm(line)
-        if value:
-            lines.append(value)
+        display = re.sub(r"[.…·。．]{2,}\s*\d*\s*$", "", line).strip()
+        key = _norm(display)
+        if key:
+            lines.append((display, key))
     return lines
 
 

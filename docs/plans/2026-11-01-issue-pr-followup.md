@@ -585,3 +585,24 @@ blocking 中 195 条为 `back-bibliography` 的 `language`（文献著录逐字�
 skip 口径与 H3 相同（2 项 CI 外部工具门、1 项 RapidOCR 缺装），不重复计为通过。
 文档：`skills/auto-epublizer/references/build.{zh.md,md}` 补充目录保留与两个阻断码；
 i18n `--check`/`--links`、`ruff check`、`ruff format --check`（400 files）、`git diff --check` 全绿。
+
+## 8. 复审 5 项缺口修复（2026-11-02 晚）
+
+复审以 `5aee910` 为基线逐项复现，5 项均先写失败回归再修。
+
+| 项 | 缺口 | 修复 | 回归证据 |
+|---|---|---|---|
+| R1 | 目录条目指向另一**真实章节**（链接存在）仍 `released=true` | provenance 把结构对账（`toc_entry_*`、`toc_count`、`toc_generated_missing`、`toc_no_links`）转为 error `E_TOC_MISMATCH`；压缩/缺页码仍 advisory | `test_wrong_but_existing_toc_target_blocks_release`（`released=false` + code） |
+| R1 | 中断的 align 事务无恢复入口，`repair recover` 返回 `no_pending` | 新增 `_open_journals` / `assert_no_pending_align` / `recover_align_rebuild`；`repair recover` 聚合两类事务，新增 `align-apply --recover`；pending 时普通命令（含 `status`）停止 | `test_interrupted_transaction_is_recovered_from_journal`、`test_pending_transaction_blocks_new_apply`；CLI 实测：恢复后字节与 `reviewed` 状态回归、`status` 恢复 0 |
+| R1 | 状态恢复失败仍写 `rolled_back` 并称“已回滚” | 统一 `_restore_journal`；任一步失败记 `rollback_incomplete` 并抛“回滚未完成”，恢复入口可重试 | `test_failed_state_restore_is_not_reported_as_rolled_back`（注入 record/restore 双故障 → incomplete；修复后 recover → rolled_back） |
+| R1 | 同一计划成功后重试因旧 align 摘要退出 | 先算计划结果，再判 `already_applied`（对照表字节与基线均等于结果），之后才校验旧基线 | `test_retry_after_success_is_idempotent` |
+| R2 | 保留条目直接输出归一化文本，`Edited by John Smith 2024` 空格与年份被吃掉 | 显示 `label` 与匹配 `key` 分离：只剥「连续引导点 + 页码」，词间空格/年份原样保留；QA 独立实现同样分离 | `test_preserved_toc_line_keeps_original_spacing_and_year` |
+
+CLI 恢复语义：`align-apply --recover` 与 `repair recover` 在 `incomplete` 时以非零退出，
+日志保持未决；重复恢复安全。中英 `translation` 指南已补充中断/恢复与幂等说明。
+
+验证：定向 `test_align_rebuild/test_toc_page/test_provenance/test_qa/test_cli`
+**129 passed（342.41s）**；全量 `uv run --offline pytest -q` → **1283 passed, 3 skipped
+（948.16s / 15:48）**（skip 口径同前：2 项 CI 外部工具门 + 1 项 RapidOCR 缺装）；
+`ruff check`、`ruff format --check`（400 files）、i18n `--check`/`--links`、
+`git diff --check` 全绿。

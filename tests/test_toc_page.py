@@ -143,3 +143,31 @@ def test_broken_generated_toc_link_blocks_release(tmp_path: Path) -> None:
     report = orch.qa(store, epub_path=str(broken))
     assert report["released"] is False
     assert any(finding["code"] == "E_TOC_BROKEN_LINK" for finding in report["provenance_findings"])
+
+
+def test_wrong_but_existing_toc_target_blocks_release(tmp_path: Path) -> None:
+    """目录指向另一个真实章节：链接存在但身份错误，仍必须阻断（审查 P1）。"""
+    store = _workspace(tmp_path)
+    epub = _build(store)
+    wrong = tmp_path / "wrong.epub"
+    with zipfile.ZipFile(epub) as src, zipfile.ZipFile(wrong, "w") as dst:
+        for item in src.infolist():
+            data = src.read(item.filename)
+            if item.filename.endswith("front-toc.xhtml"):
+                data = data.replace(b'href="ch01.xhtml"', b'href="ch02.xhtml"')
+            dst.writestr(item, data)
+    report = orch.qa(store, epub_path=str(wrong))
+    assert report["released"] is False
+    assert any(finding["code"] == "E_TOC_MISMATCH" for finding in report["provenance_findings"])
+
+
+def test_preserved_toc_line_keeps_original_spacing_and_year(tmp_path: Path) -> None:
+    """保留条目必须显示原文：词间空格与年份不能被归一化吃掉（审查 P2）。"""
+    store = _workspace(tmp_path)
+    toc = next(unit for unit in store.load_publication().units if unit.kind == "toc")
+    path = store.structured_dir / toc.meta["rel_path"]
+    path.write_text(
+        path.read_text(encoding="utf-8") + "\nEdited by John Smith 2024\n", encoding="utf-8"
+    )
+    html = _toc_html(_build(store))
+    assert "Edited by John Smith 2024" in html

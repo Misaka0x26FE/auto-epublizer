@@ -62,6 +62,8 @@ def _md_for(store: RunStore, entry: dict[str, Any], *, prefer_translation: bool)
 
 _LEADER_RE = re.compile(r"[.…·。．\s]+")
 _TRAILING_PAGE_RE = re.compile(r"\d+$")
+# 只剥「连续引导点 + 可选页码」；词间空格与非引导数字属于原文。
+_LEADER_TAIL_RE = re.compile(r"[.…·。．]{2,}\s*\d*\s*$")
 
 
 def normalize_toc_label(text: str) -> str:
@@ -71,19 +73,25 @@ def normalize_toc_label(text: str) -> str:
     return value.strip()
 
 
+def toc_display_label(text: str) -> str:
+    """显示文本保真：仅剥连续引导点及其后页码，不动词间空格与年份。"""
+    return _LEADER_TAIL_RE.sub("", str(text or "").strip()).strip()
+
+
 def source_toc_lines(
     store: RunStore, entry: dict[str, Any], *, prefer_translation: bool
-) -> list[str]:
-    """原目录单元里可读的条目行（去 markdown 标记与空行），保留源文顺序。"""
+) -> list[dict[str, str]]:
+    """原目录单元里的条目行：``label`` 用于显示，``key`` 只用于收录对比。"""
     text = _md_for(store, entry, prefer_translation=prefer_translation)
     lines: list[str] = []
     for raw in text.splitlines():
         line = raw.strip().lstrip("#").strip()
         if not line or set(line) <= set(".…·。．-— "):
             continue
-        label = normalize_toc_label(line)
-        if label:
-            lines.append(label)
+        label = toc_display_label(line)
+        key = normalize_toc_label(label)
+        if key:
+            lines.append({"label": label, "key": key})
     return lines
 
 
@@ -107,9 +115,9 @@ def preserved_source_nodes(
     joined = "\n".join(labels)
     nodes: list[dict[str, Any]] = []
     for line in source_toc_lines(store, toc_entry, prefer_translation=prefer_translation):
-        if line in joined:
+        if line["key"] in joined:
             continue
-        nodes.append({"unit": "", "label": line, "href": "", "children": []})
+        nodes.append({"unit": "", "label": line["label"], "href": "", "children": []})
     return nodes
 
 

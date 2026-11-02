@@ -33,6 +33,7 @@ from auto_translator.translation.align import write_align
 
 RULE_VERSION = "align-rebuild-1"
 _CLOSED = {"applied", "rolled_back"}
+_OPEN = {"pending", "rollback_incomplete"}
 
 
 def _hash(data: bytes) -> str:
@@ -95,8 +96,6 @@ def _unit_plan(store: RunStore, entry: dict[str, Any]) -> dict[str, Any]:
         raise ValueError(f"译文基线已变更：{unit.id}")
     align_path = store.unit_align_path(unit.id)
     current_align = align_path.read_bytes() if align_path.is_file() else b""
-    if entry["align_sha256"] is not None and _hash(current_align) != entry["align_sha256"]:
-        raise ValueError(f"对照表基线已变更：{unit.id}")
     rows = entry["rows"]
     if not isinstance(rows, list) or not rows:
         raise ValueError(f"对照表为空：{unit.id}")
@@ -131,6 +130,9 @@ def _unit_plan(store: RunStore, entry: dict[str, Any]) -> dict[str, Any]:
     if align_path.is_file() and current_align == new_bytes and baseline == new_digest:
         status = "already_applied"
     else:
+        # 只有确实需要写入时才要求旧基线仍匹配：成功后用原计划重试应幂等。
+        if entry["align_sha256"] is not None and _hash(current_align) != entry["align_sha256"]:
+            raise ValueError(f"对照表基线已变更：{unit.id}")
         status = "pending"
     return {
         "unit": unit.id,
@@ -158,6 +160,79 @@ def _replace(path: Path, data: bytes) -> None:
         os.replace(tmp, path)
     finally:
         tmp.unlink(missing_ok=True)
+
+
+def _open_journals(store: RunStore) -> list[Path]:
+    directory = _journal_dir(store)
+    if not directory.is_dir():
+        return []
+    result = []
+    for path in sorted(directory.glob("*.json")):
+        try:
+            data = _read(path)
+        except (ValueError, OSError):
+            result.append(path)
+            continue
+        if str(data.get("status")) in _OPEN:
+            result.append(path)
+    return result
+
+
+def assert_no_pending_align(store: RunStore) -> None:
+    """存在未决重对齐事务时，普通写操作必须停下等显式恢复。"""
+    if _open_journals(store):
+        raise ValueError("存在未决重对齐事务；请先运行 align-apply --recover 或 repair recover")
+
+
+def _restore_journal(store: RunStore, path: Path, journal: dict[str, Any]) -> list[str]:
+    """按日志恢复文件与单元登记；返回失败项（空=全部恢复）。"""
+    errors: list[str] = []
+    files = journal.get("files") or []
+    for item in files:
+        target = store.dir / str(item.get("path") or "")
+        try:
+            if not target.is_file():
+                errors.append(f"{item.get('unit')}:文件缺失")
+                continue
+            current = _hash(target.read_bytes())
+            if current == item.get("new_sha256"):
+                _replace(target, bytes.fromhex(str(item.get("before") or "")))
+            elif current != item.get("old_sha256"):
+                errors.append(f"{item.get('unit')}:文件已被他人改动")
+        except (OSError, ValueError):
+            errors.append(f"{item.get('unit')}:文件恢复失败")
+    for item in reversed(files):
+        status_before = item.get("status_before")
+        meta_before = item.get("meta_before")
+        if status_before is None or meta_before is None:
+            continue
+        try:
+            store.restore_unit_registration(
+                str(item.get("unit")), status=str(status_before), meta=meta_before
+            )
+        except (OSError, ValueError):
+            errors.append(f"{item.get('unit')}:状态恢复失败")
+    return errors
+
+
+def recover_align_rebuild(store: RunStore) -> dict[str, Any]:
+    """显式恢复中断/未完成的重对齐事务（repair recover 与 align-apply --recover 共用）。"""
+    with store.run_lock():
+        paths = _open_journals(store)
+        incomplete: list[str] = []
+        for path in paths:
+            journal = _read(path)
+            errors = _restore_journal(store, path, journal)
+            journal["status"] = "rolled_back" if not errors else "rollback_incomplete"
+            journal["restore_errors"] = errors
+            _persist(path, journal)
+            if errors:
+                incomplete.append(path.name)
+    if not paths:
+        return {"status": "nothing_to_recover", "transactions": 0}
+    if incomplete:
+        return {"status": "incomplete", "transactions": len(paths), "incomplete": incomplete}
+    return {"status": "recovered", "transactions": len(paths)}
 
 
 def apply_align_rebuild(
@@ -192,6 +267,7 @@ def apply_align_rebuild(
             ],
         }
     with store.run_lock():
+        assert_no_pending_align(store)
         prepared = [_unit_plan(store, entry) for entry in units]
         snapshot_pub = store.load_publication()
         snapshots = {
@@ -237,22 +313,15 @@ def apply_align_rebuild(
             journal["status"] = "applied"
             _persist(journal_path, journal)
         except Exception as exc:
-            for item in prepared:
-                path = store.dir / item["path"]
-                if path.is_file() and _hash(path.read_bytes()) == item["new_sha256"]:
-                    _replace(path, item["before"])
-            for item in reversed(prepared):
-                snapshot = snapshots.get(item["unit"])
-                if snapshot is None:
-                    continue
-                try:
-                    store.restore_unit_registration(
-                        item["unit"], status=snapshot["status"], meta=snapshot["meta"]
-                    )
-                except (ValueError, OSError):
-                    journal.setdefault("restore_errors", []).append(item["unit"])
-            journal["status"] = "rolled_back"
+            errors = _restore_journal(store, journal_path, journal)
+            journal["status"] = "rolled_back" if not errors else "rollback_incomplete"
+            journal["restore_errors"] = errors
             _persist(journal_path, journal)
+            if errors:
+                raise ValueError(
+                    "回滚未完成，事务保持未决；请修复故障后运行 align-apply --recover："
+                    f"{exc}；失败项：{'、'.join(errors)}"
+                ) from None
             raise ValueError(f"对照表重建失败，已回滚：{exc}") from None
     return {
         "status": "applied",

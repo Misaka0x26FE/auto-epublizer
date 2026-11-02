@@ -1,4 +1,4 @@
-<!-- i18n: source=translation.zh.md sha256=67c4fb8e666f3c6d34630ed69306cd4355e99aef4bd8b8a87854861a780404bd -->
+<!-- i18n: source=translation.zh.md sha256=d309d251fe364297b38a2d0fd10867c9dc300c70fe32c2693381d9406fc73d05 -->
 > **English** | [中文](translation.zh.md)
 
 # Translation (chunk translation + sentence alignment + terminology loop)
@@ -100,12 +100,20 @@ auto-epublizer align-apply plan.json --workspace <dir> --apply  # explicit write
 ```
 
 The plan binds SHA-256 values for the source, `translation/` and `align/`; a failed precheck
-or a file changed after the precheck is rejected. Before writing, a transaction journal with
-the old bytes is persisted; any failure restores the whole group. On success the baseline and
-import digests are re-registered, and `reviewed`/`built` fall back to `aligned` — old review
-and product conclusions are invalidated with the digests, so import/review/build must run
-again. `already_applied` is returned only when both align bytes and baseline match; changed
-files are never replayed.
+or a file changed after the precheck is rejected. Before writing, a journal persists the old
+bytes, statuses and unit meta; any failure restores both files and registrations. On success
+the baseline and import digests are re-registered, and `reviewed`/`built` fall back to
+`aligned`. `already_applied` means the current align bytes *and* baseline already equal the
+plan result, so retrying the same successful plan is idempotent.
+
+- **Interruption and recovery**: while a `pending` / `rollback_incomplete` journal exists,
+  ordinary commands (including `status`) stop with "存在未决重对齐事务"; use
+  `align-apply --recover` (or `repair recover`) to restore files and unit state from the
+  journal. Only a fully successful restore writes `rolled_back`; otherwise the journal stays
+  `rollback_incomplete` and the command exits non-zero, so it can be retried after fixing the
+  fault.
+- A failed state restore is never swallowed: any failing step reports "回滚未完成" instead
+  of claiming a rollback.
 
 ### Read-only hygiene scan
 

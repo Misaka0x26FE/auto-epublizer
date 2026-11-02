@@ -95,10 +95,12 @@ def _store_from(workspace: str | None, cfg, *, recovery: bool = False) -> RunSto
     if not store.exists():
         raise typer.BadParameter(f"工作区未初始化：{ws}")
     if not recovery:
+        from .align_rebuild import assert_no_pending_align
         from .safe_repair import assert_no_pending
 
         try:
             assert_no_pending(store)
+            assert_no_pending_align(store)
         except (ValueError, OSError) as exc:
             raise typer.BadParameter(str(exc)) from None
     return store
@@ -323,6 +325,8 @@ def repair_recover_cmd(
         console.print(f"恢复失败：{exc}")
         raise typer.Exit(1) from None
     _emit_json(json.dumps(data, ensure_ascii=False, indent=2))
+    if data.get("status") == "incomplete":
+        raise typer.Exit(1)
 
 
 @evidence_app.command("layout")
@@ -1243,19 +1247,29 @@ def g0(
 
 @app.command("align-apply")
 def align_apply(
-    plan: str = typer.Argument(..., help="对照表重建计划 JSON 路径"),
+    plan: str | None = typer.Argument(None, help="对照表重建计划 JSON 路径（--recover 时省略）"),
     workspace: str | None = typer.Option(None, "--workspace", help="工作区目录"),
     config: str | None = typer.Option(None, "--config", help="配置文件路径"),
     apply: bool = typer.Option(False, "--apply", help="实际写入（缺省只读预检）"),
+    recover: bool = typer.Option(False, "--recover", help="恢复中断/未完成的重对齐事务"),
 ) -> None:
-    """应用对照表重建计划（B4）：默认 dry-run，写入失败回滚。"""
+    """应用对照表重建计划（B4）：默认 dry-run，写入失败回滚；--recover 显式恢复。"""
     try:
-        store = _store_from(workspace, load_config(config or _CONFIG_PATH))
-        data = json.loads(Path(plan).read_text(encoding="utf-8"))
-        result = orch.apply_align_rebuild(store, data, apply=apply)
+        store = _store_from(workspace, load_config(config or _CONFIG_PATH), recovery=recover)
+        if recover:
+            from .align_rebuild import recover_align_rebuild
+
+            result = recover_align_rebuild(store)
+        else:
+            if not plan:
+                raise ValueError("缺少对照表重建计划；仅 --recover 可省略")
+            data = json.loads(Path(plan).read_text(encoding="utf-8"))
+            result = orch.apply_align_rebuild(store, data, apply=apply)
     except (ValueError, OSError, json.JSONDecodeError, typer.BadParameter) as e:
         _command_error(e, json_output=True)
     _emit_json(json.dumps(result, ensure_ascii=False, indent=2))
+    if recover and result.get("status") == "incomplete":
+        raise typer.Exit(1)
 
 
 @app.command()

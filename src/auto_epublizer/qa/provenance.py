@@ -575,10 +575,15 @@ def audit_provenance(
             source_labels = {
                 normalize_label(item["label"]) for item in expected_toc_entries if not item["href"]
             }
+            # 结构对账（条目/层级/数量/目标身份）是确定性事实：与「目标是否存在」分开，
+            # 必须阻断放行；压缩/缺页码只是 lint，保持 advisory。
+            blocking_prefixes = ("toc_entry_", "toc_count", "toc_generated_missing", "toc_no_links")
             for toc_name, html in generated_toc.items():
-                result.toc_page_findings.extend(
-                    check_generated_toc(html, expected_toc_entries, pages=toc_pages)
-                )
+                toc_findings = check_generated_toc(html, expected_toc_entries, pages=toc_pages)
+                result.toc_page_findings.extend(toc_findings)
+                for finding in toc_findings:
+                    if finding.startswith(blocking_prefixes):
+                        result.add("error", "E_TOC_MISMATCH", finding)
                 links = actual_toc(html)
                 actual_labels = {normalize_label(item["label"]) for item in links}
                 for label in sorted(source_labels - actual_labels):

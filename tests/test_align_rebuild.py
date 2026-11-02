@@ -221,3 +221,85 @@ def test_missing_structured_source_blocks_registration(tmp_path: Path) -> None:
     (store.structured_dir / rel).unlink()
     with pytest.raises(ValueError, match="结构化源文"):
         align_rebuild.apply_align_rebuild(store, plan, apply=True)
+
+
+def _pending_journal(store, plan, rows):
+    """构造「文件与状态已改、日志仍 pending」的中断现场。"""
+    pub = store.load_publication()
+    unit = pub.units[0]
+    align = store.unit_align_path(unit.id)
+    before = align.read_bytes()
+    from auto_epublizer.align_rebuild import _rows_payload
+
+    after = _rows_payload(rows)
+    align.write_bytes(after)
+    store.set_unit_status(unit.id, "aligned")
+    journal = {
+        "rule_version": "align-rebuild-1",
+        "plan_sha256": "x",
+        "status": "pending",
+        "files": [
+            {
+                "path": align.relative_to(store.dir).as_posix(),
+                "unit": unit.id,
+                "status_before": "reviewed",
+                "meta_before": {"rel_path": unit.meta.get("rel_path")},
+                "before": before.hex(),
+                "old_sha256": _sha(before),
+                "new_sha256": _sha(after),
+                "align_structure": "digest",
+            }
+        ],
+    }
+    path = align_rebuild._journal_dir(store) / "crashed.json"
+    align_rebuild._persist(path, journal)
+    return path, align, before, unit.id
+
+
+def test_interrupted_transaction_is_recovered_from_journal(tmp_path: Path) -> None:
+    store = _prepare(tmp_path)
+    path, align, before, unit_id = _pending_journal(store, None, _rows())
+    assert align.read_bytes() != before
+    result = orch.repair_recover(store)
+    assert result["align"]["status"] == "recovered"
+    assert align.read_bytes() == before
+    assert store.load_publication().unit(unit_id).status == "reviewed"
+    assert json.loads(path.read_text(encoding="utf-8"))["status"] == "rolled_back"
+
+
+def test_pending_transaction_blocks_new_apply(tmp_path: Path) -> None:
+    store = _prepare(tmp_path)
+    _pending_journal(store, None, _rows())
+    plan = _plan(store, _rows())
+    with pytest.raises(ValueError, match="未决重对齐事务"):
+        align_rebuild.apply_align_rebuild(store, plan, apply=True)
+
+
+def test_failed_state_restore_is_not_reported_as_rolled_back(tmp_path: Path, monkeypatch) -> None:
+    store = _prepare(tmp_path)
+    plan = _plan(store, _rows())
+    store.set_unit_status("ch01", "reviewed")
+
+    def boom(*args, **kwargs):
+        raise OSError("state io")
+
+    monkeypatch.setattr(store, "record_unit_content", boom)
+    monkeypatch.setattr(store, "restore_unit_registration", boom)
+    with pytest.raises(ValueError, match="回滚未完成"):
+        align_rebuild.apply_align_rebuild(store, plan, apply=True)
+    journal = next(align_rebuild._journal_dir(store).glob("*.json"))
+    assert json.loads(journal.read_text(encoding="utf-8"))["status"] == "rollback_incomplete"
+    # 修复故障后显式恢复
+    monkeypatch.undo()
+    result = orch.repair_recover(store)
+    assert result["align"]["status"] == "recovered"
+    assert store.load_publication().units[0].status == "reviewed"
+    assert json.loads(journal.read_text(encoding="utf-8"))["status"] == "rolled_back"
+
+
+def test_retry_after_success_is_idempotent(tmp_path: Path) -> None:
+    store = _prepare(tmp_path)
+    plan = _plan(store, _rows())
+    align_rebuild.apply_align_rebuild(store, plan, apply=True)
+    again = align_rebuild.apply_align_rebuild(store, plan, apply=True)
+    assert again["status"] in {"already_applied", "applied"}
