@@ -170,3 +170,50 @@ def test_synthetic_pdf_preserves_order_and_chars(tmp_path: Path) -> None:
     text = "".join(block["text_head"] for block in page["blocks"])
     assert text.index("Left") < text.index("Right")
     assert page["page_chars"] > 0
+
+
+def test_equal_line_spacing_first_line_indent_is_a_boundary(tmp_path: Path) -> None:
+    """常规行距下，段首缩进 + 上一行句末标点即候选，不要求行距放大（审查 T3a）。"""
+    store = _store(tmp_path)
+    _page(
+        store,
+        {
+            "page_idx": 1,
+            "blocks": [
+                {
+                    "type": "text",
+                    "text": "第一段结束。\n第二段开始。",
+                    "bbox": [50, 100, 300, 140],
+                    "font_size": 10,
+                    "lines": [
+                        {"text": "第一段结束。", "bbox": [50, 100, 300, 116]},
+                        {"text": "第二段开始。", "bbox": [70, 120, 300, 136]},
+                    ],
+                }
+            ],
+        },
+    )
+    block = collect_layout_candidates(store)["pages"][0]["blocks"][0]
+    kinds = {item["kind"] for item in block["boundaries"]}
+    assert "new_paragraph_in_block" in kinds
+
+
+def test_raw_block_identity_survives_missing_bbox(tmp_path: Path) -> None:
+    """过滤无坐标块不得重编号冒充 raw 位置（审查 T3b）。"""
+    store = _store(tmp_path)
+    _page(
+        store,
+        {
+            "page_idx": 1,
+            "blocks": [
+                _block("第一块。", [50, 100, 300, 120]),
+                {"type": "text", "text": "无坐标块。", "bbox": None},
+                _block("第三块。", [50, 140, 300, 160]),
+            ],
+        },
+    )
+    page = collect_layout_candidates(store)["pages"][0]
+    located = [item for item in page["blocks"] if item.get("bbox")]
+    assert [item["raw_block"] for item in located] == [1, 3]
+    assert page["unknown_blocks"] == 1
+    assert page["blocks"][0]["chars_base"] == "joined_block_text"

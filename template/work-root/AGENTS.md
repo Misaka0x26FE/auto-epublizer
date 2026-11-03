@@ -21,9 +21,11 @@ clean 后才 fetch/只快进；错误分支/来源或 ahead/divergent 就停止�
 2. **源身份以 `publication.json.meta.source_sha256` 为准**，不认文件名。
 3. `workspaces/<slug>/source/` 只读；`publication.json` **禁止手编**（状态只经 CLI 命令推进）。
 4. **数字一律重算**：单元数/词数/进度由 `status --all` / `ledger` 生成，禁止手维护。
-5. **机器接口按命令能力选**：`doctor`/`status`（含 `--all`）/`notes status`/`knowledge status`
-   支持 `--json`；`qa` 后读 `report.json` 并用 `status --json` 核时效。`build`/`qa`/`ledger`/
-   `g0`/`import`/`meta` 不可盲加 `--json`；不解析彩色摘要。退出 0 不等于 `released=true`。
+5. **机器接口按命令能力选**：以当前版本 `--help` 为准。`doctor`/`status`（含 `--all`）/
+   `notes status`/`knowledge status`/`build`/`qa`/`ledger`/`g0`/`import`/`pdf` 提供 `--json`；
+   `meta` 当前没有。`qa` 的质量判定读 `report.json` 并用 `status --json` 核时效，不解析彩色摘要；
+   **退出 0 不等于 `released=true`**。PDF 产物只以自身 `<pdf>.manifest.json` 与
+   `pdf-verify` 对账，不并入 EPUB 报告摘要。
 
 ## 流转
 
@@ -42,6 +44,9 @@ python3 docs/check_doc_links.py
 python3 docs/check_tracked.py --repo workspaces/<slug>
 python3 docs/pack_outbox.py --cli "$AEP_CLI" workspaces/<slug> --batch <batch>
 ```
+
+> 本模板按**生成它的 CLI 版本**适用。已有工作根升级时先 `diff` 模板与本目录，按需合并；
+> 不覆盖本地补充规则，也不把旧模板内容当作当前命令能力。
 
 ## 反馈贡献（可选）
 

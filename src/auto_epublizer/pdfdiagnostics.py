@@ -230,11 +230,14 @@ def diagnose_pdf(
                 }
             )
             return
+        # 字形的 ascender/descender 会略微越出行盒：竖向只容忍 0.2em 的字体度量溢出，
+        # 水平越界仍按 2pt 判，避免把混排标题的数字/拉丁字形当版面错误。
+        vertical_slack = 0.2 * max(1.0, y1 - y0) if kind == "text" else 2
         if (
             x0 < inner - 2
             or x1 > page.rect.width - outer + 2
-            or y0 < top - 2
-            or y1 > page.rect.height - bottom + 2
+            or y0 < top - vertical_slack
+            or y1 > page.rect.height - bottom + vertical_slack
         ):
             overflow_count += 1
             overflow_pages.add(page.number + 1)

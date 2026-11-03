@@ -379,3 +379,30 @@ def test_failed_manifest_write_does_not_publish_completion(root: Path, cli: str)
     retry = run(root, "pack_outbox", store.dir, "--batch", "limited", "--cli", cli)
     assert retry.returncode == 1
     assert not (batch / "MANIFEST.md").exists()
+
+
+def test_pack_writes_machine_manifest_and_refuses_archived_name(root: Path, cli: str) -> None:
+    """T1：批次清单为机器可读，归档器可识别；同名已归档不再新建。"""
+    import json as _json
+
+    from auto_epublizer.archive import plan_archive
+
+    store, epub = released_fixture(root, "alpha")
+    result = run(
+        root, "pack_outbox", store.dir, "--batch", "delivery", "--version", "2.0", "--cli", cli
+    )
+    assert result.returncode == 0, result.stderr
+    batch = root / "outbox" / "delivery"
+    data = _json.loads((batch / "batch.json").read_text(encoding="utf-8"))
+    assert data["schema_version"] == "auto-epublizer/batch/v1"
+    assert data["books"][0]["version"] == "2.0"
+    assert data["books"][0]["artifacts"][0]["path"] == f"epub/{epub.name}"
+    plan = plan_archive(root / "outbox")
+    assert [item["name"] for item in plan["keep"]] == ["delivery"]
+    assert plan["unresolved"] == []
+    (root / "outbox" / ".archive" / "delivery").mkdir(parents=True)
+    again = run(
+        root, "pack_outbox", store.dir, "--batch", "delivery", "--version", "2.0", "--cli", cli
+    )
+    assert again.returncode != 0
+    assert "已归档" in again.stderr

@@ -1167,3 +1167,69 @@ def test_cjk_running_head_is_not_dots() -> None:
     assert spans, "第二页应有页眉"
     assert "第一章" in "".join(span["text"] for span in spans)
     assert all("Helvetica" not in span["font"] for span in spans)
+
+
+@pytest.mark.skipif(pdfexport.find_chromium() is None, reason="需要 Chromium/Chrome")
+def test_full_page_cover_and_dot_leaders_do_not_shrink_body_text(tmp_path: Path) -> None:
+    """T5：整页封面 + 长引导点不得让 Chromium 整书缩小（8.24pt 回归）。"""
+    cover_paras = "".join(
+        f"<p>封面说明第 {i} 行，用于制造超出整页高度的内容。</p>" for i in range(30)
+    )
+    cover = (
+        '<html xmlns="http://www.w3.org/1999/xhtml"><head><title>封面</title></head>'
+        '<body><section class="cover"><h1>封面</h1>'
+        '<figure class="imgfig"><img src="../media/cover.png"/><figcaption>封面图</figcaption></figure>'
+        f"{cover_paras}</section></body></html>"
+    )
+    dots = "目录条目" + "…" * 400 + "1"
+    toc = (
+        '<html xmlns="http://www.w3.org/1999/xhtml"><head><title>目录</title></head>'
+        f"<body><section class='chapter'><h1>目录</h1><p>{dots}</p>"
+        "<p>正文段落应当保持十点五磅。</p></section></body></html>"
+    )
+    epub = _variant(
+        _mini_epub(tmp_path),
+        {"OEBPS/cover.xhtml": cover, "OEBPS/text/ch01.xhtml": toc},
+    )
+    result = pdfexport.render(epub, tmp_path / "shrink.pdf")
+    with pymupdf.open(result.out) as doc:
+        lines = [
+            (
+                "".join(span["text"] for span in line["spans"]),
+                max(round(span["size"], 2) for span in line["spans"]),
+            )
+            for page in doc
+            for block in page.get_text("dict")["blocks"]
+            for line in block.get("lines", [])
+            if line.get("spans")
+        ]
+    body = [size for text, size in lines if "正文段落应当保持" in text]
+    assert body and all(abs(size - 10.5) < 0.05 for size in body), lines
+    assert not any(abs(size - 8.24) < 0.05 for _, size in lines), lines
+
+
+def test_mixed_script_emphasis_keeps_latin_italic_and_merges_class() -> None:
+    """T4c：混排 em 只把汉字段转正体，拉丁仍斜体；class 不重复。"""
+    out = pdfexport._mark_cjk_emphasis('<em class="lead">中文 Latin</em>')
+    assert out == '<em class="lead"><span class="cjk-em">中文</span> Latin</em>'
+    pure = pdfexport._mark_cjk_emphasis('<i class="x">汉字</i>')
+    assert pure == '<span class="cjk-em x">汉字</span>'
+    code = pdfexport._mark_cjk_emphasis("<em><code>汉字</code> 中文</em>")
+    assert "<em><code>汉字</code> " in code
+
+
+@pytest.mark.skipif(pdfexport.find_chromium() is None, reason="需要 Chromium/Chrome")
+def test_titlepage_role_suppresses_header_and_folio(tmp_path: Path) -> None:
+    """T4b：书名页/部分页按角色隐藏页眉页脚，绝对页序不变。"""
+    ch2 = (
+        '<html xmlns="http://www.w3.org/1999/xhtml"><head><title>书名页</title></head>'
+        '<body data-aep-role="titlepage"><section class="chapter"><h1>书名页</h1>'
+        "<p>ROLE_MARKER 正文。</p></section></body></html>"
+    )
+    epub = _variant(_mini_epub(tmp_path), {"OEBPS/ch02.xhtml": ch2})
+    result = pdfexport.render(epub, tmp_path / "role.pdf")
+    with pymupdf.open(result.out) as doc:
+        page = next(p for p in doc if "ROLE_MARKER" in p.get_text())
+        head = [w[4] for w in page.get_text("words") if w[1] < 35]
+        folio = [w[4] for w in page.get_text("words") if w[1] > 560]
+    assert head == [] and folio == []

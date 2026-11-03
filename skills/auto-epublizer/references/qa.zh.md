@@ -143,7 +143,10 @@ agent 按文件/段索引回 `structured/raw/` 与原页逐注核证边界、续
 `notes_open`（有注书成品注释门未清零）/ `audit_failed` / `provenance_incomplete`
 （溯源不完整：看 `provenance_findings` 里的 E_UNIT_MISSING/E_UNIT_ORDER/E_MEDIA_LOST/
 E_MEDIA_ORDER/E_MEDIA_EPUB_LOST/E_FN_EPUB_LOST/E_EPUB_PARA_LOST/E_ALIGN_MD_DRIFT/
-E_TOC_FLAT/E_INSERT_MISSING_FILE/E_INSERT_BAD_SOURCE 定位）/
+E_TOC_FLAT/E_TOC_MISMATCH/E_TOC_SOURCE_LOST/E_TOC_BROKEN_LINK/E_INSERT_MISSING_FILE/
+E_INSERT_BAD_SOURCE 定位；目录条目顺序、层级、数量、目标身份不一致记 E_TOC_MISMATCH，
+源目录独有条目丢失记 E_TOC_SOURCE_LOST，链接目标/锚点不存在记 E_TOC_BROKEN_LINK）/
+
 `epubcheck_not_run`（jar 缺失，装 jar 重跑）/ `epubcheck_errors`。
 G0 **长度比**类告警是 advisory 线索，不阻断放行；**术语命中**（`g0_terminology_open`）
 是放行硬门，未清零 → `released_reason=terminology_open`。

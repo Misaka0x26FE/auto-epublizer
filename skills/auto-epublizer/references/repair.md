@@ -1,4 +1,4 @@
-<!-- i18n: source=repair.zh.md sha256=356cca518438c2d7075287ae2e67bf5f1c63c9b9130fd2abb8c2b7d9cc1a8d04 -->
+<!-- i18n: source=repair.zh.md sha256=336a94244625555bc810772b5147cdb4b8eed27a89da50a66588e8033c3b2782 -->
 > **English** | [中文](repair.zh.md)
 
 # Repair (semantic repair: parse defects / OCR correction / structural re-split)
@@ -135,3 +135,17 @@ auto-epublizer restructure      # validate + update publication.units (same id w
   a heading/where to break a paragraph/which character is wrong) are read by you yourself;
 - After repair you must re-run `import` (md↔align inconsistency blocks) and full
   validation.
+
+## Repair responsibility split (T6b)
+
+| Change | Only entry point | Not allowed |
+|---|---|---|
+| Translated wording / note text (semantic) | `repair plan` → human verification → `repair apply --apply` (input-bound, grouped transaction) | Editing `translation/*.md`, `align/*.jsonl` or `notes.json` without registration |
+| Paragraph boundaries / block↔sentence layout | `align-propose` → agent approves rows block by block → `align-apply --apply` | Padding blank lines or rows to make `g0` pass |
+| Unit structure (split/merge chapters) | `restructure` with `preprocessing/structure.csv` | Editing `publication.json.units` by hand |
+| State and digests | `import` / `g0` / `qa` / `meta` CLI only | Hand-editing `publication.json` state or `report.json` |
+| Derived layers (`structured/raw/`, `output/`, chunk caches) | Rebuild from upstream; regenerate after invalidation | Treating derived chunks as authoritative, or opening write access to arbitrary `preprocessing/` paths |
+
+Semantic edits use `repair`; boundary rebuilding uses `align-apply`; neither replaces the
+other. Both transactions carry pending guards (`repair recover` / `align-apply --recover`)
+and ordinary commands refuse to continue until recovery completes.

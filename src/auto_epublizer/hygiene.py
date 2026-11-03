@@ -25,7 +25,7 @@ from typing import Any
 from auto_common.markdown import inline_code_chunks
 from auto_translator.review.fidelity import content_blocks
 
-_TERMINAL = "。！？!?；;…"
+_TERMINAL = "。！？!?；;…."
 _CLOSERS = '”』」》）)]"'
 _ABBREV = re.compile(
     r"(?:\b(?:e\.g|i\.e|etc|vs|cf|fig|no|vol|pp|ed|trans|approx|ca)\.)$", re.IGNORECASE
@@ -57,7 +57,12 @@ def _block_texts(md_text: str) -> list[str]:
 
 
 def _is_code(block: str) -> bool:
-    return block.lstrip().startswith("```")
+    stripped = block.lstrip()
+    return stripped.startswith("```") or stripped.startswith("~~~")
+
+
+def _plain_without_inline_code(text: str) -> str:
+    return "".join(part for is_code, part in inline_code_chunks(text) if not is_code)
 
 
 def _quote_issues(text: str) -> list[dict[str, Any]]:
@@ -106,7 +111,8 @@ def _block_findings(block: str, *, next_block: str | None, long_limit: int) -> l
     tail_char = stripped[-1:] if stripped else ""
     ends_terminal = bool(tail_char) and (tail_char in _TERMINAL or tail_char in _CLOSERS)
     colon_lead = tail_char in ":：" and next_block is not None
-    if stripped and not ends_terminal and not colon_lead:
+    list_like = bool(re.match(r"^\s*(?:[-*+]|\d+[.)])\s", block))
+    if stripped and not ends_terminal and not colon_lead and not list_like:
         if not _ABBREV.search(stripped):
             findings.append(
                 {
@@ -116,11 +122,14 @@ def _block_findings(block: str, *, next_block: str | None, long_limit: int) -> l
             )
         if _TAIL.search(stripped):
             findings.append({"code": "tail_loss", "detail": {"tail": stripped[-20:]}})
-    glossless = re.sub(r"[（(][^）)]*[）)]", "", plain)
-    for word in _LATIN_WORD.findall(glossless):
-        if word.lower() in _SKIP_LATIN:
-            continue
-        findings.append({"code": "primitive_word", "detail": {"word": word}})
+    # 残词只对**中文正文**成立：纯英文/注释性整块不按“未翻译”处理。
+    if re.search(r"[\u4e00-\u9fff]", plain):
+        glossless = re.sub(r"[（(][^）)]*[）)]", "", plain)
+        glossless = re.sub(r"《[^》]*》|“[^”]*”|『[^』]*』", "", glossless)
+        for word in _LATIN_WORD.findall(glossless):
+            if word.lower() in _SKIP_LATIN:
+                continue
+            findings.append({"code": "primitive_word", "detail": {"word": word}})
     return findings
 
 
@@ -150,24 +159,29 @@ def scan_unit(
                 }
             )
     text_blocks = [block for block in blocks if not _is_code(block)]
-    for item in _quote_issues("".join(text_blocks)):
+    for item in _quote_issues("".join(_plain_without_inline_code(block) for block in text_blocks)):
         findings.append({"unit": unit_id, "block": None, "seq_range": None, "context": "", **item})
     return findings
 
 
 def scan_workspace(store: Any, *, unit_id: str | None = None) -> dict[str, Any]:
-    """只读扫描 translation md 与译注；不写任何文件。"""
+    """只读扫描 translation md 与译注；coverage 明确扫了什么、跳了什么。"""
     pub = store.load_publication()
     units: list[dict[str, Any]] = []
     all_findings: list[dict[str, Any]] = []
+    scanned: list[str] = []
+    skipped_kind: list[str] = []
+    missing_translation: list[str] = []
     for unit in pub.units:
         if unit_id and unit.id != unit_id:
             continue
         rel = (unit.meta or {}).get("rel_path")
         if str(unit.kind or "") in _SKIP_UNIT_KINDS:
+            skipped_kind.append(unit.id)
             continue
         path = store.translation_dir / str(rel) if rel else None
         if path is None or not path.is_file():
+            missing_translation.append(unit.id)
             continue
         md_text = path.read_text(encoding="utf-8")
         spans: dict[int, tuple[int, int]] = {}
@@ -186,16 +200,44 @@ def scan_workspace(store: Any, *, unit_id: str | None = None) -> dict[str, Any]:
         findings = scan_unit(unit.id, md_text, seq_spans=spans)
         units.append({"unit": unit.id, "findings": len(findings), "status": "read_only"})
         all_findings.extend(findings)
+        scanned.append(unit.id)
 
     notes_path = store.translation_dir / "notes.json"
-    if not unit_id and notes_path.is_file():
+    notes_scope = "none"
+    notes_scanned: list[str] = []
+    notes_skipped: list[str] = []
+    if notes_path.is_file():
         try:
             payload = json.loads(notes_path.read_text(encoding="utf-8"))
-        except json.JSONDecodeError:
-            payload = {}
-        for note in payload.get("notes") or []:
-            if not isinstance(note, dict):
-                continue
+        except json.JSONDecodeError as exc:
+            raise ValueError(
+                f"translation/notes.json 解析失败（不是 0 个问题）：{exc.msg} @line {exc.lineno}"
+            ) from None
+        if not isinstance(payload, dict):
+            raise ValueError("translation/notes.json 必须是 JSON 对象")
+        all_notes = [item for item in payload.get("notes") or [] if isinstance(item, dict)]
+        if unit_id is None:
+            notes_scope = "all"
+            selected = all_notes
+        else:
+            referenced = {
+                str(ref.get("note_id"))
+                for ref in payload.get("references") or []
+                if isinstance(ref, dict) and str(ref.get("unit") or "") == unit_id
+            }
+            if referenced:
+                notes_scope = "referenced"
+                selected = [n for n in all_notes if str(n.get("note_id")) in referenced]
+                notes_skipped = [
+                    str(n.get("note_id"))
+                    for n in all_notes
+                    if str(n.get("note_id")) not in referenced
+                ]
+            else:
+                notes_scope = "unmapped"
+                selected = []
+                notes_skipped = [str(n.get("note_id")) for n in all_notes]
+        for note in selected:
             target = str(note.get("target_markdown") or "")
             if not target.strip():
                 continue
@@ -203,6 +245,7 @@ def scan_workspace(store: Any, *, unit_id: str | None = None) -> dict[str, Any]:
             for item in findings:
                 item["note_id"] = note.get("note_id")
             all_findings.extend(findings)
+            notes_scanned.append(str(note.get("note_id")))
             if findings:
                 units.append(
                     {
@@ -219,4 +262,12 @@ def scan_workspace(store: Any, *, unit_id: str | None = None) -> dict[str, Any]:
         "units": units,
         "findings": all_findings,
         "counts": counts,
+        "coverage": {
+            "units_scanned": scanned,
+            "units_skipped_kind": skipped_kind,
+            "units_missing_translation": missing_translation,
+            "notes_scope": notes_scope,
+            "notes_scanned": notes_scanned,
+            "notes_skipped": notes_skipped,
+        },
     }

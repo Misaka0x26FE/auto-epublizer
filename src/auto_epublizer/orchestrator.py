@@ -561,6 +561,7 @@ def _render_and_pack(
                     note_refs=unit_refs or None,
                     note_items=unit_items or None,
                     href_by_note=note_plan["href_by_note"] if note_plan else None,
+                    role=str(e.get("kind") or ""),
                 ),
             )
         )

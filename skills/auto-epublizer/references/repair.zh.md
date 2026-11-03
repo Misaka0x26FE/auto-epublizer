@@ -107,3 +107,16 @@ auto-epublizer restructure      # 校验 + 更新 publication.units（同 id 未
 - 不要写「智能合并/拆分/清洗脚本」——阈值永远差一点（真实教训反复翻车）；
 - 脚本只做确定性检索/统计/搬运；语义判断（哪是标题/哪里断段/哪个字错）由你自己读；
 - 修复后必须重走 `import`（md↔align 不一致会阻断）与全量验证。
+
+## 修复职责分工（T6b）
+
+| 变更 | 唯一入口 | 不允许 |
+|---|---|---|
+| 译文字句/注释文本（语义修改） | `repair plan` → 人工核证 → `repair apply --apply`（绑定输入摘要、整组事务） | 手改 `translation/*.md`、`align/*.jsonl`、`notes.json` 后不登记 |
+| 段落边界/块↔句重排 | `align-propose` 生成提案 → agent 逐块批准 rows → `align-apply --apply` | 用空行/凑行数让 `g0` 通过 |
+| 单元结构（切章/合章） | `restructure` 登记 `preprocessing/structure.csv` | 手改 `publication.json.units` |
+| 状态与摘要 | `import` / `g0` / `qa` / `meta` 等 CLI | 手改 `publication.json` 状态或 `report.json` |
+| 派生层（`structured/raw/`、`output/`、chunk 缓存） | 由上游重建；旧件失效后重新生成 | 直接把派生 chunk 当权威件修改，或为任意 `preprocessing/` 路径开写权限 |
+
+语义改文走 `repair`，边界重排走 `align-apply`：二者不互相替代。两种事务都有未决日志
+守卫（`repair recover` / `align-apply --recover`），恢复完成前普通命令拒绝继续。

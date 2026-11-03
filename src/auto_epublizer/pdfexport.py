@@ -80,8 +80,32 @@ def _section_kind(title: str) -> str:
     return ""
 
 
+_CJK_RUN = re.compile(r"[\u3400-\u9fff][\u3400-\u9fff\u3000-\u303f\uff00-\uffef]*")
+_LATIN_TEXT = re.compile(r"[A-Za-z0-9]")
+
+
+def _merge_class(attrs: str, base: str) -> str:
+    """把 cjk-em 合并进 class 属性，避免出现两个 class（结构问题，非字符串替换）。"""
+    match = re.search(r'\sclass="([^"]*)"', attrs or "")
+    if match:
+        existing = match.group(1).strip()
+        merged = f"{base} {existing}".strip()
+        return re.sub(r'\sclass="[^"]*"', f' class="{merged}"', attrs, count=1)
+    return f'{attrs or ""} class="{base}"'
+
+
+def _wrap_cjk_runs(text: str) -> str:
+    return _CJK_RUN.sub(lambda m: f'<span class="cjk-em">{m.group(0)}</span>', text)
+
+
+def _split_text_segments(body: str) -> list[str]:
+    """按标签切分，保证只改文本节点，不动标签/属性。"""
+    return re.split(r"(<[^>]+>)", body)
+
+
 def _mark_cjk_emphasis(inner: str) -> str:
-    """CJK 强调不用伪斜体：<em>/<i> 内含汉字时改为 cjk-em（加粗、正体）。"""
+    """CJK 强调不用伪斜体：纯 CJK 的 <em>/<i> 改为 cjk-em；
+    混排节点保留 <em>，只把其中汉字段包成 cjk-em，拉丁文仍保持斜体语义。"""
 
     def convert(segment: str) -> str:
         def replace(match: re.Match[str]) -> str:
@@ -90,7 +114,15 @@ def _mark_cjk_emphasis(inner: str) -> str:
             if not _CJK_INLINE.search(text):
                 return match.group(0)
             attrs = match.group(2) or ""
-            return f'<span class="cjk-em"{attrs}>{body}</span>'
+            has_latin = bool(_LATIN_TEXT.search(text))
+            if not has_latin:
+                merged = _merge_class(attrs, "cjk-em")
+                return f"<span{merged}>{body}</span>"
+            pieces = [
+                _wrap_cjk_runs(piece) if not piece.startswith("<") else piece
+                for piece in _split_text_segments(body)
+            ]
+            return f"<{match.group(1)}{attrs}>{''.join(pieces)}</{match.group(1)}>"
 
         return _EMPHASIS_RE.sub(replace, segment)
 
@@ -163,7 +195,7 @@ body { font-family: "Nimbus Roman", "Liberation Serif", "DejaVu Serif",
        "Noto Serif CJK SC", "Songti SC", serif; font-size: ${body_pt}pt;
        line-height: ${line_height}; text-align: justify; }
 p { font-size: ${body_pt}pt; line-height: ${line_height}; text-indent: 2em; margin: 0;
-    text-align: justify; }
+    text-align: justify; overflow-wrap: anywhere; }
 p.imgp, figure.imgfig { text-indent: 0; margin: 0.6em 0; }
 figure.imgfig figcaption { font-size: ${note_pt}pt; color: #444; }
 section.chapter img { max-width: 100%; max-height: ${image_height}mm; width: auto; height: auto; }
@@ -189,13 +221,17 @@ table p { font-size: inherit; text-indent: 0; }
 table.data th, table.data td { padding: 0.12em 0.4em; }
 section.chapter { page-break-after: always; }
 section.index { column-count: 2; column-gap: 2em; }
+section.role-part, section.role-titlepage { text-align: center; }
+section.role-part p, section.role-titlepage p { text-indent: 0; }
 section.index h1 { column-span: all; }
 section.cip p { text-indent: 0; }
 span.cjk-em { font-style: normal; font-weight: 600; }
 section.chapter:last-of-type { page-break-after: auto; }
 section.cover { page-break-after: auto; width: 100%; height: 100%; margin: 0; padding: 0;
+    overflow: hidden;
     display: flex; flex-direction: column; position: relative; min-height: 0; }
-body > section.cover { page-break-after: always; width: ${page_width}mm; height: ${cover_height}mm; }
+body > section.cover { page-break-after: always; width: ${page_width}mm; height: ${cover_height}mm;
+    overflow: hidden; }
 section.cover > section { flex: 1; min-height: 0; }
 section.cover img, section.cover svg { width: 100%; height: 100%; max-width: 100%; max-height: 100%; object-fit: contain; display: block; min-height: 0; }
 section.cover span.aepmark { position: absolute; top: 0; left: 0; }
@@ -295,6 +331,7 @@ class PdfResult:
 class PrintEvidence:
     toc_documents: list[dict] = field(default_factory=list)
     section_titles: dict[int, str] = field(default_factory=dict)
+    section_roles: dict[int, str] = field(default_factory=dict)
     anchors: dict[str, str] = field(default_factory=dict)
     findings: list[dict] = field(default_factory=list)
 
@@ -676,6 +713,9 @@ def build_print_html(
         title_match = TITLE_RE.search(html)
         title = unescape(title_match.group(1)) if title_match else ""
         evidence.section_titles[index] = title
+        role_match = re.search(r'data-aep-role="([^"]+)"', html)
+        role = unescape(role_match.group(1)).strip() if role_match else ""
+        evidence.section_roles[index] = role
         if is_toc_document(inner, title=title, declared=href in package.toc_hrefs):
             record = {"document": href, "updates": [], "findings": []}
             if page_map is not None:
@@ -693,8 +733,12 @@ def build_print_html(
         if href == package.cover_href:
             parts.append(f'<section class="cover">{marker}{inner}</section>')
             continue
-        kind = _section_kind(title)
-        classes = "chapter" + (f" {kind}" if kind else "")
+        kind = role or _section_kind(title)
+        classes = "chapter"
+        if kind:
+            classes += f" role-{kind}" if role else f" {kind}"
+        if kind in {"index", "cip"} and f" {kind}" not in classes:
+            classes += f" {kind}"
         parts.append(f'<section class="{classes}">{marker}{inner}</section>')
     # 样式表：按包内声明选第一个 text/css（多章子目录也不做首章猜测）
     stylesheet = next(
@@ -893,6 +937,7 @@ def stamp_folios(
     cover: bool = True,
     section_titles: dict[int, str] | None = None,
     section_pages: dict[int, int] | None = None,
+    section_roles: dict[int, str] | None = None,
 ) -> None:
     """页脚绝对页码 + 正文页眉章名；封面无页眉页脚，章节首页不重复页眉。
 
@@ -901,8 +946,14 @@ def stamp_folios(
     """
     titles = section_titles or {}
     starts = section_pages or {}
+    roles = section_roles or {}
     for index in range(1 if cover else 0, doc.page_count):
         page = doc[index]
+        page_no = index + 1
+        section = max((n for n, start in starts.items() if start <= page_no), default=None)
+        if section is not None and roles.get(section) in {"titlepage", "part"}:
+            # 书名页/部分页按角色隐藏页眉页脚；绝对页序不变。
+            continue
         page.insert_text(
             (page.rect.width / 2 - 6, page.rect.height - 18),
             str(index + 1),
@@ -910,8 +961,6 @@ def stamp_folios(
             fontname="helv",
             color=(0.35, 0.35, 0.35),
         )
-        page_no = index + 1
-        section = max((n for n, start in starts.items() if start <= page_no), default=None)
         if section is None or page_no == starts.get(section):
             continue
         raw_title = titles.get(section, "")
@@ -1350,6 +1399,7 @@ def render(
                 cover=cover,
                 section_titles=evidence.section_titles,
                 section_pages=section_pages,
+                section_roles=evidence.section_roles,
             )
             written = 0
             if bookmarks:

@@ -1,4 +1,4 @@
-<!-- i18n: source=qa.zh.md sha256=8c6559ff27017df161938a6b1b779c132ba7d3f47592b0d4ec34f968dfe7b7c9 -->
+<!-- i18n: source=qa.zh.md sha256=4ada6e102277bf877b78f05def52cf76fed4d7fd3a62531d047b6503024769df -->
 > **English** | [中文](qa.zh.md)
 
 # QA (epubcheck + unpack audit)
@@ -171,7 +171,10 @@ missing alignment on registered units) / `notes_open` (product note gate not cle
 book with notes) / `audit_failed` /
 `provenance_incomplete` (incomplete provenance: locate via the
 E_UNIT_MISSING/E_UNIT_ORDER/E_MEDIA_LOST/E_MEDIA_ORDER/E_MEDIA_EPUB_LOST/E_FN_EPUB_LOST/E_EPUB_PARA_LOST/E_ALIGN_MD_DRIFT/
-E_TOC_FLAT/E_INSERT_MISSING_FILE/E_INSERT_BAD_SOURCE entries in `provenance_findings`) /
+E_TOC_FLAT/E_TOC_MISMATCH/E_TOC_SOURCE_LOST/E_TOC_BROKEN_LINK/E_INSERT_MISSING_FILE/
+E_INSERT_BAD_SOURCE entries in `provenance_findings`; entry order/depth/count/target identity
+mismatches are E_TOC_MISMATCH, a lost source-only TOC entry is E_TOC_SOURCE_LOST, and a missing
+target or fragment is E_TOC_BROKEN_LINK) /
 `epubcheck_not_run` (missing jar, install the jar and rerun) / `epubcheck_errors`.
 G0 **length-ratio** warnings are advisory clues and do not block release; **terminology
 hits** (`g0_terminology_open`) are a release hard gate, and if not cleared →

@@ -96,3 +96,50 @@ def test_notes_are_scanned(tmp_path: Path) -> None:
     )
     result = scan_workspace(store)
     assert any(item.get("note_id") == "n1" for item in result["findings"])
+
+
+def test_english_period_is_terminal_and_english_block_has_no_primitive_word() -> None:
+    findings = scan_unit("ch01", "This is a complete English sentence.\n")
+    codes = _codes(findings)
+    assert "half_sentence" not in codes and "tail_loss" not in codes
+    assert "primitive_word" not in codes
+
+
+def test_tilde_fence_and_inline_code_are_excluded() -> None:
+    findings = scan_unit("ch01", '~~~\n研究研究 没结束\n~~~\n\n使用 `"` 符号。\n')
+    codes = _codes(findings)
+    assert "duplicate_word" not in codes and "unbalanced_quote" not in codes
+
+
+def test_bad_notes_json_is_a_structured_error(tmp_path: Path) -> None:
+    import pytest
+
+    store = _workspace(tmp_path)
+    (store.translation_dir / "notes.json").write_text("{not json", encoding="utf-8")
+    with pytest.raises(ValueError, match="notes.json"):
+        scan_workspace(store)
+
+
+def test_unit_scan_covers_notes_referenced_by_that_unit(tmp_path: Path) -> None:
+    store = _workspace(tmp_path)
+    (store.translation_dir / "body").mkdir(parents=True, exist_ok=True)
+    (store.translation_dir / "body/ch01.md").write_text("# 第一章\n\n正文。\n", encoding="utf-8")
+    notes = {
+        "schema_version": "1",
+        "inventory": "present",
+        "notes": [
+            {"note_id": "n1", "target_markdown": "研究研究的注释。"},
+            {"note_id": "n2", "target_markdown": "另一条注释。"},
+        ],
+        "references": [
+            {"unit": "ch01", "ref_id": "r1", "note_id": "n1"},
+            {"unit": "ch02", "ref_id": "r2", "note_id": "n2"},
+        ],
+    }
+    (store.translation_dir / "notes.json").write_text(
+        json.dumps(notes, ensure_ascii=False), encoding="utf-8"
+    )
+    result = scan_workspace(store, unit_id="ch01")
+    scanned = {item["unit"] for item in result["units"]}
+    assert "notes:n1" in scanned and "notes:n2" not in scanned
+    assert result["coverage"]["notes_scope"] == "referenced"

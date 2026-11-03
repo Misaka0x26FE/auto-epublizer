@@ -48,13 +48,13 @@ def _columns(blocks: list[dict[str, Any]], page_width: float) -> list[int]:
 def _page_candidates(payload: dict[str, Any]) -> dict[str, Any]:
     page = payload.get("page_idx")
     blocks = [
-        block
-        for block in payload.get("blocks") or []
+        (index + 1, block)
+        for index, block in enumerate(payload.get("blocks") or [])
         if isinstance(block, dict)
         and block.get("type") == "text"
         and str(block.get("text") or "").strip()
     ]
-    located = [block for block in blocks if _valid_bbox(block.get("bbox"))]
+    located = [(raw_index, block) for raw_index, block in blocks if _valid_bbox(block.get("bbox"))]
     unknown = len(blocks) - len(located)
     if not located:
         return {
@@ -63,20 +63,25 @@ def _page_candidates(payload: dict[str, Any]) -> dict[str, Any]:
             "status": "unknown",
             "reason": "no bbox coordinates",
             "blocks": [
-                {"text": str(block.get("text") or "")[:40], "kind": "unknown"} for block in blocks
+                {
+                    "text": str(block.get("text") or "")[:40],
+                    "kind": "unknown",
+                    "raw_block": raw_index,
+                }
+                for raw_index, block in blocks
             ],
         }
-    page_width = max(float(b["bbox"][2]) for b in located)
-    columns = _columns(located, page_width)
+    page_width = max(float(b["bbox"][2]) for _, b in located)
+    columns = _columns([block for _, block in located], page_width)
     if payload.get("rtl") and columns:
         # 栏号按阅读方向编号：RTL 页最右栏为第 0 栏（解析器已给出阅读顺序）。
         widest = max(columns)
         columns = [widest - column for column in columns]
-    fonts = sorted(float(b.get("font_size") or 0) for b in located if b.get("font_size"))
+    fonts = sorted(float(b.get("font_size") or 0) for _, b in located if b.get("font_size"))
     body_font = fonts[len(fonts) // 2] if fonts else 0.0
     items: list[dict[str, Any]] = []
     cursor = 0
-    for index, block in enumerate(located):
+    for index, (raw_index, block) in enumerate(located):
         text = str(block.get("text") or "")
         line_count = _line_count(text)
         bbox = [float(v) for v in block["bbox"]]
@@ -89,7 +94,9 @@ def _page_candidates(payload: dict[str, Any]) -> dict[str, Any]:
         ]
         font_size = float(block.get("font_size") or 0)
         column = columns[index]
-        lefts = [float(other["bbox"][0]) for j, other in enumerate(located) if columns[j] == column]
+        lefts = [
+            float(other["bbox"][0]) for j, (_, other) in enumerate(located) if columns[j] == column
+        ]
         column_left = min(lefts) if lefts else bbox[0]
         indent = bbox[0] - column_left
         kind = "body"
@@ -119,35 +126,44 @@ def _page_candidates(payload: dict[str, Any]) -> dict[str, Any]:
                 ratio = gap / line_height if line_height else 0.0
                 prev_text = str(prev.get("text") or "").rstrip()
                 next_left = float(current["bbox"][0])
-                if (
-                    ratio >= 1.2
-                    and prev_text
-                    and prev_text[-1] in _TERMINAL
-                    and next_left > column_left + max(font_size * 0.8, 2.0)
-                ):
+                indented = next_left > column_left + max(font_size * 0.8, 2.0)
+                if prev_text and prev_text[-1] in _TERMINAL and (ratio >= 1.2 or indented):
+                    evidence = []
+                    if ratio >= 1.2:
+                        evidence.append("gap")
+                    if indented:
+                        evidence.append("indent")
                     boundaries.append(
                         {
                             "after_line": line_index,
                             "kind": "new_paragraph_in_block",
                             "gap_ratio": round(ratio, 3),
+                            "evidence": evidence,
                         }
                     )
         if index + 1 < len(located):
-            nxt = located[index + 1]
+            nxt_index, nxt = located[index + 1]
             if columns[index + 1] == column:
                 gap = float(nxt["bbox"][1]) - bbox[3]
                 ratio = gap / line_height if line_height else 0.0
                 ends_terminal = bool(text.rstrip()) and text.rstrip()[-1] in _TERMINAL
                 if ratio < 0.35 and not ends_terminal:
                     boundaries.append(
-                        {"with_block": index + 2, "kind": "continue", "gap_ratio": round(ratio, 3)}
+                        {
+                            "with_block": index + 2,
+                            "with_raw_block": nxt_index,
+                            "kind": "continue",
+                            "gap_ratio": round(ratio, 3),
+                        }
                     )
                 elif ratio >= 0.9:
                     boundaries.append(
                         {
                             "with_block": index + 2,
+                            "with_raw_block": nxt_index,
                             "kind": "new_paragraph",
                             "gap_ratio": round(ratio, 3),
+                            "evidence": ["gap"],
                         }
                     )
         if line_count >= 4 and sum(text.count(mark) for mark in _TERMINAL) >= 2:
@@ -155,6 +171,7 @@ def _page_candidates(payload: dict[str, Any]) -> dict[str, Any]:
         items.append(
             {
                 "block": index + 1,
+                "raw_block": raw_index,
                 "column": column,
                 "bbox": bbox,
                 "font_size": font_size,
@@ -163,6 +180,8 @@ def _page_candidates(payload: dict[str, Any]) -> dict[str, Any]:
                 "indent": round(indent, 3),
                 "kind": kind,
                 "chars": [cursor, cursor + len(text)],
+                "chars_base": "joined_block_text",
+                "chars_include_separator": True,
                 "text_head": " ".join(text.split())[:40],
                 "text_tail": text.rstrip()[-20:],
                 "reasons": reasons,
@@ -211,10 +230,18 @@ def collect_layout_candidates(store: Any) -> dict[str, Any]:
         first = next((block for block in current.get("blocks") or [] if block.get("bbox")), None)
         if last is None or first is None:
             continue
+        if last.get("column") != first.get("column"):
+            continue
         tail = str(last.get("text_tail") or "")
         if tail and tail[-1] not in _TERMINAL:
             last.setdefault("boundaries", []).append(
-                {"with_page": current.get("page"), "kind": "continue_across_pages"}
+                {
+                    "with_page": current.get("page"),
+                    "with_block": first.get("block"),
+                    "with_raw_block": first.get("raw_block"),
+                    "kind": "continue_across_pages",
+                    "evidence": ["same_column", "unterminated_tail"],
+                }
             )
             cross_page += 1
     for page in pages:

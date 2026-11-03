@@ -280,7 +280,11 @@ auto-epublizer status --workspace <dir> --json
 
 - 身份与版本只读 `MANIFEST.md` 的显式字段（书名/作品/slug + 版本）；缺失、无法解析或
   「终版」之类不猜最新，列入未决；
-- 同一本书保留版本最高的一期，其余列入待归档；同版但 MANIFEST 字节不同记冲突，整组不动；
+- 批次清单优先读 `batch.json`（`auto-epublizer/batch/v1`，含逐书身份/版本/产物 hash/report
+  绑定），`MANIFEST.md` 是同源人读版且作为完成标记；旧批次仅有 Markdown 时按旧格式解析。
+- 同一本书保留版本最高的一期，其余列入待归档；同书同版多份但**清单或产物字节**不同记冲突，
+  整组不动（顶层与 `.archive/` 两个位置都核对）；多书批次只要还有一本书是当前版本就整体
+  保留（`held`），不拆目录、不按单本最高版推断整批过时；
 - `.archive/` 已有的同名同版批次识别为 `already_archived`，避免重复打包；
 - 默认只输出保留/待移动/冲突/未决清单；`--apply` 才移动、改写 `docs/**/*.md` 中
   `outbox/<批次>/` 链接、补齐 `.gitignore` 的 `outbox/.archive/*/epub|pdf/` 规则。

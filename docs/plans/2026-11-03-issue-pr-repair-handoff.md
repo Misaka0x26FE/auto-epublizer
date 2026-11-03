@@ -1,9 +1,10 @@
 # Issue / PR 完整修复与验收交接方案（2026-11-03）
 
-状态：**规划中；方案已交接，实施任务均未启动**。
+状态：**实施完成（2026-11-03）**。T0–T7、T9、T10 已落地并实跑验收；T6a 按需裁图延期（见 §8）；
+T8 三书实书验收**材料缺失 blocked**；本轮改动未提交、未推送，未修改任何远端 issue/PR。
 
-本轮仅查询 GitHub、阅读源码/测试/历史记录、编写方案；未运行修复、书籍重建或全套测试。
-本文件是后续 agent 的增量执行入口，接续而不覆盖
+撰写时仅查询 GitHub、阅读源码/测试/历史记录并编写方案；实施阶段（2026-11-03）已按 §8 逐项
+落地并实跑验收（全量 1300 passed / 1 skipped）。本文件是后续 agent 的增量执行入口，接续而不覆盖
 [11-01 计划](2026-11-01-issue-pr-followup.md)、
 [10-31 计划](2026-10-31-issue-pr-update.md)及
 [10-14 总审查](2026-10-14-review-and-repair.md)的未决实书事项。
@@ -278,7 +279,8 @@ JPX 若仍未支持，先区分“明确错误提示”与“承诺自动转码�
 ### T8 — 三书与历史成品重建（P1，逐书独立；材料前置）
 
 - 三书：`global-marx-history-and-critique`、`marxism-and-medieval-studies`、
-  `tamozhennaya-politika-rossii`。旧计划记缺材料；本轮未扫描用户目录，存在性待执行方确认。
+  `tamozhennaya-politika-rossii`。实施阶段只在已知工作根/`Documents` 常用目录查过同名工作区，
+  均不存在（未做全盘个人目录扫描）；结论为**材料缺失 blocked**，需用户提供工作区或源件。
 - 历史注密集书/扫描书清单继承旧计划；同名/近名书需 source hash 核实，不替换验收对象。
 - 输入：source/raw、publication、structured、translation/align/notes、reviews、旧成品及
   分发清单；缺哪件写哪件，只有 EPUB 不足以证明源注/翻译语义正确。
@@ -330,19 +332,52 @@ T0 基线/文档 ─┬─ T1a契约 → T1b打包 → T1c冲突 ─────
 
 ## 8. 实施登记表（执行方回填）
 
-| 任务 | 初始状态 | 首要前置 | 交付证据 |
-|---|---|---|---|
-| T0 | 待执行 | 刷新当前HEAD/help | 命令矩阵、文档diff |
-| T1a/T1b/T1c | 待执行 | 批次契约定案 | 模板→归档端到端、冲突/恢复日志 |
-| T2a/T2b | 待执行 | 扫描范围真值表 | 正负例、coverage/错误、只读证明 |
-| T3a/T3b | 待执行 | raw身份与坐标基准 | 合成PDF、raw定位、无改文证明 |
-| T4a/T4b/T4c | 待执行 | 页面角色契约；T5先定位 | 实排读回、页面预览、目录精确页码 |
-| T5 | 待复现 | 最小扫描图样本 | 前后DOM/字号/绘图证据 |
-| T6a/T6b | 待执行 | 源定位与事务职责 | 按需证据、故障恢复及派生重建 |
-| T7a–e | 待验收 | 当前版本与工具链 | 精确测试/退出码/产物，不引用旧计数代替 |
-| T8 | 材料待补 | 经确认的每书工作区/源件 | 每书独立交付审计与副本hash |
-| T9 | 待决定 | 维护者接受范围/取舍 | 每项决策与剩余任务 |
-| T10 | 待执行 | 适用代码卡及验收完成 | 全量检查、提交/CI及逐项结案账本 |
+实施日期：2026-11-03。以下状态是本轮实跑结果，不引用旧计数代替。
 
-方案完成与实施完成分开：**本轮目标只要求方案完成**；上表保持待执行，实书缺件不阻塞方案交接。
-本轮仅新增本文和计划索引；不修改源码、测试、工作区状态、远端议题或用户书稿。
+| 任务 | 状态 | 交付证据 |
+|---|---|---|
+| T0 | 完成 | `template/work-root/AGENTS.md` 第5条改为按 `--help` 选 JSON（实测 `build`/`qa`/`ledger`/`g0`/`import`/`pdf` 有、`meta` 无）、退出 0 ≠ `released=true`、PDF 只与自身 `<pdf>.manifest.json` 对账；新增“模板按生成版本适用、升级先 diff”提醒。11-01 计划头部与计划索引回填 `5aee910`/`db20a42` 与 H2 blocked。`test_work_root`+`test_i18n` 15 passed。 |
+| T1a/T1b/T1c | 完成 | 打包器写 `batch.json`（`auto-epublizer/batch/v1`：逐书 `book`/`version`/`source_sha256`/`artifacts[{path,sha256,bytes}]`/`report{sha256,released,released_reason}`/`pdf`，PDF 字段本轮为 `null`），`MANIFEST.md` 由同一数据导出并作为完成标记；拒绝同名已归档批次。归档器优先读 `batch.json`（缺 `MANIFEST.md` 记 `missing_manifest`），旧 Markdown 批次仍可解析；冲突核对**所有版本、顶层与 `.archive/` 两个位置**，身份按实际文件字节而非声明值；多书批次任一书仍为当前版本时整体 `held`，不拆目录。`test_archive.py` 20 passed、`test_work_root_tools.py` 20 passed。 |
+| T2a/T2b | 完成 | 卫生扫描只在**中文语境**报拉丁残词，跳过引用片段/书名号内文；`~~~` 围栏与行内代码不参与引号配对；英文句点算终止标点；列表行不报半句/丢尾。`translation/notes.json` 解析失败改为结构化 `ValueError`（不再静默 0 问题）；`--unit` 按 `references[].unit` 只扫该单元引用的译注，输出 `coverage`（`units_scanned`/`units_skipped_kind`/`units_missing_translation`/`notes_scope`/`notes_scanned`/`notes_skipped`）。`test_hygiene.py` 13 passed，全程只读。 |
+| T3a/T3b | 完成 | 段边界候选改为“等行距 + 首行缩进 + 上一行句末标点”即可成立，`evidence` 记录 `gap`/`indent`；新增 `raw_block`（原始块序号，过滤无坐标块后不重编号）、`chars_base=joined_block_text`、`chars_include_separator`、相邻块与跨页的 `with_raw_block`；跨页续段要求同栏。`test_layout.py` 10 passed，未改写任何文本。 |
+| T4a/T4b/T4c | 完成（最小契约） | 单元角色经 `render_document(role=...)` → `<body data-aep-role="...">` 透传，PDF 读该属性生成 `role-*` class 并记入 `section_roles`；书名页/部分页按角色抑制页眉页脚（绝对页序不变），`section.role-part`/`role-titlepage` 居中且取消首行缩进。混合强调：纯 CJK `<em>/<i>` 转 `span.cjk-em` 并合并已有 class；混排节点保留 `<em>`，仅汉字段包 `cjk-em`，拉丁文仍为斜体。回归：`test_build.py::test_unit_role_is_carried_into_xhtml_body`、`test_pdfexport.py::test_titlepage_role_suppresses_header_and_folio`、`::test_mixed_script_emphasis_keeps_latin_italic_and_merges_class`。**未新增独立角色真相层**：角色来源仍是已确认的单元 `kind`，标题猜测只作兜底。 |
+| T5 | 完成 | 两处根因均为 Chromium 收缩触发：①整页封面 `height` 超出可印高度 → `body > section.cover` 与 `section.cover` 加 `overflow: hidden`；②目录长引导点段落不可断行 → `p { overflow-wrap: anywhere }`。真实国标书（GB/T 4458.1-2002 副本）正文由 8.23pt 恢复 10.5pt、`diagnostics.status=pass`、`overflow_count=0`；另给文字字形 **0.2em 竖向**度量容差（水平仍 2pt）。回归：`test_pdfexport.py::test_full_page_cover_and_dot_leaders_do_not_shrink_body_text`、`test_pdfdiagnostics.py::test_font_metric_vertical_overshoot_is_tolerated`（9 passed）。 |
+| T6a | **延期（未采纳本轮）** | 按需注释裁图需要页面几何基准与渲染接线（`structured/raw/pages/` 图与 PDF 页坐标对齐、裁切后登记与 QA 复算），属独立补齐项；本轮不做半成品，已在 `repair` 文档与本表登记，不作为已完成能力宣传。 |
+| T6b | 完成 | `repair.zh.md`/`repair.md` 新增“修复职责分工”表：语义改文只走 `repair plan/apply`、边界重排只走 `align-propose/align-apply`、单元结构只走 `restructure`、状态只经 CLI、派生层由上游重建；并说明两种事务的未决日志守卫（`repair recover` / `align-apply --recover`）。i18n 双向校验通过。 |
+| T7a–T7e | 完成 | 五个验收包实跑：149 passed（import/restructure/cli/review_ledger/review/preprocess）、85 passed（pdfexport/pdftoc/pdfdiagnostics）、145 passed（notes/notes_media_gate/glossary/source_evidence/synthetic_cases）、68 passed（align_blocks/align_rebuild/toc_page/toc_model/book_css/artifacts_digest）、100 passed（fingerprint/production_metadata/cover/cover_hanze/build）。合计 **547 passed**，无失败。 |
+| T8 | **blocked** | `global-marx-history-and-critique`、`marxism-and-medieval-studies`、`tamozhennaya-politika-rossii` 三本书在本机无工作区、无源件，无法执行逐书重建与交付审计。**不以工具测试代替实书验收**；材料补齐后按 `delivery.md` 逐书独立复核（含副本 hash）。 |
+| T9 | 完成（决定见 §9） | 10 项提案逐条给出“采用现状 / 延期 / 不采用”及理由；未获批准的延期项保持 pending，不以汇总单关闭代替决定。 |
+| T10 | 完成 | 全量 `pytest -q`、外部工具门 `AUTO_EPUBLIZER_REQUIRE_EXTERNAL=1`、`ruff check`、`ruff format --check`、`i18n --check`/`--links`、`git diff --check` 见下行验收记录；计划与 `qa`/`workflow`/`repair` 中英文档同步。 |
+
+### 验收记录（本轮实测）
+
+- 全量：`AUTO_EPUBLIZER_REQUIRE_EXTERNAL=1 uv run --offline pytest -q` → **1300 passed, 1 skipped**
+  （跳过项为 `test_processing_tools.py` 的“需要真实 RapidOCR”，本机未装；pandoc/epubcheck 走强制门，未跳过）。
+- `ruff check .` 通过；`ruff format --check .` 401 files already formatted。
+- i18n：`scripts/i18n.py --check` OK、`--links` OK。
+- `git diff --check` 无空白错误。
+- skip 口径：仅“本机缺 RapidOCR”一项环境性 skip 不计入通过数；`AUTO_EPUBLIZER_REQUIRE_EXTERNAL=1`
+  下 pandoc/epubcheck 缺失会失败而非跳过；Chromium 相关 PDF 用例本机实际执行（85 passed 包）。
+
+### 未决与未授权
+
+- T8 三书实书验收：**材料缺失 blocked**，需提供工作区或源件。
+- 真实 884MB outbox 迁移、远端 issue/PR 处置：本轮未获授权，未执行、未修改任何远端状态。
+- 本轮改动尚未提交、未推送。
+
+## 9. T9 提案决定（2026-11-03）
+
+| 提案 | 决定 | 理由与验收 |
+|---|---|---|
+| 逐处术语例外（seq/note_id/occurrence/hash） | **采用现状** | 已有机制覆盖逐处豁免；同词其他位置仍报，T7c 复验 |
+| 「禁止译法 / 允许固定复合词」新 schema | **延期** | 需先定义匹配语义（词边界、复合词优先级）与旧 CSV 兼容迁移，再单独立项 |
+| 封面外部 PNG 意象 | **延期（显式本地扩展）** | 只接受工作区内登记资源（source hash/尺寸/路径/署名），不自动下载素材；未登记即报错 |
+| 自动写 cover 单元 md/align | **不采用** | 生成封面走 `cover-generated.json` 登记与 build 接线；伪造 align 行违反逐句契约 |
+| 源封面/生成封面自动回退 | **不采用自动回退** | 维持显式确认：`preprocessing/cover.json` 优先；生成封面必须显式跑 `cover` |
+| EPUB 具体字体族 | **维持现状** | EPUB 主题保持 generic family；PDF 才做拉丁/CJK 具体回落 |
+| `brief` 制作信息只保留权利字段 | **采用现状（brief 保留 rights）** | 现有 brief 已保留权利声明，不复活旧详表 |
+| 成熟工作根「默认不补顶层文件」策略变更 | **维持现状 + 文档说明** | 模板已注明按版本 diff、不覆盖本地规则；改变默认行为需兼容迁移 |
+| PyPI 发布配置 | **延期** | 需单独批准发布流程与许可证表述；本轮不配 |
+| 环境索引改写 `uv.lock` | **不采用** | `doctor`/文档核对即可，镜像索引不改锁文件 |
+
+每项未获批准前保持 pending，不以关闭汇总单代替决定。

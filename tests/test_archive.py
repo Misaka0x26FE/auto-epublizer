@@ -296,3 +296,101 @@ def test_same_version_same_manifest_but_different_artifacts_conflicts(tmp_path: 
     plan = plan_archive(outbox)
     assert [c["reason"] for c in plan["conflicts"]] == ["same_version_different_artifacts"]
     assert plan["to_archive"] == []
+
+
+def _write_batch_json(
+    path: Path, books: list[dict], artifacts: dict[str, bytes] | None = None
+) -> None:
+    import json as _json
+
+    artifacts = artifacts or {}
+    for rel, payload in artifacts.items():
+        target = path / rel
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(payload)
+    payload = {
+        "schema_version": "auto-epublizer/batch/v1",
+        "batch": path.name,
+        "books": books,
+    }
+    (path / "batch.json").write_text(_json.dumps(payload), encoding="utf-8")
+    (path / "MANIFEST.md").write_text("# 交付清单\n", encoding="utf-8")
+
+
+def test_multi_book_batch_is_held_while_any_book_is_current(tmp_path: Path) -> None:
+    from auto_epublizer.archive import plan_archive
+
+    outbox = tmp_path / "outbox"
+    old = outbox / "batch-old"
+    old.mkdir(parents=True)
+    _write_batch_json(
+        old,
+        [
+            {
+                "book": "alpha",
+                "version": "1.0",
+                "artifacts": [{"path": "epub/a.epub", "sha256": ""}],
+            },
+            {
+                "book": "beta",
+                "version": "1.0",
+                "artifacts": [{"path": "epub/b.epub", "sha256": ""}],
+            },
+        ],
+        {"epub/a.epub": b"a1", "epub/b.epub": b"b1"},
+    )
+    newer = outbox / "batch-new"
+    newer.mkdir(parents=True)
+    _write_batch_json(
+        newer,
+        [{"book": "alpha", "version": "2.0", "artifacts": [{"path": "epub/a.epub", "sha256": ""}]}],
+        {"epub/a.epub": b"a2"},
+    )
+    plan = plan_archive(outbox)
+    assert [item["batch"]["name"] for item in plan["held"]] == ["batch-old"]
+    assert plan["to_archive"] == []
+
+
+def test_archived_same_version_different_bytes_conflicts(tmp_path: Path) -> None:
+    from auto_epublizer.archive import plan_archive
+
+    outbox = tmp_path / "outbox"
+    top = outbox / "batch-v1"
+    top.mkdir(parents=True)
+    _write_batch_json(
+        top,
+        [{"book": "alpha", "version": "1.0", "artifacts": [{"path": "epub/a.epub", "sha256": ""}]}],
+        {"epub/a.epub": b"new"},
+    )
+    archived = outbox / ".archive" / "batch-v1-old"
+    archived.mkdir(parents=True)
+    _write_batch_json(
+        archived,
+        [{"book": "alpha", "version": "1.0", "artifacts": [{"path": "epub/a.epub", "sha256": ""}]}],
+        {"epub/a.epub": b"old"},
+    )
+    plan = plan_archive(outbox)
+    assert any(item["reason"] == "same_version_archived_differs" for item in plan["conflicts"])
+    assert plan["to_archive"] == [] and plan["keep"] == []
+
+
+def test_archive_side_duplicate_versions_conflict(tmp_path: Path) -> None:
+    from auto_epublizer.archive import plan_archive
+
+    outbox = tmp_path / "outbox"
+    for name, payload in (("a", b"x"), ("b", b"y")):
+        path = outbox / ".archive" / name
+        path.mkdir(parents=True)
+        _write_batch_json(
+            path,
+            [
+                {
+                    "book": "alpha",
+                    "version": "1.0",
+                    "artifacts": [{"path": "epub/a.epub", "sha256": ""}],
+                }
+            ],
+            {"epub/a.epub": payload},
+        )
+    plan = plan_archive(outbox)
+    assert any(item["reason"] == "same_version_different_artifacts" for item in plan["conflicts"])

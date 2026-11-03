@@ -98,3 +98,16 @@ def test_punctuation_overflow_beyond_one_em_is_still_an_error() -> None:
         result = _diagnose(doc, "<p>正文句子。</p>")
         assert result["overflow_count"] == 1
         assert any(f["code"] == "E_PDF_OVERFLOW" for f in result["findings"])
+
+
+def test_font_metric_vertical_overshoot_is_tolerated() -> None:
+    """字形 ascender 略越行盒不算版面越界；越出 0.2em 仍报错（T5）。"""
+    with pymupdf.open() as doc:
+        first = doc.new_page(width=420, height=595)
+        first.insert_text((50, 68), "3", fontsize=18.9)
+        second = doc.new_page(width=420, height=595)
+        second.insert_text((50, 63), "3", fontsize=18.9)
+        result = _diagnose(doc, "<p>标题</p>")
+    pages = {f["page"] for f in result["findings"] if f["code"] == "E_PDF_OVERFLOW"}
+    assert 1 not in pages
+    assert 2 in pages

@@ -1200,3 +1200,13 @@ def test_cover_landmark_makes_non_linear_cover_reachable(tmp_path: Path) -> None
     with zipfile.ZipFile(out) as zf:
         landmarks = zf.read("OEBPS/landmarks.xhtml").decode("utf-8")
     assert '<a epub:type="cover" href="cover.xhtml">封面</a>' in landmarks
+
+
+def test_unit_role_is_carried_into_xhtml_body() -> None:
+    """T4a：经确认的单元角色透传到成品，PDF 不按标题猜。"""
+    from auto_epublizer.build.html import render_document
+
+    html = render_document("书名页", "# 书名页\n\n正文。\n", lang="zh-CN", role="titlepage")
+    assert 'data-aep-role="titlepage"' in html
+    plain = render_document("章", "# 章\n\n正文。\n", lang="zh-CN")
+    assert "data-aep-role" not in plain

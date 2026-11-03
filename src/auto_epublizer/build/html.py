@@ -801,7 +801,12 @@ def markdown_to_xhtml(
     return body
 
 
-def _page(title: str, body: str, *, lang: str) -> str:
+def _role_attr(role: str) -> str:
+    """经确认的单元角色透传到 XHTML（PDF 依据它决定页眉/页码，而非按标题猜）。"""
+    return f' data-aep-role="{escape(str(role), quote=True)}"' if role else ""
+
+
+def _page(title: str, body: str, *, lang: str, role: str = "") -> str:
     """组装一页完整 XHTML 文档（恰好一个 h1 位于 body 首行由调用方保证）。
 
     ``<title>`` 必须走 ``plain_label()``：单元 md 的 h1 常带 pandoc 行内属性
@@ -823,7 +828,7 @@ def _page(title: str, body: str, *, lang: str) -> str:
         '<link rel="stylesheet" type="text/css" href="style.css"/>\n'
         f"<title>{escape(plain_label(title))}</title>\n"
         "</head>\n"
-        f"<body>\n{body}\n</body>\n"
+        f"<body{_role_attr(role)}>\n{body}\n</body>\n"
         "</html>\n"
     )
 
@@ -912,6 +917,7 @@ def render_document(
     note_refs: dict[str, NoteRef] | None = None,
     note_items: list[NoteItem] | None = None,
     href_by_note: dict[str, str] | None = None,
+    role: str = "",
 ) -> str:
     """渲染一页纯译文文档（md_text 为结构化单元 markdown）。
 
@@ -926,7 +932,7 @@ def render_document(
         note_items=note_items,
         href_by_note=href_by_note,
     )
-    return _page(title, body, lang=lang)
+    return _page(title, body, lang=lang, role=role)
 
 
 def slug_file(unit_id: str) -> str:

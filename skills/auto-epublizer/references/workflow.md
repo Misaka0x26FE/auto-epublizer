@@ -1,4 +1,4 @@
-<!-- i18n: source=workflow.zh.md sha256=51a8d0dff1b3405a02557fb1cbfed324c379923c4bdd7e3014602bf71976d3ad -->
+<!-- i18n: source=workflow.zh.md sha256=64af6533dcdbabe29ccb4f1fd7fdf426fb87c9de675a0b9c0d4f8f979de1efab -->
 > **English** | [中文](workflow.zh.md)
 
 # Workflow (stage routing + command overview)
@@ -313,8 +313,14 @@ Keep one separate workspace per book; `status --all` and `ledger` are the cross-
 
 - identity and version come only from explicit `MANIFEST.md` fields (book/work/slug + version);
   missing, unparseable or "final"-style values are unresolved, never guessed as latest;
-- for each book the highest version is kept and the rest are listed for archiving; the same
-  version with different MANIFEST bytes is a conflict and the whole group is left untouched;
+- the batch manifest is read from `batch.json` first (`auto-epublizer/batch/v1`: per-book
+  identity/version/artifact hashes/report binding); `MANIFEST.md` is the human-readable export
+  of the same data and the completion marker. Legacy Markdown-only batches still parse.
+- for each book the highest version is kept and the rest are listed for archiving; duplicate
+  book+version copies with different manifests **or artifact bytes** are conflicts, checked in
+  both the top level and `.archive/`. A multi-book batch is kept whole (`held`) while any of
+  its books is still current: directories are never split and a single book's newest version
+  never marks the whole batch stale;
 - a batch already present in `.archive/` with the same book/version is reported as
   `already_archived` so it is not packed twice;
 - By default it only prints keep/move/conflict/unresolved lists; `--apply` moves batches,
