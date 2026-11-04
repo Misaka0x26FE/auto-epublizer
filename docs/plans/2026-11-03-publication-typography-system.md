@@ -283,7 +283,8 @@ P3/P4 与 P5/P6 在契约冻结后可分工；共享渲染模型和 `pdfexport.p
 ### 实施记录 — M1（P0–P2，2026-11-04）
 
 提交：`b594d2e`（P0 契约）→ `94556dd`（P1 样本册与基线）→ `0be8c24`（P2 参数提取）
-→ 本计划与索引登记。基线摘要取自提交前 `56720e7` 的实际输出。
+→ `86c19d0`（基线剔除构建身份）→ 本计划与索引登记。版式摘要与提交前 `56720e7`
+的输出一致（构建身份已归一化）。
 
 环境：Linux（XFCE/X11，`DISPLAY=:0`），Python 3.12；pandoc、EPUBCheck（`~/.cache/epubcheck.jar`）、
 Chromium `156.0.8078.47`、PyMuPDF `1.28.2` 可用；tesseract/ocrmypdf/rapidocr/MinerU 缺失，
@@ -310,8 +311,8 @@ Chromium `156.0.8078.47`、PyMuPDF `1.28.2` 可用；tesseract/ocrmypdf/rapidocr
 - 分母：16 个单元、18 个 XHTML 文档、6 个媒体；EPUB 三主题；PDF A5 共 **21 页**。
 - 基线：三主题 `style_sha256`/`content_sha256`/媒体摘要（剔除构建指纹注释与可见
   `software-provenance` 制作声明——后者含 revision/dirty/工具版本，跨提交必然变化，
-  不属于版式）+ PDF 页数/文本摘要/纸张/Chromium 与 PyMuPDF 版本；跨 Chromium 版本时
-  只比内容完整性并显式说明。
+  不属于版式；PDF 文本摘要同样把 `Revision:` 行归一化）+ PDF 页数/文本摘要/纸张/
+  Chromium 与 PyMuPDF 版本；跨 Chromium 版本时只比内容完整性并显式说明。
 - 故障注入：删除 `fig-wide.png` → reconcile 报图片字节缺失；删除 `fn-n101` aside →
   reconcile 报 `aside 期望 4 实际 3`。EPUBCheck：0 error。
 - 复跑：`AEP_TYPOGRAPHY_UPDATE_BASELINE=1 uv run pytest tests/test_typography_fixtures.py -q`
@@ -333,9 +334,11 @@ Chromium `156.0.8078.47`、PyMuPDF `1.28.2` 可用；tesseract/ocrmypdf/rapidocr
 - `ruff check .` / `ruff format --check .`：通过；`scripts/i18n.py --check/--links`：OK；
   `git diff --check`：无输出。
 - 首轮全套暴露一个真问题：Python 源码一旦有未提交改动，制作声明里的 `(modified source)`
-  进入内容摘要，基线立即失配。修复为在 `layout_digest` 中剔除 provenance 段后重新登记
-  （版式基线只对版式与内容负责，不对构建身份负责）。
-- 全套 `pytest -q`：**1315 passed / 3 skipped**（693.65 s，含 Chromium PDF、EPUBCheck 与样本基线）。
+  进入内容摘要，基线立即失配；提交后同一问题以新的 revision 再次出现。修复为摘要剔除
+  provenance 段并归一化 PDF 的 `Revision:` 行，随后用「提交后 + 故意弄脏 src」两种状态
+  复验基线稳定。
+- 全套 `pytest -q`：1315 passed / 3 skipped（693.65 s，含 Chromium PDF、EPUBCheck 与样本
+  基线）；基线稳定性修复后复跑同样 1315 passed / 3 skipped（698.93 s）。
 
 **M1 未覆盖（不得宣称已完成）**
 
