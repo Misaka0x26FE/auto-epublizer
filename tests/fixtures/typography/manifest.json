@@ -1,0 +1,404 @@
+{
+  "schema_version": 1,
+  "description": "排版工程化样本册（P1）：12 类合成场景 + 一册自然跨页的整书；全部文本与图片由构建器生成，不含真实作品内容。",
+  "book": {
+    "slug": "typography-samples",
+    "title": "排版样本册",
+    "lang": "zh-CN",
+    "creator": "合成样本"
+  },
+  "media": {
+    "cover.png": {"width": 600, "height": 900, "pattern": "gradient"},
+    "fig-small.png": {"width": 120, "height": 80, "pattern": "solid"},
+    "fig-wide.png": {"width": 1600, "height": 400, "pattern": "gradient"},
+    "fig-tall.png": {"width": 400, "height": 1600, "pattern": "solid"},
+    "fig-scan.png": {"width": 800, "height": 1100, "pattern": "noise"},
+    "note-small.png": {"width": 80, "height": 60, "pattern": "solid"}
+  },
+  "cases": [
+    {
+      "case_id": "opening",
+      "kind": "章节开篇",
+      "observe": ["长题名换行后与副题的间距", "连续多级标题不跳级", "标题不与首段分离"],
+      "units": [
+        {
+          "unit_id": "ch01",
+          "kind": "chapter",
+          "region": "body",
+          "role": "",
+          "level": 1,
+          "title": "第一章　开场：一个需要换行的长题名，以及紧跟其后的副题排布示例",
+          "markdown": "cases/case-opening.md",
+          "expect": {
+            "markers": ["TYPO-OPEN-A", "TYPO-OPEN-B", "TYPO-OPEN-C"],
+            "noterefs": 0,
+            "asides": 0,
+            "images": [],
+            "selectors": ["<h2", "<h3", "<h5", "<h6"]
+          }
+        }
+      ]
+    },
+    {
+      "case_id": "body",
+      "kind": "正文节奏",
+      "observe": ["短/中/长段落的行距一致性", "标题后首段与续段的段距", "跨页处的孤行寡行（只记录）"],
+      "units": [
+        {
+          "unit_id": "ch02",
+          "kind": "chapter",
+          "region": "body",
+          "role": "",
+          "level": 1,
+          "title": "第二章　正文节奏",
+          "markdown": "cases/case-body.md",
+          "expect": {
+            "markers": ["TYPO-BODY-A", "TYPO-BODY-B", "TYPO-BODY-C", "TYPO-BODY-D", "TYPO-BODY-E", "TYPO-BODY-F"],
+            "noterefs": 0,
+            "asides": 0,
+            "images": [],
+            "selectors": ["<h2", "<p>"]
+          }
+        }
+      ]
+    },
+    {
+      "case_id": "mixed",
+      "kind": "中外文混排",
+      "observe": ["中/拉丁/西里尔/希腊基线对齐", "RTL 引文现状（不作已支持声明）", "全角与半角括号", "混合强调的嵌套"],
+      "units": [
+        {
+          "unit_id": "ch03",
+          "kind": "chapter",
+          "region": "body",
+          "role": "",
+          "level": 1,
+          "title": "第三章　中外文混排",
+          "markdown": "cases/case-mixed.md",
+          "expect": {
+            "markers": ["TYPO-MIX-A", "TYPO-MIX-RTL", "TYPO-MIX-B", "TYPO-MIX-C"],
+            "noterefs": 0,
+            "asides": 0,
+            "images": [],
+            "selectors": ["<blockquote", "<strong", "<em"]
+          }
+        }
+      ]
+    },
+    {
+      "case_id": "quote",
+      "kind": "引文",
+      "observe": ["单段与多段引文的段距", "引文内列表缩进", "引文结束后正文恢复"],
+      "units": [
+        {
+          "unit_id": "ch04",
+          "kind": "chapter",
+          "region": "body",
+          "role": "",
+          "level": 1,
+          "title": "第四章　引文",
+          "markdown": "cases/case-quote.md",
+          "expect": {
+            "markers": ["TYPO-QUOTE-A", "TYPO-QUOTE-B", "TYPO-QUOTE-C", "TYPO-QUOTE-D"],
+            "noterefs": 0,
+            "asides": 0,
+            "images": [],
+            "selectors": ["<blockquote", "<ul>"]
+          }
+        }
+      ]
+    },
+    {
+      "case_id": "verse-code",
+      "kind": "诗行与代码",
+      "observe": ["诗行空白与手动换行保真", "连续编号列表", "N) 起首段落不被自动编号", "代码块空白保真"],
+      "units": [
+        {
+          "unit_id": "ch05",
+          "kind": "chapter",
+          "region": "body",
+          "role": "",
+          "level": 1,
+          "title": "第五章　诗行、编号段落与代码",
+          "markdown": "cases/case-verse-code.md",
+          "expect": {
+            "markers": ["TYPO-VERSE-A", "TYPO-CODE-A", "TYPO-VERSE-B"],
+            "noterefs": 0,
+            "asides": 0,
+            "images": [],
+            "selectors": ["<p class=\"verse\"", "<ol>", "<p class=\"fnlist\"", "<pre>"]
+          }
+        }
+      ]
+    },
+    {
+      "case_id": "notes",
+      "kind": "注文",
+      "observe": ["短注与长注的跨页行为", "一注多引用的回链目标", "注内含链接与图片", "注文段落的缩进（已知串扰）"],
+      "units": [
+        {
+          "unit_id": "ch06",
+          "kind": "chapter",
+          "region": "body",
+          "role": "",
+          "level": 1,
+          "title": "第六章　注文与引用互链",
+          "markdown": "cases/case-notes.md",
+          "notes": {
+            "mode": "structured",
+            "items": [
+              {"note_id": "n101", "number": 1, "text_md": "短注内容，只有一句话。", "refs": ["ref-000101"]},
+              {
+                "note_id": "n102",
+                "number": 2,
+                "text_md": "长注内容用于制造跨页：合成文本重复用于制造跨页长注。合成文本重复用于制造跨页长注。合成文本重复用于制造跨页长注。合成文本重复用于制造跨页长注。合成文本重复用于制造跨页长注。合成文本重复用于制造跨页长注。合成文本重复用于制造跨页长注。合成文本重复用于制造跨页长注。合成文本重复用于制造跨页长注。合成文本重复用于制造跨页长注。合成文本重复用于制造跨页长注。合成文本重复用于制造跨页长注。",
+                "refs": ["ref-000102"]
+              },
+              {"note_id": "n103", "number": 3, "text_md": "一注多引用：两条正文引用都应回链到本注文。", "refs": ["ref-000103", "ref-000104"]},
+              {
+                "note_id": "n105",
+                "number": 4,
+                "text_md": "注文内含[链接](https://example.org/note)与图片：\n\n![注内小图](media/note-small.png)",
+                "refs": ["ref-000105"]
+              }
+            ]
+          },
+          "expect": {
+            "markers": ["TYPO-NOTE-A", "TYPO-NOTE-B"],
+            "noterefs": 5,
+            "asides": 4,
+            "images": ["note-small.png"],
+            "selectors": ["<aside", "epub:type=\"footnotes\"", "epub:type=\"backlink\""]
+          }
+        }
+      ]
+    },
+    {
+      "case_id": "figures",
+      "kind": "图片与图注",
+      "observe": ["小图/宽图/高图的等比缩放", "扫描图灰阶呈现", "超长图注跨页后与图的关系", "图注字号与正文的区分"],
+      "units": [
+        {
+          "unit_id": "ch07",
+          "kind": "chapter",
+          "region": "body",
+          "role": "",
+          "level": 1,
+          "title": "第七章　图片与图注",
+          "markdown": "cases/case-figures.md",
+          "expect": {
+            "markers": ["TYPO-FIG-CAP", "TYPO-FIG-A"],
+            "noterefs": 0,
+            "asides": 0,
+            "images": ["fig-small.png", "fig-wide.png", "fig-tall.png", "fig-scan.png"],
+            "selectors": ["<figure class=\"imgfig\"", "<figcaption"]
+          }
+        }
+      ]
+    },
+    {
+      "case_id": "tables",
+      "kind": "表格",
+      "observe": ["短表居中", "多页表跨页与表头", "长单元格与长 URL 换行", "显式 HTML 合并单元格"],
+      "units": [
+        {
+          "unit_id": "ch08",
+          "kind": "chapter",
+          "region": "body",
+          "role": "",
+          "level": 1,
+          "title": "第八章　表格样本",
+          "markdown": "cases/case-tables.md",
+          "expect": {
+            "markers": ["TYPO-TABLE-A", "TYPO-TABLE-B"],
+            "noterefs": 0,
+            "asides": 0,
+            "images": [],
+            "selectors": ["<table class=\"data\"", "colspan=\"2\""]
+          }
+        }
+      ]
+    },
+    {
+      "case_id": "toc",
+      "kind": "目录与标题层级",
+      "observe": ["长标题在目录中的换行", "三级层级嵌套", "同名标题的锚点区分"],
+      "units": [
+        {
+          "unit_id": "ch09",
+          "kind": "chapter",
+          "region": "body",
+          "role": "",
+          "level": 1,
+          "title": "第九章　目录与标题层级",
+          "markdown": "cases/case-toc.md",
+          "expect": {
+            "markers": ["TYPO-TOC-A"],
+            "noterefs": 0,
+            "asides": 0,
+            "images": [],
+            "selectors": ["<h2", "<h3"]
+          }
+        }
+      ]
+    },
+    {
+      "case_id": "index",
+      "kind": "索引与书目",
+      "observe": ["索引两栏与 h1 跨栏", "长条目跨行与悬挂缩进现状（未实现，只记录）", "页码区间呈现"],
+      "units": [
+        {
+          "unit_id": "back-index",
+          "kind": "index",
+          "region": "backmatter",
+          "role": "",
+          "level": 1,
+          "title": "索引",
+          "markdown": "cases/case-index.md",
+          "expect": {
+            "markers": ["TYPO-INDEX-A"],
+            "noterefs": 0,
+            "asides": 0,
+            "images": [],
+            "selectors": ["<h1"]
+          }
+        }
+      ]
+    },
+    {
+      "case_id": "roles",
+      "kind": "页面角色",
+      "observe": ["封面只有图像、无可见图注", "书名页居中", "部分页居中与留白", "版权页取消首行缩进"],
+      "units": [
+        {
+          "unit_id": "front-cover",
+          "kind": "cover",
+          "region": "cover",
+          "role": "",
+          "level": 1,
+          "title": "封面",
+          "markdown": "cases/case-cover.md",
+          "expect": {
+            "markers": [],
+            "noterefs": 0,
+            "asides": 0,
+            "images": ["cover.png"],
+            "selectors": ["<img"]
+          }
+        },
+        {
+          "unit_id": "front-titlepage",
+          "kind": "titlepage",
+          "region": "frontmatter",
+          "role": "titlepage",
+          "level": 1,
+          "title": "排版样本册",
+          "markdown": "cases/case-titlepage.md",
+          "expect": {
+            "markers": ["TYPO-ROLE-TITLE"],
+            "noterefs": 0,
+            "asides": 0,
+            "images": [],
+            "selectors": ["data-aep-role=\"titlepage\""]
+          }
+        },
+        {
+          "unit_id": "front-part",
+          "kind": "part",
+          "region": "body",
+          "role": "part",
+          "level": 1,
+          "title": "第一部分　组件样本",
+          "markdown": "cases/case-part.md",
+          "expect": {
+            "markers": ["TYPO-ROLE-PART"],
+            "noterefs": 0,
+            "asides": 0,
+            "images": [],
+            "selectors": ["data-aep-role=\"part\""]
+          }
+        },
+        {
+          "unit_id": "front-copyright",
+          "kind": "copyright",
+          "region": "frontmatter",
+          "role": "",
+          "level": 1,
+          "title": "版权页",
+          "markdown": "cases/case-copyright.md",
+          "expect": {
+            "markers": ["TYPO-ROLE-CIP"],
+            "noterefs": 0,
+            "asides": 0,
+            "images": [],
+            "selectors": ["<h1"]
+          }
+        }
+      ]
+    },
+    {
+      "case_id": "extreme",
+      "kind": "极端输入",
+      "observe": ["超长连续串的断行与溢出", "罕见字形的字体回落", "深层嵌套列表", "作者样式关闭/字体替换（阅读器实测项）"],
+      "units": [
+        {
+          "unit_id": "ch11",
+          "kind": "chapter",
+          "region": "body",
+          "role": "",
+          "level": 1,
+          "title": "第十一章　极端输入",
+          "markdown": "cases/case-extreme.md",
+          "expect": {
+            "markers": ["TYPO-EXT-A", "TYPO-EXT-B", "TYPO-EXT-C"],
+            "noterefs": 0,
+            "asides": 0,
+            "images": [],
+            "selectors": ["<ul>"]
+          }
+        }
+      ]
+    },
+    {
+      "case_id": "long-form",
+      "kind": "整册贯通",
+      "observe": ["自然跨页后的正文节奏", "跨页处孤行寡行候选", "章节结束页"], 
+      "units": [
+        {
+          "unit_id": "ch12",
+          "kind": "chapter",
+          "region": "body",
+          "role": "",
+          "level": 1,
+          "title": "第十二章　整册续页样本",
+          "markdown": "cases/case-long-form.md",
+          "expect": {
+            "markers": ["TYPO-LONG-A", "TYPO-LONG-B", "TYPO-LONG-C"],
+            "noterefs": 0,
+            "asides": 0,
+            "images": [],
+            "selectors": ["<h2"]
+          }
+        }
+      ]
+    }
+  ],
+  "reading_order": [
+    "front-cover",
+    "front-titlepage",
+    "front-copyright",
+    "front-part",
+    "ch01",
+    "ch02",
+    "ch03",
+    "ch04",
+    "ch05",
+    "ch06",
+    "ch07",
+    "ch08",
+    "ch09",
+    "ch11",
+    "ch12",
+    "back-index"
+  ]
+}

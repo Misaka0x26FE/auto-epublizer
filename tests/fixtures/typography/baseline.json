@@ -1,0 +1,68 @@
+{
+  "epub": {
+    "compact": {
+      "content_sha256": "49cd75e21cd89a498ee197b30c3ef2ebf77c1247699320fcbf5818e2563fe7ef",
+      "documents": 18,
+      "media": {
+        "OEBPS/media/cover.png": "15b878e817a04676a892a9b48032668cc44ccce5f6709bbb853d37abb1c49842",
+        "OEBPS/media/fig-scan.png": "63e98586a923dbd5d58a2c66a5f3dbc0c088edceb96b55b1a585c329303a20bc",
+        "OEBPS/media/fig-small.png": "22b1acc087985b5ad22ce03b1cf293c098db6c028731556f018261541b459db9",
+        "OEBPS/media/fig-tall.png": "4ae90991f7a9ec7bd25f0737b2067255a94c8976961ca016868bf48ebd815ff7",
+        "OEBPS/media/fig-wide.png": "8de0b696f333024b293c12228abf5a799f704d289873602605667fac0ca31ec4",
+        "OEBPS/media/note-small.png": "8b6e9573f9bd7d2636cfc890e0c8bc547b35849d2b5ffc21dc3dd10130dcc3ef"
+      },
+      "style_bytes": 801,
+      "style_sha256": "f9bb28693b37158d42af9cc339f53a0416058837798da2e94d47792c78881a78"
+    },
+    "spacious": {
+      "content_sha256": "49cd75e21cd89a498ee197b30c3ef2ebf77c1247699320fcbf5818e2563fe7ef",
+      "documents": 18,
+      "media": {
+        "OEBPS/media/cover.png": "15b878e817a04676a892a9b48032668cc44ccce5f6709bbb853d37abb1c49842",
+        "OEBPS/media/fig-scan.png": "63e98586a923dbd5d58a2c66a5f3dbc0c088edceb96b55b1a585c329303a20bc",
+        "OEBPS/media/fig-small.png": "22b1acc087985b5ad22ce03b1cf293c098db6c028731556f018261541b459db9",
+        "OEBPS/media/fig-tall.png": "4ae90991f7a9ec7bd25f0737b2067255a94c8976961ca016868bf48ebd815ff7",
+        "OEBPS/media/fig-wide.png": "8de0b696f333024b293c12228abf5a799f704d289873602605667fac0ca31ec4",
+        "OEBPS/media/note-small.png": "8b6e9573f9bd7d2636cfc890e0c8bc547b35849d2b5ffc21dc3dd10130dcc3ef"
+      },
+      "style_bytes": 886,
+      "style_sha256": "17b6b20739f489a334d06fe348ce1ac4804b77b14ccdb5c505dd5283698d0e1c"
+    },
+    "standard": {
+      "content_sha256": "49cd75e21cd89a498ee197b30c3ef2ebf77c1247699320fcbf5818e2563fe7ef",
+      "documents": 18,
+      "media": {
+        "OEBPS/media/cover.png": "15b878e817a04676a892a9b48032668cc44ccce5f6709bbb853d37abb1c49842",
+        "OEBPS/media/fig-scan.png": "63e98586a923dbd5d58a2c66a5f3dbc0c088edceb96b55b1a585c329303a20bc",
+        "OEBPS/media/fig-small.png": "22b1acc087985b5ad22ce03b1cf293c098db6c028731556f018261541b459db9",
+        "OEBPS/media/fig-tall.png": "4ae90991f7a9ec7bd25f0737b2067255a94c8976961ca016868bf48ebd815ff7",
+        "OEBPS/media/fig-wide.png": "8de0b696f333024b293c12228abf5a799f704d289873602605667fac0ca31ec4",
+        "OEBPS/media/note-small.png": "8b6e9573f9bd7d2636cfc890e0c8bc547b35849d2b5ffc21dc3dd10130dcc3ef"
+      },
+      "style_bytes": 888,
+      "style_sha256": "ca9d5d9d5e301786f681335c14894fe6c22c6fd16e6abc10fdf151f78b309d1a"
+    }
+  },
+  "generated_at": "2026-11-04",
+  "manifest": "tests/fixtures/typography/manifest.json",
+  "note": "版式基线：EPUB 摘要与 git 状态无关；PDF 摘要绑定 Chromium/字体环境，跨环境只比内容完整性。",
+  "pdf": {
+    "chromium": "Chromium 156.0.8078.47 for Linux Mint",
+    "page_boxes_pt": [
+      [
+        420.0,
+        595.0
+      ]
+    ],
+    "pages": 21,
+    "pdf_sha256": "92add7e7e7d4680b604145b9868a8f6e4276369354c90ea628e93c9c46d881f5",
+    "pymupdf": "1.28.2",
+    "size_mm": [
+      148,
+      210
+    ],
+    "text_chars": 5110,
+    "text_sha256": "e139d732851e5c73fdede34ba2cbdc5ef12a2abea8bf92a5e985034efd151a5f"
+  },
+  "schema_version": 1
+}
