@@ -32,6 +32,7 @@ from ..fingerprint import (
     stamp_document,
 )
 from ..media_paths import epub_member_path, resolve_media_path
+from ..typography import EPUB_THEMES, epub_theme_css
 from .html import plain_label, slug_file, subheading_anchors
 
 __all__ = [
@@ -116,30 +117,16 @@ table.data td {
 
 # 主题层（epub-template-spec §5）：预置三套极简主题，只控排版微调——
 # 字族仅用泛化族名（serif/sans-serif，阅读器映射到自己的字体），无颜色无字号。
-_THEMES: dict[str, str] = {
-    "standard": (
-        "body {\n  font-family: serif;\n  line-height: 1.7;\n}\n"
-        "p {\n  text-indent: 2em;\n  text-align: justify;\n  margin: 0 0 0.6em 0;\n}\n"
-        "h1, h2, h3, h4, h5, h6 {\n  text-align: center;\n}\n"
-    ),
-    "compact": (
-        "body {\n  font-family: sans-serif;\n  line-height: 1.4;\n}\n"
-        "p {\n  margin: 0 0 0.8em 0;\n}\n"
-    ),
-    "spacious": (
-        "body {\n  font-family: serif;\n  line-height: 2.0;\n}\n"
-        "p {\n  text-indent: 2em;\n  text-align: justify;\n  margin: 0 0 1em 0;\n}\n"
-        "h1, h2, h3, h4, h5, h6 {\n  text-align: center;\n}\n"
-    ),
-}
+# 参数与渲染在 ``typography.EPUB_THEMES`` / ``typography.epub_theme_css``；
+# 本模块只保留对外入口（``theme_css``）与错误信息口径。
 
 
 def theme_css(theme: str) -> str:
     """取主题层 CSS；未知主题报错（可选值随错误信息给出）。"""
     try:
-        return _THEMES[theme]
+        return epub_theme_css(theme)
     except KeyError:
-        raise ValueError(f"未知主题：{theme}（可选：{'/'.join(_THEMES)}）") from None
+        raise ValueError(f"未知主题：{theme}（可选：{'/'.join(EPUB_THEMES)}）") from None
 
 
 _NS_XHTML = "http://www.w3.org/1999/xhtml"

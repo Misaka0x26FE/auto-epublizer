@@ -51,6 +51,7 @@ from auto_common.workspace import source_sha256
 
 from .pdftoc import canonical_href, inject_anchor_markers, is_toc_document, rewrite_toc
 from .pdftoc import member_href as _member_href
+from .typography import PRINT, css_number, em_number
 
 BODY_RE = re.compile(r"<body[^>]*>(.*)</body>", re.S | re.I)
 _INDEX_LABELS = {
@@ -194,7 +195,7 @@ nav[data-aep="generated-toc"] li { margin: 0.18em 0; page-break-inside: avoid; }
 body { font-family: "Nimbus Roman", "Liberation Serif", "DejaVu Serif",
        "Noto Serif CJK SC", "Songti SC", serif; font-size: ${body_pt}pt;
        line-height: ${line_height}; text-align: justify; }
-p { font-size: ${body_pt}pt; line-height: ${line_height}; text-indent: 2em; margin: 0;
+p { font-size: ${body_pt}pt; line-height: ${line_height}; text-indent: ${body_indent_em}em; margin: 0;
     text-align: justify; overflow-wrap: anywhere; }
 p.imgp, figure.imgfig { text-indent: 0; margin: 0.6em 0; }
 figure.imgfig figcaption { font-size: ${note_pt}pt; color: #444; }
@@ -202,15 +203,15 @@ section.chapter img { max-width: 100%; max-height: ${image_height}mm; width: aut
 figure.imgfig img, p.imgp img { display: block; margin: 0 auto; }
 h1 + figure.imgfig img, h2 + figure.imgfig img, h3 + figure.imgfig img {
     max-height: ${heading_image_height}mm; }
-h1 { font-size: ${h1_pt}pt; line-height: 1.35; margin: 1.1em 0 0.9em; }
-h2 { font-size: ${h2_pt}pt; line-height: 1.4; margin: 1em 0 0.7em; }
-h3 { font-size: ${h3_pt}pt; line-height: 1.45; margin: 0.9em 0 0.5em; }
-h4, h5, h6 { font-size: ${h4_pt}pt; margin: 0.8em 0 0.4em; }
-blockquote { font-size: ${quote_pt}pt; line-height: 1.5; margin: 0.6em 0 0.6em 1.5em; }
-aside, .footnote, section.footnotes { font-size: ${note_pt}pt; line-height: 1.4;
-    text-align: justify; display: block; margin: 0.2em 0 0.5em 0; }
-aside p, .footnote p, p.fn { font-size: ${note_pt}pt; line-height: 1.4; text-indent: 0;
-    margin: 0 0 0.3em 0; }
+h1 { font-size: ${h1_pt}pt; line-height: ${h1_lh}; margin: ${h1_before}em 0 ${h1_after}em; }
+h2 { font-size: ${h2_pt}pt; line-height: ${h2_lh}; margin: ${h2_before}em 0 ${h2_after}em; }
+h3 { font-size: ${h3_pt}pt; line-height: ${h3_lh}; margin: ${h3_before}em 0 ${h3_after}em; }
+h4, h5, h6 { font-size: ${h4_pt}pt; margin: ${h4_before}em 0 ${h4_after}em; }
+blockquote { font-size: ${quote_pt}pt; line-height: ${quote_lh}; margin: ${quote_before}em 0 ${quote_after}em ${quote_indent}em; }
+aside, .footnote, section.footnotes { font-size: ${note_pt}pt; line-height: ${note_lh};
+    text-align: justify; display: block; margin: ${note_before}em 0 ${note_after}em 0; }
+aside p, .footnote p, p.fn { font-size: ${note_pt}pt; line-height: ${note_lh}; text-indent: 0;
+    margin: 0 0 ${note_p_margin}em 0; }
 span.fnnum { font-weight: 600; }
 /* 印刷版不保留屏幕样式：链接同色无下划线，注码与正文同色 */
 a { color: inherit; text-decoration: none; }
@@ -218,7 +219,7 @@ a[epub\:type~="noteref"], a[role="doc-noteref"] { color: inherit; }
 table { font-size: ${table_pt}pt; width: 100%; max-width: 100%; table-layout: fixed; }
 table th, table td { overflow-wrap: anywhere; word-break: normal; }
 table p { font-size: inherit; text-indent: 0; }
-table.data th, table.data td { padding: 0.12em 0.4em; }
+table.data th, table.data td { padding: ${table_pad_v}em ${table_pad_h}em; }
 section.chapter { page-break-after: always; }
 section.index { column-count: 2; column-gap: 2em; }
 section.role-part, section.role-titlepage { text-align: center; }
@@ -247,11 +248,11 @@ span.aepmark.aepanchor { font-size: 0.1px; line-height: 0; }
 class PrintStyle:
     """版式参数。缺省为中文社科学术书：大 32 开 + 五号正文 + 小五注文。"""
 
-    size: str = "a5"
-    body_pt: float = 10.5
-    note_pt: float = 8.5
-    line_height: float = 1.55
-    margins_mm: tuple[float, float, float, float] = (18, 16, 20, 16)
+    size: str = PRINT.size
+    body_pt: float = PRINT.body_pt
+    note_pt: float = PRINT.note_pt
+    line_height: float = PRINT.line_height
+    margins_mm: tuple[float, float, float, float] = PRINT.margins_mm
 
     def page_size_mm(self) -> tuple[int, int]:
         return SIZES.get(self.size.lower(), SIZES["a5"])
@@ -278,6 +279,13 @@ class PrintStyle:
     def css(self, *, cover: bool = True) -> str:
         width, height = self.page_size_mm()
         top, outer, bottom, inner = self.margins_mm
+        metrics = PRINT
+        h1_lh, h2_lh, h3_lh = metrics.heading_line_heights[:3]
+        assert h1_lh is not None and h2_lh is not None and h3_lh is not None
+        h1_margin, h2_margin, h3_margin, h4_margin = metrics.heading_margins_em
+        quote_before, quote_after, quote_indent = metrics.quote_margins_em
+        note_before, note_after, _note_inner = metrics.note_margins_em
+        table_pad_v, table_pad_h = metrics.table_cell_padding_em
         return Template(CSS_TEMPLATE).substitute(
             page_note=f"{width}×{height} mm（{self.size}）",
             size_css=f"{width}mm {height}mm",
@@ -287,7 +295,14 @@ class PrintStyle:
             page_height=height,
             cover_height=height - 0.5,  # Chromium 纸张取整余量，防止整页图溢出几分之一毫米
             image_height=round(
-                max(1, height - top - bottom - 4 - 3 * self.note_pt * self.line_height * 25.4 / 72),
+                max(
+                    1,
+                    height
+                    - top
+                    - bottom
+                    - metrics.image_budget_mm
+                    - metrics.image_note_lines * self.note_pt * self.line_height * 25.4 / 72,
+                ),
                 2,
             ),
             heading_image_height=round(
@@ -296,20 +311,47 @@ class PrintStyle:
                     height
                     - top
                     - bottom
-                    - 4
-                    - (3 * self.note_pt * self.line_height + self.body_pt * 1.8 * 3.35) * 25.4 / 72,
+                    - metrics.image_budget_mm
+                    - (
+                        metrics.image_note_lines * self.note_pt * self.line_height
+                        + self.body_pt * metrics.heading_scales[0] * metrics.heading_image_lines
+                    )
+                    * 25.4
+                    / 72,
                 ),
                 2,
             ),
             body_pt=self.body_pt,
             note_pt=self.note_pt,
             line_height=self.line_height,
-            h1_pt=round(self.body_pt * 1.8, 1),
-            h2_pt=round(self.body_pt * 1.43, 1),
-            h3_pt=round(self.body_pt * 1.19, 1),
-            h4_pt=round(self.body_pt * 1.05, 1),
-            quote_pt=round(self.body_pt * 0.9, 1),
-            table_pt=round(self.body_pt * 0.86, 1),
+            body_indent_em=em_number(metrics.body_indent_em),
+            h1_pt=round(self.body_pt * metrics.heading_scales[0], 1),
+            h2_pt=round(self.body_pt * metrics.heading_scales[1], 1),
+            h3_pt=round(self.body_pt * metrics.heading_scales[2], 1),
+            h4_pt=round(self.body_pt * metrics.heading_scales[3], 1),
+            quote_pt=round(self.body_pt * metrics.quote_scale, 1),
+            table_pt=round(self.body_pt * metrics.table_scale, 1),
+            h1_lh=css_number(h1_lh),
+            h2_lh=css_number(h2_lh),
+            h3_lh=css_number(h3_lh),
+            h1_before=em_number(h1_margin[0]),
+            h1_after=em_number(h1_margin[1]),
+            h2_before=em_number(h2_margin[0]),
+            h2_after=em_number(h2_margin[1]),
+            h3_before=em_number(h3_margin[0]),
+            h3_after=em_number(h3_margin[1]),
+            h4_before=em_number(h4_margin[0]),
+            h4_after=em_number(h4_margin[1]),
+            quote_lh=css_number(metrics.quote_line_height),
+            quote_before=em_number(quote_before),
+            quote_after=em_number(quote_after),
+            quote_indent=em_number(quote_indent),
+            note_lh=css_number(metrics.note_line_height),
+            note_before=em_number(note_before),
+            note_after=em_number(note_after),
+            note_p_margin=em_number(metrics.note_paragraph_margin_bottom_em),
+            table_pad_v=em_number(table_pad_v),
+            table_pad_h=em_number(table_pad_h),
         )
 
 
