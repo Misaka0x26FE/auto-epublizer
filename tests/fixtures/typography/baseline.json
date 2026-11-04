@@ -55,14 +55,14 @@
       ]
     ],
     "pages": 21,
-    "pdf_sha256": "92add7e7e7d4680b604145b9868a8f6e4276369354c90ea628e93c9c46d881f5",
+    "pdf_sha256": "462147ec4ce68bdd9a20f54c0e1144c2071c1087a113c65877909cf5b20477b8",
     "pymupdf": "1.28.2",
     "size_mm": [
       148,
       210
     ],
-    "text_chars": 5110,
-    "text_sha256": "e139d732851e5c73fdede34ba2cbdc5ef12a2abea8bf92a5e985034efd151a5f"
+    "text_chars": 5064,
+    "text_sha256": "95e8ae40342c9c59f5f181d2db9b9e91cc6d38f465438b518b7c69749d99bee5"
   },
   "schema_version": 1
 }

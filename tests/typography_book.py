@@ -225,6 +225,8 @@ _TAG_RE = re.compile(r"<[^>]+>")
 _COMMENT_RE = re.compile(r"<!--.*?-->", re.S)
 #: 制作声明含 revision/dirty/工具版本，跨提交必然变化，不属于版式
 _PROVENANCE_RE = re.compile(r'<section class="software-provenance">.*?</section>', re.S)
+#: 印刷文本层中的构建身份行：归一化后片段不随提交变化
+_REVISION_RE = re.compile(r"Revision: [0-9a-f]{7,64}(?: \(modified source\))?")
 
 
 def _visible_text(xhtml: str) -> str:
@@ -310,13 +312,18 @@ def chromium_version(browser: str) -> str:
 
 
 def pdf_digest(epub_path: Path, out_path: Path) -> dict[str, Any]:
-    """渲染 PDF 并返回结构摘要（页数/文本摘要/纸张/环境）；无 Chromium 时由调用方跳过。"""
+    """渲染 PDF 并返回结构摘要（页数/文本摘要/纸张/环境）；无 Chromium 时由调用方跳过。
+
+    文本摘要前把制作声明里的 ``Revision: <sha> (modified source)`` 归一化：构建身份
+    随提交变化，不属于版式基线（与 EPUB 摘要剔除 provenance 同一口径）。
+    """
     import pymupdf
 
     result = render(epub_path, out_path, PrintStyle())
     with pymupdf.open(result.out) as doc:
         text = "\n".join(page.get_text("text") for page in doc)
         sizes = sorted({(round(page.rect.width, 1), round(page.rect.height, 1)) for page in doc})
+    text = _REVISION_RE.sub("Revision: <normalized>", text)
     browser = find_chromium() or ""
     return {
         "pages": result.pages,
