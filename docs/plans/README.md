@@ -19,6 +19,7 @@
 
 | 文档 | 状态 | 内容 |
 |---|---|---|
+| [2026-11-03-publication-typography-system.md](2026-11-03-publication-typography-system.md) | 已实施 M1（P0–P2）；P3–P9 待实施 | 借鉴前端设计系统、语义组件、响应式与视觉回归；EPUB/PDF 双端排版规则、合成样本册、诊断、CI与实书试点任务 |
 | [2026-11-03-issue-pr-repair-handoff.md](2026-11-03-issue-pr-repair-handoff.md) | 已实施（T0–T7/T9/T10 完成；T6a 延期、T8 实书 blocked） | 38 个开放 issue / 17 个历史 PR 全覆盖；批次清单协议、归档冲突、卫生扫描范围、版面 raw 身份、PDF 整书缩放与角色/混合强调、修复职责与 T9 决定；全量 1300 passed / 1 skipped |
 | [2026-11-01-issue-pr-followup.md](2026-11-01-issue-pr-followup.md) | 已完成主体（5aee910/db20a42）；H2 实书 blocked | 38 个开放 issue / 17 个历史 PR 增量对账；诊断、段落与逐句对齐、目录、书版 PDF、归档、审查修复与复审 5 项缺口 |
 | [2026-10-31-issue-pr-update.md](2026-10-31-issue-pr-update.md) | 已完成（本仓范围） | 21 个开放 issue 与全部 18 个历史 PR 对账；状态/CLI/PDF 目录元数据/注文证据/修复事务/页码策略/工作根治理与双语指南已落地；全量 1134 passed / 3 skipped，实书 unknown 项见 §8 |
