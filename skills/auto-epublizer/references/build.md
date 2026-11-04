@@ -1,4 +1,4 @@
-<!-- i18n: source=build.zh.md sha256=eac658a2cd2b48f9ec592766777c0a072cdd818b17338bf2eca237b765f77edb -->
+<!-- i18n: source=build.zh.md sha256=be8e48e606ef0b1877cbc9b950f89a8a3cbe59d5b9d9c634f3e09bd50b694dd2 -->
 > **English** | [中文](build.zh.md)
 
 # Build (EPUB packaging)
@@ -219,3 +219,56 @@ auto-epublizer pdf --workspace <dir> [--epub <path>] [-o <out.pdf>] \
   values are rejected. Output equal to input is rejected; a missing Chromium, timeout (240 s),
   non-zero exit or a non-PDF product are Chinese errors; failures leave no partial product and
   never damage an existing PDF.
+
+### Typography Contract (Frozen 2026-11-03)
+
+These are the **actual values** of `PrintStyle` and `CSS_TEMPLATE` today; the sample book and
+baseline are validated against them. Changing any number is a typography change and requires
+re-running the P1 samples and the §5 threshold checks.
+
+| Item | Value |
+|---|---|
+| Trim size | `a5` 148×210 (default) / `32k` 130×184 / `b5` 176×250 / `16k` 185×260 mm |
+| Page margins (top/outer/bottom/inner) | 18 / 16 / 20 / 16 mm (`@page`; cover first page `margin:0`) |
+| Body | 10.5 pt, line height 1.55, first-line indent 2em, justified, paragraph gap 0 |
+| Notes | 8.5 pt, line height 1.4, `aside p` indent 0 with 0.3em bottom margin |
+| Headings | h1 1.8× / h2 1.43× / h3 1.19× / h4–h6 1.05× body size; line heights 1.35/1.4/1.45; before/after margins h1 1.1/0.9em, h2 1/0.7em, h3 0.9/0.5em, h4 0.8/0.4em |
+| Quote | 0.9× body size, line height 1.5, 1.5em left indent |
+| Table | 0.86× body size, `table-layout:fixed`, cells `overflow-wrap:anywhere`, cell paragraphs inherit the size with indent 0 |
+| Figure height budget | `height − top − bottom − 4mm − 3×note size×line height×(25.4/72)`; figures directly after h1–h3 subtract three heading lines more; floor 1mm |
+| Pagination | `h1–h4 { page-break-after: avoid }`; `figure/table/aside { page-break-inside: avoid }`; `section.chapter { page-break-after: always }` |
+| Index / CIP / CJK emphasis | index in two columns with `h1` spanning; CIP paragraphs indent 0; CJK `<em>` becomes semibold `span.cjk-em` |
+
+Frozen **known defects** (fixed in P5, untouched now):
+
+- The quote container sets 0.9× size, but the global `p` rule resets quote paragraphs to body
+  size and keeps the 2em indent — the child overrides the parent, so quotes render at body
+  size and indented;
+- The global `p { overflow-wrap:anywhere }` is a long-string fallback and simultaneously allows
+  Latin words to break at any character;
+- `widows`/`orphans` are **not declared**; behavior follows Chromium defaults (2/2). Docs must
+  not claim "at least two lines are guaranteed".
+
+### Decision Criteria (Proposed; candidates only until P7b measures them)
+
+| Metric | Criterion | Evidence |
+|---|---|---|
+| Heading orphan | when it fits, at least two body lines follow the heading on the same page; zero violations in samples | PDF position read-back + page images |
+| Widows/orphans | ordinary paragraphs keep ideally ≥2 lines on both sides of a page break | `widows`/`orphans` + read-back |
+| Caption relation | short captions share the figure's page; long captions keep the first paragraph with the figure and stay ordered | figure bbox + text mapping |
+| Abnormal whitespace | body-page bottom whitespace >30% of the text block is a candidate (chapter end, part pages, plate pages excluded) | page images + page size |
+| Hyphenation/rhythm | ordinary Latin words avoid arbitrary character breaks, long URLs may break; no sustained letter-spacing distortion | before/after samples |
+| Indent layers | body/quote/notes/tables/index each consistent and non-bleeding | computed styles + PDF read-back |
+
+The thresholds are **proposed**: there is no measured book or sample record yet, so they must
+not be cited as passing results. Promoting them to a release gate requires stable negative
+cases from P7b.
+
+### Print Support Matrix (Target, Not Measured)
+
+| Dimension | Values | Status |
+|---|---|---|
+| Trim size | A5 (default) and 32k | every sample build |
+| Body size | 10.5 pt and 12 pt | pending P5 |
+| Rendering environment | pinned Chromium version, pinned font-file digests | recorded in the report |
+| Reading check | first/middle/last + high-risk figure/note pages | pending P9 real book |

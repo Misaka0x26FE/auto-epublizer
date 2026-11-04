@@ -69,6 +69,39 @@ Python/Pydantic 描述构建运行时；其他工具仅使用成功解析时冻�
 | 强调 | `strong`/`em` 语义 | 渲染交阅读器默认 |
 | 链接 | `a href` 语义 | 危险 URL（javascript:/data:）降级纯文本 |
 
+### 4.1 功能性规则清单（2026-11-03 冻结）
+
+以下规则是「没有它内容会溢出、不可读或语义丢失」的最小集合，位于呈现层最前，
+主题层与按书样式**不得**回退它们（图片限宽、表格边框、注区分离）：
+
+| 选择器 | 实际声明 | 功能理由 |
+|---|---|---|
+| `img` | `max-width:100%; height:auto; page-break-inside:avoid` | 大图等比例缩到版心、不跨页裁断；小图不放大 |
+| `p.imgp` | `text-indent:0; text-align:center` | 图片段不参与正文首行缩进 |
+| `figure.imgfig` | `margin:1em 0; text-align:center` | 图注块居中；字号/颜色仍由阅读器决定 |
+| `p.verse` | `text-indent:0` | 诗行保留手动换行，不加首行缩进 |
+| `blockquote` | `margin:0.5em 0 0.5em 1.5em` | 引文缩进层级可辨；不设字号/字体 |
+| `section.footnotes` | `margin-top:2em` | 章末注区与正文分离 |
+| `table.data` | `border-collapse:collapse; margin:1em auto` | 表格居中、单元格边界可读 |
+| `table.data th/td` | `border:1px solid #999; padding:0.2em 0.5em; text-align:left` | 无边框表格在多阅读器下不可读；`#999` 是不随主题变化的固定灰 |
+
+规则优先级（同一元素多条命中时）：按书样式 > 主题层 > 本表；同层内后声明者胜，
+class 选择器（`p.imgp`/`p.verse`）优先于元素选择器（`p`）。按书样式受白名单限制，
+不得用 `@media`/`@font-face` 等绕过本表；响应式与字体控制属于阅读器职责。
+
+### 4.2 阅读器控制边界与已知限制（冻结）
+
+- **关闭作者样式**：只保证结构（标题层级、段落、表格结构、注释 `noteref`/`aside`/回链）
+  与链接可访问；图片缩放、表格边框、注区间距均不保证。这是阅读器行为，不视为产物缺陷。
+- **字号放大（含 200%）**：流式重排，正文与图片限宽继续生效；复杂宽表可能横向滚动，
+  首期以「内容完整可访问」为通过条件（P4 实测阅读器行为）。
+- **暗色模式**：本模板不设正文颜色；表格功能性边框 `#999` 与图片内嵌白底不随主题反转，
+  记为已知限制，P4 以实机截图核对是否影响可读性。
+- **组件串扰（已知，P3 处理）**：主题 `p` 规则同时命中引文内段落、注文 `aside` 内段落与
+  表格单元格内段落；`standard`/`spacious` 下这些组件首行同样缩进 2em，
+  `p.verse` 只取消缩进、不取消主题段距。P3 将以组件作用域限定规则；在此之前，
+  本规范不把「组件各自独立」写成已实现事实。
+
 ### 当前实现的偏差（✅ 已修正 2026-09-04）
 
 `build/__init__.py` 的 `_STYLE_CSS` 已完成瘦身：移除 `font-family`、`font-size`、
@@ -105,6 +138,52 @@ spacious  → serif + 2.0 行距 + 缩进 + 两端对齐 + 标题居中
 
 每套主题仅派生「排版微调」几个 CSS 属性，不引入字体名、颜色、字号；
 audit 拦截违规（`E_THEME_FONT`：具体字体名/字号；`E_THEME_COLOR`：颜色）。
+
+### 5.3 三主题的实际声明（2026-11-03 冻结）
+
+下表是**当前构建产物 style.css 中逐字存在的声明**（`build/__init__.py`），
+不是设计意图：
+
+| 主题 | 实际声明 |
+|---|---|
+| `standard` | `body{font-family:serif;line-height:1.7}`；`p{text-indent:2em;text-align:justify;margin:0 0 0.6em 0}`；`h1,h2,h3,h4,h5,h6{text-align:center}` |
+| `compact` | `body{font-family:sans-serif;line-height:1.4}`；`p{margin:0 0 0.8em 0}` |
+| `spacious` | `body{font-family:serif;line-height:2.0}`；`p{text-indent:2em;text-align:justify;margin:0 0 1em 0}`；`h1,h2,h3,h4,h5,h6{text-align:center}` |
+
+措辞冲突的解释（冻结）：
+
+- §5.1 是**维度设计表**，不是逐项 CLI 开关。当前仅以三套预设暴露组合结果，
+  不提供单独调「标题居中/段间距」的参数；需要时按新选项评审（兼容性与摘要绑定）。
+- `compact` 的「无缩进 / 左对齐」**不是显式声明**：未声明 `text-indent` 时取初始值 0，
+  未声明 `text-align` 时取 `start`（与书写方向一致）。阅读器默认值差异是已知风险，
+  P3 将改为显式声明后再把该措辞当契约。
+- §5.2 的「行距密度 compact(1.4)/normal(1.7)/spacious(2.0)」对应 `line-height`；
+  「段间距紧/标准/松」当前只落在三套预设的 `p` 下边距（0.8em / 0.6em / 1em），不单独暴露。
+
+### 5.4 主题与按书样式的来源顺序（冻结）
+
+```text
+_STYLE_CSS（§4.1 功能性规则）
+  → theme_css(standard|compact|spacious)（本节）
+    → book_css（白名单受限：缩进/段距/行距/对齐等，禁字体名、字号、颜色、@media、@font-face、URL）
+```
+
+三者按上述顺序拼接进单个 `OEBPS/style.css`；后段同特异性声明覆盖前段。
+产物时效仍由样式摘要参与判定：主题或按书样式变化必须重新构建并重跑摘要校验，
+历史发布记录不覆盖。`tests/fixtures/typography/` 的样本册与基线用于在改动前后对照。
+
+### 5.5 EPUB 验收矩阵（拟定，P4/P8 实测后才可称已支持）
+
+| 层次 | 取值 | 状态 |
+|---|---|---|
+| 浏览器模拟宽度 | 320 / 600 / 768 CSS px，三主题，默认与 200% 字号 | 待 P4 |
+| 阅读栈 | Thorium 与 KOReader（记录实际版本） | 未实测 |
+| 暗色模式 / 字体替换 | 代表性样本 | 未实测 |
+| 结构验收 | EPUBCheck 零错误 + 注释/媒体/目录/内容对账 | 每次构建强制 |
+
+浏览器宽度模拟不等于电子墨水设备实测；同一引擎的两个软件不算不同渲染栈。
+缺环境记 unknown，报告须列明实际运行与未运行组合。
+
 
 ## 6. 注释标准化（标准弹窗 + 章内序号）
 

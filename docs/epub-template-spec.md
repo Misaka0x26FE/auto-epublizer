@@ -1,4 +1,4 @@
-<!-- i18n: source=epub-template-spec.zh.md sha256=5548b576ce68cde4f418a468a70c6cd3312e48327248cd1e0f60b3fa8fd610a1 -->
+<!-- i18n: source=epub-template-spec.zh.md sha256=5fc3dd0d89f97dcae2346eddec9036203d3a804f0bb513b5dc61a4d240175bfb -->
 > **English** | [中文](epub-template-spec.zh.md)
 
 # EPUB File Spec: Unstyled Standard Template + Limited Themes
@@ -78,6 +78,45 @@ The default template keeps only **functional styles**, leaving the rest to the r
 | Emphasis | `strong`/`em` semantics | rendering left to reader default |
 | Links | `a href` semantics | dangerous URLs (javascript:/data:) degrade to plain text |
 
+### 4.1 Functional Rule Inventory (Frozen 2026-11-03)
+
+These rules are the minimal set without which content would overflow, become unreadable, or
+lose meaning; they sit first in the presentation layer, and neither the theme layer nor
+per-book styles may override them (image width limit, table borders, note-area separation):
+
+| Selector | Actual declaration | Functional reason |
+|---|---|---|
+| `img` | `max-width:100%; height:auto; page-break-inside:avoid` | large images scale proportionally to the text block and are not cut across pages; small images are not enlarged |
+| `p.imgp` | `text-indent:0; text-align:center` | image paragraphs take no body first-line indent |
+| `figure.imgfig` | `margin:1em 0; text-align:center` | caption block centered; font size/color still the reader's choice |
+| `p.verse` | `text-indent:0` | verse lines keep manual breaks, no first-line indent |
+| `blockquote` | `margin:0.5em 0 0.5em 1.5em` | quote nesting level visible; no font/size set |
+| `section.footnotes` | `margin-top:2em` | end-of-chapter note area separated from body |
+| `table.data` | `border-collapse:collapse; margin:1em auto` | table centered, cell boundaries readable |
+| `table.data th/td` | `border:1px solid #999; padding:0.2em 0.5em; text-align:left` | borderless tables are unreadable in many readers; `#999` is a fixed grey independent of theme |
+
+Precedence for one element hit by several rules: per-book styles > theme layer > this table;
+within a layer the later declaration wins, and class selectors (`p.imgp`/`p.verse`) beat element
+selectors (`p`). Per-book styles are whitelist-limited and must not bypass this table with
+`@media`/`@font-face`; responsive behavior and font control are the reader's responsibility.
+
+### 4.2 Reader Control Boundary and Known Limits (Frozen)
+
+- **Author styles off**: only structure (heading levels, paragraphs, table structure,
+  `noteref`/`aside`/backlink notes) and links are guaranteed accessible; image scaling,
+  table borders, and note-area spacing are not. That is reader behavior, not a product defect.
+- **Font-size increase (including 200%)**: reflow continues to apply body flow and image width
+  limits; complex wide tables may scroll horizontally. For now the pass condition is
+  "content complete and reachable" (P4 measures reader behavior).
+- **Dark mode**: this template sets no body color; the functional table border `#999` and
+  white backgrounds inside images do not invert with the theme. Recorded as a known limit;
+  P4 checks readability with on-device screenshots.
+- **Component bleed-through (known, P3)**: the theme `p` rule also matches paragraphs inside
+  quotes, `aside` note paragraphs, and table-cell paragraphs; under `standard`/`spacious`
+  those components also get a 2em first-line indent, and `p.verse` only removes the indent,
+  not the theme paragraph gap. P3 scopes the rules per component; until then this spec does
+  not claim "components are independent" as implemented fact.
+
 ### Deviation of the Current Implementation (✅ Fixed 2026-09-04)
 
 `_STYLE_CSS` in `build/__init__.py` has been slimmed: removed `font-family`, `font-size`,
@@ -119,6 +158,59 @@ spacious  → serif + 2.0 line spacing + indent + justified + heading centered
 Each theme derives only a few CSS properties for "typographic fine-tuning", introducing no
 font names, colors, or font sizes; audit blocks violations (`E_THEME_FONT`: concrete font
 name/font size; `E_THEME_COLOR`: color).
+
+### 5.3 Actual Declarations of the Three Themes (Frozen 2026-11-03)
+
+The table below is **the literal content of the built style.css** (`build/__init__.py`),
+not a design intention:
+
+| Theme | Actual declarations |
+|---|---|
+| `standard` | `body{font-family:serif;line-height:1.7}`; `p{text-indent:2em;text-align:justify;margin:0 0 0.6em 0}`; `h1,h2,h3,h4,h5,h6{text-align:center}` |
+| `compact` | `body{font-family:sans-serif;line-height:1.4}`; `p{margin:0 0 0.8em 0}` |
+| `spacious` | `body{font-family:serif;line-height:2.0}`; `p{text-indent:2em;text-align:justify;margin:0 0 1em 0}`; `h1,h2,h3,h4,h5,h6{text-align:center}` |
+
+Resolution of wording conflicts (frozen):
+
+- §5.1 is a **dimension design table**, not a set of per-option CLI switches. Today only the
+  three presets expose the combined result; there is no separate "heading alignment /
+  paragraph spacing" parameter. Adding one requires a compatibility and digest-binding review.
+- `compact`'s "no indent / left-aligned" **is not declared explicitly**: with no
+  `text-indent` the initial value 0 applies, and with no `text-align` the value is `start`
+  (matching writing direction). Reader default differences are a known risk; P3 makes the
+  declarations explicit before the wording becomes a contract.
+- §5.2's line-spacing density compact(1.4)/normal(1.7)/spacious(2.0) maps to `line-height`;
+  "paragraph spacing tight/standard/loose" currently only appears as the preset `p`
+  bottom margins (0.8em / 0.6em / 1em) and is not exposed separately.
+
+### 5.4 Source Order of Themes and Per-Book Styles (Frozen)
+
+```text
+_STYLE_CSS (§4.1 functional rules)
+  → theme_css(standard|compact|spacious) (this section)
+    → book_css (whitelist-limited: indent/paragraph spacing/line height/alignment; no font
+      names, sizes, colors, @media, @font-face, or URLs)
+```
+
+All three are concatenated in that order into a single `OEBPS/style.css`; later declarations
+of equal specificity override earlier ones. Artifact freshness still depends on the style
+digest: a theme or per-book style change must rebuild and re-run digest validation, and
+historical release records are never overwritten. The sample book and baseline under
+`tests/fixtures/typography/` support before/after comparison.
+
+### 5.5 EPUB Acceptance Matrix (Proposed; "supported" only after P4/P8 measurements)
+
+| Level | Values | Status |
+|---|---|---|
+| Browser-simulated widths | 320 / 600 / 768 CSS px, three themes, default and 200% font size | pending P4 |
+| Reading systems | Thorium and KOReader (record actual versions) | not measured |
+| Dark mode / font substitution | representative samples | not measured |
+| Structural acceptance | EPUBCheck zero errors + notes/media/TOC/content reconciliation | enforced per build |
+
+Browser width simulation is not e-ink device testing; two apps on one engine are not two
+rendering stacks. A missing environment is recorded as unknown and the report must list the
+combinations actually run and not run.
+
 
 ## 6. Note Standardization (Standard Popup + In-Chapter Numbering)
 
