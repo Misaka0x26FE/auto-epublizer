@@ -387,3 +387,23 @@ def test_hanze_dossier_is_a_distinct_drawing() -> None:
     assert _dark_pixels(art, (0.30, 0.44, 0.70, 0.66)) > _dark_pixels(
         blank, (0.30, 0.44, 0.70, 0.66)
     )
+
+
+def test_hanze_paper_fills_page_without_white_edges() -> None:
+    """回归：纸底必须铺满整页，不能在左右留出白边（A5 与 2:3 纹理不同比例）。"""
+    fonts = _fonts_or_skip()
+    data = cv.render_image(_hanze(motif="none"), fonts, dpi=150, fmt="png")
+    pix = _open_image(data)
+    samples, width, height, n, stride = pix.samples, pix.width, pix.height, pix.n, pix.stride
+
+    def rgb(x: int, y: int) -> tuple[int, int, int]:
+        i = y * stride + x * n
+        return samples[i], samples[i + 1], samples[i + 2]
+
+    edges = (
+        [rgb(x, 0) for x in range(0, width, 7)]
+        + [rgb(x, height - 1) for x in range(0, width, 7)]
+        + [rgb(0, y) for y in range(0, height, 7)]
+        + [rgb(width - 1, y) for y in range(0, height, 7)]
+    )
+    assert not any(min(pixel) > 250 for pixel in edges), "封面边缘出现白边"

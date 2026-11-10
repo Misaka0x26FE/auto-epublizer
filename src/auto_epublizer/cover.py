@@ -945,7 +945,10 @@ def _draw_quarto(spec: CoverSpec, fonts: Fonts) -> pymupdf.Document:
 
     doc = pymupdf.open()
     page = doc.new_page(width=W, height=H)
-    page.draw_rect(pymupdf.Rect(0, 0, W, H), color=None, fill=_hex(spec.colors["field"]), width=0)
+    # 背景略超出页面 1pt：避免栅格化时最外一列抗锯齿留白（白边）。
+    page.draw_rect(
+        pymupdf.Rect(-1, -1, W + 1, H + 1), color=None, fill=_hex(spec.colors["field"]), width=0
+    )
 
     # 左侧界栏：一粗一细两条竖线（书口/版框的意思）
     spine_x = QUARTO_GEOM["spine_x"] * W

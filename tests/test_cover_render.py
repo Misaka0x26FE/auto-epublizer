@@ -378,3 +378,20 @@ def test_cli_cover_json(tmp_path: Path) -> None:
     assert payload["palette"] == "ink"
     assert payload["style"] == "quarto"
     assert payload["file"] == cv.GENERATED_REL
+
+
+def test_quarto_background_has_no_white_raster_edge() -> None:
+    """回归：深色底面栅格化后最外一列不得留白。"""
+    fonts = _fonts_or_skip()
+    spec = cv.resolve_spec(_pub(), Config(), spec_file={"subtitle": "副书名"})
+    data = cv.render_image(spec, fonts, dpi=150, fmt="png")
+    samples, width, height, n, stride = _pixels(data, dpi=150)
+
+    def rgb(x: int, y: int) -> tuple[int, int, int]:
+        i = y * stride + x * n
+        return samples[i], samples[i + 1], samples[i + 2]
+
+    edges = [rgb(x, 0) for x in range(0, width, 7)] + [
+        rgb(x, height - 1) for x in range(0, width, 7)
+    ]
+    assert not any(min(pixel) > 250 for pixel in edges), "封面上下边缘出现白边"

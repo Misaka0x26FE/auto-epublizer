@@ -469,7 +469,16 @@ def draw(spec: CoverSpec, fonts: Fonts) -> pymupdf.Document:
 
     doc = pymupdf.open()
     page = doc.new_page(width=W, height=H)
-    page.insert_image(page.rect, pixmap=_paper_pixmap(paper))
+    # 纸底按页面纵横比生成并铺满整页：固定 2:3 纹理在 A5 上会被等比缩放，
+    # 左右各留约 4mm 白边（用户反馈的「封面带白边」）。keep_proportion=False
+    # 只是保险，纹理本已与页面同比例。
+    paper_w = 400
+    paper_h = max(1, round(paper_w * H / W))
+    page.insert_image(
+        page.rect,
+        pixmap=_paper_pixmap(paper, width=paper_w, height=paper_h),
+        keep_proportion=False,
+    )
 
     # 双线框 + 四角短线
     ox0, oy0, ox1, oy1 = (X(58), Y(58), X(1558), Y(2342))
