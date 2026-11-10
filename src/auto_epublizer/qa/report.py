@@ -71,13 +71,38 @@ class QaResult:
     # N 阶段成品注释门：error 级发现必须清零才能放行
     notes_missing: list[str] = field(default_factory=list)
     notes_findings: list[dict[str, Any]] = field(default_factory=list)
+    # 注文语言候选（C3）：适用范围内未闭合的逐条处置；not_run 同样阻断
+    notes_review_applicable: bool = False
+    notes_review_status: str = ""
+    notes_review_open: int = 0
+    notes_review_stale: int = 0
+    notes_review_open_ids: list[str] = field(default_factory=list)
     # B2 报告失效证据链：生成时刻的产物摘要 + 被审计成品路径（status/ledger 据此判过期）
     artifacts_digest: str = ""
     artifacts_epub: str = ""
     provenance_findings: list[dict[str, Any]] = field(default_factory=list)
+    # G0 摘要与完整明细（E2）：report.json 保总数，逐条 finding 落 JSONL 并绑定摘要
+    g0_total: int = 0
+    g0_summary: dict[str, dict[str, int]] = field(default_factory=dict)
+    g0_detail_path: str = ""
+    g0_detail_sha256: str = ""
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
+
+
+def summarize_g0(flags: list[dict[str, Any]]) -> dict[str, dict[str, int]]:
+    """按 check 汇总总数/阻断/建议，报告不再依赖逐条计数。"""
+    summary: dict[str, dict[str, int]] = {}
+    for flag in flags:
+        check = str(flag.get("check") or "unknown")
+        row = summary.setdefault(check, {"total": 0, "blocking": 0, "advisory": 0})
+        row["total"] += 1
+        if flag.get("blocking", True):
+            row["blocking"] += 1
+        else:
+            row["advisory"] += 1
+    return summary
 
 
 def generate_report(
@@ -97,6 +122,7 @@ def generate_report(
     repairs_unresolved: int = 0,
     notes_audit: dict[str, Any] | None = None,
     review_ledger: dict[str, Any] | None = None,
+    notes_review: dict[str, Any] | None = None,
 ) -> QaResult:
     """聚合 G0–G4 + 溯源审计生成放行报告。
 
@@ -167,6 +193,11 @@ def generate_report(
     notes_findings = list((notes_audit or {}).get("findings") or [])
     notes_missing = list((notes_audit or {}).get("missing") or [])
     notes_ok = not notes_findings
+    # 注文语言候选：有登记注文时必须完成逐条处置；not_run/stale 都算未闭合。
+    review_notes = notes_review or {}
+    notes_review_applicable = bool(review_notes.get("applicable"))
+    notes_review_open = int(review_notes.get("open") or 0) if notes_review_applicable else 0
+    notes_review_status = str(review_notes.get("status") or "")
     prov_ok = (
         (coverage is None or coverage >= 0.9999)
         and units_missing == 0
@@ -207,6 +238,7 @@ def generate_report(
         and passed
         and prov_ok
         and notes_ok
+        and notes_review_open == 0
     )
     if released:
         reason = "ok"
@@ -224,6 +256,8 @@ def generate_report(
         reason = "unresolved_confirmed"
     elif not notes_ok:
         reason = "notes_open"
+    elif notes_review_open:
+        reason = "notes_review_open"
     elif not audit.ok:
         reason = "audit_failed"
     elif catalog_unresolved_open:
@@ -300,6 +334,15 @@ def generate_report(
         repairs_unresolved=repairs_unresolved,
         notes_missing=notes_missing,
         notes_findings=notes_findings,
+        notes_review_applicable=notes_review_applicable,
+        notes_review_status=notes_review_status,
+        notes_review_open=notes_review_open,
+        notes_review_stale=int(review_notes.get("stale") or 0) if notes_review_applicable else 0,
+        notes_review_open_ids=list(review_notes.get("open_note_ids") or [])
+        if notes_review_applicable
+        else [],
+        g0_total=len(flags),
+        g0_summary=summarize_g0(flags),
         provenance_findings=prov_findings,
         review_contract=review_contract,
         review_effective_open=review_effective_open,

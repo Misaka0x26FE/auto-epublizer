@@ -29,6 +29,14 @@ app.add_typer(repair_app, name="repair")
 notes_app = typer.Typer(help="注释结构化与绑定（候选盘点 / 登记 / 状态）")
 app.add_typer(notes_app, name="notes")
 
+# 分块作业暂存（D1/D2）：导出 / 拼回 / 恢复；不新增译文权威层
+chunk_app = typer.Typer(help="分块作业暂存（导出 / 拼回 / 恢复）")
+app.add_typer(chunk_app, name="chunk")
+
+# 源文实印疑误登记（D3）：只记录证据，不改写 source
+errata_app = typer.Typer(help="源文实印疑误登记（proposed/confirmed/rejected）")
+app.add_typer(errata_app, name="errata")
+
 _CONFIG_PATH = "config.yaml"
 
 
@@ -284,6 +292,14 @@ def work_root(
     prefix = "[yellow]预演（未写盘）：[/yellow]" if dry_run else "[green]长期工作区已生成：[/green]"
     console.print(f"{prefix}{result['dir']}")
     console.print(f"  新建 {len(result['created'])} 项；跳过 {len(result['skipped'])} 项")
+    missing = result.get("missing") or []
+    if result.get("mature"):
+        console.print(
+            f"  [yellow]已是成熟工作根：缺项 {len(missing)} 项只报告，未自动补齐"
+            "（确需补齐用 --force）[/yellow]"
+        )
+        for item in missing:
+            console.print(f"  ! {item}")
     if dry_run:
         for item in result["created"]:
             console.print(f"  + {item}")
@@ -467,6 +483,43 @@ def evidence_breaks_cmd(
     )
 
 
+@evidence_app.command("notes")
+def evidence_notes_cmd(
+    note_id: list[str] | None = typer.Option(
+        None, "--note-id", help="只导出指定 note_id（可重复）；缺省导出全部登记注文"
+    ),
+    output: str | None = typer.Option(
+        None, "-o", "--output", help="输出路径（缺省 preprocessing/notes-evidence.json）"
+    ),
+    json_output: bool = typer.Option(False, "--json", help="输出只读 JSON（含逐条定位）"),
+    workspace: str | None = typer.Option(None, "--workspace", help="工作区目录"),
+    config: str | None = typer.Option(None, "--config", help="配置文件路径"),
+) -> None:
+    """逐条注文源页证据（C1）：定位到页/块/几何框，缺坐标显式记 unknown。"""
+    store = _store_from(workspace, load_config(config or _CONFIG_PATH))
+    try:
+        data = orch.evidence_notes(store, note_ids=note_id, output=output)
+    except (ValueError, OSError, orch.OrchestrationError) as exc:
+        raise typer.Exit(f"注文证据导出失败：{exc}") from None
+    if json_output:
+        _emit_json(json.dumps({k: v for k, v in data.items() if k != "path"}, ensure_ascii=False))
+    else:
+        if not data["registered"]:
+            console.print("未登记注释：structured/notes.json 不存在（先运行 notes register）")
+            raise typer.Exit(1)
+        coverage = "、".join(f"{k}={v}" for k, v in sorted(data["coverage"].items())) or "无"
+        console.print(
+            f"[green]注文证据已生成：[/green]{data['path']}（{data['selected']}/{data['total']} 条）"
+        )
+        console.print(f"  定位状态：{coverage}")
+        if data["missing_note_ids"]:
+            console.print(
+                f"  [yellow]请求的 note_id 不存在：[/yellow]{'、'.join(data['missing_note_ids'])}"
+            )
+    if data["missing_note_ids"]:
+        raise typer.Exit(1)
+
+
 @evidence_app.command("partition")
 def evidence_partition_cmd(
     workspace: str | None = typer.Option(None, "--workspace", help="工作区目录"),
@@ -537,6 +590,47 @@ def notes_register_cmd(
     )
 
 
+@notes_app.command("review")
+def notes_review_cmd(
+    json_output: bool = typer.Option(False, "--json", help="输出候选与处置 JSON"),
+    workspace: str | None = typer.Option(None, "--workspace", help="工作区目录"),
+    config: str | None = typer.Option(None, "--config", help="配置文件路径"),
+) -> None:
+    """生成注文语言候选（C2）：源译相同/目标缺失/无目标文字，逐条待 agent 处置。
+
+    只写 ``preprocessing/note-review.json``，不修改 notes.json；处置绑定源/目标摘要，
+    译文一变即失效重开。``disposition`` 取 ``translated`` 或 ``retain_original``，
+    两者都必须写 ``reason``；未闭合候选由 QA 阻断放行。
+    """
+    from .note_review import write_review
+
+    cfg = load_config(config or _CONFIG_PATH)
+    store = _store_from(workspace, cfg)
+    try:
+        payload, path = write_review(store)
+    except (ValueError, OSError, orch.OrchestrationError) as exc:
+        raise typer.Exit(f"注文候选生成失败：{exc}") from None
+    candidates = [e for e in payload["entries"] if e["signals"]]
+    open_count = sum(1 for e in candidates if not e.get("disposition"))
+    if json_output:
+        _emit_json(json.dumps(payload, ensure_ascii=False, indent=2))
+        return
+    console.print(
+        f"[green]注文候选已生成：[/green]{path}（注文 {len(payload['entries'])} 条，"
+        f"候选 {len(candidates)} 条，未处置 {open_count} 条）"
+    )
+    for entry in candidates[:10]:
+        signals = "、".join(entry["signals"])
+        state = entry.get("disposition") or "未处置"
+        console.print(f"  {entry['note_id']}：{signals} → {state}")
+    if len(candidates) > 10:
+        console.print(f"  …其余 {len(candidates) - 10} 条见文件")
+    if payload["unknown_note_ids"]:
+        console.print(
+            f"  [yellow]处置引用了不存在的 note_id：[/yellow]{'、'.join(payload['unknown_note_ids'])}"
+        )
+
+
 @notes_app.command("status")
 def notes_status_cmd(
     workspace: str | None = typer.Option(None, "--workspace", help="工作区目录"),
@@ -572,6 +666,12 @@ def notes_status_cmd(
     console.print(f"源注文：{'有' if src['exists'] else '无'}（{src['path']}）")
     tgt = data["translation_notes"]
     console.print(f"译注：{'有' if tgt['exists'] else '无'}（{tgt['path']}）")
+    review = data.get("review") or {}
+    if review.get("applicable"):
+        console.print(
+            f"语言核验：{review.get('status')}，未闭合 {review.get('open', 0)} 条"
+            + ("[yellow]（先运行 notes review 并逐条处置）[/yellow]" if review.get("open") else "")
+        )
 
 
 @app.command()
@@ -921,6 +1021,9 @@ def preprocess(
     force: bool = typer.Option(
         False, "--force", help="原地重建 structured/ 与 facts（误中断恢复，issue #30 §4.2）"
     ),
+    dry_run: bool = typer.Option(
+        False, "--dry-run", help="与 --force 同用：只预览重建差异与清洗台账，不写盘"
+    ),
     workspace: str | None = typer.Option(None, "--workspace", help="工作区根目录"),
     config: str | None = typer.Option(None, "--config", help="配置文件路径"),
 ) -> None:
@@ -929,12 +1032,36 @@ def preprocess(
     产出 facts.md 内含 agent 待办清单：方案决策（plan.md）、全局理解（global.md）、
     章节理解（units/）、术语预提取（terms.csv）、风险标注（risks.md）、汇总（report.md）。
     ``--force``（省略 input）：从 source/ 原地重建 structured/ 与 facts，单元状态重置为
-    split（已有译文变 stale）。
+    split（已有译文变 stale）。``--dry-run`` 只预演重建差异，不写盘、不改状态。
     """
     cfg = load_config(config or _CONFIG_PATH)
     try:
+        if dry_run:
+            if not force:
+                raise typer.Exit("--dry-run 只能与 --force 同用（预览原地重建）")
+            store = _store_from(workspace, cfg)
+            preview = orch.rebuild(
+                store, config=cfg, progress=_pdf_progress if progress else None, dry_run=True
+            )
+            counts = preview["counts"]
+            console.print(
+                "[yellow]预演（未写盘）：[/yellow]"
+                f"新建 {counts['new']} / 变更 {counts['changed']} / 未变 {counts['unchanged']}"
+            )
+            for row in preview["units"]:
+                if row["status"] == "unchanged":
+                    continue
+                console.print(
+                    f"  [{row['status']}] {row['rel_path']} "
+                    f"删除 {len(row['removed'])} / 候选 {len(row['candidates'])}"
+                )
+            return
         if force:
             store = _store_from(workspace, cfg)
+            console.print(
+                "[yellow]注意：原地重建会清空 structured/（含人工核证的 notes.json、raw/inserts）；"
+                "如需保留请先备份[/yellow]"
+            )
             result = orch.rebuild(store, config=cfg, progress=_pdf_progress if progress else None)
             console.print(
                 "[yellow]已原地重建 structured/ 与 facts（单元状态重置为 split）[/yellow]"
@@ -1140,6 +1267,15 @@ def import_cmd(
         )
     for item in result["skipped_details"]:
         console.print(f"[dim]- {item['unit']}：跳过（{item['reason']}）；{item['next']}[/dim]")
+    # 注文语言候选在 import 阶段提前提示，不等最终 QA 才阻断
+    from .note_review import summarize as summarize_note_review
+
+    review = summarize_note_review(store)
+    if review.get("applicable") and review.get("open"):
+        console.print(
+            f"[yellow]注文语言核验：{review.get('status')}，未闭合 {review['open']} 条；"
+            "运行 notes review 并逐条处置（否则 qa 会以 notes_review_open 阻断）[/yellow]"
+        )
     # 术语提案（--terms）：显式坏输入已在上游报错；这里让「空结果」可见（issue #36）
     terms_info = result.get("terms")
     if terms_info is not None:
@@ -1608,6 +1744,191 @@ def knowledge_push_cmd(
         console.print(f"[green]已推送：[/green]{result['store']} → {result['remote']}")
     else:
         console.print(f"[yellow]推送未完成：[/yellow]{result['message']}")
+
+
+@chunk_app.command("export")
+def chunk_export_cmd(
+    unit: list[str] | None = typer.Option(None, "--unit", help="只导出指定单元（可重复）"),
+    max_chars: int = typer.Option(4000, "--max-chars", help="每块目标字符数（至少 200）"),
+    workspace: str | None = typer.Option(None, "--workspace", help="工作区目录"),
+    config: str | None = typer.Option(None, "--config", help="配置文件路径"),
+) -> None:
+    """把单元正文切成作业暂存分块（不覆盖已有分块/译文）。"""
+    from .chunks import export_chunks
+
+    store = _store_from(workspace, load_config(config or _CONFIG_PATH))
+    try:
+        result = export_chunks(store, unit_ids=unit, max_chars=max_chars)
+    except (ValueError, OSError) as exc:
+        raise typer.Exit(f"分块导出失败：{exc}") from None
+    total = sum(item["chunks"] for item in result["units"])
+    console.print(f"[green]分块已导出：[/green]{total} 块 → {result['root']}")
+    for item in result["units"][:10]:
+        console.print(f"  {item['unit']}：{item['chunks']} 块")
+    if len(result["units"]) > 10:
+        console.print(f"  …其余 {len(result['units']) - 10} 个单元")
+
+
+@chunk_app.command("reset")
+def chunk_reset_cmd(
+    unit: str = typer.Argument(..., help="单元 ID（源文变更后归档旧分块）"),
+    apply: bool = typer.Option(False, "--apply", help="实际移动；默认只预览"),
+    workspace: str | None = typer.Option(None, "--workspace", help="工作区目录"),
+    config: str | None = typer.Option(None, "--config", help="配置文件路径"),
+) -> None:
+    """归档某单元旧分块（不删除已译作业，移到 .stale-<摘要> 目录）。"""
+    from .chunks import reset_unit
+
+    store = _store_from(workspace, load_config(config or _CONFIG_PATH))
+    try:
+        result = reset_unit(store, unit, apply=apply)
+    except (ValueError, OSError) as exc:
+        raise typer.Exit(f"分块重置失败：{exc}") from None
+    state = "已归档" if result["apply"] else "预览（未移动）"
+    console.print(f"[green]{state}：[/green]{result['source']} → {result['target']}")
+
+
+@chunk_app.command("assemble")
+def chunk_assemble_cmd(
+    unit: str = typer.Argument(..., help="单元 ID（如 ch01）"),
+    apply: bool = typer.Option(False, "--apply", help="预检通过后写入 translation/align"),
+    force: bool = typer.Option(False, "--force", help="正式译文已变更时仍覆盖（先备份）"),
+    workspace: str | None = typer.Option(None, "--workspace", help="工作区目录"),
+    config: str | None = typer.Option(None, "--config", help="配置文件路径"),
+) -> None:
+    """拼回译文分块：默认只预检；--apply 事务写入并在失败时恢复。"""
+    from .chunks import assemble_unit
+
+    store = _store_from(workspace, load_config(config or _CONFIG_PATH))
+    try:
+        result = assemble_unit(store, unit, apply=apply, force=force)
+    except (ValueError, OSError) as exc:
+        raise typer.Exit(f"分块拼回失败：{exc}") from None
+    state = "已写入" if result["applied"] else "预检通过（未写盘）"
+    console.print(
+        f"[green]{state}：[/green]{result['unit']}（{result['chunks']} 块 / "
+        f"{result['blocks']} 段 / align {result['align_rows']} 行）"
+    )
+    if not result["applied"]:
+        console.print(f"  目标：{result['translation']}；确认无误后加 --apply")
+
+
+@chunk_app.command("recover")
+def chunk_recover_cmd(
+    workspace: str | None = typer.Option(None, "--workspace", help="工作区目录"),
+    config: str | None = typer.Option(None, "--config", help="配置文件路径"),
+) -> None:
+    """恢复未完成的拼回事务（pending 日志）。"""
+    from .chunks import recover_chunks
+
+    store = _store_from(workspace, load_config(config or _CONFIG_PATH))
+    try:
+        result = recover_chunks(store)
+    except (ValueError, OSError) as exc:
+        raise typer.Exit(f"分块恢复失败：{exc}") from None
+    if result["restored"]:
+        console.print(f"[green]已恢复：[/green]{'、'.join(result['restored'])}")
+    else:
+        console.print("没有待恢复的分块事务")
+    if result.get("errors"):
+        for error in result["errors"]:
+            console.print(f"[red]坏日志：[/red]{error}")
+        raise typer.Exit(1)
+
+
+@chunk_app.command("import-tr")
+def chunk_import_tr_cmd(
+    source: str = typer.Option(..., "--source", help="旧 .tr 根目录（含 <unit>/NNN.zh.md）"),
+    apply: bool = typer.Option(False, "--apply", help="实际复制；默认只预检"),
+    workspace: str | None = typer.Option(None, "--workspace", help="工作区目录"),
+    config: str | None = typer.Option(None, "--config", help="配置文件路径"),
+) -> None:
+    """显式导入旧 .tr 译文分块（要求分块索引已存在且数量一致）。"""
+    from .chunks import import_tr
+
+    store = _store_from(workspace, load_config(config or _CONFIG_PATH))
+    try:
+        result = import_tr(store, source, apply=apply)
+    except (ValueError, OSError) as exc:
+        raise typer.Exit(f".tr 导入失败：{exc}") from None
+    state = "已导入" if result["apply"] else "预检通过（未写盘）"
+    console.print(f"[green]{state}：[/green]{result['files']} 个文件")
+    overwrites = [row for row in result["units"] if row["overwrites"]]
+    if overwrites:
+        console.print(f"  [yellow]将覆盖已有译文分块 {len(overwrites)} 个[/yellow]")
+
+
+@errata_app.command("import")
+def errata_import_cmd(
+    file: str = typer.Argument(
+        ..., help="errata JSONL（每行一条：unit/locator/source_text/reading/evidence/status）"
+    ),
+    apply: bool = typer.Option(False, "--apply", help="校验通过后写入 preprocessing/errata.jsonl"),
+    workspace: str | None = typer.Option(None, "--workspace", help="工作区目录"),
+    config: str | None = typer.Option(None, "--config", help="配置文件路径"),
+) -> None:
+    """登记源文实印疑误：默认只预检，不改写 source。"""
+    from .errata import register_errata
+
+    store = _store_from(workspace, load_config(config or _CONFIG_PATH))
+    source = Path(file)
+    if not source.is_file():
+        raise typer.Exit(f"errata 文件不存在：{source}")
+    rows = []
+    for number, line in enumerate(source.read_text(encoding="utf-8").splitlines(), start=1):
+        if not line.strip():
+            continue
+        try:
+            rows.append(json.loads(line))
+        except json.JSONDecodeError as exc:
+            raise typer.Exit(f"errata 第 {number} 行不是合法 JSON：{exc}") from None
+    try:
+        result = register_errata(store, rows, apply=apply)
+    except (ValueError, OSError) as exc:
+        raise typer.Exit(f"errata 登记失败：{exc}") from None
+    if result.errors:
+        for error in result.errors:
+            console.print(f"[red]{error}[/red]")
+        raise typer.Exit(1)
+    state = "已登记" if apply else "预检通过（未写盘）"
+    console.print(f"[green]{state}：[/green]{len(result.entries)} 条 → {result.path}")
+
+
+@errata_app.command("status")
+def errata_status_cmd(
+    json_output: bool = typer.Option(False, "--json", help="输出 JSON"),
+    workspace: str | None = typer.Option(None, "--workspace", help="工作区目录"),
+    config: str | None = typer.Option(None, "--config", help="配置文件路径"),
+) -> None:
+    """只读查看已登记 errata 与摘要。"""
+    from .errata import read_errata
+
+    store = _store_from(workspace, load_config(config or _CONFIG_PATH))
+    try:
+        rows, digest = read_errata(store)
+    except (OSError, ValueError) as exc:
+        raise typer.Exit(f"errata 读取失败：{exc}") from None
+    counts = {
+        status: sum(1 for r in rows if r.get("status") == status)
+        for status in ("proposed", "confirmed", "rejected")
+    }
+    current_sha = store.load_publication().meta.source_sha256
+    stale = sum(1 for row in rows if row.get("source_sha256") != current_sha)
+    if json_output:
+        _emit_json(
+            json.dumps(
+                {"total": len(rows), "counts": counts, "stale": stale, "sha256": digest},
+                ensure_ascii=False,
+            )
+        )
+        return
+    console.print(
+        f"errata：{len(rows)} 条（proposed={counts['proposed']} / "
+        f"confirmed={counts['confirmed']} / rejected={counts['rejected']}）"
+        + (f"；[yellow]源文已变更，{stale} 条待复核[/yellow]" if stale else "")
+    )
+    if digest:
+        console.print(f"  摘要 {digest[:16]}…")
 
 
 def main() -> None:

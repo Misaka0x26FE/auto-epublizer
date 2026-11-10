@@ -1,4 +1,4 @@
-<!-- i18n: source=epub-template-spec.zh.md sha256=5fc3dd0d89f97dcae2346eddec9036203d3a804f0bb513b5dc61a4d240175bfb -->
+<!-- i18n: source=epub-template-spec.zh.md sha256=2b457180d38d270c531d2b60caa8c2b64dab013faec7879d23dad2362412bb00 -->
 > **English** | [中文](epub-template-spec.zh.md)
 
 # EPUB File Spec: Unstyled Standard Template + Limited Themes
@@ -128,15 +128,13 @@ font-family/color/font-size/line-height/justify from returning).
 ## 5. Theme Layer (Limited Personalization)
 
 **Boundary**: themes only control typographic fine-tuning, never touching font/color/font
-size (the reader's domain). The only "font-related" exception is the **generic font-family
-base**—using `serif`/`sans-serif` family names rather than concrete font names, mapped by
-the reader to its own fonts.
+size (the reader's domain). Since 2026-11-04 themes **do not declare `font-family`** (user
+instruction: EPUB sets and embeds no fonts); the reader default fully decides.
 
 ### 5.1 Optional Dimensions
 
 | Dimension | Values |
 |---|---|
-| Font-family base | `serif` (default) / `sans-serif` |
 | Line-spacing density | `compact`(1.4) / `normal`(1.7, default) / `spacious`(2.0) |
 | Paragraph spacing | tight / standard (default) / loose |
 | First-line indent | Chinese indent 2em (default) / no indent (Western) |
@@ -150,9 +148,9 @@ Arbitrary CSS is not opened up. Three minimal themes are preset, selected by `--
 `config.output.theme`:
 
 ```text
-standard  → serif + 1.7 line spacing + indent + justified + heading centered (default)
-compact   → sans-serif + 1.4 line spacing + no indent + left-aligned
-spacious  → serif + 2.0 line spacing + indent + justified + heading centered
+standard  → 1.7 line spacing + indent + justified + heading centered (default)
+compact   → 1.4 line spacing + no indent + left-aligned
+spacious  → 2.0 line spacing + indent + justified + heading centered
 ```
 
 Each theme derives only a few CSS properties for "typographic fine-tuning", introducing no
@@ -166,9 +164,13 @@ not a design intention:
 
 | Theme | Actual declarations |
 |---|---|
-| `standard` | `body{font-family:serif;line-height:1.7}`; `p{text-indent:2em;text-align:justify;margin:0 0 0.6em 0}`; `h1,h2,h3,h4,h5,h6{text-align:center}` |
-| `compact` | `body{font-family:sans-serif;line-height:1.4}`; `p{margin:0 0 0.8em 0}` |
-| `spacious` | `body{font-family:serif;line-height:2.0}`; `p{text-indent:2em;text-align:justify;margin:0 0 1em 0}`; `h1,h2,h3,h4,h5,h6{text-align:center}` |
+| `standard` | `body{line-height:1.7}`; `p{text-indent:2em;text-align:justify;margin:0 0 0.6em 0}`; `h1,h2,h3,h4,h5,h6{text-align:center}` |
+| `compact` | `body{line-height:1.4}`; `p{margin:0 0 0.8em 0}` |
+| `spacious` | `body{line-height:2.0}`; `p{text-indent:2em;text-align:justify;margin:0 0 1em 0}`; `h1,h2,h3,h4,h5,h6{text-align:center}` |
+
+> User instruction (2026-11-04): EPUB **sets and embeds no fonts**; `body` no longer
+> declares `font-family`. Themes keep only line height/indent/alignment, leaving the
+> font family to the reader default.
 
 Resolution of wording conflicts (frozen):
 

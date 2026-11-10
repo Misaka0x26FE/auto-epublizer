@@ -8,7 +8,9 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
+import os
 import re
 from pathlib import Path
 from typing import Any
@@ -150,6 +152,28 @@ def _mineru_client_if_preferred(store: RunStore, config: Config | None = None):
     return None
 
 
+def _load_structure_doc(
+    store: RunStore, cfg: Config, progress: Any | None, *, write_raw: bool = True
+):
+    """按工作区配置装载源文件（OCR/MinerU/pandoc 路由集中在此）。
+
+    ``write_raw=False``（预览）：不把 raw/ 中间产物写入工作区，也不走 MinerU
+    网络解析；扫描页仍可用本地 OCR，但不会留下 raw 文件。
+    """
+    return load_document(
+        store.dir / store.load_publication().meta.source,
+        store=store if write_raw else None,
+        ocr_backend=_ocr_backend_if_needed(store, cfg),
+        mineru_client=_mineru_client_if_preferred(store, cfg) if write_raw else None,
+        mineru_model=cfg.pdf.mineru_model,
+        mineru_language=cfg.pdf.mineru_language,
+        mineru_batch_pages=cfg.pdf.mineru_batch_pages,
+        rtl=cfg.pdf.rtl,
+        pandoc_ast=cfg.pandoc.ast_check,
+        progress=progress,
+    )
+
+
 def prepare_structure(
     store: RunStore, *, config: Config | None = None, progress: Any | None = None
 ) -> list[dict[str, Any]]:
@@ -158,18 +182,7 @@ def prepare_structure(
     ``progress``：可选回调 ``(page_no, total) → None``，长任务（PDF 逐页）进度提示。
     """
     cfg = config or Config()
-    doc = load_document(
-        store.dir / store.load_publication().meta.source,
-        store=store,
-        ocr_backend=_ocr_backend_if_needed(store, cfg),
-        mineru_client=_mineru_client_if_preferred(store, cfg),
-        mineru_model=cfg.pdf.mineru_model,
-        mineru_language=cfg.pdf.mineru_language,
-        mineru_batch_pages=cfg.pdf.mineru_batch_pages,
-        rtl=cfg.pdf.rtl,
-        pandoc_ast=cfg.pandoc.ast_check,
-        progress=progress,
-    )
+    doc = _load_structure_doc(store, cfg, progress)
     pub = store.load_publication()
     entries = rebuild_structure(doc, pub)
     write_structured(store, doc, entries)
@@ -628,6 +641,7 @@ def _render_and_pack(
         nav_depth=nav_depth,
         render_mode=render_mode,
         book_css=book_css,
+        software_detail=cfg.output.software_detail,
     )
     # 状态推进：只把**确实打包了译文**的单元推进为 built。
     # 源文回退（无译文）的单元保持原状态——否则 import 会把 built 当「已完成」永久
@@ -766,6 +780,57 @@ def source_evidence(store: RunStore, *, note_ids: list[str] | None = None) -> di
     return data
 
 
+def evidence_notes(
+    store: RunStore, *, note_ids: list[str] | None = None, output: str | None = None
+) -> dict[str, Any]:
+    """逐条注文源页证据台账（C1，只读）：定位状态、覆盖计数与输入摘要。
+
+    不判定译得好不好，也不改写 notes.json；证据缺失显式记 unknown/page_only，
+    供 agent 回原页核证时引用。
+    """
+    import json
+
+    from .preprocess.source_evidence import collect_source_evidence
+    from .quality_evidence import validate_workspace_paths
+
+    validate_workspace_paths(store)
+    data = collect_source_evidence(store, note_ids=note_ids)
+    notes = data["note_evidence"]
+    statuses: dict[str, int] = {}
+    for note in notes.get("notes") or []:
+        key = str(note.get("evidence_status") or "unknown")
+        statuses[key] = statuses.get(key, 0) + 1
+    payload = {
+        "schema_version": "1",
+        "rule_version": "notes-evidence-1",
+        "source_sha256": data.get("source_sha256"),
+        "registered": bool(notes.get("registered")),
+        "notes_sha256": notes.get("sha256"),
+        "inventory": notes.get("inventory"),
+        "total": notes.get("total", 0),
+        "selected": notes.get("selected", 0),
+        "requested_note_ids": notes.get("requested_note_ids") or [],
+        "missing_note_ids": notes.get("missing_note_ids") or [],
+        "coverage": statuses,
+        "notes": notes.get("notes") or [],
+        "limits": "坐标来自 raw/page-*.json；无坐标不等于注文不存在，只表示证据未定位",
+    }
+    payload["input_digest"] = hashlib.sha256(
+        json.dumps(payload, ensure_ascii=False, sort_keys=True).encode()
+    ).hexdigest()
+    out_path = Path(output) if output else store.preprocessing_dir / "notes-evidence.json"
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = out_path.with_name(out_path.name + ".tmp")
+    tmp.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    os.replace(tmp, out_path)
+    store.log_event(
+        "notes_evidence_written",
+        notes=payload["selected"],
+        missing=len(payload["missing_note_ids"]),
+    )
+    return {**payload, "path": str(out_path)}
+
+
 def page_number_evidence(store: RunStore) -> dict[str, Any]:
     """只读目录/索引页码策略与候选；声明 original/product/none，不改源件。"""
     from .preprocess.page_numbers import collect_page_number_evidence
@@ -809,20 +874,63 @@ def evidence_breaks(store: RunStore, *, output: str | None = None) -> dict[str, 
 
 
 def rebuild(
-    store: RunStore, *, config: Config | None = None, progress: Any | None = None
+    store: RunStore,
+    *,
+    config: Config | None = None,
+    progress: Any | None = None,
+    dry_run: bool = False,
 ) -> dict[str, Any]:
     """原地重建 ``structured/``（含 raw/）与 facts（issue #30 §4.2，``preprocess --force``）。
 
     从 ``source/`` 重新 ingest → 覆盖 structured/ → 重算 facts。单元状态被重置为
     ``split``（既有译文变 stale，需重新走 import）；调用方须显式 ``--force`` 表达该意图。
     用于「preprocess 误中断后恢复」，无需人工搬目录。
+    ``dry_run=True`` 只比较「将写入的清洗结果」与现有文件，不删不改任何文件。
     """
     import shutil
 
+    if dry_run:
+        return preview_rebuild(store, config=config, progress=progress)
     if store.structured_dir.exists():
         shutil.rmtree(store.structured_dir)
     prepare_structure(store, config=config, progress=progress)
     return preprocess(store, config=config)
+
+
+def preview_rebuild(
+    store: RunStore, *, config: Config | None = None, progress: Any | None = None
+) -> dict[str, Any]:
+    """只读预演重建：逐单元报告 new/changed/unchanged 与清洗台账，不写盘。"""
+    from .structure.classify import clean_unit_with_report
+    from .structure.rebuild import _render_markdown
+
+    cfg = config or Config()
+    doc = _load_structure_doc(store, cfg, progress, write_raw=False)
+    entries = rebuild_structure(doc, store.load_publication())
+    rows: list[dict[str, Any]] = []
+    for entry in entries:
+        index = entry.get("_index")
+        if not isinstance(index, int) or index >= len(doc.units):
+            continue
+        cleaned, report = clean_unit_with_report(
+            doc.units[index], kind=str(entry.get("kind") or "")
+        )
+        rendered = _render_markdown(cleaned.title, cleaned.segments, cleaned.meta.get("heading_id"))
+        path = store.structured_dir / str(entry["rel_path"])
+        previous = path.read_text(encoding="utf-8") if path.is_file() else None
+        status = "new" if previous is None else ("unchanged" if previous == rendered else "changed")
+        rows.append(
+            {
+                "unit_id": entry.get("id"),
+                "rel_path": entry.get("rel_path"),
+                "status": status,
+                **report.as_dict(),
+            }
+        )
+    counts = {
+        key: sum(1 for r in rows if r["status"] == key) for key in ("new", "changed", "unchanged")
+    }
+    return {"dry_run": True, "units": rows, "counts": counts}
 
 
 def build(
@@ -1466,6 +1574,7 @@ def register_notes(store: RunStore) -> dict[str, Any]:
 def notes_status(store: RunStore) -> dict[str, Any]:
     """注释登记状态（只读）：登记摘要、文件摘要是否失效、候选处置进度。"""
     from . import notes as notes_mod
+    from .note_review import summarize as summarize_note_review
 
     pub = store.load_publication()
     src = notes_mod.source_notes_path(store)
@@ -1489,6 +1598,7 @@ def notes_status(store: RunStore) -> dict[str, Any]:
             "pending": len(pending),
         },
         "stale": stale,
+        "review": summarize_note_review(store),
     }
 
 
@@ -2006,11 +2116,32 @@ def restructure(store: RunStore) -> dict[str, Any]:
     return {"units": len(units), "reset": reset, "added": added, "removed": removed}
 
 
+def _write_g0_details(store: RunStore, report: Any, flags: list[dict[str, Any]]) -> None:
+    """把逐条 G0 finding 写成稳定排序的 JSONL，并把摘要绑定到报告。"""
+    path = store.output_dir / "g0-details.jsonl"
+    if not flags:
+        path.unlink(missing_ok=True)
+        return
+    rows = [json.dumps(f, ensure_ascii=False, sort_keys=True) for f in flags]
+    payload = ("\n".join(sorted(rows)) + "\n").encode("utf-8")
+    path = store.output_dir / "g0-details.jsonl"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_name(path.name + ".tmp")
+    tmp.write_bytes(payload)
+    os.replace(tmp, path)
+    try:
+        report.g0_detail_path = str(path.relative_to(store.dir))
+    except ValueError:
+        report.g0_detail_path = str(path)
+    report.g0_detail_sha256 = hashlib.sha256(payload).hexdigest()
+
+
 def qa(
     store: RunStore, *, epub_path: str | None = None, config: Config | None = None
 ) -> dict[str, Any]:
     from auto_translator.glossary import read_conflicts_jsonl
 
+    from .note_review import summarize as summarize_note_review
     from .qa.notes_audit import epub_render_mode
 
     pub = store.load_publication()
@@ -2043,11 +2174,18 @@ def qa(
         }
         notes_ctx = None
     if notes_ctx is not None:
+        from .media_paths import load_media_map
+
+        try:
+            media_map = load_media_map(store.dir)
+        except ValueError:
+            media_map = None
         notes_result = audit_notes_epub(
             epub,
             source_notes=notes_ctx["data"],
             target_notes=notes_ctx.get("target"),
             media_root=store.structured_dir / "raw" / "media",
+            media_map=media_map,
         )
         notes_audit_dict = {
             "findings": [dict(f) for f in notes_result.findings],
@@ -2124,7 +2262,9 @@ def qa(
         repairs_unresolved=repairs_unresolved,
         notes_audit=notes_audit_dict,
         review_ledger=ledger.to_dict(),
+        notes_review=summarize_note_review(store),
     )
+    _write_g0_details(store, report, g0_flags)
     if repairs_unresolved:
         report.provenance_findings.append(
             {
@@ -2400,6 +2540,24 @@ def _derive_next_tasks(
             )
         ]
     status_of = {u["id"]: u["status"] for u in units_out}
+    # D2. 注文语言核验（C3）：已有译注后，未闭合候选先于审校/交付处理
+    from .note_review import summarize as summarize_note_review
+
+    review_state = summarize_note_review(store)
+    if (
+        review_state.get("applicable")
+        and review_state.get("open")
+        and any(
+            status_of.get(u.id) in ("translated", "aligned", "reviewed", "built") for u in pub.units
+        )
+    ):
+        return [
+            _task(
+                "notes_review",
+                f"注文语言核验：{review_state['open']} 条未闭合，运行 notes review 并逐条处置",
+                done_when={"file": "preprocessing/note-review.json"},
+            )
+        ]
     # E. 已登记未审校 → 先审校（保持单元级原子循环：translate → import → review → 下一个；
     #    否则会把整个 review 阶段推到全书翻译完之后，弱模型上下文过重——2026-10-05 实测修正）
     for u in pub.units:

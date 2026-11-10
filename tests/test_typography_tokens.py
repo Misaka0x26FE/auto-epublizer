@@ -1,9 +1,9 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 # Copyright (C) 2026 Misaka0x26FE
-"""P2 版式参数提取的等价锁定：token 生成的 CSS 必须与提取前逐字节相同。
+"""版式参数的字节锁定：任何有意改变样式都必须显式更新常量与基线。
 
-摘要值取自 2026-11-03 基线（``56720e7``）的实际输出。任何有意改变样式都必须在
-P3/P5 中显式更新这些常量，并重新登记 ``tests/fixtures/typography/baseline.json``；
+摘要值取自 2026-11-10（E4：EPUB 去 font-family、PDF 字体栈与封面/colophon CSS）
+的实际输出。改动样式时须重新登记 ``tests/fixtures/typography/baseline.json``，
 不允许「顺手」重录。
 """
 
@@ -19,14 +19,14 @@ from auto_epublizer.typography import EPUB_THEMES, PRINT, css_number, em_number
 
 #: 提取前（56720e7）三套主题 CSS 的 sha256
 THEME_SHA256 = {
-    "standard": "1c35bf678fce03eaefe67cb45bd4de698f55bc7c42fbe63b7e94c77b84ae0730",
-    "compact": "983b503fb02ff925e28b3ee394ecd9f842c58d8d0a5470f756a357f1520ec500",
-    "spacious": "d93cd0164aabcfb0a2e118dd1e9462a80c74222453ece8cced64b760fbef611c",
+    "standard": "859921c5da54333b19799d9ea0c0d4edb9390e1b750cdd40e1594fd14bdf5493",
+    "compact": "70fa2da14068ba00b7a490900e8ff7cfef30625937b4e5bb208a83af6a62e836",
+    "spacious": "60c94db96ca1ec84963683004e9fd655970a2f45eb428396b7d904f124e58c4e",
 }
 #: 提取前功能性样式层
 _STYLE_SHA256 = "af7d117ac487bf17f782a0a3f3050a8c371c202935c0c05e7947be28cd094140"
 #: 提取前 PrintStyle() 默认 CSS（A5/10.5pt/1.55）
-PDF_CSS_SHA256 = "0c22b4107fbc16cf45819f32eec9173ad23dd510342c27de264869b317394a97"
+PDF_CSS_SHA256 = "c2b0eb2ef46dc7dc1fe245f563ee2ac61afbadde1606dabdff6b85ed0ddafb67"
 
 
 def test_functional_style_layer_unchanged() -> None:
@@ -37,7 +37,7 @@ def test_functional_style_layer_unchanged() -> None:
 def test_theme_css_is_byte_identical(theme: str) -> None:
     css = theme_css(theme)
     assert hashlib.sha256(css.encode()).hexdigest() == THEME_SHA256[theme]
-    assert "font-family" in css
+    assert "font-family" not in css
     assert "pt" not in css and "px" not in css
 
 

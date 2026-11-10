@@ -1,0 +1,1419 @@
+diff --git a/src/auto_epublizer/build/__init__.py b/src/auto_epublizer/build/__init__.py
+deleted file mode 100644
+index 2ca13b7..0000000
+--- a/src/auto_epublizer/build/__init__.py
++++ /dev/null
+@@ -1,882 +0,0 @@
+-# SPDX-License-Identifier: AGPL-3.0-only
+-# Copyright (C) 2026 Misaka0x26FE
+-"""EPUB 3 打包：把结构化单元 XHTML + 媒体资源封装为确定性标准 EPUB。
+-
+-- 纯 Python 直写 zip（mimetype 首位未压缩），不依赖 pandoc/calibre。
+-- 组件：mimetype / META-INF/container.xml / OEBPS/content.opf / nav.xhtml /
+-  toc.ncx / landmarks.xhtml + 内容文档 + 媒体资源。
+-- 确定性：冻结时间戳（``modified`` 参数）+ 稳定写入顺序 → 同一工作区两次构建字节一致。
+-- 元数据一律 XML 转义，含特殊字符的书名/作者不会破坏任意 XML 文档。
+-"""
+-
+-from __future__ import annotations
+-
+-import re
+-import xml.etree.ElementTree as ET
+-import zipfile
+-from datetime import datetime
+-from html import escape, unescape
+-from pathlib import Path
+-from typing import Any
+-from urllib.parse import quote, unquote, urlsplit
+-
+-from auto_common.markdown import CODE_SPAN_RE, markdown_chunks
+-from auto_common.workspace import Publication
+-
+-from ..fingerprint import (
+-    VOCAB_URL,
+-    build_fingerprint,
+-    fingerprint_json,
+-    software_page,
+-    software_page_title,
+-    stamp_document,
+-)
+-from ..media_paths import epub_member_path, resolve_media_path
+-from .html import plain_label, slug_file, subheading_anchors
+-
+-__all__ = [
+-    "build_epub",
+-    "collect_media",
+-    "nav_depth_sequence",
+-    "nav_toc_entries",
+-    "production_toc_entry",
+-    "slug_file",
+-    "subheading_anchors",
+-    "theme_css",
+-    "toc_depths",
+-]
+-
+-_IMG_REF = re.compile(r"!\[([^\]]*)\]\(([^()]*(?:\([^()]*\)[^()]*)*)\)")
+-# pandoc 对「段落内仅一张图片」输出占位语法（小说插图常见形态）：
+-#   [alt]{.image .placeholder original-image-src="media/x.png" original-image-title="..."}
+-_PANDOC_PLACEHOLDER = re.compile(
+-    r"\[([^\]]*)\]\{\.image\s+\.placeholder\s+original-image-src=\"([^\"]+)\""
+-    r"(?:\s+original-image-title=\"[^\"]*\")?\s*\}"
+-)
+-# HTML <img> 及其可能的 <figure>/<a> 包裹（多行可匹配）：
+-#   <figure ...><a ...><img src="..." .../></a></figure>
+-_HTML_FIG_IMG = re.compile(
+-    r"<figure\b[^>]*>\s*<a\b[^>]*>\s*<img\b[^>]*?src=\"([^\"]+)\"[^>]*?/?>\s*</a>\s*</figure>",
+-    re.DOTALL,
+-)
+-_HTML_IMG = re.compile(r"<img\b[^>]*?src=\"([^\"]+)\"[^>]*?/?>", re.DOTALL)
+-_SVG_IMAGE = re.compile(r"<image\b[^>]*>", re.DOTALL)
+-_SVG_HREF = re.compile(r"""(?<![\w:.-])(?:xlink:)?href\s*=\s*(["'])(.*?)\1""", re.DOTALL)
+-_MEDIA_REF = re.compile(
+-    "|".join(
+-        f"(?P<{kind}>{pattern.pattern})"
+-        for kind, pattern in (
+-            ("svg", _SVG_IMAGE),
+-            ("figure", _HTML_FIG_IMG),
+-            ("html", _HTML_IMG),
+-            ("placeholder", _PANDOC_PLACEHOLDER),
+-            ("markdown", _IMG_REF),
+-        )
+-    ),
+-    re.DOTALL,
+-)
+-
+-# 内置基础样式：仅功能性规则（epub-template-spec §4 呈现层）——
+-# 字体/颜色/字号一律不设，交由阅读器决定；行距/缩进/对齐等排版微调由主题层提供。
+-# 图片「只缩不放大居中」是功能性规则必须保留。
+-_STYLE_CSS = """\
+-img {
+-  max-width: 100%;
+-  height: auto;
+-  page-break-inside: avoid; /* 图片断页：大图不跨页 */
+-}
+-p.imgp {
+-  text-indent: 0;
+-  text-align: center; /* 图片段居中、不缩进 */
+-}
+-figure.imgfig {
+-  margin: 1em 0;
+-  text-align: center; /* 图注段落 */
+-}
+-p.verse {
+-  text-indent: 0; /* 诗行不缩进（epub-template-spec 语义标签） */
+-}
+-blockquote {
+-  margin: 0.5em 0 0.5em 1.5em;
+-}
+-section.footnotes {
+-  margin-top: 2em;
+-}
+-table.data {
+-  border-collapse: collapse;
+-  margin: 1em auto; /* 表格居中，只缩不放大由单元格换行控制 */
+-}
+-table.data th,
+-table.data td {
+-  border: 1px solid #999; /* 功能性边框：保证表格可读 */
+-  padding: 0.2em 0.5em;
+-  text-align: left;
+-}
+-"""
+-
+-# 主题层（epub-template-spec §5）：预置三套极简主题，只控排版微调——
+-# 字族仅用泛化族名（serif/sans-serif，阅读器映射到自己的字体），无颜色无字号。
+-_THEMES: dict[str, str] = {
+-    "standard": (
+-        "body {\n  font-family: serif;\n  line-height: 1.7;\n}\n"
+-        "p {\n  text-indent: 2em;\n  text-align: justify;\n  margin: 0 0 0.6em 0;\n}\n"
+-        "h1, h2, h3, h4, h5, h6 {\n  text-align: center;\n}\n"
+-    ),
+-    "compact": (
+-        "body {\n  font-family: sans-serif;\n  line-height: 1.4;\n}\n"
+-        "p {\n  margin: 0 0 0.8em 0;\n}\n"
+-    ),
+-    "spacious": (
+-        "body {\n  font-family: serif;\n  line-height: 2.0;\n}\n"
+-        "p {\n  text-indent: 2em;\n  text-align: justify;\n  margin: 0 0 1em 0;\n}\n"
+-        "h1, h2, h3, h4, h5, h6 {\n  text-align: center;\n}\n"
+-    ),
+-}
+-
+-
+-def theme_css(theme: str) -> str:
+-    """取主题层 CSS；未知主题报错（可选值随错误信息给出）。"""
+-    try:
+-        return _THEMES[theme]
+-    except KeyError:
+-        raise ValueError(f"未知主题：{theme}（可选：{'/'.join(_THEMES)}）") from None
+-
+-
+-_NS_XHTML = "http://www.w3.org/1999/xhtml"
+-_NS_EPUB = "http://www.idpf.org/2007/ops"
+-_NS_OPF = "http://www.idpf.org/2007/opf"
+-_NS_DC = "http://purl.org/dc/elements/1.1/"
+-
+-_MEDIA_TYPES = {
+-    ".jpg": "image/jpeg",
+-    ".jpeg": "image/jpeg",
+-    ".png": "image/png",
+-    ".gif": "image/gif",
+-    ".svg": "image/svg+xml",
+-    ".webp": "image/webp",
+-    ".bmp": "image/bmp",
+-    ".avif": "image/avif",
+-    ".woff": "font/woff",
+-    ".woff2": "font/woff2",
+-    ".ttf": "font/ttf",
+-    ".otf": "font/otf",
+-}
+-
+-
+-def _parse_modified(modified: str) -> tuple[int, int, int, int, int, int]:
+-    """把 ISO 时间戳解析为 zipfile date_time 元组（缺省回退 1970 基准）。"""
+-    try:
+-        dt = datetime.fromisoformat(modified.replace("Z", "+00:00"))
+-        return (dt.year, dt.month, dt.day, dt.hour, dt.minute, dt.second)
+-    except ValueError:
+-        return (1970, 1, 1, 0, 0, 0)
+-
+-
+-def _zi(name: str, ts: tuple[int, int, int, int, int, int], compress: int) -> zipfile.ZipInfo:
+-    info = zipfile.ZipInfo(name, date_time=ts)
+-    info.compress_type = compress
+-    return info
+-
+-
+-def _content_entries(
+-    entries: list[dict[str, Any]], content_files: list[tuple[str, str]]
+-) -> list[dict[str, Any]]:
+-    """只保留已实际生成内容文档的条目（nav/spine 不得引用缺失文件）。"""
+-    present = {fn for fn, _ in content_files}
+-    return [e for e in entries if f"{slug_file(e['id'])}.xhtml" in present]
+-
+-
+-def _render_opf(
+-    pub: Publication,
+-    lang: str,
+-    modified: str,
+-    items: list[tuple[str, str, str, str | None]],
+-    spine_ids: list[str],
+-    *,
+-    cover_item_id: str | None = None,
+-    cover_docs: set[str] | None = None,
+-    fingerprint: dict[str, Any],
+-    render_mode: str | None,
+-) -> str:
+-    """渲染 content.opf：manifest / spine / DC 元数据 / dcterms:modified / 封面 meta。
+-
+-    ``cover_item_id`` 非空时输出 ``<meta name="cover" content="…">``；
+-    ``cover_docs`` 中的内容文档 spine 标 ``linear="no"``（封面不进阅读顺序）。
+-    """
+-    ident = pub.meta.identifier
+-    uid = ident.isbn or ident.uri or ident.doi or pub.slug
+-    meta = pub.meta
+-    cover_docs = cover_docs or set()
+-    m = [
+-        '<?xml version="1.0" encoding="utf-8"?>',
+-        f'<package xmlns="{_NS_OPF}" version="3.0" unique-identifier="pub-id" '
+-        f'prefix="aep: {VOCAB_URL}">',
+-        f'  <metadata xmlns:dc="{_NS_DC}">',
+-        f'    <dc:identifier id="pub-id">{escape(uid)}</dc:identifier>',
+-        f"    <dc:title>{escape(meta.title)}</dc:title>",
+-    ]
+-    if meta.creator:
+-        m.append(f'    <dc:creator id="creator-aut">{escape(meta.creator)}</dc:creator>')
+-        m.append(
+-            '    <meta refines="#creator-aut" property="role" scheme="marc:relators">aut</meta>'
+-        )
+-    if meta.translator:
+-        m.append(f'    <dc:creator id="creator-trl">{escape(meta.translator)}</dc:creator>')
+-        m.append(
+-            '    <meta refines="#creator-trl" property="role" scheme="marc:relators">trl</meta>'
+-        )
+-    m.append(f"    <dc:language>{escape(lang)}</dc:language>")
+-    if meta.date:
+-        m.append(f"    <dc:date>{escape(meta.date)}</dc:date>")
+-    if meta.publisher:
+-        m.append(f"    <dc:publisher>{escape(meta.publisher)}</dc:publisher>")
+-    if meta.rights:
+-        m.append(f"    <dc:rights>{escape(meta.rights)}</dc:rights>")
+-    m.append(f'    <meta property="dcterms:modified">{escape(modified)}</meta>')
+-    project = fingerprint["project"]
+-    m.append(
+-        f'    <meta name="generator" content="{escape(project["name"] + " " + project["version"], quote=True)}"/>'
+-    )
+-    for key in ("name", "url", "version", "license", "revision"):
+-        if project.get(key) is not None:
+-            m.append(f'    <meta property="aep:{key}">{escape(str(project[key]))}</meta>')
+-    m.append(f'    <meta property="aep:build">{escape(fingerprint_json(fingerprint))}</meta>')
+-    if render_mode is not None:
+-        m.append(f'    <meta property="aep:render-mode">{render_mode}</meta>')
+-    if cover_item_id:
+-        m.append(f'    <meta name="cover" content="{escape(cover_item_id)}"/>')
+-    m.append("  </metadata>")
+-    m.append("  <manifest>")
+-    for item_id, href, media_type, props in items:
+-        prop_attr = f' properties="{escape(props)}"' if props else ""
+-        m.append(
+-            f'    <item id="{escape(item_id)}" href="{escape(href)}" '
+-            f'media-type="{escape(media_type)}"{prop_attr}/>'
+-        )
+-    m.append("  </manifest>")
+-    m.append('  <spine toc="ncx">')
+-    for rid in spine_ids:
+-        linear = ' linear="no"' if rid in cover_docs else ""
+-        m.append(f'    <itemref idref="{escape(rid)}"{linear}/>')
+-    m.append("  </spine>")
+-    m.append("</package>")
+-    return "\n".join(m)
+-
+-
+-def _toc_depths(entries: list[dict[str, Any]]) -> list[int]:
+-    """把单元标题层级（entry['level']，缺省 1）归一化为目录嵌套深度。
+-
+-    规则：首个单元为深度 1；层级递增 → 子级（跳级封顶为父级+1）；层级回落 → 回到
+-    最近祖先的下一级。全平级时全部深度为 1（扁平目录）。
+-    """
+-    depths: list[int] = []
+-    stack: list[int] = []
+-    for e in entries:
+-        lv = int(e.get("level") or 1)
+-        while stack and stack[-1] >= lv:
+-            stack.pop()
+-        depths.append(len(stack) + 1)
+-        stack.append(lv)
+-    return depths
+-
+-
+-def toc_depths(entries: list[dict[str, Any]]) -> list[int]:
+-    """公开别名：单元清单 → 目录嵌套深度（qa/provenance 与 build 共用同一算法）。"""
+-    return _toc_depths(entries)
+-
+-
+-def nav_toc_entries(entries: list[dict[str, Any]], nav_depth: int) -> list[dict[str, Any]]:
+-    """nav/NCX 目录候选：排除封面单元（linear="no"），并按 ``nav_depth`` 投影截断。
+-
+-    深度用 ``_toc_depths`` 归一化（首条为 1）。超深节点不进目录，但仍保留在
+-    spine 阅读顺序与锚点中（epub-template-spec §3 目录深度投影）。
+-    entry 可携带 ``anchors``（``subheading_anchors`` 产物）：单元进目录时其锚点
+-    以「单元深度 + 相对深度」参与投影，超深锚点剔除；单元被剔除则锚点一并剔除。
+-    """
+-    # nav=false 的单元进 spine 但不进目录（献词页等前置噪声页）
+-    visible = [e for e in entries if e.get("kind") != "cover" and e.get("nav") is not False]
+-    depths = _toc_depths(visible)
+-    out: list[dict[str, Any]] = []
+-    for e, d in zip(visible, depths, strict=False):
+-        if d > nav_depth:
+-            continue
+-        anchors = e.get("anchors") or []
+-        if anchors:
+-            rel = _toc_depths(anchors)
+-            kept = [a for a, r in zip(anchors, rel, strict=False) if d + r <= nav_depth]
+-            if len(kept) != len(anchors):
+-                e = {**e, "anchors": kept}
+-        out.append(e)
+-    return out
+-
+-
+-def production_toc_entry(lang: str, page: str | None) -> dict[str, Any] | None:
+-    """制作信息（软件附页）的 nav/NCX 顶层目录条目；非源书单元，故无 region/anchors。
+-
+-    ``page`` 为构建期插入 spine 的页面文件名（``None`` 表示有版权单元、无附页）。
+-    ``id`` 取文件名主干，经 ``slug_file`` 还原为原文件名；条目固定为深度 1
+-    （qa 的期望深度序列以同样的深度 1 顶层计入，见 qa/provenance.py）。
+-    """
+-    if not page:
+-        return None
+-    return {
+-        "id": Path(page).stem,
+-        "kind": "production",
+-        "title": software_page_title(lang),
+-        "level": 1,
+-    }
+-
+-
+-def _anchor_nodes(e: dict[str, Any]) -> list[dict[str, Any]]:
+-    """把 entry 的锚点清单组织成嵌套树节点：[{"href","label","children"}]。
+-
+-    锚点相对深度用 ``_toc_depths`` 归一化（首个锚点为单元的直接子级）；href
+-    指向单元文档内的锚点（``file.xhtml#anchor``）。
+-    """
+-    anchors = e.get("anchors") or []
+-    if not anchors:
+-        return []
+-    href_base = f"{slug_file(e['id'])}.xhtml"
+-    tree: list[dict[str, Any]] = []
+-    stack: list[tuple[int, list[dict[str, Any]]]] = [(0, tree)]
+-    for a, r in zip(anchors, _toc_depths(anchors), strict=False):
+-        node: dict[str, Any] = {
+-            "href": f"{href_base}#{a['anchor']}",
+-            "label": a["title"],
+-            "children": [],
+-        }
+-        while stack and stack[-1][0] >= r:
+-            stack.pop()
+-        stack[-1][1].append(node)
+-        stack.append((r, node["children"]))
+-    return tree
+-
+-
+-def _toc_tree(entries: list[dict[str, Any]]) -> list[dict[str, Any]]:
+-    """按嵌套深度把单元清单组织成目录树：[{entry, children: […]}]。
+-
+-    携带 ``anchors`` 的单元，锚点子树**前插**为其 children（阅读顺序：单元
+-    文档内的子标题先于子单元文档）。
+-    """
+-    tree: list[dict[str, Any]] = []
+-    stack: list[tuple[int, list[dict[str, Any]]]] = [(0, tree)]
+-    for e, d in zip(entries, _toc_depths(entries), strict=False):
+-        node: dict[str, Any] = {"entry": e, "children": _anchor_nodes(e)}
+-        while stack and stack[-1][0] >= d:
+-            stack.pop()
+-        stack[-1][1].append(node)
+-        stack.append((d, node["children"]))
+-    return tree
+-
+-
+-def nav_depth_sequence(entries: list[dict[str, Any]]) -> list[int]:
+-    """nav 树先序遍历的完整深度序列（单元 + 锚点；qa 对账与 build 同源）。"""
+-    seq: list[int] = []
+-
+-    def walk(nodes: list[dict[str, Any]], depth: int) -> None:
+-        for node in nodes:
+-            seq.append(depth)
+-            walk(node["children"], depth + 1)
+-
+-    walk(_toc_tree(entries), 1)
+-    return seq
+-
+-
+-def _render_nav_items(nodes: list[dict[str, Any]]) -> str:
+-    """递归渲染 nav 嵌套 <li>（单元条目 + 锚点条目，含子级 <ol>）。"""
+-    lis: list[str] = []
+-    for node in nodes:
+-        if "entry" in node:
+-            e = node["entry"]
+-            href = f"{slug_file(e['id'])}.xhtml"
+-            # nav 标签走 plain_label：裸 escape 会把 ``{#calibre_toc_1}`` 原样印给读者
+-            # （2026-10-06 Thiriart nav 实测 22 处，与 <title> 同源同解，见 html.py::plain_label）
+-            label = escape(plain_label(e["title"] or e["id"]))
+-        else:  # 锚点节点（_anchor_nodes 产物）
+-            href = node["href"]
+-            label = escape(plain_label(node["label"]))
+-        if node["children"]:
+-            lis.append(
+-                f'      <li><a href="{href}">{label}</a>\n'
+-                f"        <ol>\n{_render_nav_items(node['children'])}\n        </ol>\n"
+-                f"      </li>"
+-            )
+-        else:
+-            lis.append(f'      <li><a href="{href}">{label}</a></li>')
+-    return "\n".join(lis)
+-
+-
+-def _render_nav(
+-    pub: Publication,
+-    content_entries: list[dict[str, Any]],
+-    lang: str,
+-    *,
+-    nav_depth: int = 3,
+-    production: dict[str, Any] | None = None,
+-) -> str:
+-    """渲染 EPUB 3 导航文档（nav.xhtml，epub:type=toc）。
+-
+-    层级按源文标题层级嵌套；封面单元不进目录，``nav_depth`` 之外不渲染
+-    （epub-template-spec §3 目录深度投影）。``production``（``production_toc_entry``
+-    产物）作为**顶层**条目前插——制作页在 spine 中位于首个非封面文档之前，与
+-    阅读顺序一致；它是软件附页而非源书单元，故不参与层级投影。
+-    """
+-    entries = nav_toc_entries(content_entries, nav_depth)
+-    nodes = _toc_tree(entries)
+-    if production is not None:
+-        nodes = [{"entry": production, "children": []}, *nodes]
+-    items = _render_nav_items(nodes)
+-    # 两个不同语义的声明，务必分开（#16 S-A / 2026-10-04-backlog-three-items §1.4）：
+-    # - nav-depth：**渲染后实际最大深度** A，与 NCX 的 dtb:depth 同源（对外如实）；
+-    # - nav-projection：**投影上限** K（构建期 --nav-depth/配置），qa 用它重建期望集。
+-    # 不能用 A 当 qa 的投影依据：扁平的错误构建会声明 A=1，反而自证「期望扁平」、
+-    # 漏报 E_TOC_FLAT（见 tests/test_provenance.py::test_provenance_anchor_toc_flat_detection）。
+-    depth = max(nav_depth_sequence(entries), default=1)
+-    return (
+-        '<?xml version="1.0" encoding="utf-8"?>\n'
+-        f'<html xmlns="{_NS_XHTML}" xmlns:epub="{_NS_EPUB}" '
+-        f'xml:lang="{escape(lang, quote=True)}">\n'
+-        "<head>\n"
+-        '<meta charset="utf-8"/>\n'
+-        f'<meta name="nav-depth" content="{depth}"/>\n'
+-        f'<meta name="nav-projection" content="{nav_depth}"/>\n'
+-        f"<title>{escape(pub.meta.title)}</title>\n"
+-        "</head>\n"
+-        "<body>\n"
+-        f'<nav epub:type="toc" id="toc">\n'
+-        "  <h1>目录</h1>\n"
+-        "  <ol>\n"
+-        f"{items}\n"
+-        "  </ol>\n"
+-        "</nav>\n"
+-        "</body>\n"
+-        "</html>\n"
+-    )
+-
+-
+-def _render_ncx_points(nodes: list[dict[str, Any]], counter: list[int]) -> str:
+-    """递归渲染 NCX 嵌套 <navPoint>（playOrder 按先序遍历连续编号）。"""
+-    out: list[str] = []
+-    for node in nodes:
+-        counter[0] += 1
+-        n = counter[0]
+-        if "entry" in node:
+-            e = node["entry"]
+-            href = f"{slug_file(e['id'])}.xhtml"
+-            # NCX 标签与 nav 标签同口径走 plain_label：裸 escape 会把
+-            # ``{#calibre_toc_1}`` / ``[]{#page_ii}`` 原样印给读者
+-            # （2026-10-20 vanguard 成品实测 20/102 条 navLabel 带属性块）
+-            label = plain_label(e["title"] or e["id"])
+-        else:  # 锚点节点（_anchor_nodes 产物）
+-            href = node["href"]
+-            label = plain_label(node["label"])
+-        head = (
+-            f'    <navPoint id="navpoint-{n}" playOrder="{n}">\n'
+-            f"      <navLabel><text>{escape(label)}</text></navLabel>\n"
+-            f'      <content src="{escape(href)}"/>'
+-        )
+-        if node["children"]:
+-            out.append(f"{head}\n{_render_ncx_points(node['children'], counter)}\n    </navPoint>")
+-        else:
+-            out.append(f"{head}\n    </navPoint>")
+-    return "\n".join(out)
+-
+-
+-def _render_ncx(
+-    pub: Publication,
+-    content_entries: list[dict[str, Any]],
+-    *,
+-    nav_depth: int = 3,
+-    production: dict[str, Any] | None = None,
+-) -> str:
+-    """渲染 NCX（toc.ncx，向后兼容）；层级嵌套（同 nav 投影），只引用实际内容文档防悬空。
+-
+-    ``production``（``production_toc_entry`` 产物）作为首个 navPoint 前插，``playOrder``
+-    自 1 起连续编号，与 nav 顺序一致。
+-    """
+-    uid = pub.slug
+-    entries = nav_toc_entries(content_entries, nav_depth)
+-    depth = max(nav_depth_sequence(entries), default=1)
+-    nodes = _toc_tree(entries)
+-    if production is not None:
+-        nodes = [{"entry": production, "children": []}, *nodes]
+-    body = _render_ncx_points(nodes, [0]) or "    <!-- 无目录条目 -->"
+-    return (
+-        '<?xml version="1.0" encoding="utf-8"?>\n'
+-        '<ncx xmlns="http://www.daisy.org/z3986/2005/ncx/" version="2005-1">\n'
+-        "  <head>\n"
+-        f'    <meta name="dtb:uid" content="{escape(uid)}"/>\n'
+-        f'    <meta name="dtb:depth" content="{depth}"/>\n'
+-        '    <meta name="dtb:totalPageCount" content="0"/>\n'
+-        '    <meta name="dtb:maxPageNumber" content="0"/>\n'
+-        "  </head>\n"
+-        f"  <docTitle><text>{escape(pub.meta.title)}</text></docTitle>\n"
+-        "  <navMap>\n"
+-        f"{body}\n"
+-        "  </navMap>\n"
+-        "</ncx>\n"
+-    )
+-
+-
+-def _render_landmarks(
+-    content_entries: list[dict[str, Any]],
+-    lang: str,
+-    *,
+-    copyright_page: str | None = None,
+-) -> str:
+-    """渲染 landmarks（frontmatter / bodymatter / backmatter 地标）。
+-
+-    只引用实际生成的内容文档（防悬空）；每类 region 取首个可用条目。
+-    """
+-    landmarks: list[tuple[str, str, str]] = []
+-    labels = {
+-        "frontmatter": "前言",
+-        "bodymatter": "正文",
+-        "backmatter": "附录",
+-    }
+-    zh = str(lang or "").lower().startswith("zh")
+-    cover = next(
+-        (e for e in content_entries if e.get("kind") == "cover" or e.get("region") == "cover"),
+-        None,
+-    )
+-    if cover is not None:
+-        # 封面在 spine 里 linear="no"，没有任何链接就触发 EPUBCheck OPF-096；
+-        # 地标是唯一不污染正文的落点。
+-        landmarks.append(("cover", f"{slug_file(cover['id'])}.xhtml", "封面" if zh else "Cover"))
+-    for region in ("frontmatter", "bodymatter", "backmatter"):
+-        for e in content_entries:
+-            raw = e.get("region")
+-            if raw == "body":
+-                raw = "bodymatter"
+-            if raw != region:
+-                continue
+-            href = f"{slug_file(e['id'])}.xhtml"
+-            landmarks.append((region, href, labels[region]))
+-            break
+-    if copyright_page:
+-        landmarks.append(("copyright-page", copyright_page, "制作信息"))
+-    lis = []
+-    for etype, href, label in landmarks:
+-        lis.append(
+-            f'      <li><a epub:type="{etype}" href="{escape(href)}">{escape(label)}</a></li>'
+-        )
+-    lis_html = "\n".join(lis) if lis else "      <!-- 无可落地标的条目 -->"
+-    return (
+-        '<?xml version="1.0" encoding="utf-8"?>\n'
+-        f'<html xmlns="{_NS_XHTML}" xmlns:epub="{_NS_EPUB}" '
+-        f'xml:lang="{escape(lang, quote=True)}">\n'
+-        "<head>\n"
+-        '<meta charset="utf-8"/>\n'
+-        "<title>地标</title>\n"
+-        "</head>\n"
+-        "<body>\n"
+-        '<nav epub:type="landmarks" id="landmarks">\n'
+-        "  <ol>\n"
+-        f"{lis_html}\n"
+-        "  </ol>\n"
+-        "</nav>\n"
+-        "</body>\n"
+-        "</html>\n"
+-    )
+-
+-
+-_SVG_ID_RE = re.compile(r"""\bid\s*=\s*(["'])(.*?)\1""")
+-
+-
+-def dedupe_svg_ids(text: str) -> str:
+-    """移除 SVG 内**重复**的 ``id`` 属性（保留首次出现），消除 epubcheck RSC-005。
+-
+-    回归 #21：源 EPUB 页图 SVG（`<path id="glNNNN">` 字形定义）常在同一文件内重复
+-    数千次，导致 qa 报数万项 RSC-005（Duplicate id）并系统性阻塞 G5；重复项通常
+-    逐字节相同，去掉后续 id 属主不影响渲染。纯函数、幂等。
+-    """
+-    seen: set[str] = set()
+-
+-    def repl(m: re.Match[str]) -> str:
+-        val = m.group(2)
+-        if val in seen:
+-            return ""
+-        seen.add(val)
+-        return m.group(0)
+-
+-    return _SVG_ID_RE.sub(repl, text)
+-
+-
+-def collect_media(
+-    md_text: str, media_root: str | Path
+-) -> tuple[str, list[tuple[str, bytes]], list[str]]:
+-    """改写 md 中图片引用为 EPUB 内路径（``media/…``）并收集媒体字节。
+-
+-    ``media_root`` 为源媒体目录（pandoc 抽取的 ``structured/raw/media``）。
+-    引用优先按原相对路径解析（保留子目录，避免同名不同目录错配），
+-    其次按 basename 兜底；根外路径（包括越界软链接）不可读取。普通围栏/行内显示代码
+-    不参与资源收集；显式 pandoc raw HTML 中的 SVG image 则保留标签并改写
+-    href/xlink:href。缺失引用记入 dropped；SVG 保留悬空引用让结构审计继续阻断。
+-    文件名含特殊字符时 URL 百分号编码，但 ZIP 成员保留字面文件名。
+-    Markdown/pandoc 源路径的百分号保持字面语义，HTML/SVG 属性按 URL 解码一次；
+-    改写后的引用不再进入源资源收集。
+-    """
+-    media_root = Path(media_root).resolve()
+-    seen: dict[str, bytes] = {}
+-    dropped: list[str] = []
+-
+-    def _resolve(rel: str) -> tuple[str, bytes] | None:
+-        """读取共享解析器定位的根内媒体；SVG 保持既有去重行为。"""
+-        resolved = resolve_media_path(rel, media_root)
+-        if resolved is None:
+-            return None
+-        try:
+-            data = resolved.read_bytes()
+-        except OSError:
+-            return None
+-        if resolved.suffix.lower() == ".svg":
+-            decoded = data.decode("utf-8", errors="surrogateescape")
+-            data = dedupe_svg_ids(decoded).encode("utf-8", errors="surrogateescape")
+-        return resolved.relative_to(media_root).as_posix(), data
+-
+-    def _collect(src: str) -> str | None:
+-        """收集共享路径解析器确认的根内文件，返回一次编码的包内 URL。"""
+-        rel = src.strip().lstrip("/")
+-        resolved = _resolve(rel)
+-        if resolved is None:
+-            dropped.append(rel)
+-            return None
+-        inner, data = resolved
+-        epub_path = f"media/{inner}"
+-        seen.setdefault(epub_path, data)
+-        return f"media/{quote(inner)}"
+-
+-    def _sub(m: re.Match[str]) -> str:
+-        """每个源引用只收集一次，避免将新 URL 当作字面源路径重读。"""
+-        kind = m.lastgroup
+-        assert kind is not None
+-        if kind == "svg":
+-
+-            def rewrite_href(attr: re.Match[str]) -> str:
+-                source = attr.group(2)
+-                rel = epub_member_path("", source)
+-                if rel is None or not rel:
+-                    dropped.append(source)
+-                    return attr.group(0)
+-                href = _collect(rel)
+-                if href is None:
+-                    return attr.group(0)
+-                url = urlsplit(unescape(source))
+-                if url.query:
+-                    href += f"?{url.query}"
+-                if url.fragment:
+-                    href += f"#{url.fragment}"
+-                prefix = attr.group(0)[: attr.start(2) - attr.start()]
+-                return prefix + escape(href, quote=True) + attr.group(1)
+-
+-            return _SVG_HREF.sub(rewrite_href, m.group(0))
+-        pattern = {
+-            "figure": _HTML_FIG_IMG,
+-            "html": _HTML_IMG,
+-            "placeholder": _PANDOC_PLACEHOLDER,
+-            "markdown": _IMG_REF,
+-        }[kind]
+-        source = pattern.fullmatch(m.group(0))
+-        assert source is not None
+-        if kind in {"figure", "html"}:
+-            # HTML 的 src 是 URL；Markdown 和 pandoc 源路径的百分号则是字面文件名。
+-            url = urlsplit(unescape(source.group(1)))
+-            if url.scheme or url.netloc:
+-                dropped.append(source.group(1))
+-                return ""
+-            href = _collect(unquote(url.path))
+-            return f"![]({href})" if href else ""
+-        href = _collect(source.group(2))
+-        return f"![{source.group(1)}]({href})" if href else ""
+-
+-    def _rewrite_text(chunk: str) -> str:
+-        """文本块里的媒体引用逐处改写；行内代码里的 ``![…](…)`` 保持字面。
+-
+-        不能先把文本按代码跨度切开再匹配：图片 alt 里的行内代码（``![图 `a`](x.png)``）
+-        会把 ``![`` 与 ``](x.png)`` 分到两个片段，匹配不到等于静默漏收媒体（dropped 也为空）。
+-        """
+-        code_spans = [
+-            (match.start(), match.end())
+-            for match in CODE_SPAN_RE.finditer(chunk)
+-            if not re.match(r"\s*\{\s*=\s*html\s*\}", chunk[match.end() :])
+-        ]
+-        pieces: list[str] = []
+-        cursor = 0
+-        for match in _MEDIA_REF.finditer(chunk):
+-            if any(start <= match.start() < end for start, end in code_spans):
+-                continue
+-            pieces.append(chunk[cursor : match.start()])
+-            pieces.append(_sub(match))
+-            cursor = match.end()
+-        pieces.append(chunk[cursor:])
+-        return "".join(pieces)
+-
+-    rewritten = "".join(
+-        chunk
+-        if kind == "code"
+-        else (_MEDIA_REF.sub(_sub, chunk) if kind == "raw" else _rewrite_text(chunk))
+-        for kind, chunk in markdown_chunks(md_text)
+-    )
+-    return rewritten, list(seen.items()), dropped
+-
+-
+-def build_epub(
+-    pub: Publication,
+-    entries: list[dict[str, Any]],
+-    content_files: list[tuple[str, str]],
+-    *,
+-    lang: str,
+-    modified: str,
+-    out_path: str | Path,
+-    media_files: list[tuple[str, bytes]] | None = None,
+-    theme: str = "standard",
+-    cover_media: str | None = None,
+-    nav_depth: int = 3,
+-    render_mode: str | None = None,
+-    book_css: str = "",
+-) -> Path:
+-    """把内容文档 + 媒体资源封装为确定性标准 EPUB 3，返回输出路径。
+-
+-    ``entries``：构建期单元清单（id/kind/region/title/level）。
+-    ``content_files``：``(文件名.xhtml, XHTML 字符串)``，按 spine 顺序。
+-    ``media_files``：可选 ``(EPUB 内相对 OEBPS/ 路径, 字节)``，如 ``("media/p001.jpg", …)``。
+-    ``theme``：主题层名称（standard/compact/spacious，epub-template-spec §5）。
+-    ``cover_media``：封面媒体 EPUB 内路径（如 "media/cover.png"）→ manifest
+-    ``properties="cover-image"`` + ``<meta name="cover">``；cover 单元内容文档
+-    spine 标 ``linear="no"``（不进正文阅读顺序）。
+-    ``nav_depth``：目录最大嵌套深度（epub-template-spec §3 投影），超深单元
+-    保留在 spine 但不出现在 nav/NCX。
+-    ``render_mode``：已知的实际输入模式；直接封装未知来源 XHTML 时不作推断。
+-    """
+-    if render_mode not in (None, "source", "translation"):
+-        raise ValueError(f"未知构建模式：{render_mode}")
+-    out_path = Path(out_path)
+-    out_path.parent.mkdir(parents=True, exist_ok=True)
+-    ts = _parse_modified(modified)
+-    if book_css:
+-        from .bookcss import validate_book_css
+-
+-        validate_book_css(book_css)
+-    css = _STYLE_CSS + theme_css(theme) + book_css
+-    # 制作信息属于软件附页，不是源书单元；不覆盖作者、译者或作品版权。
+-    fingerprint = build_fingerprint(pub)
+-    names = {fn for fn, _ in content_files}
+-    copyright_page = next(
+-        (
+-            f"{slug_file(e['id'])}.xhtml"
+-            for e in entries
+-            if e.get("kind") == "copyright" and f"{slug_file(e['id'])}.xhtml" in names
+-        ),
+-        None,
+-    )
+-    generated_page: str | None = None
+-    if copyright_page is None:
+-        generated_page = "auto-epublizer-build-info.xhtml"
+-        suffix = 1
+-        while generated_page in names:
+-            generated_page = f"auto-epublizer-build-info-{suffix}.xhtml"
+-            suffix += 1
+-        fingerprint["generated_page"] = generated_page
+-    content_files = [
+-        (fn, stamp_document(text, fingerprint, lang, visible=fn == copyright_page))
+-        for fn, text in content_files
+-    ]
+-    if generated_page:
+-        # 原 spine 相对顺序不变；制作页在源文之前，但不成为正文/导航的父节点。
+-        cover_names = {f"{slug_file(e['id'])}.xhtml" for e in entries if e.get("kind") == "cover"}
+-        position = next(
+-            (i for i, (fn, _) in enumerate(content_files) if fn not in cover_names),
+-            len(content_files),
+-        )
+-        content_files.insert(position, (generated_page, software_page(fingerprint, lang)))
+-        copyright_page = generated_page
+-
+-    content_entries = _content_entries(entries, content_files)
+-    spine_ids = [fn for fn, _ in content_files]
+-    # cover 单元内容文档 → linear="no"
+-    cover_docs = {
+-        f"{slug_file(e['id'])}.xhtml"
+-        for e in entries
+-        if e.get("kind") == "cover"
+-        and f"{slug_file(e['id'])}.xhtml" in {fn for fn, _ in content_files}
+-    }
+-    if generated_page:
+-        cover_docs.add(generated_page)  # 软件附页同样为非线性内容，可从 copyright-page 地标进入。
+-
+-    items: list[tuple[str, str, str, str | None]] = [
+-        ("nav", "nav.xhtml", "application/xhtml+xml", "nav"),
+-        ("ncx", "toc.ncx", "application/x-dtbncx+xml", None),
+-        ("landmarks", "landmarks.xhtml", "application/xhtml+xml", None),
+-        ("style", "style.css", "text/css", None),
+-    ]
+-    for fn, document in content_files:
+-        root = ET.fromstring(document)
+-        props = (
+-            "svg" if next(root.iter("{http://www.w3.org/2000/svg}svg"), None) is not None else None
+-        )
+-        items.append((fn, fn, "application/xhtml+xml", props))
+-    cover_item_id: str | None = None
+-    if media_files:
+-        for index, (epub_path, _data) in enumerate(media_files):
+-            ext = Path(epub_path).suffix.lower()
+-            media_type = _MEDIA_TYPES.get(ext, "application/octet-stream")
+-            # href 与 XHTML 内引用一致（URL 编码特殊字符）
+-            href = quote(epub_path)
+-            item_id = f"media-{index}"  # 与文件名字符解耦；稳定顺序保证 ID 合法且唯一。
+-            props = "cover-image" if cover_media and epub_path == cover_media else None
+-            if props:
+-                cover_item_id = item_id
+-            items.append((item_id, href, media_type, props))
+-
+-    opf = _render_opf(
+-        pub,
+-        lang,
+-        modified,
+-        items,
+-        spine_ids,
+-        cover_item_id=cover_item_id,
+-        cover_docs=cover_docs,
+-        fingerprint=fingerprint,
+-        render_mode=render_mode,
+-    )
+-    nav = _render_nav(
+-        pub,
+-        content_entries,
+-        lang,
+-        nav_depth=nav_depth,
+-        production=production_toc_entry(lang, generated_page),
+-    )
+-    ncx = _render_ncx(
+-        pub,
+-        content_entries,
+-        nav_depth=nav_depth,
+-        production=production_toc_entry(lang, generated_page),
+-    )
+-    landmarks = _render_landmarks(content_entries, lang, copyright_page=copyright_page)
+-    container = (
+-        '<?xml version="1.0" encoding="utf-8"?>\n'
+-        '<container version="1.0" '
+-        'xmlns="urn:oasis:names:tc:opendocument:xmlns:container">\n'
+-        "  <rootfiles>\n"
+-        '    <rootfile full-path="OEBPS/content.opf" '
+-        'media-type="application/oebps-package+xml"/>\n'
+-        "  </rootfiles>\n"
+-        "</container>\n"
+-    )
+-
+-    stored = zipfile.ZIP_STORED
+-    deflated = zipfile.ZIP_DEFLATED
+-    with zipfile.ZipFile(out_path, "w") as zf:
+-        zf.writestr(_zi("mimetype", ts, stored), "application/epub+zip")
+-        zf.writestr(_zi("META-INF/container.xml", ts, deflated), container.encode("utf-8"))
+-        zf.writestr(_zi("OEBPS/content.opf", ts, deflated), opf.encode("utf-8"))
+-        zf.writestr(_zi("OEBPS/nav.xhtml", ts, deflated), nav.encode("utf-8"))
+-        zf.writestr(_zi("OEBPS/toc.ncx", ts, deflated), ncx.encode("utf-8"))
+-        zf.writestr(_zi("OEBPS/landmarks.xhtml", ts, deflated), landmarks.encode("utf-8"))
+-        zf.writestr(_zi("OEBPS/style.css", ts, deflated), css.encode("utf-8"))
+-        for fn, xhtml in content_files:
+-            zf.writestr(_zi(f"OEBPS/{fn}", ts, deflated), xhtml.encode("utf-8"))
+-        if media_files:
+-            for epub_path, data in media_files:
+-                zf.writestr(_zi(f"OEBPS/{epub_path}", ts, deflated), data)
+-    return out_path
+diff --git a/src/auto_epublizer/cover_hanze.py b/src/auto_epublizer/cover_hanze.py
+deleted file mode 100644
+index 75df0f9..0000000
+--- a/src/auto_epublizer/cover_hanze.py
++++ /dev/null
+@@ -1,525 +0,0 @@
+-# SPDX-License-Identifier: AGPL-3.0-only
+-# Copyright (C) 2026 Misaka0x26FE
+-"""「汉译学术本」封面版式（issue #100）：纸纹 + 双线框 + 四段式文字 + 意象区。
+-
+-来源：issue #100 的三本书实测规格（1600×2400 画布），本模块把像素坐标换算成
+-页宽 W / 页高 H 的比例，因此换开本不会散架。
+-
+-与 quarto 不同的地方：
+-
+-1. **有底纹**：纸色 + 细噪声 + 低频斑块 + 边缘晕影（纯 Python 生成一张小图放大，
+-   不引入 numpy/PIL）。
+-2. **有框**：外框（主色 3px）+ 内框（金 1px）+ 四角短线。
+-3. **四段式**：丛书行 / 中文书名 + 副题 / 英文原题 + 副题 / 编者行，全部居中。
+-4. **有意象区**：``motif`` 取 ``globe``（经纬网地球）或 ``arch``（尖拱窗），
+-   也可以留空只出框与字。
+-
+-**可辨认底线**（与 quarto 共用）：600px 宽的成品上最小字号必须 ≥14px，
+-即 ``MIN_TYPE_FRAC``；issue 里 27–34px 的小字在 600px 下只有 10–13px，
+-这里按底线统一提到 2.34% 页宽——版式骨架不动，只把小字提亮到读得清。
+-"""
+-
+-from __future__ import annotations
+-
+-import functools
+-import math
+-import random
+-
+-import pymupdf
+-
+-from .cover import (
+-    INK,
+-    MIN_TYPE_FRAC,
+-    CoverSpec,
+-    Fonts,
+-    _hex,
+-    _is_cjk,
+-    _Measurer,
+-    wrap,
+-)
+-
+-#: 纸色 / 金 / 墨 / 次级墨（issue #100 的三本书取色的公共部分）。
+-PAPER = "#F0E7D4"
+-GOLD = "#A38248"
+-INK_C = "#22201C"
+-MUTED = "#6A6252"  # 丛书行、书系签、出版行
+-FAINT = "#7E6E58"  # 免责行
+-ORIG = "#4A4E3C"  # 英文原题
+-ORIG_SUB = "#5E5242"  # 英文副题
+-VIGNETTE = "#746448"  # 边缘晕影的棕
+-
+-#: 主色预设（三本已交付书 + 通用几档）；``--accent`` 可直接覆盖。
+-ACCENTS: dict[str, str] = {
+-    "ochre": "#7A2222",  # 赭红（全球马克思）
+-    "forest": "#1A3E2C",  # 深绿（马克思主义与中世纪研究）
+-    "moss": "#1B3428",  # 墨绿（俄国关税政策）
+-    "ink": "#22201C",
+-    "navy": "#1F3350",
+-    "plum": "#5B2140",
+-}
+-
+-#: 意象种类。
+-MOTIFS = ("none", "globe", "arch")
+-
+-#: issue #100 的设计画布（版面坐标就用这套像素值，再整体缩放到页面）。
+-DESIGN_W = 1600
+-DESIGN_H = 2400
+-
+-#: 版式比例（issue #100 的 1600×2400 画布 → 页宽/页高比例）。
+-GEOM = {
+-    "outer": (0.03625, 0.02417, 0.97375, 0.97583),
+-    "inner": (0.04500, 0.03000, 0.96500, 0.97000),
+-    "outer_w": 0.00190,  # 3px/1600
+-    "inner_w": 0.00063,  # 1px/1600
+-    "tick": 0.02875,  # 四角短线 46px
+-    "tick_w": 0.00125,  # 2px
+-    "series_y": 0.0625,  # 150/2400
+-    "rule1_y": 0.0875,  # 210
+-    "rule1_half": 0.1875,  # 300/1600
+-    "title_y": 0.125,  # 300
+-    "sub_y": 0.1875,  # 450
+-    "orig_y": 0.2450,
+-    "origsub_y": 0.2720,
+-    "credits_y": 0.3850,
+-    "motif_top": 0.4170,
+-    "motif_bottom": 0.6880,
+-    "rule2_y": 0.7290,  # 1750
+-    "rule2_half": 0.20625,  # 330/1600
+-    "sign_y": 0.7500,  # 1800
+-    "mark_y": 0.7900,  # 1896
+-    "pub_y": 0.8420,  # 2020
+-    "note_y": 0.8670,  # 2080
+-    "rule_dot": 0.0075,  # 中央圆点半径 12px
+-}
+-
+-#: 字号（设计画布 px；渲染时按 scale 缩放，并夹到 MIN_TYPE_FRAC 之上）。
+-#: issue 的 27–34px 小字在 600px 宽下只有 10–13px，按可辨认底线统一提到 14px 等效。
+-TYPE = {
+-    "series": 30,  # issue 27–30
+-    "title_max": 168,
+-    "title_min": 96,
+-    "subtitle": 60,
+-    "original": 55,
+-    "original_sub": 40,
+-    "credits": 42,
+-    "signature": 68,
+-    "mark": 40,
+-    "publisher": 34,
+-    "note": 30,
+-}
+-
+-#: 字距（设计画布 px）。
+-TRACK = {
+-    "series": 5,
+-    "title": 10,
+-    "subtitle": 6,
+-    "original": 3,
+-    "original_sub": 1,
+-    "credits": 2,
+-    "signature": 10,
+-    "mark": 6,
+-    "publisher": 8,
+-    "note": 2,
+-}
+-
+-#: 行高（× 字号）。
+-LEADING = {"original_sub": 1.35, "credits": 1.55}
+-
+-
+-def effective_type(key: str, width: float, height: float) -> float:
+-    """某一段文字在给定页面上的**实际**字号（设计值缩放后不小于可辨认底线）。
+-
+-    版式按 1600×2400 设计画布排；换开本时整体等比缩放，小字再由
+-    ``MIN_TYPE_FRAC`` 抬到「600px 宽下 14px」的等效大小。
+-    """
+-    scale = min(width / DESIGN_W, height / DESIGN_H)
+-    return max(TYPE[key] * scale, MIN_TYPE_FRAC * width)
+-
+-
+-def fit_title(
+-    text: str, inner_w: float, width: float, height: float, measurer: _Measurer
+-) -> tuple[float, list[str]]:
+-    """书名自适应：168→96 设计像素之间收字号，仍超宽才折行（issue #100 的要求）。"""
+-    scale = min(width / DESIGN_W, height / DESIGN_H)
+-    track = TRACK["title"] * scale
+-    size = TYPE["title_max"] * scale
+-    while (
+-        size > TYPE["title_min"] * scale and _tracked_width(measurer, text, size, track) > inner_w
+-    ):
+-        size *= 0.97
+-    size = max(size, max(TYPE["title_min"] * scale, MIN_TYPE_FRAC * width))
+-    return size, (wrap(text, inner_w, size, measurer) or [text])
+-
+-
+-# ---------------------------------------------------------------- 纸底
+-def _smoothstep(t: float) -> float:
+-    t = max(0.0, min(1.0, t))
+-    return t * t * (3 - 2 * t)
+-
+-
+-@functools.lru_cache(maxsize=4)
+-def _paper_pixmap(
+-    paper: str = PAPER, seed: int = 7, width: int = 400, height: int = 600
+-) -> pymupdf.Pixmap:
+-    """纸底：底色 + 细噪声 + 低频斑块 + 边缘晕影（确定性，小图放大当纹理用）。"""
+-    rnd = random.Random(seed)
+-    base = _hex(paper)
+-    vign = _hex(VIGNETTE)
+-
+-    # 低频斑块：16×24 网格双线性插值（对应 issue 的「1/8 尺度污渍」）
+-    gw, gh = 16, 24
+-    grid = [[rnd.gauss(0.0, 0.012) for _ in range(gw)] for _ in range(gh)]
+-
+-    def mottle(u: float, v: float) -> float:
+-        gx, gy = u * (gw - 1), v * (gh - 1)
+-        x0, y0 = int(gx), int(gy)
+-        x1, y1 = min(x0 + 1, gw - 1), min(y0 + 1, gh - 1)
+-        fx, fy = gx - x0, gy - y0
+-        top = grid[y0][x0] * (1 - fx) + grid[y0][x1] * fx
+-        bottom = grid[y1][x0] * (1 - fx) + grid[y1][x1] * fx
+-        return top * (1 - fy) + bottom * fy
+-
+-    buf = bytearray(width * height * 3)
+-    band = 0.16  # 晕影从边缘向内衰减的宽度（占短边比例）
+-    for y in range(height):
+-        v = y / (height - 1)
+-        dy = min(v, 1 - v) / band
+-        for x in range(width):
+-            u = x / (width - 1)
+-            dx = min(u, 1 - u) / band
+-            dark = 1.0 - _smoothstep(min(dx, dy))  # 0=中心, 1=边缘
+-            shade = dark * 0.55
+-            grain = rnd.gauss(0.0, 0.004)
+-            m = mottle(u, v) + grain
+-            i = (y * width + x) * 3
+-            for c in range(3):
+-                val = base[c] * (1 - shade) + vign[c] * shade + m
+-                buf[i + c] = max(0, min(255, int(val * 255 + 0.5)))
+-    return pymupdf.Pixmap(pymupdf.csRGB, width, height, bytes(buf), False)
+-
+-
+-# ---------------------------------------------------------------- 工具
+-def _tracked_width(measurer: _Measurer, text: str, size: float, tracking: float) -> float:
+-    total = (
+-        sum(f.text_length(ch, fontsize=size) for ch, f in _chars(measurer, text)) if text else 0.0
+-    )
+-    return total + tracking * max(len(text) - 1, 0)
+-
+-
+-def _chars(measurer: _Measurer, text: str):
+-    """逐字给出 (字符, 字体)：CJK 用中文字体，其余用拉丁字体。"""
+-    for ch in text:
+-        yield ch, (measurer.cjk if _is_cjk(ch) else measurer.latin)
+-
+-
+-def _emit(
+-    writers: dict[tuple, pymupdf.TextWriter],
+-    page: pymupdf.Rect,
+-    measurer: _Measurer,
+-    text: str,
+-    size: float,
+-    cx: float,
+-    baseline: float,
+-    color: tuple[float, float, float],
+-    tracking: float = 0.0,
+-) -> None:
+-    """居中画一行（逐字控制字距）。"""
+-    width = _tracked_width(measurer, text, size, tracking)
+-    x = cx - width / 2
+-    key = tuple(round(c, 6) for c in color)
+-    tw = writers.get(key)
+-    if tw is None:
+-        tw = writers[key] = pymupdf.TextWriter(page)
+-    for ch, font in _chars(measurer, text):
+-        tw.append((x, baseline), ch, font=font, fontsize=size)
+-        x += font.text_length(ch, fontsize=size) + tracking
+-
+-
+-def _rule(
+-    page: pymupdf.Page,
+-    cx: float,
+-    y: float,
+-    half: float,
+-    color: tuple,
+-    width: float,
+-    dot: float = 0.0,
+-) -> None:
+-    page.draw_line(
+-        pymupdf.Point(cx - half, y), pymupdf.Point(cx + half, y), color=color, width=width
+-    )
+-    if dot:
+-        page.draw_circle(pymupdf.Point(cx, y), dot, color=None, fill=color, width=0)
+-
+-
+-# ---------------------------------------------------------------- 意象
+-def _motif_globe(page: pymupdf.Page, cx: float, cy: float, r: float, accent: tuple) -> None:
+-    """经纬网地球 + 环绕航线 + 节点（issue 里《全球马克思》的意象）。"""
+-    faint = (accent[0], accent[1], accent[2])
+-    page.draw_circle(pymupdf.Point(cx, cy), r, color=faint, width=1.1)
+-    # 经线：15/30/45/60/75 度 → 半宽 r·cos
+-    for deg in (75, 60, 45, 30, 15):
+-        rx = r * math.cos(math.radians(deg))
+-        page.draw_oval(pymupdf.Rect(cx - rx, cy - r, cx + rx, cy + r), color=faint, width=0.5)
+-    page.draw_oval(pymupdf.Rect(cx - r, cy - r, cx + r, cy + r), color=faint, width=1.1)
+-    # 纬线：±15…±75 度，弦长 2r·cos
+-    for deg in (15, 30, 45, 60, 75):
+-        half = r * math.cos(math.radians(deg))
+-        yy = cy - r * math.sin(math.radians(deg))
+-        page.draw_line(
+-            pymupdf.Point(cx - half, yy), pymupdf.Point(cx + half, yy), color=faint, width=0.5
+-        )
+-        page.draw_line(
+-            pymupdf.Point(cx - half, 2 * cy - yy),
+-            pymupdf.Point(cx + half, 2 * cy - yy),
+-            color=faint,
+-            width=0.5,
+-        )
+-    page.draw_line(pymupdf.Point(cx - r, cy), pymupdf.Point(cx + r, cy), color=faint, width=1.6)
+-    # 航线：两条外扩椭圆弧（用折线近似，避免旋转 API）
+-    for ax, ay, a0, a1 in ((1.22, 1.08, 200, 340), (1.10, 1.20, 20, 150)):
+-        pts = []
+-        steps = 40
+-        for i in range(steps + 1):
+-            ang = math.radians(a0 + (a1 - a0) * i / steps)
+-            pts.append(pymupdf.Point(cx + r * ax * math.cos(ang), cy + r * ay * math.sin(ang)))
+-        page.draw_polyline(pts, color=faint, width=0.6)
+-    # 六个节点
+-    for deg in (25, 90, 155, 210, 290, 335):
+-        ang = math.radians(deg)
+-        page.draw_circle(
+-            pymupdf.Point(cx + r * 1.16 * math.cos(ang), cy + r * 1.16 * math.sin(ang)),
+-            r * 0.018,
+-            color=None,
+-            fill=faint,
+-            width=0,
+-        )
+-
+-
+-def _motif_arch(
+-    page: pymupdf.Page,
+-    cx: float,
+-    top: float,
+-    bottom: float,
+-    width: float,
+-    accent: tuple,
+-    faint: tuple,
+-) -> None:
+-    """等边尖拱窗 + 三分窗棂 + 拱顶三叶饰 + 抄本横格（issue 里《中世纪研究》的意象）。
+-
+-    ``top``/``bottom`` 是意象区上下沿（已缩放到页面坐标）。拱为**等边尖拱**：
+-    两段半径 = 拱宽的圆弧在拱顶相交，夹角 60°，因此拱顶是真正的尖角而不是圆头。
+-    横格按 46 设计像素间距叠加，只铺在拱内——读起来像一页摊开的手抄本。
+-    """
+-    w = min(width, (bottom - top) / 1.22)
+-    head = w * math.sqrt(3) / 2  # 0.866w：等边尖拱的拱高
+-    jamb = w * 0.26  # 拱肩以下的下墙
+-    spring = top + (bottom - top - head - jamb) / 2 + head
+-    base = spring + jamb
+-    half = w / 2
+-    left, right = cx - half, cx + half
+-    apex = spring - head
+-
+-    def arc(center_x: float, start_deg: float, end_deg: float) -> None:
+-        pts = []
+-        steps = 48
+-        for i in range(steps + 1):
+-            ang = math.radians(start_deg + (end_deg - start_deg) * i / steps)
+-            pts.append(pymupdf.Point(center_x + w * math.cos(ang), spring + w * math.sin(ang)))
+-        page.draw_polyline(pts, color=accent, width=1.3)
+-
+-    arc(right, 180, 240)  # 右心圆：左起拱点 → 拱顶
+-    arc(left, 300, 360)  # 左心圆：拱顶 → 右起拱点
+-    page.draw_line(
+-        pymupdf.Point(left, spring), pymupdf.Point(right, spring), color=accent, width=1.3
+-    )
+-    page.draw_line(pymupdf.Point(left, spring), pymupdf.Point(left, base), color=accent, width=1.3)
+-    page.draw_line(
+-        pymupdf.Point(right, spring), pymupdf.Point(right, base), color=accent, width=1.3
+-    )
+-    page.draw_line(pymupdf.Point(left, base), pymupdf.Point(right, base), color=accent, width=1.3)
+-
+-    # 抄本横格：拱内按弦长裁切（间距 46 设计像素），拱尖端留白
+-    step = w * 0.092
+-    y = spring - step * 0.55
+-    while y > apex + step * 1.6:
+-        chord = math.sqrt(max(w * w - (spring - y) ** 2, 0.0)) - half
+-        if chord > w * 0.05:
+-            page.draw_line(
+-                pymupdf.Point(cx - chord, y), pymupdf.Point(cx + chord, y), color=faint, width=0.45
+-            )
+-        y -= step
+-    # 下墙：三条横格铺满（不分棂，避免栅栏感）
+-    for i in (1, 2, 3):
+-        y = spring + jamb * i / 4
+-        page.draw_line(pymupdf.Point(left, y), pymupdf.Point(right, y), color=faint, width=0.45)
+-
+-    # 三分窗棂：两根石柱把窗分成三椟
+-    for x in (cx - w / 6, cx + w / 6):
+-        page.draw_line(pymupdf.Point(x, spring), pymupdf.Point(x, base), color=accent, width=0.9)
+-
+-    # 拱顶三叶饰：外圈 + 三瓣，贴着拱尖下方
+-    r_ring = w * 0.072
+-    ring_y = apex + r_ring * 2.2
+-    page.draw_circle(pymupdf.Point(cx, ring_y), r_ring, color=accent, width=0.8)
+-    lobe = r_ring * 0.52
+-    for deg in (90, 210, 330):
+-        ang = math.radians(deg)
+-        page.draw_circle(
+-            pymupdf.Point(
+-                cx + r_ring * 0.30 * math.cos(ang), ring_y - r_ring * 0.30 * math.sin(ang)
+-            ),
+-            lobe,
+-            color=accent,
+-            width=0.7,
+-        )
+-
+-
+-# ---------------------------------------------------------------- 版面
+-def draw(spec: CoverSpec, fonts: Fonts) -> pymupdf.Document:
+-    """渲染「汉译学术本」封面。
+-
+-    版面按 issue #100 的 **1600×2400 设计画布**排（坐标就是规格里的像素值），
+-    再整体等比缩放居中到页面上：换开本时版式不变形，只是纸边留白略多。
+-    """
+-    W, H = spec.width, spec.height
+-    scale = min(W / DESIGN_W, H / DESIGN_H)
+-    ox = (W - DESIGN_W * scale) / 2
+-    oy = (H - DESIGN_H * scale) / 2
+-
+-    def X(px: float) -> float:
+-        return ox + px * scale
+-
+-    def Y(px: float) -> float:
+-        return oy + px * scale
+-
+-    def S(px: float) -> float:
+-        return px * scale
+-
+-    m = _Measurer(fonts)
+-    colors = spec.colors
+-    paper, gold, accent = colors["paper"], colors["gold"], colors["accent"]
+-    ink, muted, faint = colors["ink"], colors["muted"], colors["faint"]
+-    orig_c, origsub_c = colors["orig"], colors["orig_sub"]
+-
+-    doc = pymupdf.open()
+-    page = doc.new_page(width=W, height=H)
+-    page.insert_image(page.rect, pixmap=_paper_pixmap(paper))
+-
+-    # 双线框 + 四角短线
+-    ox0, oy0, ox1, oy1 = (X(58), Y(58), X(1558), Y(2342))
+-    ix0, iy0, ix1, iy1 = (X(72), Y(72), X(1544), Y(2328))
+-    page.draw_rect(pymupdf.Rect(ox0, oy0, ox1, oy1), color=_hex(accent), width=max(S(3), 0.8))
+-    page.draw_rect(pymupdf.Rect(ix0, iy0, ix1, iy1), color=_hex(gold), width=max(S(1), 0.35))
+-    tick = S(46)
+-    gold_rgb = _hex(gold)
+-    for px, py, dx, dy in (
+-        (ix0, iy0, 1, 1),
+-        (ix1, iy0, -1, 1),
+-        (ix0, iy1, 1, -1),
+-        (ix1, iy1, -1, -1),
+-    ):
+-        page.draw_line(
+-            pymupdf.Point(px, py),
+-            pymupdf.Point(px + dx * tick, py),
+-            color=gold_rgb,
+-            width=max(S(2), 0.5),
+-        )
+-        page.draw_line(
+-            pymupdf.Point(px, py),
+-            pymupdf.Point(px, py + dy * tick),
+-            color=gold_rgb,
+-            width=max(S(2), 0.5),
+-        )
+-
+-    cx = W / 2
+-    writers: dict[tuple, pymupdf.TextWriter] = {}
+-
+-    def baseline_at(px: float) -> float:
+-        return Y(px)
+-
+-    def emit(text: str, size: float, y_px: float, color: str, key: str) -> None:
+-        size = max(size, MIN_TYPE_FRAC * W)
+-        _emit(writers, page.rect, m, text, size, cx, baseline_at(y_px), _hex(color), S(TRACK[key]))
+-
+-    # 丛书行（英文小字）
+-    if spec.series:
+-        emit(spec.series[0], effective_type("series", W, H), 150, muted, "series")
+-
+-    # 分隔线（金 + 中央圆点）
+-    _rule(page, cx, Y(205), S(300), gold_rgb, max(S(1.4), 0.6), dot=S(4))
+-
+-    # 中文书名：168→96px 自适应，按「墨迹顶 = 250」摆；超宽折行时后续各段跟着下移
+-    title_text = "".join(spec.title)
+-    inner_w = S(1544 - 72 - 80)
+-    title_size, title_lines = fit_title(title_text, inner_w, W, H, m)
+-    title_top = Y(250)
+-    baseline = title_top + INK["cjk"][0] * title_size
+-    for i, text in enumerate(title_lines):
+-        if i:
+-            baseline += 1.18 * title_size
+-        _emit(
+-            writers, page.rect, m, text, title_size, cx, baseline, _hex(accent), S(TRACK["title"])
+-        )
+-    prev_bottom = baseline + INK["cjk"][1] * title_size
+-
+-    def place(design_y: float, size: float, top_ratio: float, bottom_ratio: float, gap: float):
+-        """按设计位置摆一行；若上一块压下来，则顺延（保证不叠字）。"""
+-        nonlocal prev_bottom
+-        y = max(Y(design_y), prev_bottom + gap)
+-        base = y + top_ratio * size
+-        prev_bottom = base + bottom_ratio * size
+-        return base
+-
+-    # 副题
+-    for text in spec.subtitle:
+-        size = effective_type("subtitle", W, H)
+-        base = place(500, size, INK["cjk"][0], INK["cjk"][1], 0.10 * size)
+-        _emit(writers, page.rect, m, text, size, cx, base, _hex(ink), S(TRACK["subtitle"]))
+-
+-    # 英文原题
+-    for text in spec.original_title[:1]:
+-        size = effective_type("original", W, H)
+-        base = place(620, size, INK["latin"][0], INK["latin"][1], 0.06 * size)
+-        _emit(writers, page.rect, m, text, size, cx, base, _hex(orig_c), S(TRACK["original"]))
+-
+-    # 英文副题（最多两行）
+-    for i, text in enumerate(spec.original_subtitle[:2]):
+-        size = effective_type("original_sub", W, H)
+-        base = place(680 + i * 54, size, INK["latin"][0], INK["latin"][1], 0.05 * size)
+-        _emit(
+-            writers, page.rect, m, text, size, cx, base, _hex(origsub_c), S(TRACK["original_sub"])
+-        )
+-
+-    # 编者 / 责任者行
+-    for i, text in enumerate(spec.credits):
+-        size = effective_type("credits", W, H)
+-        base = place(930 + i * 66, size, INK["cjk"][0], INK["cjk"][1], 0.06 * size)
+-        _emit(writers, page.rect, m, text, size, cx, base, _hex(ink), S(TRACK["credits"]))
+-
+-    # 意象区
+-    if spec.motif in ("globe", "arch"):
+-        accent_rgb = _hex(accent)
+-        if spec.motif == "globe":
+-            _motif_globe(page, cx, Y((1000 + 1650) / 2), S(236), accent_rgb)
+-        else:
+-            _motif_arch(page, cx, Y(1000), Y(1650), S(520), accent_rgb, _hex(faint))
+-
+-    # 底线
+-    _rule(page, cx, Y(1720), S(330), gold_rgb, max(S(1.4), 0.6))
+-
+-    # 署名：配置里的署名 + 角色（默认「译」）
+-    if spec.imprint:
+-        role = spec.credit_role
+-        text = f"{spec.imprint}　{role}" if role else spec.imprint
+-        emit(text, effective_type("signature", W, H), 1800, ink, "signature")
+-
+-    if spec.series_mark:
+-        emit(spec.series_mark, effective_type("mark", W, H), 1896, muted, "mark")
+-    if spec.publisher_line:
+-        emit(spec.publisher_line, effective_type("publisher", W, H), 2020, muted, "publisher")
+-    if spec.note_line:
+-        emit(spec.note_line, effective_type("note", W, H), 2080, faint, "note")
+-
+-    for color, tw in writers.items():
+-        tw.write_text(page, color=color)
+-    return doc

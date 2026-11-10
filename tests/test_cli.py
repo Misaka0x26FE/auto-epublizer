@@ -462,3 +462,28 @@ def test_meta_generation_tools_json_round_trip_and_errors(tmp_path: Path) -> Non
     # 坏输入不得覆盖已写回的值（不是静默 no-op）
     data = json.loads(pub_path.read_text(encoding="utf-8"))
     assert data["meta"]["generation_tools"] == []
+
+
+def test_preprocess_force_dry_run_is_read_only(tmp_path: Path) -> None:
+    """B2：重建预演只报告差异，不删不改 structured/，也不重置状态。"""
+    src = tmp_path / "book.md"
+    src.write_text("# 第一章\n\n正文。\n\n# 第二章\n\n更多。\n", encoding="utf-8")
+    ws = tmp_path / "ws"
+    _invoke("init", str(src), "--workspace", str(ws))
+    root = ws / "book" / "structured"
+    before = {p: p.read_bytes() for p in root.rglob("*") if p.is_file()}
+    result = _invoke("preprocess", "--force", "--dry-run", "--workspace", str(ws))
+    assert "预演" in result.output
+    assert "未写盘" in result.output
+    after = {p: p.read_bytes() for p in root.rglob("*") if p.is_file()}
+    assert before == after
+
+
+def test_preprocess_dry_run_requires_force(tmp_path: Path) -> None:
+    src = tmp_path / "book.md"
+    src.write_text("# 第一章\n\n正文。\n", encoding="utf-8")
+    ws = tmp_path / "ws"
+    _invoke("init", str(src), "--workspace", str(ws))
+    result = runner.invoke(app, ["preprocess", "--dry-run", "--workspace", str(ws)])
+    assert result.exit_code != 0
+    assert "--force" in result.output

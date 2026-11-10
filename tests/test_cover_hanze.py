@@ -374,3 +374,16 @@ def test_hanze_pdf_shows_title_and_translator_credits(tmp_path: Path) -> None:
     assert "马克思主义与中世纪研究" in text
     assert "马加丹汉化组" in text and "译" in text
     assert "BRILL" in text and "2024" in text
+
+
+def test_hanze_dossier_is_a_distinct_drawing() -> None:
+    """E4：档案卷宗意象可渲染，且与拱窗不是同一张图。"""
+    fonts = _fonts_or_skip()
+    dossier = cv.render_image(_hanze(motif="dossier"), fonts, dpi=72, fmt="png")
+    arch = cv.render_image(_hanze(motif="arch"), fonts, dpi=72, fmt="png")
+    assert dossier != arch
+    art = _open_image(dossier)
+    blank = _open_image(cv.render_image(_hanze(motif="none"), fonts, dpi=72, fmt="png"))
+    assert _dark_pixels(art, (0.30, 0.44, 0.70, 0.66)) > _dark_pixels(
+        blank, (0.30, 0.44, 0.70, 0.66)
+    )

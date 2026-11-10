@@ -11,7 +11,7 @@ import re
 from auto_common.workspace import Publication, RunStore
 
 from ..ingest.models import SourceDocument
-from .classify import classify_units, clean_unit
+from .classify import classify_units, clean_unit, clean_unit_with_report
 from .links import rewrite_internal_links
 
 _HEADING_RE = re.compile(r"^(#{1,6})\s+(.*)$")
@@ -92,7 +92,9 @@ def rebuild_structure(doc: SourceDocument, pub: Publication) -> list[dict]:
     rewrite_internal_links(doc, classified)
     entries: list[dict] = []
     for index, cls in enumerate(classified):
-        cleaned = clean_unit(cls.unit)
+        # 用归类结果决定封面/书名页豁免：聚合单元可能按内容判为书名页，
+        # 而标题本身不含书名页关键词（issue #97 的另一半）。
+        cleaned = clean_unit(cls.unit, kind=cls.kind)
         entries.append(
             {
                 "_index": index,
@@ -108,21 +110,50 @@ def rebuild_structure(doc: SourceDocument, pub: Publication) -> list[dict]:
 
 
 def write_structured(store: RunStore, doc: SourceDocument, entries: list[dict]) -> None:
-    """把结构化单元写为 structured/<rel_path> 的 Markdown 文件。"""
+    """把结构化单元写为 structured/<rel_path> 的 Markdown 文件。
+
+    写入的是清洗后的段（页眉/页码不再流入 translation），删除与待核证据落到
+    ``structured/raw/structure-clean.json``，供复核与回归；报告整体原子替换，
+    无删除时也写空清单，避免旧报告冒充本次结果。
+    """
     structured = store.structured_dir
     units = doc.units
+    report_rows: list[dict] = []
     for entry in entries:
         index = entry.get("_index")
         if not isinstance(index, int) or index >= len(units):
             continue
         unit = units[index]
+        cleaned, report = clean_unit_with_report(unit, kind=str(entry.get("kind") or ""))
         target = structured / entry["rel_path"]
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(
-            _render_markdown(unit.title, unit.segments, unit.meta.get("heading_id")),
+            _render_markdown(cleaned.title, cleaned.segments, cleaned.meta.get("heading_id")),
             encoding="utf-8",
         )
+        if report.removed or report.candidates:
+            report_rows.append(
+                {
+                    "unit_id": entry.get("id"),
+                    "rel_path": entry.get("rel_path"),
+                    **report.as_dict(),
+                }
+            )
+    _write_clean_report(store, report_rows)
     _write_ast_report(store, doc)
+
+
+def _write_clean_report(store: RunStore, rows: list[dict]) -> None:
+    """原子写入清洗台账；无记录时写空 units，防止过期证据被当成当前结果。"""
+    target = store.structured_dir / "raw" / "structure-clean.json"
+    payload = {"schema": 1, "units": rows}
+    target.parent.mkdir(parents=True, exist_ok=True)
+    tmp = target.with_name(target.name + ".tmp")
+    tmp.write_text(
+        json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    os.replace(tmp, target)
 
 
 def _write_ast_report(store: RunStore, doc: SourceDocument) -> None:

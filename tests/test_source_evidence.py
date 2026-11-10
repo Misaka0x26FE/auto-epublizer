@@ -324,3 +324,56 @@ def test_partition_cli_json_and_exit_code(tmp_path: Path) -> None:
         app, ["evidence", "partition", "--workspace", str(store.dir), "--json"]
     )
     assert result.exit_code == 0, result.output
+
+
+def test_evidence_notes_writes_ledger_and_flags_missing_ids(tmp_path: Path) -> None:
+    """C1：逐条注文证据落盘、覆盖计数可读，请求不存在 id 时显式失败。"""
+    store, raw = _ws(tmp_path)
+    (raw / "page-001.json").write_text(
+        json.dumps(
+            {
+                "page_idx": 1,
+                "blocks": [{"type": "text", "text": "note", "bbox": [10, 20, 90, 40]}],
+            }
+        )
+    )
+    (store.structured_dir / "notes.json").write_text(
+        json.dumps(
+            {
+                "schema_version": "1",
+                "inventory": "present",
+                "notes": [
+                    {
+                        "note_id": "n-000001",
+                        "source_locations": [{"page": 1, "bbox": [10, 20, 90, 40]}],
+                    },
+                    {"note_id": "n-000002", "source_locations": [{"page": 1}]},
+                ],
+                "references": [],
+            }
+        ),
+        encoding="utf-8",
+    )
+    notes_before = (store.structured_dir / "notes.json").read_bytes()
+    data = orch.evidence_notes(store)
+    assert Path(data["path"]).is_file()
+    assert data["coverage"] == {"located": 1, "page_only": 1}
+    assert data["missing_note_ids"] == []
+    assert (store.structured_dir / "notes.json").read_bytes() == notes_before
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "evidence",
+            "notes",
+            "--workspace",
+            str(store.dir),
+            "--note-id",
+            "n-000001",
+            "--note-id",
+            "n-999999",
+        ],
+    )
+    assert result.exit_code == 1
+    assert "n-999999" in result.output
+    assert "located=1" in result.output

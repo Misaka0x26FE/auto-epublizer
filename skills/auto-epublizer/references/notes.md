@@ -1,4 +1,4 @@
-<!-- i18n: source=notes.zh.md sha256=7d8185f3a4ec910fbc258cf9433405a46318be86101ffd505976749988398f91 -->
+<!-- i18n: source=notes.zh.md sha256=aaa44b4b591d6dd2f15405d3a1d77a06eff172aa995c29b0d97eb28a4cfd61d4 -->
 > **English** | [中文](notes.zh.md)
 
 # Note Structuring and Binding (phase N)
@@ -149,11 +149,33 @@ Conventions:
 | Separation-registration | schema/source hash/identity/scope/two-way locations/unresolved/marker reconciliation/candidate disposition | `notes register` |
 | Translation-import | translated marker conservation + complete translated notes + digest binding | `import` |
 | Product | noteref/href/aside/backlink/content reconciliation; zero-to-zero for none | `qa` (`notes_open`) |
+| Notes review (language) | each note candidate carries a disposition bound to source/target digests; `not_run`/stale/unclosed blocks | `qa` (`notes_review_open`) |
 
 **Invalidation**: after the source hash, body markers, `structured/notes.json` or the
 translated notes change, the registration summary goes stale — `notes status` reports
 `stale`, and `import`/`build`/`qa` fail or block explicitly (`E_NOTES_STALE`); re-run
 `notes register` and re-translate the affected notes as needed.
+
+## Notes review (language candidates)
+
+`notes review` scans registered notes and writes `preprocessing/note-review.json`. The
+machine only flags signals — `missing_target`, `identical_to_source`, `no_target_script`
+(Chinese target with no CJK), `low_target_script` (too little CJK) — and never calls them untranslated. Give each candidate a
+`disposition`:
+
+```json
+{"note_id": "n-000123", "signals": ["identical_to_source"],
+ "disposition": "retain_original", "reason": "拉丁书名按体例保留",
+ "evidence": "原页 p.12 注 3"}
+```
+
+- `disposition` is `translated` or `retain_original`; both require a non-empty `reason`;
+  `translated` is rejected while risk signals remain.
+- Dispositions bind `source_sha256` + `target_sha256`: editing either text reopens the
+  candidate (`stale`), so old verdicts cannot bless changed content.
+- Applicable books (registered notes with `inventory=present`) are blocked with
+  `notes_review_open` until every candidate is closed; a missing file is `not_run`, not a
+  pass.
 
 ## Status and troubleshooting
 

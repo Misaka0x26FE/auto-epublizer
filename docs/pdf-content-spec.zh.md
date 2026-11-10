@@ -92,8 +92,9 @@ structured/raw/inserts/
 | 表格（含图/公式） | 图片引用（裁剪图） | `![p012-tbl01](raw/media/p012-tbl01.png)` |
 | 公式 | `$$原始抽取文本$$`（草稿），latex 在 inserts 记录 | `$$E = mc2$$` |
 
-> `![…](raw/media/…)` 与 pandoc 抽取媒体同一目录、同一解析路径，`collect_media`
-> （build）与 `_img_refs`（provenance）自动兼容（前缀剥离 + basename 兜底）。
+> `![…](raw/media/…)` 与 pandoc 抽取媒体同一目录、同一解析路径。`collect_media`
+> （build）保留前缀剥离 + basename 兼容；交付对账 `_img_refs`/注文门只用完整路径身份
+> 或 `preprocessing/media-map.json` 的显式映射，**不再 basename 兜底**。
 
 ## 3. 插图路由（版面判据 + 文体加权）
 

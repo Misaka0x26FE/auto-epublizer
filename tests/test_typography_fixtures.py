@@ -126,7 +126,7 @@ def _current_baseline(tmp_path: Path) -> dict:
         epub[theme] = tb.layout_digest(built["epub"])
     payload = {
         "schema_version": 1,
-        "generated_at": "2026-11-04",
+        "generated_at": "2026-11-10",
         "manifest": "tests/fixtures/typography/manifest.json",
         "note": "版式基线：EPUB 摘要与 git 状态无关；PDF 摘要绑定 Chromium/字体环境，跨环境只比内容完整性。",
         "epub": epub,

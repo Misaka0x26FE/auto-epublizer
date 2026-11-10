@@ -1233,3 +1233,69 @@ def test_titlepage_role_suppresses_header_and_folio(tmp_path: Path) -> None:
         head = [w[4] for w in page.get_text("words") if w[1] < 35]
         folio = [w[4] for w in page.get_text("words") if w[1] > 560]
     assert head == [] and folio == []
+
+
+def test_font_stack_env_override_is_used(monkeypatch) -> None:
+    """E4：AEP_PDF_FONT 可覆盖印刷字体栈；默认仍保留拉丁优先与 CJK 回退。"""
+    css = pdfexport.PrintStyle().css()
+    assert '"Nimbus Roman"' in css and '"Noto Serif CJK SC TTF"' in css
+    monkeypatch.setenv("AEP_PDF_FONT", '"Custom Serif", serif')
+    assert '"Custom Serif", serif' in pdfexport.PrintStyle().css()
+
+
+def test_clear_markers_removes_marker_span_without_touching_neighbours() -> None:
+    """E4：按 span bbox redaction，只删标记 span，保留相邻正文。"""
+    import pymupdf
+
+    doc = pymupdf.open()
+    page = doc.new_page()
+    page.insert_text((72, 72), "SURROUNDING", fontsize=10)
+    page.insert_text((150, 72), "AEPMARK0001", fontsize=1)
+    page.insert_text((72, 100), "MORE WORDS", fontsize=10)
+    pdfexport._clear_markers(doc, 1)
+    text = page.get_text()
+    assert "AEPMARK0001" not in text
+    assert "SURROUNDING" in text and "MORE WORDS" in text
+
+
+def test_cover_headings_are_not_printed_and_optional_colophon_is_added(
+    tmp_path, monkeypatch
+) -> None:
+    """E4：封面只出图（h1/figcaption 不印）；AEP_PDF_COLOPHON 追加制作信息页。"""
+    epub = _mini_epub(tmp_path)
+    cover = (
+        '<?xml version="1.0" encoding="utf-8"?>'
+        '<html xmlns="http://www.w3.org/1999/xhtml"><head><title>封面</title></head>'
+        '<body><section class="cover"><h1>封面标题</h1>'
+        '<figure><img src="media/cover.png" alt="封面"/><figcaption>封面图注</figcaption></figure>'
+        "</section></body></html>"
+    )
+    build_info = (
+        '<?xml version="1.0" encoding="utf-8"?>'
+        '<html xmlns="http://www.w3.org/1999/xhtml"><head><title>制作信息</title></head>'
+        "<body><p>制作信息正文。</p></body></html>"
+    )
+    opf = _OPF.replace(
+        '<item id="ch2" href="ch02.xhtml" media-type="application/xhtml+xml"/>',
+        '<item id="ch2" href="ch02.xhtml" media-type="application/xhtml+xml"/>\n'
+        '    <item id="info" href="auto-epublizer-build-info.xhtml" '
+        'media-type="application/xhtml+xml"/>',
+    ).replace(
+        '<itemref idref="ch2"/>',
+        '<itemref idref="ch2"/>\n    <itemref idref="info"/>',
+    )
+    variant = _variant(
+        epub,
+        {
+            "OEBPS/content.opf": opf,
+            "OEBPS/cover.xhtml": cover,
+            "OEBPS/auto-epublizer-build-info.xhtml": build_info,
+        },
+    )
+    monkeypatch.setenv("AEP_PDF_COLOPHON", "1")
+    result = pdfexport.render(variant, tmp_path / "colophon.pdf")
+    with pymupdf.open(result.out) as doc:
+        first = doc[0].get_text()
+        last = doc[-1].get_text()
+    assert "封面标题" not in first and "封面图注" not in first
+    assert "制作信息与版权" in last and "制作信息正文" in last

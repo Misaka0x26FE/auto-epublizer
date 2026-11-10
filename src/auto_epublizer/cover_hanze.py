@@ -59,7 +59,7 @@ ACCENTS: dict[str, str] = {
 }
 
 #: 意象种类。
-MOTIFS = ("none", "globe", "arch")
+MOTIFS = ("none", "globe", "arch", "dossier")
 
 #: issue #100 的设计画布（版面坐标就用这套像素值，再整体缩放到页面）。
 DESIGN_W = 1600
@@ -295,6 +295,72 @@ def _motif_globe(page: pymupdf.Page, cx: float, cy: float, r: float, accent: tup
         )
 
 
+def _motif_dossier(
+    page: pymupdf.Page,
+    cx: float,
+    top: float,
+    bottom: float,
+    width: float,
+    accent: tuple,
+    faint: tuple,
+) -> None:
+    """档案卷宗：文件夹 + 三页打字稿 + 红铅笔斜划。
+
+    本书的论证建立在 РГАСПИ／ЦГА Москвы／РГВА 的会议速记录、书信与审讯记录上；
+    卷宗与红铅笔批注比人物肖像或地球更贴近「档案里的权力斗争」。
+    """
+    h = bottom - top
+    w = min(width, h * 0.78)
+    left, right = cx - w / 2, cx + w / 2
+    # 后板与卷宗签
+    back_top = top + h * 0.20
+    page.draw_rect(
+        pymupdf.Rect(left - w * 0.035, back_top, right + w * 0.035, bottom - h * 0.04),
+        color=accent,
+        width=1.2,
+    )
+    tab = [
+        pymupdf.Point(left - w * 0.035, back_top),
+        pymupdf.Point(left + w * 0.20, back_top),
+        pymupdf.Point(left + w * 0.27, back_top - h * 0.07),
+        pymupdf.Point(left + w * 0.47, back_top - h * 0.07),
+    ]
+    page.draw_polyline(tab, color=accent, width=1.2)
+    page.draw_line(tab[-1], pymupdf.Point(left + w * 0.47, back_top), color=accent, width=1.2)
+    # 三页纸（错位叠放），每页横格
+    sheet_w, sheet_h = w * 0.64, h * 0.46
+    sx = cx - sheet_w / 2
+    for i, dy in enumerate((h * 0.02, h * 0.055, h * 0.09)):
+        y0 = top + h * 0.24 + dy
+        page.draw_rect(
+            pymupdf.Rect(sx + i * w * 0.018, y0, sx + sheet_w + i * w * 0.018, y0 + sheet_h),
+            color=faint,
+            width=0.8,
+        )
+        lines = 5
+        for n in range(1, lines + 1):
+            ly = y0 + sheet_h * n / (lines + 1)
+            page.draw_line(
+                pymupdf.Point(sx + sheet_w * 0.08 + i * w * 0.018, ly),
+                pymupdf.Point(sx + sheet_w * 0.86 + i * w * 0.018, ly),
+                color=faint,
+                width=0.45,
+            )
+    # 红铅笔斜划：从卷宗左下向右上，压过最上面的纸页
+    page.draw_line(
+        pymupdf.Point(cx - w * 0.30, top + h * 0.60),
+        pymupdf.Point(cx + w * 0.31, top + h * 0.37),
+        color=accent,
+        width=2.4,
+    )
+    page.draw_line(
+        pymupdf.Point(cx - w * 0.275, top + h * 0.585),
+        pymupdf.Point(cx + w * 0.30, top + h * 0.365),
+        color=accent,
+        width=0.8,
+    )
+
+
 def _motif_arch(
     page: pymupdf.Page,
     cx: float,
@@ -497,12 +563,14 @@ def draw(spec: CoverSpec, fonts: Fonts) -> pymupdf.Document:
         _emit(writers, page.rect, m, text, size, cx, base, _hex(ink), S(TRACK["credits"]))
 
     # 意象区
-    if spec.motif in ("globe", "arch"):
+    if spec.motif in ("globe", "arch", "dossier"):
         accent_rgb = _hex(accent)
         if spec.motif == "globe":
             _motif_globe(page, cx, Y((1000 + 1650) / 2), S(236), accent_rgb)
-        else:
+        elif spec.motif == "arch":
             _motif_arch(page, cx, Y(1000), Y(1650), S(520), accent_rgb, _hex(faint))
+        else:
+            _motif_dossier(page, cx, Y(1000), Y(1650), S(520), accent_rgb, _hex(faint))
 
     # 底线
     _rule(page, cx, Y(1720), S(330), gold_rgb, max(S(1.4), 0.6))

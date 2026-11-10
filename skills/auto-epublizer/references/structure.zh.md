@@ -37,12 +37,37 @@ structured/
 
 ## 清洗
 
-- **页码剔除**：独立成段的页码（`12`、`- 8 -`、`第3页`）。
-- **页眉页脚剔除**：按 `source_page` 分组，同一短文本在 ≥50% 页首/页末出现即剔除（`min_pages` 保护）。
+- **页码剔除（需版式证据）**：显式标签（`第3页`、`p12`）、带装饰的页码（`- 8 -`），
+  以及有 `source_page` 定位、跨 ≥5 页递增、且与页序偏移 0–3 的裸数字才删除。证据不足的裸数字（年份、
+  诗歌编号、表格数字）**保留**并在 `structured/raw/structure-clean.json` 记为候选；
+  不得按「长得像页码」静默删除。
+- **页眉页脚剔除**：按 `source_page` 分组，同一短文本在 ≥50% 页首/页末出现即剔除（`min_pages` 保护）；
+  删除项连同页码一起写入 `structure-clean.json`（`removed` / `candidates`）。
+- **清洗与归类一致**：书名页/封面豁免用归类结果（`kind`），不再按标题二次判定；
+  聚合单元按内容判为书名页时同样不剔家具。
+- **落盘即清洗**：`write_structured` 写入的是清洗后的段，页眉/页码不会进入 `structured/`；
+  重建预演用 `preprocess --force --dry-run`（只报告 new/changed/unchanged 与台账，不写盘）。
 - **EPUB 锚点/属性残留**：`read_epub` 在入库时已清除 `[]{#id}` 锚点、`{#id}` 属性、
   `[text]{.class}` 类属性与 `<br>`；若 `structured/` 仍见此类残留在标题里，说明走了
   pandoc 通用回退路径，按 `references/ingest.md`「EPUB 按 spine 切分」排查。
 - **溯源**：每个 `Segment` 带 `meta.source_page`，PDF 每页有 `page-NNN.json` 对应。
+
+## 媒体身份与迁移映射
+
+- 交付对账（QA/注文门）只接受**精确路径**（原相对路径、重复根前缀）或**显式映射**；
+  同名不同目录不再用 basename 静默替代，目录错误的引用直接报缺失。
+- 构建期仍兼容旧路径（basename 兜底），这只是过渡；错配由交付门暴露。
+- 旧绝对路径需要逐条登记 `preprocessing/media-map.json`：
+
+  ```json
+  {"schema": 1, "entries": [
+    {"ref": "/home/agent/book/media/fig1.png", "member": "fig1.png",
+     "reason": "旧工作区绝对路径迁移", "sha256": "可选，64 位小写十六进制"}
+  ]}
+  ```
+
+  `member` 相对 `structured/raw/media/`；必须给 `reason`；`sha256` 可选，用于锁定目标字节。
+  越界成员、重复 ref、目标缺失、摘要不符都会成为审计 finding，不会被静默忽略。
 
 ## 契约
 

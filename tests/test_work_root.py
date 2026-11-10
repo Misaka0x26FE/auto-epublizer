@@ -58,3 +58,25 @@ def test_create_work_root_dry_run_previews_every_file_without_writing(tmp_path: 
     again = create_work_root(changed, dry_run=True, force=True)
     assert again["created"] == sorted(again["created"])
     assert {path: path.read_bytes() for path in changed.rglob("*") if path.is_file()} == before
+
+
+def test_mature_work_root_reports_missing_without_writing(tmp_path: Path) -> None:
+    """D3：成熟工作根不自动补顶层文件，只报告缺项；--force 才补齐。"""
+    target = tmp_path / "work"
+    create_work_root(target)
+    (target / "README.md").unlink()
+    before = {p: p.read_bytes() for p in target.rglob("*") if p.is_file()}
+
+    result = create_work_root(target)
+    assert result["mature"] is True
+    assert "README.md" in result["missing"]
+    assert result["created"] == []
+    assert not (target / "README.md").exists()
+    assert {p: p.read_bytes() for p in target.rglob("*") if p.is_file()} == before
+
+    preview = create_work_root(target, dry_run=True)
+    assert preview["created"] == [] and "README.md" in preview["missing"]
+
+    forced = create_work_root(target, force=True)
+    assert "README.md" in forced["created"]
+    assert (target / "README.md").is_file()

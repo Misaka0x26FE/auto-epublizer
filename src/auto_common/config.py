@@ -86,6 +86,15 @@ class OutputConfig(BaseModel):
     toc_page: bool = False
     # 按书样式（E2）：工作区内受限 CSS 相对路径（缩进/段距/行距等排版微调）。
     css: str = ""
+    # 制作信息详略（issue #72）：full=工具版本/修订历史；brief=项目身份+许可+出版字段
+    software_detail: str = "full"
+
+    @field_validator("software_detail")
+    @classmethod
+    def _software_detail(cls, value: str) -> str:
+        if value not in {"full", "brief"}:
+            raise ValueError("software_detail 只能是 full 或 brief")
+        return value
 
 
 class CoverConfig(BaseModel):

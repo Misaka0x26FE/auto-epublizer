@@ -63,3 +63,11 @@ def test_nav_depth_default_and_bounds() -> None:
         Config(output={"nav_depth": 0})
     with pytest.raises(ValidationError):
         Config(output={"nav_depth": 7})
+
+
+def test_software_detail_enum() -> None:
+    """E3：制作信息详略接入配置，非法值直接报配置错误。"""
+    assert Config().output.software_detail == "full"
+    assert Config(output={"software_detail": "brief"}).output.software_detail == "brief"
+    with pytest.raises(ValidationError):
+        Config(output={"software_detail": "everything"})

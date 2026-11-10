@@ -1,0 +1,513 @@
+diff --git a/src/auto_epublizer/cover_hanze.py b/src/auto_epublizer/cover_hanze.py
+index 75df0f9..39fd1c1 100644
+--- a/src/auto_epublizer/cover_hanze.py
++++ b/src/auto_epublizer/cover_hanze.py
+@@ -59,7 +59,8 @@ ACCENTS: dict[str, str] = {
+ }
+ 
+ #: 意象种类。
+-MOTIFS = ("none", "globe", "arch")
++MOTIFS = ("none", "globe", "arch", "screen", "guard", "medal", "archive",
++          "trident", "pact", "lantern", "partisan", "laurel", "anvil")
+ 
+ #: issue #100 的设计画布（版面坐标就用这套像素值，再整体缩放到页面）。
+ DESIGN_W = 1600
+@@ -374,6 +375,481 @@ def _motif_arch(
+         )
+ 
+ 
++# ---------------------------------------------------------------- 本书意象（批次 11 十本）
++# 每个函数只画“意象区”内的线条，纸张、双线框、四段式文字与署名仍由 draw() 统一负责。
++
++
++def _motif_screen(page, cx, top, bottom, width, accent, faint):
++    """银幕与胶片：政权媒体生产（伊朗）。"""
++    h = bottom - top
++    w = min(width, h * 1.32)
++    left, right = cx - w / 2, cx + w / 2
++    s_top, s_bot = top + h * 0.10, top + h * 0.64
++    page.draw_rect(pymupdf.Rect(left, s_top, right, s_bot), color=accent, width=1.3)
++    # 银幕内的三道微光
++    for i in range(1, 4):
++        y = s_top + (s_bot - s_top) * i / 4
++        page.draw_line(
++            pymupdf.Point(left + w * 0.06, y),
++            pymupdf.Point(right - w * 0.06, y),
++            color=faint,
++            width=0.4,
++        )
++    # 胶片带（两条，带齿孔）
++    for y0, step in ((s_bot + h * 0.08, 1), (s_bot + h * 0.16, -1)):
++        page.draw_line(
++            pymupdf.Point(left, y0), pymupdf.Point(right, y0), color=accent, width=0.9
++        )
++        page.draw_line(
++            pymupdf.Point(left, y0 + h * 0.045),
++            pymupdf.Point(right, y0 + h * 0.045),
++            color=accent,
++            width=0.9,
++        )
++        n = 12
++        for i in range(n):
++            x = left + w * (i + 0.5) / n
++            page.draw_rect(
++                pymupdf.Rect(x - w * 0.012, y0 + h * 0.012, x + w * 0.012, y0 + h * 0.033),
++                color=faint,
++                width=0.4,
++            )
++    # 放映机镜头（胶片带下方的小圆）
++    page.draw_circle(
++        pymupdf.Point(cx - w * 0.30, s_bot + h * 0.28), w * 0.030, color=accent, width=0.8
++    )
++    page.draw_circle(
++        pymupdf.Point(cx - w * 0.30, s_bot + h * 0.28), w * 0.012, color=None, fill=accent, width=0
++    )
++
++
++def _motif_guard(page, cx, top, bottom, width, accent, faint):
++    """盾徽与三道山形纹：革命卫队（伊朗）。"""
++    h = bottom - top
++    w = min(width, h * 0.78)
++    left, right = cx - w / 2, cx + w / 2
++    y0, y1 = top + h * 0.08, bottom - h * 0.06
++    # 盾牌：上直下尖
++    pts = [
++        pymupdf.Point(left, y0 + h * 0.10),
++        pymupdf.Point(cx, y0),
++        pymupdf.Point(right, y0 + h * 0.10),
++        pymupdf.Point(right, y1 - h * 0.30),
++        pymupdf.Point(cx, y1),
++        pymupdf.Point(left, y1 - h * 0.30),
++        pymupdf.Point(left, y0 + h * 0.10),
++    ]
++    page.draw_polyline(pts, color=accent, width=1.4)
++    page.draw_polyline(pts, color=accent, width=0.5, closePath=True)
++    # 三道山形纹
++    for i in range(3):
++        yy = y0 + h * (0.30 + i * 0.16)
++        page.draw_polyline(
++            [
++                pymupdf.Point(left + w * 0.18, yy),
++                pymupdf.Point(cx, yy - h * 0.09),
++                pymupdf.Point(right - w * 0.18, yy),
++            ],
++            color=faint if i else accent,
++            width=1.0 if i == 0 else 0.6,
++        )
++    # 顶部星
++    star_r = w * 0.075
++    cy_star = y0 + h * 0.16
++    page.draw_circle(pymupdf.Point(cx, cy_star), star_r, color=accent, width=0.9)
++    for deg in (90, 210, 330):
++        ang = math.radians(deg)
++        page.draw_line(
++            pymupdf.Point(cx, cy_star),
++            pymupdf.Point(cx + star_r * math.cos(ang), cy_star - star_r * math.sin(ang)),
++            color=accent,
++            width=0.7,
++        )
++
++
++def _motif_medal(page, cx, top, bottom, width, accent, faint):
++    """勋章与绶带：殉道者将军（苏莱曼尼）。"""
++    h = bottom - top
++    w = min(width, h * 0.80)
++    cy = top + h * 0.60
++    r = w * 0.30
++    # 绶带
++    page.draw_polyline(
++        [
++            pymupdf.Point(cx - w * 0.20, top + h * 0.02),
++            pymupdf.Point(cx - w * 0.08, cy - r * 0.55),
++            pymupdf.Point(cx + w * 0.08, cy - r * 0.55),
++            pymupdf.Point(cx + w * 0.20, top + h * 0.02),
++        ],
++        color=accent,
++        width=1.2,
++    )
++    page.draw_line(
++        pymupdf.Point(cx - w * 0.135, top + h * 0.02),
++        pymupdf.Point(cx + w * 0.135, top + h * 0.02),
++        color=accent,
++        width=1.2,
++    )
++    # 圆章
++    page.draw_circle(pymupdf.Point(cx, cy), r, color=accent, width=1.4)
++    page.draw_circle(pymupdf.Point(cx, cy), r * 0.86, color=faint, width=0.6)
++    # 八角星
++    for k in range(8):
++        ang = math.radians(22.5 + k * 45)
++        page.draw_line(
++            pymupdf.Point(cx, cy),
++            pymupdf.Point(cx + r * 0.62 * math.cos(ang), cy - r * 0.62 * math.sin(ang)),
++            color=accent,
++            width=0.8,
++        )
++    page.draw_circle(pymupdf.Point(cx, cy), r * 0.10, color=None, fill=accent, width=0)
++    # 下方月桂托
++    for s in (-1, 1):
++        pts = [
++            pymupdf.Point(cx + s * w * 0.34, cy + r * 1.18),
++            pymupdf.Point(cx + s * w * 0.20, cy + r * 0.95),
++            pymupdf.Point(cx + s * w * 0.04, cy + r * 0.90),
++        ]
++        page.draw_polyline(pts, color=faint, width=0.7)
++
++
++def _motif_archive(page, cx, top, bottom, width, accent, faint):
++    """叠放的照片与连线：记忆研究（乌克兰）。"""
++    h = bottom - top
++    w = min(width, h * 0.90)
++    left, right = cx - w / 2, cx + w / 2
++    # 三张错位相片
++    for i, (dx, dy, tilt) in enumerate(((0.00, 0.00, 0), (0.06, 0.09, 1), (-0.05, 0.18, -1))):
++        x0 = left + w * dx
++        y0 = top + h * 0.06 + h * dy
++        page.draw_rect(
++            pymupdf.Rect(x0, y0, x0 + w * 0.52, y0 + h * 0.38),
++            color=accent if i == 0 else faint,
++            width=1.1 if i == 0 else 0.6,
++        )
++        # 相片内两道横线（人物/风景的抽象）
++        page.draw_line(
++            pymupdf.Point(x0 + w * 0.06, y0 + h * 0.12),
++            pymupdf.Point(x0 + w * 0.46, y0 + h * 0.12),
++            color=faint,
++            width=0.4,
++        )
++        page.draw_line(
++            pymupdf.Point(x0 + w * 0.06, y0 + h * 0.25),
++            pymupdf.Point(x0 + w * 0.38, y0 + h * 0.25),
++            color=faint,
++            width=0.4,
++        )
++    # 红色记忆线：穿过三张照片
++    page.draw_polyline(
++        [
++            pymupdf.Point(left + w * 0.10, bottom - h * 0.22),
++            pymupdf.Point(cx, bottom - h * 0.10),
++            pymupdf.Point(right - w * 0.06, bottom - h * 0.26),
++        ],
++        color=accent,
++        width=1.4,
++    )
++    for x in (left + w * 0.10, cx, right - w * 0.06):
++        page.draw_circle(pymupdf.Point(x, bottom - h * 0.24), w * 0.012, color=None, fill=accent, width=0)
++
++
++def _motif_trident(page, cx, top, bottom, width, accent, faint):
++    """三叉戟与松林：乌克兰民族主义地下组织（卢布林地区）。"""
++    h = bottom - top
++    w = min(width, h * 0.86)
++    left, right = cx - w / 2, cx + w / 2
++    cy = top + h * 0.46
++    # 中央矛头
++    page.draw_polyline(
++        [
++            pymupdf.Point(cx, top + h * 0.02),
++            pymupdf.Point(cx - w * 0.045, top + h * 0.12),
++            pymupdf.Point(cx, top + h * 0.10),
++            pymupdf.Point(cx + w * 0.045, top + h * 0.12),
++            pymupdf.Point(cx, top + h * 0.02),
++        ],
++        color=accent,
++        width=1.2,
++    )
++    page.draw_line(pymupdf.Point(cx, top + h * 0.10), pymupdf.Point(cx, cy), color=accent, width=1.2)
++    # 两侧弯钩
++    for s in (-1, 1):
++        page.draw_polyline(
++            [
++                pymupdf.Point(cx + s * w * 0.20, top + h * 0.08),
++                pymupdf.Point(cx + s * w * 0.26, top + h * 0.20),
++                pymupdf.Point(cx + s * w * 0.20, cy - h * 0.06),
++                pymupdf.Point(cx + s * w * 0.10, cy - h * 0.02),
++                pymupdf.Point(cx + s * w * 0.10, cy),
++            ],
++            color=accent,
++            width=1.1,
++        )
++    # 松树剪影（三棵）
++    for i, xf in enumerate((0.18, 0.50, 0.82)):
++        base = bottom - h * 0.04
++        top_y = bottom - h * (0.30 if i != 1 else 0.36)
++        x = left + w * xf
++        page.draw_polyline(
++            [
++                pymupdf.Point(x - w * 0.06, base),
++                pymupdf.Point(x, top_y),
++                pymupdf.Point(x + w * 0.06, base),
++            ],
++            color=faint,
++            width=0.7,
++        )
++        page.draw_line(pymupdf.Point(x, base), pymupdf.Point(x, base - h * 0.05), color=faint, width=0.7)
++
++
++def _motif_pact(page, cx, top, bottom, width, accent, faint):
++    """文件与两枚火漆印：纳粹与民族主义者的合作（总督府）。"""
++    h = bottom - top
++    w = min(width, h * 0.92)
++    left, right = cx - w / 2, cx + w / 2
++    y0 = top + h * 0.08
++    page.draw_rect(pymupdf.Rect(left + w * 0.14, y0, right - w * 0.14, bottom - h * 0.10), color=accent, width=1.2)
++    # 文本行
++    for i in range(8):
++        yy = y0 + h * (0.08 + i * 0.075)
++        page.draw_line(
++            pymupdf.Point(left + w * 0.20, yy),
++            pymupdf.Point(right - w * (0.20 if i % 3 else 0.34), yy),
++            color=faint,
++            width=0.45,
++        )
++    # 两枚印章与绶带
++    for s in (-1, 1):
++        sx = cx + s * w * 0.20
++        page.draw_circle(pymupdf.Point(sx, bottom - h * 0.16), w * 0.075, color=accent, width=1.2)
++        page.draw_circle(pymupdf.Point(sx, bottom - h * 0.16), w * 0.05, color=faint, width=0.5)
++        page.draw_polyline(
++            [
++                pymupdf.Point(sx - w * 0.02, bottom - h * 0.10),
++                pymupdf.Point(sx, bottom - h * 0.02),
++                pymupdf.Point(sx + w * 0.02, bottom - h * 0.10),
++            ],
++            color=accent,
++            width=1.0,
++        )
++
++
++def _motif_lantern(page, cx, top, bottom, width, accent, faint):
++    """掩体中的提灯：女性与地下生活（乌克兰民族主义地下组织）。"""
++    h = bottom - top
++    w = min(width, h * 0.78)
++    left, right = cx - w / 2, cx + w / 2
++    # 掩体拱
++    page.draw_polyline(
++        [
++            pymupdf.Point(left, bottom - h * 0.05),
++            pymupdf.Point(left + w * 0.10, top + h * 0.16),
++            pymupdf.Point(cx, top + h * 0.04),
++            pymupdf.Point(right - w * 0.10, top + h * 0.16),
++            pymupdf.Point(right, bottom - h * 0.05),
++        ],
++        color=faint,
++        width=0.8,
++    )
++    # 提灯
++    lx, ly = cx, top + h * 0.52
++    page.draw_rect(pymupdf.Rect(lx - w * 0.10, ly - h * 0.10, lx + w * 0.10, ly + h * 0.10), color=accent, width=1.2)
++    page.draw_line(pymupdf.Point(lx - w * 0.07, ly - h * 0.10), pymupdf.Point(lx, ly - h * 0.20), color=accent, width=0.9)
++    page.draw_line(pymupdf.Point(lx + w * 0.07, ly - h * 0.10), pymupdf.Point(lx, ly - h * 0.20), color=accent, width=0.9)
++    # 火苗
++    page.draw_polyline(
++        [
++            pymupdf.Point(lx, ly + h * 0.05),
++            pymupdf.Point(lx - w * 0.025, ly),
++            pymupdf.Point(lx, ly - h * 0.03),
++            pymupdf.Point(lx + w * 0.025, ly),
++            pymupdf.Point(lx, ly + h * 0.05),
++        ],
++        color=accent,
++        width=0.8,
++    )
++    # 两侧蕨叶
++    for s in (-1, 1):
++        base_x = cx + s * w * 0.30
++        page.draw_line(pymupdf.Point(base_x, bottom - h * 0.06), pymupdf.Point(cx + s * w * 0.12, top + h * 0.30), color=faint, width=0.6)
++        for i in range(4):
++            yy = bottom - h * (0.12 + i * 0.09)
++            page.draw_line(
++                pymupdf.Point(cx + s * w * (0.24 - i * 0.025), yy),
++                pymupdf.Point(cx + s * w * (0.16 - i * 0.02), yy - h * 0.04),
++                color=faint,
++                width=0.5,
++            )
++
++
++def _motif_partisan(page, cx, top, bottom, width, accent, faint):
++    """降落伞、松林与星：苏联游击队（乌克兰东线）。"""
++    h = bottom - top
++    w = min(width, h * 0.86)
++    # 伞衣
++    cy = top + h * 0.20
++    r = w * 0.26
++    pts = []
++    for i in range(21):
++        ang = math.radians(180 + 180 * i / 20)
++        pts.append(pymupdf.Point(cx + r * math.cos(ang), cy + r * 0.62 * math.sin(ang)))
++    page.draw_polyline(pts, color=accent, width=1.2)
++    page.draw_line(pymupdf.Point(cx - r, cy), pymupdf.Point(cx + r, cy), color=accent, width=0.8)
++    for i in range(-2, 3):
++        x = cx + r * i / 2.4
++        page.draw_line(
++            pymupdf.Point(x, cy + r * 0.10),
++            pymupdf.Point(cx + r * 0.10 * i, cy + r * 0.98),
++            color=faint,
++            width=0.5,
++        )
++    # 星
++    sx, sy, sr = cx, bottom - h * 0.30, w * 0.055
++    for k in range(5):
++        ang = math.radians(90 + k * 72)
++        page.draw_line(
++            pymupdf.Point(sx, sy),
++            pymupdf.Point(sx + sr * math.cos(ang), sy - sr * math.sin(ang)),
++            color=accent,
++            width=0.8,
++        )
++    # 松林
++    for i, xf in enumerate((0.10, 0.28, 0.46, 0.64, 0.82)):
++        x = cx - w / 2 + w * xf
++        base = bottom - h * 0.03
++        page.draw_polyline(
++            [
++                pymupdf.Point(x - w * 0.05, base),
++                pymupdf.Point(x, base - h * (0.18 if i % 2 else 0.24)),
++                pymupdf.Point(x + w * 0.05, base),
++            ],
++            color=faint,
++            width=0.6,
++        )
++
++
++def _motif_laurel(page, cx, top, bottom, width, accent, faint):
++    """月桂环与摊开的书：社会主义与哲学文选（索雷尔）。"""
++    h = bottom - top
++    w = min(width, h * 0.92)
++    cy = top + h * 0.42
++    rx, ry = w * 0.34, h * 0.30
++    # 左右两支月桂：半椭圆 + 叶
++    for s in (-1, 1):
++        pts = []
++        for i in range(25):
++            ang = math.radians(-80 + 160 * i / 24)
++            pts.append(
++                pymupdf.Point(cx + s * rx * math.cos(ang), cy + ry * math.sin(ang))
++            )
++        page.draw_polyline(pts, color=faint, width=0.8)
++        for i in range(1, 9):
++            ang = math.radians(-70 + 140 * i / 9)
++            px = cx + s * rx * math.cos(ang)
++            py = cy + ry * math.sin(ang)
++            page.draw_oval(
++                pymupdf.Rect(
++                    px - w * 0.028, py - h * 0.014, px + w * 0.028, py + h * 0.014
++                ),
++                color=accent,
++                width=0.5,
++            )
++    # 摊开的书（两页 + 书脊）
++    by = bottom - h * 0.14
++    left_page = [
++        pymupdf.Point(cx - w * 0.30, by + h * 0.015),
++        pymupdf.Point(cx - w * 0.30, by + h * 0.135),
++        pymupdf.Point(cx - w * 0.015, by + h * 0.165),
++        pymupdf.Point(cx - w * 0.015, by + h * 0.045),
++        pymupdf.Point(cx - w * 0.30, by + h * 0.015),
++    ]
++    right_page = [pymupdf.Point(2 * cx - p.x, p.y) for p in left_page]
++    page.draw_polyline(left_page, color=accent, width=1.1)
++    page.draw_polyline(right_page, color=accent, width=1.1)
++    page.draw_line(
++        pymupdf.Point(cx, by + h * 0.045),
++        pymupdf.Point(cx, by + h * 0.165),
++        color=accent,
++        width=0.8,
++    )
++
++
++def _motif_anvil(page, cx, top, bottom, width, accent, faint):
++    """铁砧与锤：革命工团主义（索雷尔）。"""
++    h = bottom - top
++    w = min(width, h * 0.92)
++    base = bottom - h * 0.12
++    # 砧面（上宽下窄，带角）
++    page.draw_polyline(
++        [
++            pymupdf.Point(cx - w * 0.30, base - h * 0.02),
++            pymupdf.Point(cx - w * 0.30, base - h * 0.16),
++            pymupdf.Point(cx - w * 0.10, base - h * 0.22),
++            pymupdf.Point(cx + w * 0.18, base - h * 0.22),
++            pymupdf.Point(cx + w * 0.30, base - h * 0.30),
++            pymupdf.Point(cx + w * 0.30, base - h * 0.16),
++            pymupdf.Point(cx + w * 0.10, base - h * 0.08),
++            pymupdf.Point(cx + w * 0.10, base),
++        ],
++        color=accent,
++        width=1.3,
++    )
++    page.draw_line(
++        pymupdf.Point(cx - w * 0.10, base - h * 0.08),
++        pymupdf.Point(cx - w * 0.10, base),
++        color=accent,
++        width=1.3,
++    )
++    page.draw_line(
++        pymupdf.Point(cx - w * 0.10, base),
++        pymupdf.Point(cx + w * 0.10, base),
++        color=accent,
++        width=1.3,
++    )
++    page.draw_line(
++        pymupdf.Point(cx - w * 0.30, base - h * 0.02),
++        pymupdf.Point(cx - w * 0.10, base - h * 0.02),
++        color=faint,
++        width=0.5,
++    )
++    # 锤：柄从左下斜向右上，锤头落在砧面上方
++    hx0, hy0 = cx - w * 0.16, base - h * 0.24
++    hx1, hy1 = cx + w * 0.26, base - h * 0.46
++    page.draw_line(pymupdf.Point(hx0, hy0), pymupdf.Point(hx1, hy1), color=accent, width=2.2)
++    # 锤头（垂直于柄的短粗矩形）
++    dx, dy = hx1 - hx0, hy1 - hy0
++    n = math.hypot(dx, dy) or 1
++    ux, uy = dx / n, dy / n
++    px, py = -uy, ux
++    half_l, half_w = w * 0.055, w * 0.030
++    corners = []
++    for a, b in ((-1, -1), (1, -1), (1, 1), (-1, 1)):
++        corners.append(
++            pymupdf.Point(
++                hx1 + ux * half_l * a + px * half_w * b,
++                hy1 + uy * half_l * a + py * half_w * b,
++            )
++        )
++    page.draw_polyline(corners + [corners[0]], color=accent, width=1.1)
++
++
++BOOK_MOTIFS = {
++    "screen": _motif_screen,
++    "guard": _motif_guard,
++    "medal": _motif_medal,
++    "archive": _motif_archive,
++    "trident": _motif_trident,
++    "pact": _motif_pact,
++    "lantern": _motif_lantern,
++    "partisan": _motif_partisan,
++    "laurel": _motif_laurel,
++    "anvil": _motif_anvil,
++}
++
++
++# ---------------------------------------------------------------- 版面
++
+ # ---------------------------------------------------------------- 版面
+ def draw(spec: CoverSpec, fonts: Fonts) -> pymupdf.Document:
+     """渲染「汉译学术本」封面。
+@@ -497,12 +973,14 @@ def draw(spec: CoverSpec, fonts: Fonts) -> pymupdf.Document:
+         _emit(writers, page.rect, m, text, size, cx, base, _hex(ink), S(TRACK["credits"]))
+ 
+     # 意象区
+-    if spec.motif in ("globe", "arch"):
++    if spec.motif in ("globe", "arch") or spec.motif in BOOK_MOTIFS:
+         accent_rgb = _hex(accent)
+         if spec.motif == "globe":
+             _motif_globe(page, cx, Y((1000 + 1650) / 2), S(236), accent_rgb)
+-        else:
++        elif spec.motif == "arch":
+             _motif_arch(page, cx, Y(1000), Y(1650), S(520), accent_rgb, _hex(faint))
++        else:
++            BOOK_MOTIFS[spec.motif](page, cx, Y(1000), Y(1650), S(520), accent_rgb, _hex(faint))
+ 
+     # 底线
+     _rule(page, cx, Y(1720), S(330), gold_rgb, max(S(1.4), 0.6))

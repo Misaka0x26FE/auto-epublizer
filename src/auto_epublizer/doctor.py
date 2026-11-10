@@ -17,10 +17,12 @@ from __future__ import annotations
 
 import importlib.util
 import os
+import re
 import shutil
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 
 from auto_common.config import Config
 
@@ -147,6 +149,68 @@ def probe_network(timeout: float = 5.0) -> Capability:
     )
 
 
+def _url_host(url: str) -> str:
+    try:
+        return urlsplit(url).hostname or ""
+    except ValueError:
+        return ""
+
+
+def probe_lock_registry(
+    lock_path: str | Path | None = None, env: dict[str, str] | None = None
+) -> Capability:
+    """检查 ``uv.lock`` 的 registry 与当前 ``UV_INDEX_URL`` 是否同源。
+
+    只比较主机名，绝不打印完整 URL（可能含认证信息）。不同源通常表现为
+    ``uv sync --locked`` 明明没改依赖却失败；提示重新生成 lock 或清掉镜像变量。
+    """
+    path = Path(lock_path) if lock_path is not None else Path("uv.lock")
+    environ = env if env is not None else os.environ
+    index = environ.get("UV_INDEX_URL") or environ.get("UV_DEFAULT_INDEX") or ""
+    if not path.is_file():
+        return Capability(
+            name="lock-registry",
+            available=True,
+            impact="无法核对 uv.lock 与本机镜像源是否同源",
+            hint="在仓库根目录运行 doctor，或忽略（不影响构建）",
+            detail=f"未找到 {path}",
+        )
+    try:
+        text = path.read_text(encoding="utf-8", errors="replace")
+    except OSError as exc:
+        return Capability("lock-registry", False, "无法读取 uv.lock", "检查文件权限", str(exc))
+    hosts = {_url_host(url) for url in re.findall(r'url\s*=\s*"([^"]+)"', text) if _url_host(url)}
+    if not index:
+        return Capability(
+            name="lock-registry",
+            available=True,
+            impact="未设置 UV_INDEX_URL；lock 使用其自带 registry",
+            detail="lock: " + ("、".join(sorted(hosts)) or "无外部 registry"),
+        )
+    index_host = _url_host(index)
+    if not index_host:
+        return Capability(
+            name="lock-registry",
+            available=True,
+            impact="索引是本地/无主机 URL，无法与 lock 外部 registry 比较",
+            detail="env: 本地索引",
+        )
+    if index_host not in hosts:
+        return Capability(
+            name="lock-registry",
+            available=False,
+            impact="uv sync --locked 可能因 registry 不同源而失败",
+            hint="unset UV_INDEX_URL 后重试，或用当前镜像重新生成 uv.lock",
+            detail=f"lock: {'、'.join(sorted(hosts)) or '无'}；env: {index_host}",
+        )
+    return Capability(
+        name="lock-registry",
+        available=True,
+        impact="lock 与当前索引同源",
+        detail=f"lock: {'、'.join(sorted(hosts)) or '无'}；env: {index_host}",
+    )
+
+
 def collect_capabilities(config: Config, *, ping: bool = False) -> list[Capability]:
     """收集全部能力探测结果（纯只读）。"""
     caps: list[Capability] = [
@@ -181,6 +245,7 @@ def collect_capabilities(config: Config, *, ping: bool = False) -> list[Capabili
         probe_epubcheck(config),
         probe_cover_fonts(config),
         probe_mineru(),
+        probe_lock_registry(),
     ]
     if ping:
         caps.append(probe_network())

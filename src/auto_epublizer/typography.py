@@ -40,8 +40,9 @@ class EpubTheme:
     """一套 EPUB 主题的排版微调；不设字体名、字号、颜色。"""
 
     key: str
-    font_family: str
     line_height: float
+    # 用户指令（2026-11-04）：EPUB 不设置/不内嵌字体，交由阅读器默认。
+    font_family: str | None = None
     indent_em: float | None = None
     align: str | None = None
     paragraph_margin_em: float = 0.6
@@ -51,7 +52,6 @@ class EpubTheme:
 EPUB_THEMES: dict[str, EpubTheme] = {
     "standard": EpubTheme(
         key="standard",
-        font_family="serif",
         line_height=1.7,
         indent_em=2.0,
         align="justify",
@@ -60,7 +60,6 @@ EPUB_THEMES: dict[str, EpubTheme] = {
     ),
     "compact": EpubTheme(
         key="compact",
-        font_family="sans-serif",
         line_height=1.4,
         indent_em=None,  # 未声明 = 阅读器默认（无缩进）
         align=None,  # 未声明 = start（随书写方向）
@@ -69,7 +68,6 @@ EPUB_THEMES: dict[str, EpubTheme] = {
     ),
     "spacious": EpubTheme(
         key="spacious",
-        font_family="serif",
         line_height=2.0,
         indent_em=2.0,
         align="justify",
@@ -82,12 +80,11 @@ EPUB_THEMES: dict[str, EpubTheme] = {
 def epub_theme_css(theme: str) -> str:
     """把一套主题 token 渲染为 CSS 片段（未知主题抛 ``KeyError``，由调用方翻译成中文）。"""
     spec = EPUB_THEMES[theme]
-    parts = [
-        "body {\n"
-        f"  font-family: {spec.font_family};\n"
-        f"  line-height: {css_number(spec.line_height)};\n"
-        "}\n"
-    ]
+    body = "body {\n"
+    if spec.font_family:
+        body += f"  font-family: {spec.font_family};\n"
+    body += f"  line-height: {css_number(spec.line_height)};\n}}\n"
+    parts = [body]
     paragraph = "p {\n"
     if spec.indent_em is not None:
         paragraph += f"  text-indent: {em_number(spec.indent_em)}em;\n"

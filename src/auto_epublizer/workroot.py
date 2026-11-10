@@ -33,10 +33,12 @@ def create_work_root(
 
     - 源：仓库内 ``template/work-root/``（缺失则报错，提示模板未随仓库提供）；
     - 已存在且非空时**只补缺失**（不覆盖）；``force=True`` 才覆盖同名文件；
+    - 已是成熟工作根（有 ``AGENTS.md`` + ``workspaces/``）时默认只报告缺项到
+      ``missing``，不补顶层文件/目录；``force=True`` 才实际补齐；
     - ``dry_run=True`` 只逐项预览，不创建目录/文件；
     - 目标存在但不是目录 → 报错。
-    返回 ``{"dir", "created", "skipped", "dry_run"}``；dry-run 下 ``created`` 为
-    ``would_create`` 的同一清单（不写盘，供旧调用直接比较）。
+    返回 ``{"dir", "created", "skipped", "missing", "mature", "dry_run"}``；dry-run
+    下 ``created`` 为 ``would_create`` 的同一清单（不写盘，供旧调用直接比较）。
     """
     src = template_dir()
     if not src.is_dir():
@@ -45,16 +47,24 @@ def create_work_root(
     if dest_root.exists() and not dest_root.is_dir():
         raise WorkRootError(f"目标已存在且不是目录：{dest_root}")
 
+    mature = (dest_root / "AGENTS.md").is_file() and (dest_root / "workspaces").is_dir()
     created: list[str] = []
     skipped: list[str] = []
+    missing: list[str] = []
     for path in sorted(src.rglob("*")):
         rel = path.relative_to(src)
         dest = dest_root / rel
+        rel_s = rel.as_posix()
+        if mature and not force:
+            if not dest.exists():
+                missing.append(rel_s)
+            else:
+                skipped.append(rel_s)
+            continue
         if path.is_dir():
             if not dry_run:
                 dest.mkdir(parents=True, exist_ok=True)
             continue
-        rel_s = rel.as_posix()
         if dest.exists() and not force:
             skipped.append(rel_s)
             continue
@@ -66,5 +76,7 @@ def create_work_root(
         "dir": str(dest_root),
         "created": created,
         "skipped": skipped,
+        "missing": missing,
+        "mature": mature,
         "dry_run": dry_run,
     }

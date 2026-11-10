@@ -57,6 +57,31 @@ _MD_RESIDUE: tuple[tuple[str, re.Pattern[str]], ...] = (
 )
 
 
+_CELL_ATX_RE = re.compile(r"<t[dh]\b[^>]*>(.*?)</t[dh]>", re.DOTALL | re.IGNORECASE)
+_HTML_TAG_RE = re.compile(r"<[^>]+>")
+
+
+def _cell_atx_candidates(result: AuditResult, name: str, raw: str) -> None:
+    """表格单元格内的 ATX 标记（warning 候选）：代码、`C#`、合法 `# 1` 不算。"""
+    for match in _CELL_ATX_RE.finditer(raw):
+        inner = match.group(1)
+        if "<code" in inner.lower():
+            continue
+        text = unescape(_HTML_TAG_RE.sub("", inner)).strip()
+        heading = re.match(r"^(#{1,6})[ \t]+(\S.*)$", text)
+        if not heading:
+            continue
+        hashes, rest = heading.group(1), heading.group(2)
+        if len(hashes) == 1 and rest[:1].isdigit():
+            continue
+        result.add(
+            "warning",
+            "W_CELL_ATX",
+            f"表格单元格残留 ATX 标题标记：{name}（{text[:24]}）",
+        )
+        return
+
+
 class _NonCodeMarkup(HTMLParser):
     """保留原始标记供残留审计，但不把真实 code/pre 的显示内容当 Markdown。"""
 
@@ -884,6 +909,7 @@ def audit_epub(
                     result.add("warning", "W_RESIDUE", f"markdown 标记残留（{label}）：{name}")
                     break
             _dollar_delimiter_candidates(result, name, raw)
+            _cell_atx_candidates(result, name, raw)
 
         # 9b. 版面型候选（issue #38）：warning 级、供 agent 核证；不阻断、不自动改写
         for name in names:

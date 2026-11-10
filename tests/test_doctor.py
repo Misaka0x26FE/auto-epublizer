@@ -93,3 +93,22 @@ def test_epubcheck_missing_jar_has_download_hint(tmp_path) -> None:
     epub = _find(caps, "epubcheck")
     assert epub.available is False
     assert "epubcheck" in epub.hint.lower() or "下载" in epub.hint
+
+
+def test_lock_registry_conflict_is_reported_without_credentials(tmp_path) -> None:
+    """E3：lock 与 UV_INDEX_URL 不同源要可诊断，且只暴露主机名。"""
+    from auto_epublizer.doctor import probe_lock_registry
+
+    lock = tmp_path / "uv.lock"
+    lock.write_text(
+        '[[package]]\nname = "x"\nsource = { registry = "https://mirror-a.example/simple" }\n'
+        'url = "https://mirror-a.example/files/x.whl?token=SECRET"\n',
+        encoding="utf-8",
+    )
+    cap = probe_lock_registry(lock, {"UV_INDEX_URL": "https://user:pass@mirror-b.example/simple"})
+    assert cap.available is False
+    assert "mirror-b.example" in cap.detail
+    assert "SECRET" not in cap.detail and "user:pass" not in cap.detail
+
+    ok = probe_lock_registry(lock, {"UV_INDEX_URL": "https://mirror-a.example/simple"})
+    assert ok.available is True

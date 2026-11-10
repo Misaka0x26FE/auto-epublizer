@@ -22,7 +22,7 @@ from .audit import AuditFinding, AuditResult, audit_epub
 from .epubcheck import EpubcheckResult, run_epubcheck
 from .notes_audit import NotesAuditResult, audit_notes_epub
 from .provenance import ProvenanceResult, audit_provenance
-from .report import QaResult, generate_report
+from .report import QaResult, generate_report, summarize_g0
 
 __all__ = [
     "AuditFinding",
@@ -36,6 +36,7 @@ __all__ = [
     "audit_notes_epub",
     "audit_provenance",
     "generate_report",
+    "summarize_g0",
     "latest_review_result_path",
     "latest_review_payload",
     "report_state",

@@ -75,12 +75,13 @@ cover:
 output:
   about_page: true        # 未接线（预留；"关于此翻译"页未实现）
   theme: standard         # 排版主题：standard | compact | spacious（docs/epub-template-spec.md §5）
-                          # 仅排版微调（泛化字族/行距/缩进/对齐），无具体字体名/颜色/字号
+                          # 仅排版微调（行距/缩进/对齐）；不声明/不内嵌字体（2026-11-04 用户指令）
   nav_depth: 3            # 目录最大嵌套深度（1–6，docs/epub-template-spec.md §3 投影）
                           # 超深单元不进 nav/NCX，但保留在 spine 阅读顺序与锚点中
   toc_page: false         # 生成可点击目录页（D2）：toc 单元按单元树渲染，不照抄源目录行；
                           # 页码只读 preprocessing/toc_pages.csv（unit,page），缺省留空
   css: ""                 # 按书样式：工作区内受限 CSS 相对路径（缩进/段距/行距等，禁止字体/字号/颜色/URL）
+  software_detail: full   # 制作信息详略：full | brief（brief 省略工具版本/修订历史）
 ```
 
 ## 生成式封面

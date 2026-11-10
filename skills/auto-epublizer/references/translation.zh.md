@@ -213,3 +213,23 @@ PDF ingest 会产出三类非纯文本段（来源见 `references/ingest.md`；�
 `reviewed`（幂等）；`reviewed`/`built` 单元通常跳过重导；强制重验失败不得再提升为 reviewed。
 
 成功导入后 CLI 登记 structured/translation/align 的字节摘要。已完成单元若字节变化，普通 import 报 `E_STATE_DRIFT`，而非静默跳过；`status --json` 的单元 `content_state` 为 `current/changed/unknown`，并给出当前 `content_digests`。源正文变化先核证并 `restructure`；仅译文/align 修订用 `import --unit ID --force` 重校验。旧工作区无导入摘要时标为 unknown，跳过详情提示显式重验；未变单元仍幂等跳过。`--force` 只校验已写入的 translation/align，不负责从 `.work` 等自建中间文件组装译稿。
+
+## 分块作业暂存（chunk，可选）
+
+长单元可以切块翻译，但 **chunk 不是译文权威层**：正式产物仍是
+`translation/<rel>.md` 与 `translation/align/<id>.jsonl`。
+
+```bash
+auto-epublizer chunk export --workspace <ws> [--unit ch01]   # preprocessing/chunks/<unit>/
+# 翻译 <unit>/0001.zh.md …（块数与 index.json 对齐）
+auto-epublizer chunk assemble ch01 --workspace <ws>          # 默认只预检
+auto-epublizer chunk assemble ch01 --apply --workspace <ws>  # 事务写入 translation+align
+auto-epublizer chunk recover --workspace <ws>                # 恢复 pending 事务
+auto-epublizer chunk reset ch01 --apply --workspace <ws>     # 源文变更后归档旧块
+auto-epublizer chunk import-tr --source <old/.tr> --apply    # 显式导入旧 .tr
+```
+
+- 块身份 = 单元 + 序号 + 源摘要；源文变更后 `export` 拒绝静默改写索引，先 `reset`。
+- `assemble` 校验源摘要、块数、标题；正式译文已有新编辑时拒绝覆盖（`--force` 才覆盖）。
+- `.tr` 导入只接受数量与索引一致的目录；不猜测缺失块。
+- 块级 align 是段落级对照，仍受 import/G0/交付审计校验，但会改变 `total_sentences` 口径。

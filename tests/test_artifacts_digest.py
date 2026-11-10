@@ -366,3 +366,21 @@ def test_book_css_change_invalidates_report(tmp_path: Path) -> None:
     css.write_text("p { text-indent: 3em; }\n", encoding="utf-8")
     assert artifacts_digest(store) != before
     assert report_state(store)["stale"] is True
+
+
+def test_note_review_and_media_map_changes_invalidate_report(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """P1：注文核验与媒体映射是放行输入，改/删都必须让报告过期。"""
+    store = _released_ws(tmp_path, monkeypatch)
+    review = store.preprocessing_dir / "note-review.json"
+    review.write_text('{"schema": 1, "entries": []}', encoding="utf-8")
+    after_review = artifacts_digest(store)
+    review.write_text('{"schema": 1, "entries": [{"note_id": "n-1"}]}', encoding="utf-8")
+    assert artifacts_digest(store) != after_review
+
+    media_map = store.preprocessing_dir / "media-map.json"
+    media_map.write_text('{"schema": 1, "entries": []}', encoding="utf-8")
+    after_map = artifacts_digest(store)
+    media_map.unlink()
+    assert artifacts_digest(store) != after_map

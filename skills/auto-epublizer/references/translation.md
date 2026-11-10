@@ -1,4 +1,4 @@
-<!-- i18n: source=translation.zh.md sha256=d309d251fe364297b38a2d0fd10867c9dc300c70fe32c2693381d9406fc73d05 -->
+<!-- i18n: source=translation.zh.md sha256=01ffe46010734f820a54233da3f4cf542632c3192fc85161be4b1e887cb97f16 -->
 > **English** | [中文](translation.zh.md)
 
 # Translation (chunk translation + sentence alignment + terminology loop)
@@ -269,3 +269,28 @@ completed unit to `aligned`; repeated import is harmless (idempotent). After rev
 (idempotent); import normally skips `reviewed`/`built` units. Failed forced revalidation
 must not promote a unit back to reviewed.
 Successful imports register byte digests for structured/translation/align. If a completed unit's bytes change, ordinary import reports `E_STATE_DRIFT` instead of silently skipping it. In `status --json`, each unit exposes `content_state` (`current/changed/unknown`) and current `content_digests`. Verify source changes and run `restructure` first; for translation/align revisions use `import --unit ID --force`. Legacy workspaces without import digests remain unknown, with an explicit revalidation hint in skip details; unchanged units still skip idempotently. `--force` validates existing translation/align artifacts; it does not assemble private intermediate files such as `.work`.
+
+## Chunk scratch workflow (optional)
+
+Long units may be translated in chunks, but **chunks are not a translation authority**:
+the official artifacts remain `translation/<rel>.md` and
+`translation/align/<id>.jsonl`.
+
+```bash
+auto-epublizer chunk export --workspace <ws> [--unit ch01]   # preprocessing/chunks/<unit>/
+# translate <unit>/0001.zh.md … (same block count as index.json)
+auto-epublizer chunk assemble ch01 --workspace <ws>          # preflight only
+auto-epublizer chunk assemble ch01 --apply --workspace <ws>  # transactional write
+auto-epublizer chunk recover --workspace <ws>                # restore a pending transaction
+auto-epublizer chunk reset ch01 --apply --workspace <ws>     # archive chunks after source change
+auto-epublizer chunk import-tr --source <old/.tr> --apply    # explicit legacy import
+```
+
+- Block identity = unit + seq + source digest; after a source change `export` refuses to
+  rewrite the index silently — run `reset` first.
+- `assemble` checks source digest, block count and heading; it refuses to overwrite a
+  hand-edited official translation unless `--force`.
+- `.tr` import accepts only directories whose file count matches the index; missing blocks
+  are never guessed.
+- Block-level align is paragraph-level and still validated by import/G0/delivery, but it
+  changes the `total_sentences` denominator.

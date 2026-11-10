@@ -36,7 +36,13 @@ from auto_translator.translation.align import read_align
 from ..build import nav_depth_sequence, nav_toc_entries, slug_file, subheading_anchors
 from ..fingerprint import generated_pages
 from ..ingest.inserts import insert_file_exists, read_inserts
-from ..media_paths import epub_member_path, resolve_media_path
+from ..media_paths import (
+    MediaMap,
+    MediaMapError,
+    epub_member_path,
+    load_media_map,
+    resolve_audit_media,
+)
 from ..structure import skip_empty_unit
 
 # 图片引用三种形态：pandoc 占位（original-image-src）、HTML <img>、标准 markdown
@@ -108,8 +114,12 @@ def _html_media_urls(html: str) -> list[str]:
     return refs
 
 
-def _img_refs(md_text: str, media_root: Path) -> list[str]:
-    """按真实文件定位完整媒体身份；仅 HTML URL 解码，保留源路径字面百分号。"""
+def _img_refs(md_text: str, media_root: Path, media_map: MediaMap | None = None) -> list[str]:
+    """按真实文件定位完整媒体身份；仅 HTML URL 解码，保留源路径字面百分号。
+
+    交付对账不 basename 兜底：目录错误的引用视为未解析（报缺失），或由
+    ``preprocessing/media-map.json`` 显式声明身份。
+    """
     md_text = "".join(
         chunk
         if kind == "raw"
@@ -130,8 +140,8 @@ def _img_refs(md_text: str, media_root: Path) -> list[str]:
             if url.scheme or url.netloc:
                 continue
             src = unquote(url.path)
-        resolved = resolve_media_path(src, media_root)
-        refs.append(f"media/{resolved.relative_to(media_root).as_posix()}" if resolved else src)
+        resolved = resolve_audit_media(src, media_root, media_map)
+        refs.append(resolved.member(media_root) if resolved else src)
     return refs
 
 
@@ -495,6 +505,15 @@ def audit_provenance(
     structured_dir = store.structured_dir
     translation_dir = store.translation_dir
     media_root = (structured_dir / "raw" / "media").resolve()
+    media_map: MediaMap | None
+    try:
+        media_map = load_media_map(store.dir)
+    except MediaMapError as exc:
+        media_map = None
+        result.add("error", "E_MEDIA_MAP", str(exc))
+    if media_map is not None:
+        for finding in media_map.findings:
+            result.add("warning", "W_MEDIA_MAP", finding)
 
     # 期望内容集：与 _render_and_pack 的跳过逻辑镜像（译文优先 → 空壳跳过）
     # 同步提取子标题锚点（与 build 同一 md 输入、同一 subheading_anchors 实现）
@@ -655,8 +674,10 @@ def audit_provenance(
         tgt_path = translation_dir / rel
         if not (prefer_translation and tgt_path.is_file()):
             continue  # 无译文：源↔源恒等
-        src_refs = _img_refs((structured_dir / rel).read_text(encoding="utf-8"), media_root)
-        tgt_refs = _img_refs(tgt_path.read_text(encoding="utf-8"), media_root)
+        src_refs = _img_refs(
+            (structured_dir / rel).read_text(encoding="utf-8"), media_root, media_map
+        )
+        tgt_refs = _img_refs(tgt_path.read_text(encoding="utf-8"), media_root, media_map)
         src_count, tgt_count = Counter(src_refs), Counter(tgt_refs)
         for name, cnt in src_count.items():
             if tgt_count.get(name, 0) < cnt:
@@ -693,7 +714,7 @@ def audit_provenance(
             continue
         md_text = md_path.read_text(encoding="utf-8")
         # 媒体呈现：md 图片引用 ↔ 成品 <img>。
-        for ref, cnt in Counter(_img_refs(md_text, media_root)).items():
+        for ref, cnt in Counter(_img_refs(md_text, media_root, media_map)).items():
             if doc_imgs.get(name, Counter()).get(posixpath.join(opf_dir, ref), 0) < cnt:
                 result.epub_media_missing.append(f"{e['id']}:{ref}")
         # 仅有效登记上下文可将脚注数量移交独立成品注释门。

@@ -11,8 +11,8 @@
         "OEBPS/media/fig-wide.png": "8de0b696f333024b293c12228abf5a799f704d289873602605667fac0ca31ec4",
         "OEBPS/media/note-small.png": "8b6e9573f9bd7d2636cfc890e0c8bc547b35849d2b5ffc21dc3dd10130dcc3ef"
       },
-      "style_bytes": 801,
-      "style_sha256": "f9bb28693b37158d42af9cc339f53a0416058837798da2e94d47792c78881a78"
+      "style_bytes": 774,
+      "style_sha256": "dac7a5c3e97ca5ff112692f7a0b4b6ded747f0066aa3624caf17d25d1df0a197"
     },
     "spacious": {
       "content_sha256": "49cd75e21cd89a498ee197b30c3ef2ebf77c1247699320fcbf5818e2563fe7ef",
@@ -25,8 +25,8 @@
         "OEBPS/media/fig-wide.png": "8de0b696f333024b293c12228abf5a799f704d289873602605667fac0ca31ec4",
         "OEBPS/media/note-small.png": "8b6e9573f9bd7d2636cfc890e0c8bc547b35849d2b5ffc21dc3dd10130dcc3ef"
       },
-      "style_bytes": 886,
-      "style_sha256": "17b6b20739f489a334d06fe348ce1ac4804b77b14ccdb5c505dd5283698d0e1c"
+      "style_bytes": 864,
+      "style_sha256": "a3a6f5534a8505e921fed92c14b79679e6f4eb026304d5591f5ec92afbd2fc2b"
     },
     "standard": {
       "content_sha256": "49cd75e21cd89a498ee197b30c3ef2ebf77c1247699320fcbf5818e2563fe7ef",
@@ -39,15 +39,15 @@
         "OEBPS/media/fig-wide.png": "8de0b696f333024b293c12228abf5a799f704d289873602605667fac0ca31ec4",
         "OEBPS/media/note-small.png": "8b6e9573f9bd7d2636cfc890e0c8bc547b35849d2b5ffc21dc3dd10130dcc3ef"
       },
-      "style_bytes": 888,
-      "style_sha256": "ca9d5d9d5e301786f681335c14894fe6c22c6fd16e6abc10fdf151f78b309d1a"
+      "style_bytes": 866,
+      "style_sha256": "d510967ce123960168e4313c4a475ca885506d59a14f69b4dfb42c4a3c7bac20"
     }
   },
-  "generated_at": "2026-11-04",
+  "generated_at": "2026-11-10",
   "manifest": "tests/fixtures/typography/manifest.json",
   "note": "版式基线：EPUB 摘要与 git 状态无关；PDF 摘要绑定 Chromium/字体环境，跨环境只比内容完整性。",
   "pdf": {
-    "chromium": "Chromium 156.0.8078.47 for Linux Mint",
+    "chromium": "Chromium 156.0.8078.79 for Linux Mint",
     "page_boxes_pt": [
       [
         420.0,
@@ -55,14 +55,14 @@
       ]
     ],
     "pages": 21,
-    "pdf_sha256": "462147ec4ce68bdd9a20f54c0e1144c2071c1087a113c65877909cf5b20477b8",
+    "pdf_sha256": "afe32ad3f56700a667d66f91d418de19dcf0fe5895ea7ed14490b2d48194470f",
     "pymupdf": "1.28.2",
     "size_mm": [
       148,
       210
     ],
-    "text_chars": 5064,
-    "text_sha256": "95e8ae40342c9c59f5f181d2db9b9e91cc6d38f465438b518b7c69749d99bee5"
+    "text_chars": 5061,
+    "text_sha256": "4d81cd97fcb20eda51009e582a5d87f8ef2e1210b5220b44d4a2046441d7283f"
   },
   "schema_version": 1
 }

@@ -1,4 +1,4 @@
-<!-- i18n: source=README.zh.md sha256=4f5ce5cda1d6266c7355c687ea1a18b4c89ca23d63ec3f711a1d871881ff7236 -->
+<!-- i18n: source=README.zh.md sha256=4243b9d408da12b4ad868c02910ced48d27786bd3baee1f8c9739b8e0b1fa10e -->
 > **English** | [中文](README.zh.md)
 
 # Lessons (distilled field experience)
@@ -32,6 +32,8 @@ downstream agents to directly consult and handle when they encounter the same ty
 
 | Document | Topic | Status |
 |---|---|---|
+| [2026-11-10-notes-nonempty-false-green.md](2026-11-10-notes-nonempty-false-green.md) | "Non-empty means translated" false green in the notes layer: a non-empty `target_markdown` is reconciled as translated, so copied-source or zero-Han notes ship; add a parallel language hard gate | Criterion gap (`qa/notes_audit.py`) + census recipe; fix tracked in `docs/plans/2026-11-10-field-archive-gap-analysis.md` §2 P0-1 |
+| [2026-11-10-dev-gates-never-fail.md](2026-11-10-dev-gates-never-fail.md) | Make the gate prove it can fail: inject a defect into a throwaway copy, assert the matching criterion fails and the baseline reports zero; tautologies, substring containment and mismatched key vocabularies are the most dangerous fake evidence | Methodology + injection-list template |
 | [2026-11-01-titlepage-echo-deletion.md](2026-11-01-titlepage-echo-deletion.md) | Title-page title/subtitle deleted as a header echo: echo removal only for body units, keep the whole title page, record source page/block and reason | Boundary fixed (structure/classify.py + tests) + field-recovery experience |
 | [2026-11-01-pdf-toc-anchors-and-artifact-manifest.md](2026-11-01-pdf-toc-anchors-and-artifact-manifest.md) | Print PDF TOC/bookmarks bind to final fragment pages; unique locator markers; staged atomic publish and derived-artifact manifest | fixed (#73/#82/#60 follow-up) + experience retained |
 | [2026-10-27-scanned-academic-false-green.md](2026-10-27-scanned-academic-false-green.md) | 18 mechanical false-green cases in scanned academic books: two-column people lists, source-note inventory, review shadowing, no padding or placeholder repairs | Lessons and proposed development (#68/#69), not code fixes or renewed book acceptance |

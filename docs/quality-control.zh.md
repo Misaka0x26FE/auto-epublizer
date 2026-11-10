@@ -146,7 +146,8 @@ Autofix（可选）：先写可恢复索引 `reviews/<ts>/autofix/index.json`，
   - 主题层边界：style.css 无具体字体名/字号（`E_THEME_FONT`）、无颜色（`E_THEME_COLOR`）；
   - 封面 meta 互证：`properties="cover-image"` ↔ `<meta name="cover">`（`E_COVER_META`）；
   - 每个内容文档 `xml:lang` 正确、恰好一个 `h1`、无跳级（`E_HEADING_SKIP`）；
-  - 残留：HTML 注释（`E_RESIDUE`）、markdown/pandoc 标记（`W_RESIDUE`）；
+  - 残留：HTML 注释（`E_RESIDUE`）、markdown/pandoc 标记（`W_RESIDUE`）、
+    表格单元格 ATX（`W_CELL_ATX`）；
   - 内部锚点可解析（`E_ANCHOR`，含脚注 noteref→footnote）+ 脚注回链（`E_FN_BACKLINK`）；
   - 媒体：alt 空值（`W_IMG_NO_ALT`）、格式兼容（`W_IMG_FORMAT`）、超大/超宽超高/未压缩
     （`W_IMG_LARGE`/`W_IMG_RATIO`/`W_IMG_UNCOMPRESSED`）、EPUB 总体积（`W_EPUB_SIZE`）；
@@ -309,6 +310,12 @@ reviews/review-<ts>/     # agent 手写的审校记录（G1–G3 由 agent 自�
 | 术语命中 | `g0_terminology_open == 0`（放行硬门） | 全书一致性；真实缺陷须清零 |
 | 差错率 | `confirmed / total_sentences ≤ 1e-4`（agent 自查参考，非 CLI 硬门） | 对齐出版差错率惯例 |
 | epubcheck | 实际执行、returncode == 0 且 errors == 0 | 结构合法性 |
+
+> **校准状态（2026-11-10）**：仓库内没有人工标注的「正常压缩 / 真实漏译」对照集，
+> 因此 **不调整 0.30/3.0 默认值**。`auto_translator.review.length_calibration.evaluate`
+> 提供固定输入格式（`src/tgt/label`）的误报/漏报评估；调整阈值前必须给出样本量、
+> 分母与独立验证集结果，不能以「告警变少」作为通过依据。空译文与严重短译门独立于
+> 比值，不受阈值调整影响。
 
 ## 5. 收敛状态机（G3）
 

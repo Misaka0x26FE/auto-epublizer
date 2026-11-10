@@ -70,3 +70,4 @@ cover:
 output:
   about_page: true        # 未接线（预留）
   theme: standard         # standard | compact | spacious
+  software_detail: full   # full | brief：制作信息详略

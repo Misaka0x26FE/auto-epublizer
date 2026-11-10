@@ -316,7 +316,14 @@ def software_section(
     )
 
 
-def stamp_document(text: str, data: dict[str, Any], lang: str, *, visible: bool = False) -> str:
+def stamp_document(
+    text: str,
+    data: dict[str, Any],
+    lang: str,
+    *,
+    visible: bool = False,
+    detail: str = "full",
+) -> str:
     """在 head 写可解析 JSON 注释，可选在版权正文尾部加独立软件声明。"""
     text = strip_fingerprint_comments(text)
     # XML 注释禁止 --；JSON Unicode 转义保持解码后内容完全相同。
@@ -324,7 +331,7 @@ def stamp_document(text: str, data: dict[str, Any], lang: str, *, visible: bool 
     comment = f"<!-- {_COMMENT_PREFIX}{payload} -->\n"
     text = text.replace("</head>", comment + "</head>", 1)
     if visible:
-        text = text.replace("</body>", software_section(data, lang) + "\n</body>", 1)
+        text = text.replace("</body>", software_section(data, lang, detail=detail) + "\n</body>", 1)
     return text
 
 

@@ -167,6 +167,8 @@ def artifacts_digest(store: Any, *, epub_path: str | Path | None = None) -> str:
         "preprocessing/facts.json",
         "preprocessing/terminology_exemptions.csv",
         "preprocessing/style_exemptions.csv",
+        "preprocessing/note-review.json",
+        "preprocessing/media-map.json",
         "analysis/style.md",
         "analysis/glossary.csv",
         "analysis/glossary_conflicts.jsonl",

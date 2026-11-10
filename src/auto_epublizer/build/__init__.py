@@ -721,6 +721,7 @@ def build_epub(
     nav_depth: int = 3,
     render_mode: str | None = None,
     book_css: str = "",
+    software_detail: str = "full",
 ) -> Path:
     """把内容文档 + 媒体资源封装为确定性标准 EPUB 3，返回输出路径。
 
@@ -765,7 +766,12 @@ def build_epub(
             suffix += 1
         fingerprint["generated_page"] = generated_page
     content_files = [
-        (fn, stamp_document(text, fingerprint, lang, visible=fn == copyright_page))
+        (
+            fn,
+            stamp_document(
+                text, fingerprint, lang, visible=fn == copyright_page, detail=software_detail
+            ),
+        )
         for fn, text in content_files
     ]
     if generated_page:
@@ -775,7 +781,9 @@ def build_epub(
             (i for i, (fn, _) in enumerate(content_files) if fn not in cover_names),
             len(content_files),
         )
-        content_files.insert(position, (generated_page, software_page(fingerprint, lang)))
+        content_files.insert(
+            position, (generated_page, software_page(fingerprint, lang, detail=software_detail))
+        )
         copyright_page = generated_page
 
     content_entries = _content_entries(entries, content_files)

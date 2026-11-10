@@ -1,4 +1,4 @@
-<!-- i18n: source=pdf-content-spec.zh.md sha256=09c336a1708c00d93be446409ed5dc73e9c5c9db1a8fe10c86773a79713148f1 -->
+<!-- i18n: source=pdf-content-spec.zh.md sha256=a2435e1508c7b03186fac56507a4edb594fee91bb3b0ba8fad21db91b1c5cab8 -->
 > **English** | [中文](pdf-content-spec.zh.md)
 
 # PDF Content Extraction Spec (pdf-content-spec)
@@ -90,7 +90,7 @@ Representation in structured md (the segment's source, by type):
 | table (containing image/formula) | image reference (cropped image) | `![p012-tbl01](raw/media/p012-tbl01.png)` |
 | formula | `$$originally extracted text$$` (draft), latex in the inserts record | `$$E = mc2$$` |
 
-> `![…](raw/media/…)` shares the same directory and the same parsing path as pandoc-extracted media; `collect_media` (build) and `_img_refs` (provenance) are automatically compatible (prefix stripping + basename fallback).
+> `![…](raw/media/…)` shares the same directory and parsing path as pandoc-extracted media. `collect_media` (build) keeps prefix stripping + basename compatibility; delivery reconciliation (`_img_refs` / notes gate) accepts only full-path identity or an explicit `preprocessing/media-map.json` mapping — **no basename fallback**.
 
 ## 3. Illustration Routing (layout criteria + genre weighting)
 

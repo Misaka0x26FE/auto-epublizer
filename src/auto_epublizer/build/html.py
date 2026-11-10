@@ -537,16 +537,44 @@ def _split_pipe_row(line: str) -> list[str]:
     return [c.strip() for c in re.split(r"(?<!\\)\|", body)]
 
 
+def _strip_cell_atx(cell: str) -> str:
+    """去掉表格单元格里**紧贴行首或强调标记之后**的 ATX 标题标记。
+
+    来源：PDF 抽取把标题层级带进单元格（实测 ``| **## 议会工党主席，1906—22** | |``）。
+    只处理可确认的污染形态：单元格首部（或 ``**``/``*``/``__``/``_`` 之后）的
+    ``##`` 及以上，或后面不是数字的单个 ``#``。合法的编号 ``# 1``、``C#``、
+    行内代码与转义井号都原样保留。
+    """
+    lead = ""
+    text = cell
+    for marker in ("**", "__", "*", "_"):
+        if text.startswith(marker):
+            lead = marker
+            text = text[len(marker) :]
+            break
+    match = re.match(r"^(#{1,6})[ \t]+(\S.*)$", text)
+    if not match:
+        return cell
+    hashes, rest = match.group(1), match.group(2)
+    if len(hashes) == 1 and rest[:1].isdigit():
+        return cell  # 合法编号 `# 1` / `# 2020`
+    return f"{lead}{rest}"
+
+
 def _render_pipe_table(lines: list[str], env: dict[str, Any]) -> str:
     """md 管道表 → XHTML table（首行为表头，第二行为分隔行）。"""
-    head = "".join(f"<th>{_inline(escape(c), env)}</th>" for c in _split_pipe_row(lines[0]))
+    head = "".join(
+        f"<th>{_inline(escape(_strip_cell_atx(c)), env)}</th>" for c in _split_pipe_row(lines[0])
+    )
     rows = []
     for line in lines[2:]:
         if not line.strip() or "|" not in line:
             continue
         cells = _split_pipe_row(line)
         rows.append(
-            "<tr>" + "".join(f"<td>{_inline(escape(c), env)}</td>" for c in cells) + "</tr>"
+            "<tr>"
+            + "".join(f"<td>{_inline(escape(_strip_cell_atx(c)), env)}</td>" for c in cells)
+            + "</tr>"
         )
     return (
         '<table class="data"><thead><tr>'
@@ -606,10 +634,16 @@ def _render_simple_table(lines: list[str], env: dict[str, Any]) -> str | None:
         body = [ln for _i, ln in content[1:]]
 
     def head_cells(line: str) -> str:
-        return "".join(f"<th>{_inline(escape(c), env)}</th>" for c in _split_span_row(line, spans))
+        return "".join(
+            f"<th>{_inline(escape(_strip_cell_atx(c)), env)}</th>"
+            for c in _split_span_row(line, spans)
+        )
 
     def body_cells(line: str) -> str:
-        return "".join(f"<td>{_inline(escape(c), env)}</td>" for c in _split_span_row(line, spans))
+        return "".join(
+            f"<td>{_inline(escape(_strip_cell_atx(c)), env)}</td>"
+            for c in _split_span_row(line, spans)
+        )
 
     return (
         '<table class="data"><thead>'

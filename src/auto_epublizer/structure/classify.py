@@ -3,14 +3,18 @@
 """四层结构归类与清洗纯函数。
 
 - classify_units：把归一化单元映射到 frontmatter/body/backmatter 与稳定 ID；
-- strip_page_numbers：剔除独立页码；
+- strip_page_numbers：剔除**有版式证据**的独立页码；
 - clean_header_footer：按页分组识别并剔除跨页重复的页眉页脚短行。
+
+清洗只删除可证明是版式家具的段：页码标签、带装饰的页码、以及有 ``source_page``
+定位且跨页构成递增序列的裸数字。证据不足的独立数字（年份、诗歌编号、表格数字）
+原样保留，并作为候选写进清洗台账，绝不按「长得像页码」静默删除。
 """
 
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from ..ingest.models import KIND_HEADING, SourceDocument, SourceSegment, SourceUnit
 
@@ -37,7 +41,43 @@ _TITLE_KEYWORDS: list[tuple[tuple[str, ...], str, str]] = [
 ]
 
 _PAGE_NUMBER_RE = re.compile(r"^[\s\-—–·]*\d{1,4}[\s\-—–·]*$")
-_PAGE_LABEL_RE = re.compile(r"^(?:第?\s*\d{1,4}\s*页?|[pP]\d{1,4})$")
+_PAGE_LABEL_RE = re.compile(r"^(?:第\s*\d{1,4}\s*页|\d{1,4}\s*页|[pP]\d{1,4})$")
+_BARE_PAGE_RE = re.compile(r"^\d{1,4}$")
+_PAGE_DECORATION = frozenset("-—–·•")
+_PAGE_FURNITURE_KINDS = frozenset({"cover", "titlepage"})
+
+
+@dataclass(frozen=True)
+class CleanRemoval:
+    """一条被清洗或待核的段（``index`` 是清洗前在单元内的原始序号）。"""
+
+    index: int
+    source: str
+    reason: str
+    page: int | None = None
+
+
+@dataclass(frozen=True)
+class CleanReport:
+    """单元清洗台账：``removed`` 是已删项，``candidates`` 是证据不足的保留项。"""
+
+    removed: tuple[CleanRemoval, ...] = field(default_factory=tuple)
+    candidates: tuple[CleanRemoval, ...] = field(default_factory=tuple)
+
+    def merge(self, other: CleanReport) -> CleanReport:
+        return CleanReport(
+            removed=self.removed + other.removed,
+            candidates=self.candidates + other.candidates,
+        )
+
+    def as_dict(self) -> dict[str, list[dict[str, object]]]:
+        def rows(items: tuple[CleanRemoval, ...]) -> list[dict[str, object]]:
+            return [
+                {"index": r.index, "source": r.source, "reason": r.reason, "page": r.page}
+                for r in items
+            ]
+
+        return {"removed": rows(self.removed), "candidates": rows(self.candidates)}
 
 
 @dataclass(frozen=True)
@@ -147,17 +187,121 @@ def classify_units(doc: SourceDocument) -> list[ClassifiedUnit]:
     return result
 
 
-def strip_page_numbers(segments: list[SourceSegment]) -> list[SourceSegment]:
-    """剔除独立成段的页码。"""
-    out: list[SourceSegment] = []
-    idx = 0
-    for s in segments:
+def _page_of(segment: SourceSegment) -> int | None:
+    page = segment.meta.get("source_page")
+    return int(page) if isinstance(page, int) else None
+
+
+def _page_number_evidence(segments: list[SourceSegment]) -> tuple[set[int], set[int]]:
+    """返回（有证据的页码序号，证据不足的保留候选序号）。
+
+    证据分层：
+    1. ``第 12 页`` / ``p12`` 等显式页码标签；
+    2. 带装饰符的页码（``- 12 -`` / ``· 12 ·``）；
+    3. 有 ``source_page`` 定位、位于页首/页末、跨 >=5 页且与页序偏移 0–3 的递增裸数字。
+    其余裸数字一律保留；页首/页末的裸数字作为候选上报，交由 agent 判断。
+    """
+    strong: set[int] = set()
+    bare_by_page: dict[int, list[int]] = {}
+    for i, s in enumerate(segments):
         text = s.source.strip()
-        if _PAGE_NUMBER_RE.match(text) or _PAGE_LABEL_RE.match(text):
+        if s.kind == KIND_HEADING or not text:
             continue
-        s = s.model_copy(update={"index": idx})
-        out.append(s)
-        idx += 1
+        if _PAGE_LABEL_RE.fullmatch(text):
+            strong.add(i)
+            continue
+        if not _PAGE_NUMBER_RE.fullmatch(text):
+            continue
+        if any(ch in _PAGE_DECORATION for ch in text):
+            strong.add(i)
+            continue
+        page = _page_of(s)
+        if page is not None and _BARE_PAGE_RE.fullmatch(text):
+            bare_by_page.setdefault(page, []).append(i)
+
+    positions: dict[int, list[int]] = {}
+    for i, s in enumerate(segments):
+        page = _page_of(s)
+        if page is not None:
+            positions.setdefault(page, []).append(i)
+
+    boundary: dict[int, list[int]] = {}
+    for page, idxs in bare_by_page.items():
+        page_idxs = positions.get(page) or idxs
+        first, last = page_idxs[0], page_idxs[-1]
+        near = [i for i in idxs if i in (first, last)]
+        if near:
+            boundary[page] = near
+
+    chain = _monotonic_page_chain(segments, boundary)
+    strong |= chain
+    candidates = {i for idxs in boundary.values() for i in idxs} - chain
+    return strong, candidates
+
+
+def _monotonic_page_chain(
+    segments: list[SourceSegment], boundary: dict[int, list[int]]
+) -> set[int]:
+    """跨页页首/页末裸数字：只认与页序接近（偏移 0–3）、连续 >=5 页的序列。
+
+    年份（1968…）、诗歌/章节编号通常远离页序，或跨页不足 5 页；证据不足时不删除。
+    """
+    pages = [
+        page
+        for page in sorted(boundary)
+        if any(0 <= int(segments[i].source.strip()) - page <= 3 for i in boundary[page])
+    ]
+    if len(pages) < 5:
+        return set()
+    best: list[int] = []
+    for start in range(len(pages)):
+        chain: list[int] = []
+        last: int | None = None
+        for page in pages[start:]:
+            values = sorted(
+                (int(segments[i].source.strip()), i)
+                for i in boundary[page]
+                if 0 <= int(segments[i].source.strip()) - page <= 3
+            )
+            pick: tuple[int, int] | None = None
+            for value, index in values:
+                if last is None or (last < value <= last + 3):
+                    pick = (value, index)
+                    break
+            if pick is None:
+                if last is not None:
+                    break
+                continue
+            last = pick[0]
+            chain.append(pick[1])
+        if len(chain) > len(best):
+            best = chain
+    return set(best) if len(best) >= 5 else set()
+
+
+def _strip_page_numbers(
+    segments: list[SourceSegment], origins: list[int]
+) -> tuple[list[SourceSegment], list[CleanRemoval], list[CleanRemoval], list[int]]:
+    strong, candidates = _page_number_evidence(segments)
+    out: list[SourceSegment] = []
+    out_origins: list[int] = []
+    removed: list[CleanRemoval] = []
+    kept: list[CleanRemoval] = []
+    for i, s in enumerate(segments):
+        text = s.source.strip()
+        if i in strong:
+            removed.append(CleanRemoval(origins[i], text, "page_number", _page_of(s)))
+            continue
+        if i in candidates:
+            kept.append(CleanRemoval(origins[i], text, "page_number_unverified", _page_of(s)))
+        out.append(s.model_copy(update={"index": len(out)}))
+        out_origins.append(origins[i])
+    return out, removed, kept, out_origins
+
+
+def strip_page_numbers(segments: list[SourceSegment]) -> list[SourceSegment]:
+    """剔除有版式证据的独立页码（证据不足的裸数字保留）。"""
+    out, _removed, _kept, _origins = _strip_page_numbers(segments, list(range(len(segments))))
     return out
 
 
@@ -165,25 +309,20 @@ def _short(text: str, limit: int = 40) -> bool:
     return 0 < len(text) <= limit
 
 
-def clean_header_footer(
-    segments: list[SourceSegment], *, min_pages: int = 3
-) -> list[SourceSegment]:
-    """按 source_page 分组，剔除跨页重复的页眉页脚短行。
-
-    同一文本在 >=50% 的页首或页末出现即视为页眉/页脚。**只删除页首/页末的那次出现**：
-    同文若也出现在页中，那是正文（书名页书名、章内引文等），不是版式家具；
-    标题段（``kind == "heading"``）保留其结构角色，即使与页眉同文。
-    """
+def _clean_header_footer(
+    segments: list[SourceSegment], origins: list[int], *, min_pages: int = 3
+) -> tuple[list[SourceSegment], list[CleanRemoval]]:
     positions: dict[int, list[int]] = {}
     for i, s in enumerate(segments):
         positions.setdefault(s.meta.get("source_page") or 0, []).append(i)
 
     pages = sorted(positions)
     if len(pages) < min_pages:
-        return segments
+        return segments, []
 
     header_candidates: dict[str, int] = {}
     footer_candidates: dict[str, int] = {}
+    roles: dict[int, str] = {}
     boundary: set[int] = set()
     for pg in pages:
         text_idx = [
@@ -195,6 +334,8 @@ def clean_header_footer(
             continue
         first, last = text_idx[0], text_idx[-1]
         boundary.update((first, last))
+        roles.setdefault(first, "header")
+        roles.setdefault(last, "footer")
         header_candidates[segments[first].source.strip()] = (
             header_candidates.get(segments[first].source.strip(), 0) + 1
         )
@@ -205,31 +346,60 @@ def clean_header_footer(
     threshold = max(2, int(len(pages) * 0.5))
     drop = {t for t, n in header_candidates.items() if n >= threshold}
     drop |= {t for t, n in footer_candidates.items() if n >= threshold}
-
     if not drop:
-        return segments
+        return segments, []
 
     out: list[SourceSegment] = []
-    idx = 0
+    removed: list[CleanRemoval] = []
     for i, s in enumerate(segments):
         text = s.source.strip()
         if i in boundary and s.kind != KIND_HEADING and _short(text) and text in drop:
+            role = roles.get(i, "boundary")
+            reason = "repeated_header" if role == "header" else "repeated_footer"
+            removed.append(CleanRemoval(origins[i], text, reason, _page_of(s)))
             continue
-        s = s.model_copy(update={"index": idx})
-        out.append(s)
-        idx += 1
+        out.append(s.model_copy(update={"index": len(out)}))
+    return out, removed
+
+
+def clean_header_footer(
+    segments: list[SourceSegment], *, min_pages: int = 3
+) -> list[SourceSegment]:
+    """按 source_page 分组，剔除跨页重复的页眉页脚短行。
+
+    同一文本在 >=50% 的页首或页末出现即视为页眉/页脚。**只删除页首/页末的那次出现**：
+    同文若也出现在页中，那是正文（书名页书名、章内引文等），不是版式家具；
+    标题段（``kind == "heading"``）保留其结构角色，即使与页眉同文。
+    """
+    out, _removed = _clean_header_footer(segments, list(range(len(segments))), min_pages=min_pages)
     return out
 
 
-def clean_unit(unit: SourceUnit) -> SourceUnit:
+def clean_unit_with_report(
+    unit: SourceUnit, *, kind: str | None = None
+) -> tuple[SourceUnit, CleanReport]:
+    """清洗单元并返回台账；``kind`` 用归类结果，避免按标题重新判定书名页/封面。"""
+    _region, derived = _classify_title(unit.title)
+    effective = kind or derived
+    if effective in _PAGE_FURNITURE_KINDS:
+        return unit, CleanReport()
+    segments, removed, candidates, origins = _strip_page_numbers(
+        unit.segments, list(range(len(unit.segments)))
+    )
+    segments, header_removed = _clean_header_footer(segments, origins)
+    report = CleanReport(
+        removed=tuple(removed + header_removed),
+        candidates=tuple(candidates),
+    )
+    return unit.model_copy(update={"segments": segments}), report
+
+
+def clean_unit(unit: SourceUnit, *, kind: str | None = None) -> SourceUnit:
     """对单元应用页码剔除与页眉页脚清洗。
 
     书名页/封面整页都是内容：书名、副题、编者、出版年都可能与「页眉」或「页码」
     同形（issue #97），因此这两类单元原样保留，不做版式家具剔除。
+    ``kind`` 传入归类结果时以它为准（聚合单元可能按内容判为书名页）。
     """
-    _region, kind = _classify_title(unit.title)
-    if kind in {"cover", "titlepage"}:
-        return unit
-    segments = strip_page_numbers(unit.segments)
-    segments = clean_header_footer(segments)
-    return unit.model_copy(update={"segments": segments})
+    cleaned, _report = clean_unit_with_report(unit, kind=kind)
+    return cleaned

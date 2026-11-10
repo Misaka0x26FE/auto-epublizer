@@ -382,11 +382,18 @@ def collect_quality_evidence(
     if notes_error:
         add("registered_notes", "fail", "registered set only", error=notes_error)
     elif notes_context and epub_hash:
+        from .media_paths import load_media_map
+
+        try:
+            media_map = load_media_map(store.dir)
+        except ValueError:
+            media_map = None
         result = audit_notes_epub(
             epub,
             source_notes=notes_context["data"],
             target_notes=notes_context.get("target"),
             media_root=store.structured_dir / "raw" / "media",
+            media_map=media_map,
         )
         add(
             "registered_notes",

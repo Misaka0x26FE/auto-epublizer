@@ -34,7 +34,7 @@ from auto_common.markdown import (
     paragraph_blocks,
 )
 
-from ..media_paths import epub_member_path, resolve_media_path
+from ..media_paths import MediaMap, epub_member_path, resolve_audit_media
 
 _TAG_RE = re.compile(r"<[^>]+>")
 _ANCHOR_RE = re.compile(r"<a\b[^>]*>", re.IGNORECASE)
@@ -162,8 +162,13 @@ _MD_AUTOLINK_RE = re.compile(
 _PLACEHOLDER_IMG_RE = re.compile(r'original-image-src="([^"]+)"')
 
 
-def _source_media_refs(md: str, media_root: Path) -> tuple[set[str], set[str]]:
-    """按真实源文件定位期望成员；源路径百分号不解码，HTML URL 只解码一次。"""
+def _source_media_refs(
+    md: str, media_root: Path, media_map: MediaMap | None = None
+) -> tuple[set[str], set[str]]:
+    """按真实源文件定位期望成员；源路径百分号不解码，HTML URL 只解码一次。
+
+    交付门不走 basename 兜底；旧绝对路径须在 media-map.json 显式登记。
+    """
     # 只复用语法上下文，不通过注文渲染器构造期望内容。
     from auto_common.markdown import inline_code_chunks, markdown_chunks
 
@@ -189,11 +194,11 @@ def _source_media_refs(md: str, media_root: Path) -> tuple[set[str], set[str]]:
             refs.append(unquote(url.path))
     members: set[str] = set()
     for ref in refs:
-        resolved = resolve_media_path(ref, media_root)
+        resolved = resolve_audit_media(ref, media_root, media_map)
         if resolved is None:
             missing.add(ref)
         else:
-            members.add(f"OEBPS/media/{resolved.relative_to(media_root).as_posix()}")
+            members.add(f"OEBPS/{resolved.member(media_root)}")
     return members, missing
 
 
@@ -260,6 +265,7 @@ def audit_notes_epub(
     source_notes: dict[str, Any],
     target_notes: dict[str, Any] | None,
     media_root: Path,
+    media_map: MediaMap | None = None,
 ) -> NotesAuditResult:
     """成品注释门（N5）。返回 result；``ok=False`` 表示必须阻断放行。"""
     result = NotesAuditResult()
@@ -413,7 +419,7 @@ def audit_notes_epub(
             )
         # P1 漏门修复：`_norm_md` 会把图片引用整段去掉，缺图不能被文本对账掩盖——
         # 注文媒体必须单独核对（期待引用 ⊆ aside 实渲染），且实渲染资源必须在包内。
-        want_media, missing_sources = _source_media_refs(expected_md, media_root)
+        want_media, missing_sources = _source_media_refs(expected_md, media_root, media_map)
         have_media = _aside_media_refs(aside[1], aside[2])
         if missing_sources:
             result.add(

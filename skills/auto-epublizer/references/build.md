@@ -1,4 +1,4 @@
-<!-- i18n: source=build.zh.md sha256=be8e48e606ef0b1877cbc9b950f89a8a3cbe59d5b9d9c634f3e09bd50b694dd2 -->
+<!-- i18n: source=build.zh.md sha256=f501fd08294b5016164a2eef0ad2a13ee51596e034165e2232ca3faa299f6163 -->
 > **English** | [中文](build.zh.md)
 
 # Build (EPUB packaging)
@@ -132,8 +132,8 @@ source TOC lines:
   carries the tool name + version + license + source URL, and the workspace
   `meta.producer` plus the `run_initialized` event expose the same identifier so origin is
   machine-decidable.
-- **Theme** (`--theme` / `config.output.theme`): `standard` (serif + 1.7 line spacing + indent + justified + centered headings,
-  default) / `compact` (sans-serif + 1.4 + no indent) / `spacious` (serif + 2.0). Only controls typographic fine-tuning;
+- **Theme** (`--theme` / `config.output.theme`): `standard` (1.7 line spacing + indent + justified + centered headings,
+  default) / `compact` (1.4 + no indent) / `spacious` (2.0). Only typographic fine-tuning; no font-family (2026-11-04);
   no specific font names/colors/font sizes (audit blocks them: `E_THEME_FONT`/`E_THEME_COLOR`).
 - **Per-book style** (`--css` / `config.output.css`): a constrained workspace CSS file (e.g.
   `preprocessing/book.css`) appended after the theme layer. Only indentation/spacing/line-height/

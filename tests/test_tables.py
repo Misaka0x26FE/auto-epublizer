@@ -129,3 +129,44 @@ def test_extract_tables_markdown_path_writes_record(tmp_path) -> None:
     assert len(recs) == 1
     assert recs[0].type == "table" and recs[0].source.method == "table"
     assert recs[0].markdown == b["markdown"] and recs[0].file is None
+
+
+def test_table_cell_strips_pollution_atx_marker() -> None:
+    """B4：PDF 抽取把标题层级带进单元格时，渲染层去掉 ATX 标记。"""
+    from auto_epublizer.build.html import markdown_to_xhtml
+
+    html = markdown_to_xhtml("| **## 小节标题** | |\n|---|---|\n| a | b |\n")
+    assert "<strong>小节标题</strong>" in html
+    assert "## 小节标题" not in html
+
+
+def test_table_cell_keeps_literal_hashes_and_code() -> None:
+    """合法编号、C#、行内代码里的井号原样保留。"""
+    from auto_epublizer.build.html import markdown_to_xhtml
+
+    html = markdown_to_xhtml("| # 1 | C# | `## x` |\n|---|---|---|\n| a | b | c |\n")
+    assert "# 1" in html
+    assert "C#" in html
+    assert "## x" in html  # 代码内容
+    assert "<code>" in html
+
+
+def test_cell_atx_detector_flags_only_non_code_non_number() -> None:
+    """检测口独立于渲染：代码、合法编号不报，污染形态报候选。"""
+    from auto_epublizer.qa.audit import AuditResult, _cell_atx_candidates
+
+    dirty = AuditResult(ok=True)
+    _cell_atx_candidates(
+        dirty, "ch01.xhtml", "<table><tr><td><strong>## 标题</strong></td></tr></table>"
+    )
+    assert [f.code for f in dirty.findings] == ["W_CELL_ATX"]
+
+    for clean in (
+        "<td><code>## x</code></td>",
+        "<td># 1</td>",
+        "<td>C#</td>",
+        "<td>普通文本</td>",
+    ):
+        result = AuditResult(ok=True)
+        _cell_atx_candidates(result, "ch01.xhtml", f"<table><tr>{clean}</tr></table>")
+        assert result.findings == [], clean

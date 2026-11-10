@@ -157,10 +157,30 @@
 | 分离登记门 | schema/源哈希/身份/作用域/双位置/未决/标记双向对账/候选处置 | `notes register` |
 | 翻译导入门 | 译文标记守恒 + 译注齐全 + 摘要绑定 | `import` |
 | 成品门 | noteref/href/aside/回链/内容逐条对账；none 零对零 | `qa`（`notes_open`） |
+| 注文语言门 | 逐条候选处置绑定源/目标摘要；`not_run`/失效/未闭合阻断 | `qa`（`notes_review_open`） |
 
 **失效**：源哈希、正文标记、`structured/notes.json` 或译注变更后，登记摘要失效——
 `notes status` 报 `stale`，`import`/`build`/`qa` 明确报错或阻断（`E_NOTES_STALE`），
 须重跑 `notes register` 并按需重译受影响注文。
+
+## 注文语言核验（C 阶段）
+
+`notes review` 扫描登记注文并写 `preprocessing/note-review.json`。机器只报信号——
+`missing_target`（目标缺失）、`identical_to_source`（与源逐字相同）、
+`no_target_script`（中文目标无汉字）、`low_target_script`（汉字占比过低）——不直接断言「未译」。逐条给处置：
+
+```json
+{"note_id": "n-000123", "signals": ["identical_to_source"],
+ "disposition": "retain_original", "reason": "拉丁书名按体例保留",
+ "evidence": "原页 p.12 注 3"}
+```
+
+- `disposition` 取 `translated` 或 `retain_original`，两者都必须写 `reason`；
+  仍有风险信号时 `translated` 不被接受。
+- 处置绑定 `source_sha256` + `target_sha256`：任一文本改动都会让候选失效重开（`stale`），
+  旧结论不能为改后的内容背书。
+- 适用书（已登记且 `inventory=present`）在候选全部闭合前以 `notes_review_open` 阻断放行；
+  文件缺失是 `not_run`，不是通过。
 
 ## 状态与排障
 

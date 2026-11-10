@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 from auto_common.workspace import Publication, PublicationMeta, RunStore, init_workspace
@@ -10,6 +11,7 @@ from auto_epublizer.structure import (
     classify_units,
     clean_header_footer,
     clean_unit,
+    clean_unit_with_report,
     rebuild_structure,
     strip_page_numbers,
     write_structured,
@@ -124,11 +126,66 @@ def test_classify_multiple_covers_get_unique_ids() -> None:
     assert paths == ["cover.md", "cover-2.md"], paths
 
 
-def test_strip_page_numbers() -> None:
-    segs = [_seg("正文1"), _seg("  12  "), _seg("正文2"), _seg("- 8 -")]
+def test_strip_page_numbers_requires_evidence() -> None:
+    """裸数字证据不足时保留；显式/装饰页码才删除。"""
+    segs = [_seg("正文1"), _seg("  12  "), _seg("正文2"), _seg("- 8 -"), _seg("第 9 页")]
     out = strip_page_numbers(segs)
-    assert [s.source for s in out] == ["正文1", "正文2"]
-    assert [s.index for s in out] == [0, 1]
+    assert [s.source for s in out] == ["正文1", "  12  ", "正文2"]
+    assert [s.index for s in out] == [0, 1, 2]
+
+
+def test_strip_page_numbers_keeps_body_number_without_page_evidence() -> None:
+    """年份/编号是正文，不能按数字形态删除。"""
+    segs = [_seg("出版于"), _seg("1968"), _seg("。")]
+    out = strip_page_numbers(segs)
+    assert [s.source for s in out] == ["出版于", "1968", "。"]
+
+
+def test_strip_page_numbers_uses_page_sequence_evidence() -> None:
+    """有 source_page、与页序接近且跨 >=5 页递增的裸数字是页码。"""
+    segs = []
+    for page in range(1, 6):
+        segs.append(_seg(f"正文{page}", page))
+        segs.append(_seg(str(page), page))
+    out = strip_page_numbers(segs)
+    assert [s.source for s in out] == [f"正文{i}" for i in range(1, 6)]
+
+
+def test_strip_page_numbers_keeps_year_sequence() -> None:
+    """P1：页末 1968/1969/1970 是年份不是页码，远离页序时必须保留。"""
+    segs = []
+    for page, year in ((1, "1968"), (2, "1969"), (3, "1970"), (4, "1971"), (5, "1972")):
+        segs.append(_seg(f"正文{page}", page))
+        segs.append(_seg(year, page))
+    out = strip_page_numbers(segs)
+    assert [s.source for s in out if s.source.isdigit()] == ["1968", "1969", "1970", "1971", "1972"]
+
+
+def test_clean_unit_reports_unverified_number_candidate() -> None:
+    """页首/页末孤立裸数字保留并作为候选上报，不静默删除。"""
+    unit = SourceUnit(
+        id="ch01",
+        kind="chapter",
+        title="第一章",
+        segments=[_seg("1968", 1), _seg("正文", 1)],
+    )
+    cleaned, report = clean_unit_with_report(unit)
+    assert [s.source for s in cleaned.segments] == ["1968", "正文"]
+    assert [c.source for c in report.candidates] == ["1968"]
+    assert report.removed == ()
+
+
+def test_clean_unit_uses_classified_kind_for_title_page() -> None:
+    """聚合单元按内容判为书名页时，必须按归类结果豁免，不能按标题重判。"""
+    unit = SourceUnit(
+        id="ch01",
+        kind="chapter",
+        title="Some Book Title",
+        segments=[_seg("1968", 1), _seg("- 12 -", 1), _seg("书名", 1)],
+    )
+    cleaned, report = clean_unit_with_report(unit, kind="titlepage")
+    assert [s.source for s in cleaned.segments] == ["1968", "- 12 -", "书名"]
+    assert report.removed == () and report.candidates == ()
 
 
 def test_clean_header_footer_removes_repeat() -> None:
@@ -246,6 +303,64 @@ def test_title_page_title_and_subtitle_survive_structure_rebuild(tmp_path: Path)
         assert line in md, md
 
 
+def test_write_structured_cleans_furniture_and_reports_evidence(tmp_path: Path) -> None:
+    """页眉/页码不流入 structured；删除项留证据，正文年份保留。"""
+    store = RunStore(tmp_path / "ws")
+    store.ensure_skeleton()
+    segments = []
+    for page in range(1, 6):
+        segments.append(_seg("BOOK TITLE", page))
+        segments.append(_seg(f"Body paragraph {page}.", page))
+        if page == 2:
+            segments.append(_seg("1968", page))
+        segments.append(_seg(str(page), page))
+    doc = SourceDocument(
+        title="B",
+        units=[SourceUnit(id="u1", kind="chapter", title="Chapter 1", segments=segments)],
+    )
+    entries = rebuild_structure(doc, Publication(slug="b"))
+    write_structured(store, doc, entries)
+    md = (store.structured_dir / "body/ch01.md").read_text(encoding="utf-8")
+    assert "BOOK TITLE" not in md
+    assert "1968" in md
+    for page in range(1, 6):
+        assert f"Body paragraph {page}." in md
+    report = json.loads(
+        (store.structured_dir / "raw/structure-clean.json").read_text(encoding="utf-8")
+    )
+    reasons = {r["reason"] for r in report["units"][0]["removed"]}
+    assert "repeated_header" in reasons
+    assert "page_number" in reasons
+
+
+def test_write_structured_removes_stale_clean_report(tmp_path: Path) -> None:
+    """第二次写入没有清洗项时，旧台账必须被空清单替换。"""
+    store = RunStore(tmp_path / "ws")
+    store.ensure_skeleton()
+    dirty = SourceDocument(
+        title="B",
+        units=[
+            SourceUnit(
+                id="u1",
+                kind="chapter",
+                title="C",
+                segments=[_seg("- 1 -", 1), _seg("正文", 1)],
+            )
+        ],
+    )
+    entries = rebuild_structure(dirty, Publication(slug="b"))
+    write_structured(store, dirty, entries)
+    report_path = store.structured_dir / "raw/structure-clean.json"
+    assert json.loads(report_path.read_text(encoding="utf-8"))["units"]
+
+    clean = SourceDocument(
+        title="B",
+        units=[SourceUnit(id="u1", kind="chapter", title="C", segments=[_seg("正文")])],
+    )
+    write_structured(store, clean, rebuild_structure(clean, Publication(slug="b")))
+    assert json.loads(report_path.read_text(encoding="utf-8"))["units"] == []
+
+
 def test_write_structured_writes_front_and_back(tmp_path: Path) -> None:
     store = RunStore(tmp_path / "ws")
     store.ensure_skeleton()
@@ -292,3 +407,26 @@ def test_render_markdown_heading_levels() -> None:
     assert "## 高层级\n" in md  # h1 夹取为 h2（每文档恰好一个 h1）
     assert "### MinerU 节\n" in md  # mineru_text_level 兜底
     assert "\n## 第一章" not in md  # 单元题不重复写入
+
+
+def test_preview_rebuild_does_not_write_raw(tmp_path: Path, monkeypatch) -> None:
+    """P1：预览不得把 raw/ 中间产物写回工作区，也不走 MinerU 网络解析。"""
+    from auto_epublizer import orchestrator as orch
+
+    src = tmp_path / "book.md"
+    src.write_text("# 第一章\n\n正文。\n", encoding="utf-8")
+    store = init_workspace(src, workspace_dir=tmp_path / "ws2")
+    captured: dict = {}
+
+    def fake(path, **kw):
+        captured.update(kw)
+        return SourceDocument(
+            title="B",
+            units=[SourceUnit(id="u1", kind="chapter", title="第一章", segments=[_seg("正文。")])],
+        )
+
+    monkeypatch.setattr(orch, "load_document", fake)
+    preview = orch.preview_rebuild(store)
+    assert captured["store"] is None
+    assert captured["mineru_client"] is None
+    assert preview["counts"]["new"] == 1

@@ -358,3 +358,23 @@ def test_auxiliary_page_requires_matching_manifest_metadata_and_page_identity(
     )
     assert data["generated_page"] in report.units_unexpected
     assert any(f["code"] == "E_UNIT_ORDER" for f in report.findings)
+
+
+def test_stamp_document_detail_applies_to_visible_copyright_section() -> None:
+    """P1：有版权页时 brief 也必须作用于可见软件声明，而不只是生成页。"""
+    from auto_epublizer.fingerprint import build_fingerprint, stamp_document
+
+    data = build_fingerprint(
+        Publication(
+            slug="b",
+            meta=PublicationMeta(
+                title="测试书",
+                processing_tools=[{"name": "pandoc", "version": "3.1.3", "license": "GPL-2.0"}],
+            ),
+        )
+    )
+    text = "<html><head></head><body><p>版权</p></body></html>"
+    full = stamp_document(text, data, "zh-CN", visible=True)
+    brief = stamp_document(text, data, "zh-CN", visible=True, detail="brief")
+    assert full != brief
+    assert len(brief) < len(full)

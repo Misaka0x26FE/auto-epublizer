@@ -192,8 +192,7 @@ html, body { margin: 0; padding: 0; }
 nav[data-aep="generated-toc"] ol { list-style: none; margin: 0; padding-left: 1.1em; }
 nav[data-aep="generated-toc"] > ol { padding-left: 0; }
 nav[data-aep="generated-toc"] li { margin: 0.18em 0; page-break-inside: avoid; }
-body { font-family: "Nimbus Roman", "Liberation Serif", "DejaVu Serif",
-       "Noto Serif CJK SC", "Songti SC", serif; font-size: ${body_pt}pt;
+body { font-family: ${font_stack}; font-size: ${body_pt}pt;
        line-height: ${line_height}; text-align: justify; }
 p { font-size: ${body_pt}pt; line-height: ${line_height}; text-indent: ${body_indent_em}em; margin: 0;
     text-align: justify; overflow-wrap: anywhere; }
@@ -234,9 +233,12 @@ section.cover { page-break-after: auto; width: 100%; height: 100%; margin: 0; pa
 body > section.cover { page-break-after: always; width: ${page_width}mm; height: ${cover_height}mm;
     overflow: hidden; }
 section.cover > section { flex: 1; min-height: 0; }
-section.cover img, section.cover svg { width: 100%; height: 100%; max-width: 100%; max-height: 100%; object-fit: contain; display: block; min-height: 0; }
+section.cover p, section.cover figure { margin: 0 !important; padding: 0 !important; width: 100% !important; height: 100% !important; }
+section.cover img, section.cover svg { width: 100% !important; height: 100% !important; max-width: 100% !important; max-height: 100% !important; object-fit: contain !important; display: block; margin: 0 !important; min-height: 0; }
 section.cover span.aepmark { position: absolute; top: 0; left: 0; }
-h1, h2, h3, h4 { page-break-after: avoid; }
+h1, h2, h3, h4 { page-break-after: avoid; font-family: inherit; }
+section.colophon { font-size: ${note_pt}pt; line-height: 1.5; }
+section.colophon h1 { font-size: ${h2_pt}pt; }
 figure, table, aside { page-break-inside: avoid; }
 /* 定位标记：不可见但对 PDF 文本层可检索；映射完成后 redaction 清除 */
 span.aepmark { font-size: 1px; color: #ffffff; }
@@ -324,6 +326,11 @@ class PrintStyle:
             body_pt=self.body_pt,
             note_pt=self.note_pt,
             line_height=self.line_height,
+            font_stack=os.environ.get(
+                "AEP_PDF_FONT",
+                '"Nimbus Roman", "Liberation Serif", "DejaVu Serif", '
+                '"Noto Serif CJK SC TTF", "Noto Serif CJK SC", serif',
+            ),
             body_indent_em=em_number(metrics.body_indent_em),
             h1_pt=round(self.body_pt * metrics.heading_scales[0], 1),
             h2_pt=round(self.body_pt * metrics.heading_scales[1], 1),
@@ -773,6 +780,9 @@ def build_print_html(
         evidence.anchors.update(positioned.markers)
         evidence.findings.extend(positioned.findings)
         if href == package.cover_href:
+            # 封面页只出图：构建器自动加的 <h1> 与 <figcaption> 会印在封面上，去掉
+            inner = re.sub(r"<h1\b[^>]*>.*?</h1>", "", inner, flags=re.S)
+            inner = re.sub(r"<figcaption\b[^>]*>.*?</figcaption>", "", inner, flags=re.S)
             parts.append(f'<section class="cover">{marker}{inner}</section>')
             continue
         kind = role or _section_kind(title)
@@ -782,6 +792,25 @@ def build_print_html(
         if kind in {"index", "cip"} and f" {kind}" not in classes:
             classes += f" {kind}"
         parts.append(f'<section class="{classes}">{marker}{inner}</section>')
+    if os.environ.get("AEP_PDF_COLOPHON"):
+        colophon = next(
+            (
+                item["href"]
+                for item in package.manifest.values()
+                if item["href"].endswith("auto-epublizer-build-info.xhtml")
+            ),
+            None,
+        )
+        if colophon and (root / colophon).is_file():
+            doc_html = (root / colophon).read_text(encoding="utf-8")
+            body_match = BODY_RE.search(doc_html)
+            if body_match:
+                inner = _rewrite_resources(
+                    prepare_asides(body_match.group(1)), colophon, root, notes
+                )
+                parts.append(
+                    f'<section class="chapter colophon"><h1>制作信息与版权</h1>{inner}</section>'
+                )
     # 样式表：按包内声明选第一个 text/css（多章子目录也不做首章猜测）
     stylesheet = next(
         (item["href"] for item in package.manifest.values() if item["media-type"] == "text/css"),
@@ -894,16 +923,25 @@ def _clear_markers(
     extra: list[str] | None = None,
     prefix: str = "AEPMARK",
 ) -> None:
-    """映射完成后 redaction 清除本次定位标记（D2：标记不留进成品）。"""
-    needles = [_marker(number, prefix=prefix) for number in range(1, sections + 1)] + (extra or [])
+    """清除定位标记（D2：标记不留进成品）。
+
+    标记是 0.1–1px 的独立 span，按 span bbox 精确 redaction 才能既删干净
+    又不误伤相邻正文字形（按 search_for 矩形涂会连带删字/残留 "AE"）。
+    """
+    markers = {_marker(number, prefix=prefix) for number in range(1, sections + 1)}
+    markers.update(extra or [])
     for index in range(doc.page_count):
         page = doc[index]
-        hits: list[pymupdf.Rect] = []
-        for needle in needles:
-            hits.extend(page.search_for(needle))
-        if not hits:
+        rects: list[pymupdf.Rect] = []
+        for block in page.get_text("dict").get("blocks", []):
+            for line in block.get("lines", []):
+                for span in line.get("spans", []):
+                    text = (span.get("text") or "").strip()
+                    if text and any(marker in text for marker in markers):
+                        rects.append(pymupdf.Rect(span["bbox"]))
+        if not rects:
             continue
-        for rect in hits:
+        for rect in rects:
             page.add_redact_annot(rect, fill=False)
         page.apply_redactions(images=0, graphics=0)
 
@@ -947,8 +985,20 @@ def attach_outline(
     return toc
 
 
+def _running_font_path() -> str:
+    """页眉/页码可选嵌入字体路径（AEP_PDF_RUNNING_FONT；空则沿用内置字体）。"""
+    path = os.environ.get("AEP_PDF_RUNNING_FONT", "").strip()
+    return path if path and Path(path).is_file() else ""
+
+
 def _running_font(text: str) -> tuple[str, pymupdf.Font]:
-    """按标题文字选字体：含 CJK 用内置中文字体（Helvetica 只会画出圆点）。"""
+    """按标题文字选字体：优先 AEP_PDF_RUNNING_FONT（TrueType），否则内置字体。"""
+    path = _running_font_path()
+    if path:
+        try:
+            return "aeprun", pymupdf.Font(fontfile=path)
+        except Exception:  # noqa: BLE001 - 字体不可用时退回内置字体
+            pass
     if any(ord(char) > 0x2E7F for char in text):
         try:
             return "china-s", pymupdf.Font("china-s")
@@ -989,6 +1039,7 @@ def stamp_folios(
     titles = section_titles or {}
     starts = section_pages or {}
     roles = section_roles or {}
+    run_path = _running_font_path()
     for index in range(1 if cover else 0, doc.page_count):
         page = doc[index]
         page_no = index + 1
@@ -1000,7 +1051,8 @@ def stamp_folios(
             (page.rect.width / 2 - 6, page.rect.height - 18),
             str(index + 1),
             fontsize=font_size,
-            fontname="helv",
+            fontname="aeprun" if run_path else "helv",
+            fontfile=run_path or None,
             color=(0.35, 0.35, 0.35),
         )
         if section is None or page_no == starts.get(section):
@@ -1021,6 +1073,7 @@ def stamp_folios(
             title,
             fontsize=8.0,
             fontname=fontname,
+            fontfile=run_path or None,
             color=(0.45, 0.45, 0.45),
         )
 

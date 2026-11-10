@@ -104,8 +104,8 @@ OPF 的 `aep:render-mode` 记录本次实际构建入口：`source`（纯源文�
 - **代码与 raw HTML**：普通围栏代码完整保留（包括跨空行），转义后显示；其中的 HTML 标签、标题、媒体路径、脚注、锚点和容器标记不生成目录或媒体读取。源文本/Pandoc 解析不得把代码标题切章、把独立数字当页码删除；显式 Pandoc raw HTML 是另一条语法路径。
 - **内联 SVG**：保留真实 XHTML SVG 命名空间，所属内容 manifest 项带 `svg` 属性；本地 SVG `image` 的 href/xlink:href 按上面的完整路径媒体身份核对。缺源媒体、缺 ZIP 项或同 basename 错目录均阻断放行；未绑定 XML 前缀必须失败，不静默转义或丢弃。代码中展示的 SVG/img 不是资源引用。
 - **构建日志署名**（issue #40；不出网）：`EPUB 已生成` 行固定带工具名 + 版本 + 许可证 + 源码地址，工作区 `meta.producer` 与 `run_initialized` 事件给出同一标识，来源可机器判定。
-- **主题**（`--theme` / `config.output.theme`）：`standard`（serif+1.7 行距+缩进+两端对齐+标题居中，
-  默认）/ `compact`（sans-serif+1.4+无缩进）/ `spacious`（serif+2.0）。只控排版微调，
+- **主题**（`--theme` / `config.output.theme`）：`standard`（1.7 行距+缩进+两端对齐+标题居中，
+  默认）/ `compact`（1.4+无缩进）/ `spacious`（2.0）。只控排版微调，不声明 font-family（2026-11-04），
   无具体字体名/颜色/字号（audit 会拦：`E_THEME_FONT`/`E_THEME_COLOR`）。
 - **按书样式**（`--css` / `config.output.css`）：工作区内受限 CSS（如
   `preprocessing/book.css`），追加在主题层之后。只允许缩进/段距/行距/对齐/字重等排版属性；

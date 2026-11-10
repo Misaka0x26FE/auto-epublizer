@@ -111,14 +111,13 @@ class 选择器（`p.imgp`/`p.verse`）优先于元素选择器（`p`）。按�
 
 ## 5. 主题层（有限个性化）
 
-**边界**：主题只控排版微调，绝不碰字体/颜色/字号（阅读器领地）。唯一「字体相关」例外是
-**泛化字族基调**——用 `serif`/`sans-serif` 族名而非具体字体名，由阅读器映射到自己的字体。
+**边界**：主题只控排版微调，绝不碰字体/颜色/字号（阅读器领地）。2026-11-04 起
+**主题不声明 `font-family`**（用户指令：EPUB 不设置、不内嵌字体），字族完全交由阅读器默认。
 
 ### 5.1 可选维度
 
 | 维度 | 取值 |
 |---|---|
-| 字族基调 | `serif`（默认）/ `sans-serif` |
 | 行距密度 | `compact`(1.4) / `normal`(1.7，默认) / `spacious`(2.0) |
 | 段间距 | 紧 / 标准（默认）/ 松 |
 | 首行缩进 | 中文缩进 2em（默认）/ 无缩进（西式） |
@@ -131,9 +130,9 @@ class 选择器（`p.imgp`/`p.verse`）优先于元素选择器（`p`）。按�
 不开放任意 CSS。预置三套极简主题，`--theme` / `config.output.theme` 选择：
 
 ```text
-standard  → serif + 1.7 行距 + 缩进 + 两端对齐 + 标题居中（默认）
-compact   → sans-serif + 1.4 行距 + 无缩进 + 左对齐
-spacious  → serif + 2.0 行距 + 缩进 + 两端对齐 + 标题居中
+standard  → 1.7 行距 + 缩进 + 两端对齐 + 标题居中（默认）
+compact   → 1.4 行距 + 无缩进 + 左对齐
+spacious  → 2.0 行距 + 缩进 + 两端对齐 + 标题居中
 ```
 
 每套主题仅派生「排版微调」几个 CSS 属性，不引入字体名、颜色、字号；
@@ -146,9 +145,12 @@ audit 拦截违规（`E_THEME_FONT`：具体字体名/字号；`E_THEME_COLOR`�
 
 | 主题 | 实际声明 |
 |---|---|
-| `standard` | `body{font-family:serif;line-height:1.7}`；`p{text-indent:2em;text-align:justify;margin:0 0 0.6em 0}`；`h1,h2,h3,h4,h5,h6{text-align:center}` |
-| `compact` | `body{font-family:sans-serif;line-height:1.4}`；`p{margin:0 0 0.8em 0}` |
-| `spacious` | `body{font-family:serif;line-height:2.0}`；`p{text-indent:2em;text-align:justify;margin:0 0 1em 0}`；`h1,h2,h3,h4,h5,h6{text-align:center}` |
+| `standard` | `body{line-height:1.7}`；`p{text-indent:2em;text-align:justify;margin:0 0 0.6em 0}`；`h1,h2,h3,h4,h5,h6{text-align:center}` |
+| `compact` | `body{line-height:1.4}`；`p{margin:0 0 0.8em 0}` |
+| `spacious` | `body{line-height:2.0}`；`p{text-indent:2em;text-align:justify;margin:0 0 1em 0}`；`h1,h2,h3,h4,h5,h6{text-align:center}` |
+
+> 2026-11-04 用户指令：EPUB **不设置、不内嵌字体**，`body` 不再声明 `font-family`；
+> 主题只保留行高/缩进/对齐等排版微调，字族完全交由阅读器默认。
 
 措辞冲突的解释（冻结）：
 

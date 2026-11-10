@@ -111,13 +111,21 @@ def _production_epub(
     return epub, dropped
 
 
-def _audit(epub: Path, root: Path, md: str, *, translated: bool = True) -> NotesAuditResult:
+def _audit(
+    epub: Path,
+    root: Path,
+    md: str,
+    *,
+    translated: bool = True,
+    media_map: Any | None = None,
+) -> NotesAuditResult:
     """以原始登记文本审计，不使用改写后的 Markdown 重建期望。"""
     return audit_notes_epub(
         epub,
         source_notes=_src_notes(md),
         target_notes=_tgt_notes(md) if translated else None,
         media_root=root,
+        media_map=media_map,
     )
 
 
@@ -135,7 +143,6 @@ def _codes(result: NotesAuditResult) -> set[str]:
         ("media/sub/pic.png", "sub/pic.png"),
         ("raw/media/sub/pic.png", "sub/pic.png"),
         ("./raw/media/sub/pic.png", "sub/pic.png"),
-        ("old/location/pic.png", "pic.png"),
         ("a (1).png", "a (1).png"),
         ("%41.png", "%41.png"),
         ("A.png", "A.png"),
@@ -157,6 +164,36 @@ def test_source_paths_survive_production_chain(
     assert result.ok, result.findings
     general = audit_epub(epub)
     assert general.ok, general.findings
+
+
+def test_legacy_basename_path_is_blocked_without_mapping(tmp_path: Path, media_root: Path) -> None:
+    """旧目录路径在交付门不再被 basename 兜底：找不到就阻断，不猜。"""
+    _write_media(media_root, "pic.png")
+    md = "带图注文 ![x](old/location/pic.png)。"
+    epub, dropped = _production_epub(tmp_path, media_root, md)
+    assert dropped == []  # 构建期仍兼容旧路径
+    result = _audit(epub, media_root, md)
+    assert "E_NOTES_MEDIA_MISSING" in _codes(result)
+
+
+def test_legacy_basename_path_passes_with_explicit_mapping(
+    tmp_path: Path, media_root: Path
+) -> None:
+    """显式映射是旧路径唯一的交付通行证。"""
+    from auto_epublizer.media_paths import load_media_map
+
+    _write_media(media_root, "pic.png")
+    md = "带图注文 ![x](old/location/pic.png)。"
+    epub, _dropped = _production_epub(tmp_path, media_root, md)
+    map_path = tmp_path / "preprocessing" / "media-map.json"
+    map_path.parent.mkdir(parents=True)
+    map_path.write_text(
+        '{"schema": 1, "entries": [{"ref": "old/location/pic.png", '
+        '"member": "pic.png", "reason": "旧工作区绝对路径迁移"}]}',
+        encoding="utf-8",
+    )
+    result = _audit(epub, media_root, md, media_map=load_media_map(tmp_path))
+    assert result.ok, result.findings
 
 
 @pytest.mark.parametrize(

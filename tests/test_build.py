@@ -513,8 +513,9 @@ def test_build_epub_embeds_stylesheet(tmp_path: Path) -> None:
         css = zf.read("OEBPS/style.css").decode("utf-8")
         # 功能性规则保留：图片只缩不放大、图片段居中
         assert "max-width: 100%" in css and "p.imgp" in css
-        # 呈现层 + 主题层边界：泛化族名允许；具体字体名/字号/颜色禁止（阅读器领地）
-        assert "font-family: serif" in css  # 默认 standard 主题
+        # 呈现层 + 主题层边界：EPUB 不设置字体（2026-11-04 用户指令），
+        # 具体字体名/字号/颜色同样禁止（阅读器领地）。
+        assert "font-family" not in css
         for banned in ("Georgia", "Noto Serif", "font-size", "color:"):
             assert banned not in css, f"非功能性样式残留：{banned}"
         opf = zf.read("OEBPS/content.opf").decode("utf-8")
@@ -540,7 +541,7 @@ def test_theme_css_variants(tmp_path: Path) -> None:
         with zipfile.ZipFile(out) as zf:
             css_by_theme[theme] = zf.read("OEBPS/style.css").decode("utf-8")
     assert "line-height: 1.7" in css_by_theme["standard"]
-    assert "font-family: sans-serif" in css_by_theme["compact"]
+    assert "font-family" not in css_by_theme["compact"]
     assert "line-height: 2.0" in css_by_theme["spacious"]
     # 主题不引入具体字体名/颜色/字号
     for css in css_by_theme.values():

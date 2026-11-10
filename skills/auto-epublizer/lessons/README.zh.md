@@ -27,6 +27,8 @@
 
 | 文档 | 主题 | 状态 |
 |---|---|---|
+| [2026-11-10-notes-nonempty-false-green.md](2026-11-10-notes-nonempty-false-green.zh.md) | 注文层「非空即已译」假绿：`target_markdown` 非空就按译文对账，源文照搬/零汉字注文随书放行；须并列一条语言硬门 | 判据缺口（`qa/notes_audit.py`）+ 全库普查口径；修复见 `docs/plans/2026-11-10-field-archive-gap-analysis.md` §2 P0-1 |
+| [2026-11-10-dev-gates-never-fail.md](2026-11-10-dev-gates-never-fail.zh.md) | 让门禁自己证明「它会失败」：临时副本注入缺陷 → 断言对应判据报错 + 基线零误报；恒真式/子串包含/键口径不一致是最危险的假证据 | 方法论沉淀 + 注入清单模板 |
 | [2026-11-01-titlepage-echo-deletion.md](2026-11-01-titlepage-echo-deletion.zh.md) | 书名页书名/副题被当页眉回声删除：正文单元才可清回声、书名页整页保留、删除须带源页块与理由 | 已修复判据边界（structure/classify.py + tests）+ 现场恢复经验 |
 | [2026-11-01-pdf-toc-anchors-and-artifact-manifest.md](2026-11-01-pdf-toc-anchors-and-artifact-manifest.zh.md) | 印刷 PDF 目录/书签绑定最终片段页；唯一定位标记；暂存原子发布与派生件清单 | 已修复（#73/#82/#60 后续）+ 经验留存 |
 | [2026-10-27-scanned-academic-false-green.md](2026-10-27-scanned-academic-false-green.zh.md) | 扫描学术书 18 类机械假绿：双栏人物表、尾注清点、审校覆盖与禁止凑数/占位修复 | 经验与待开发方案（#68/#69），不代表代码修复或原书重新验收 |

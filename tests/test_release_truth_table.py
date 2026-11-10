@@ -350,3 +350,27 @@ def test_missing_spine_doc_blocks_release_at_provenance_layer(
     assert rep["released"] is False and rep["released_reason"] == "audit_failed"
     codes = {f["code"] for f in rep["audit"]["findings"] if f["level"] == "error"}
     assert codes & {"E_MANIFEST_HREF", "E_NAV_HREF", "E_NCX_HREF"}
+
+
+def test_notes_review_open_blocks_release() -> None:
+    """C3：登记注文的语言候选未闭合时，机械门全绿也不得放行。"""
+    r = _report(
+        notes_review={
+            "applicable": True,
+            "status": "open",
+            "open": 2,
+            "open_note_ids": ["n-1", "n-2"],
+            "stale": 1,
+        }
+    )
+    assert r.notes_review_open == 2
+    assert r.notes_review_open_ids == ["n-1", "n-2"]
+    assert r.released is False and r.released_reason == "notes_review_open"
+
+
+def test_notes_review_not_run_blocks_but_absent_does_not() -> None:
+    not_run = _report(notes_review={"applicable": True, "status": "not_run", "open": 3})
+    assert not_run.released is False and not_run.released_reason == "notes_review_open"
+
+    no_notes = _report(notes_review={"applicable": False, "status": "no_notes_registry", "open": 0})
+    assert no_notes.released is True and no_notes.released_reason == "ok"

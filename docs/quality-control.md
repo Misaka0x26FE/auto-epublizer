@@ -1,4 +1,4 @@
-<!-- i18n: source=quality-control.zh.md sha256=42ccf98abd7b7893e3e1b7e0eb8a8ac47911b24cca7623482fd525fd2d3f402c -->
+<!-- i18n: source=quality-control.zh.md sha256=66c8adc235bb1e8780275c226a0d34090d417ca3c5c27178de2e9764ac7cd8c2 -->
 > **English** | [中文](quality-control.zh.md)
 
 # Quality-Control Process Design (auto-epublizer)
@@ -160,7 +160,8 @@ Autofix (optional): first write a recoverable index `reviews/<ts>/autofix/index.
   - theme-layer boundary: style.css has no specific font name/size (`E_THEME_FONT`), no color (`E_THEME_COLOR`);
   - cover meta mutual corroboration: `properties="cover-image"` ↔ `<meta name="cover">` (`E_COVER_META`);
   - each content document has a correct `xml:lang`, exactly one `h1`, no skipped levels (`E_HEADING_SKIP`);
-  - residue: HTML comments (`E_RESIDUE`), markdown/pandoc markers (`W_RESIDUE`);
+  - residue: HTML comments (`E_RESIDUE`), markdown/pandoc markers (`W_RESIDUE`),
+    table-cell ATX (`W_CELL_ATX`);
   - internal anchors resolvable (`E_ANCHOR`, including footnote noteref→footnote) + footnote backlinks (`E_FN_BACKLINK`);
   - media: empty alt (`W_IMG_NO_ALT`), format compatibility (`W_IMG_FORMAT`), oversized/overwide/overtall/uncompressed (`W_IMG_LARGE`/`W_IMG_RATIO`/`W_IMG_UNCOMPRESSED`), total EPUB size (`W_EPUB_SIZE`);
   - DC metadata missing hints (`W_META_INCOMPLETE`).
@@ -337,6 +338,13 @@ reviews/review-<ts>/     # agent hand-written review records (G1–G3 executed b
 | Terminology hit | `g0_terminology_open == 0` (hard release gate) | whole-book consistency; real defects must be cleared |
 | Error rate | `confirmed / total_sentences ≤ 1e-4` (agent self-check reference, not a CLI hard gate) | aligned with publishing error-rate conventions |
 | epubcheck | actual execution, returncode == 0 and errors == 0 | structural validity |
+
+> **Calibration status (2026-11-10)**: the repository has no human-labelled
+> "normal compression / real omission" set, so the **0.30/3.0 defaults stay unchanged**.
+> `auto_translator.review.length_calibration.evaluate` scores false positives and
+> false negatives for a fixed `src/tgt/label` input; any threshold change must report
+> sample size, denominator and independent validation. Fewer alerts is not evidence.
+> The empty-translation and severe-short gates are independent of the ratio.
 
 ## 5. Convergence State Machine (G3)
 

@@ -1,4 +1,4 @@
-<!-- i18n: source=structure.zh.md sha256=b72eb729428d31368378d1ab976063c31cf5bc8c852e29c8167fe9f801caedc9 -->
+<!-- i18n: source=structure.zh.md sha256=c50f2de1a661c06db6b1ad623ea567cc73885b04d004b4abff715840d76b9178 -->
 > **English** | [中文](structure.zh.md)
 
 # Structure (four-layer structural rebuild + provenance)
@@ -41,15 +41,47 @@ No keyword hit → `body` + `chNN` (sequential numbering). Unit IDs are stable (
 
 ## Cleaning
 
-- **Page-number removal**: standalone page-number paragraphs (`12`, `- 8 -`, `page 3`).
+- **Page-number removal (requires layout evidence)**: explicit labels (`page 3`, `p12`),
+  decorated numbers (`- 8 -`), and bare numbers that sit on a page boundary and form an
+  increasing sequence across ≥5 `source_page` values within a 0–3 page offset. Bare numbers without such evidence
+  (years, verse numbers, table values) are **kept** and reported as candidates in
+  `structured/raw/structure-clean.json`; never delete on shape alone.
 - **Running head/footer removal**: group by `source_page`; a short text that appears at the
-  top/bottom of ≥50% of pages is removed (`min_pages` guard).
+  top/bottom of ≥50% of pages is removed (`min_pages` guard). Removals are recorded in the
+  same `structure-clean.json` (`removed` / `candidates`).
+- **Cleaning follows classification**: cover/title-page exemption uses the classified
+  `kind`, not a second title-only decision; aggregated units recognised as title pages keep
+  their furniture.
+- **Written output is cleaned**: `write_structured` writes cleaned segments, so running
+  heads/page numbers never reach `structured/`. Preview a rebuild with
+  `preprocess --force --dry-run` (reports new/changed/unchanged plus the ledger, writes
+  nothing).
 - **EPUB anchor/attribute leftovers**: `read_epub` already clears `[]{#id}` anchors,
   `{#id}` attributes, `[text]{.class}` class attributes and `<br>` on ingest; if such
   leftovers are still seen in headings in `structured/`, it means the generic pandoc
   fallback path was taken — troubleshoot per `references/ingest.md` "EPUB split by spine".
 - **Provenance**: each `Segment` carries `meta.source_page`; each PDF page has a
   corresponding `page-NNN.json`.
+
+## Media identity and migration mapping
+
+- Delivery audit (QA / notes gate) accepts only **exact paths** (original relative path,
+  repeated root prefix) or an **explicit mapping**. Same-basename files in another directory
+  are no longer silently substituted; a wrong-directory reference is reported missing.
+- The build path still accepts legacy paths (basename fallback) as a transition; mismatches
+  surface at the delivery gate.
+- Register legacy absolute paths one by one in `preprocessing/media-map.json`:
+
+  ```json
+  {"schema": 1, "entries": [
+    {"ref": "/home/agent/book/media/fig1.png", "member": "fig1.png",
+     "reason": "legacy absolute path migration", "sha256": "optional, 64 lowercase hex"}
+  ]}
+  ```
+
+  `member` is relative to `structured/raw/media/`; `reason` is mandatory; optional `sha256`
+  pins the target bytes. Traversal, duplicate refs, missing targets and digest mismatches
+  become audit findings, never silent passes.
 
 ## Contract
 
