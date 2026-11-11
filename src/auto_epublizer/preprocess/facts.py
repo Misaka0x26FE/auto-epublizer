@@ -8,6 +8,7 @@
 
 from __future__ import annotations
 
+import json
 import re
 from pathlib import Path
 from typing import Any
@@ -149,7 +150,64 @@ def _checks_facts(store: RunStore, sniff_facts: dict[str, Any]) -> dict[str, Any
     if sniff_facts.get("kind") == "pdf":
         checks["scanned"] = bool(sniff_facts.get("scanned"))
         checks["garbled_ratio"] = sniff_facts.get("garbled_ratio", 0.0)
+        indent = _indent_fact(store)
+        checks["paragraph_indent_available"] = indent["available"]
+        checks["indented_paragraphs"] = indent["indented"]
+    checks["longest_paragraph_chars"] = max(
+        (len(block.strip()) for text in texts for block in text.split("\n\n")),
+        default=0,
+    )
     return checks
+
+
+def _indent_fact(store: RunStore) -> dict[str, Any]:
+    """行框里的段首缩进证据（#86）：available=False 时 facts 提示需重排。"""
+    raw = store.structured_dir / "raw"
+    with_lines = 0
+    indented = 0
+    for path in sorted(raw.glob("page-*.json")):
+        try:
+            page = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        for block in page.get("blocks") or []:
+            lines = block.get("lines") or []
+            boxes = [line.get("bbox") for line in lines if line.get("bbox")]
+            if len(boxes) < 2:
+                continue
+            with_lines += 1
+            left = min(float(box[0]) for box in boxes)
+            size = float(block.get("font_size") or 10)
+            if any(float(box[0]) - left > max(size * 0.8, 2) for box in boxes[1:]):
+                indented += 1
+    return {"available": bool(with_lines and indented), "indented": indented, "blocks": with_lines}
+
+
+def _clean_facts(store: RunStore) -> dict[str, Any]:
+    """结构清洗台账摘要（issue #97）：本单元删了几个标题回声块要可见。"""
+    path = store.structured_dir / "raw" / "structure-clean.json"
+    if not path.is_file():
+        return {"present": False, "units": 0, "removed": 0, "candidates": 0, "rows": []}
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {"present": False, "units": 0, "removed": 0, "candidates": 0, "rows": []}
+    rows = data.get("units") if isinstance(data, dict) else None
+    rows = [row for row in rows or [] if isinstance(row, dict)]
+    return {
+        "present": True,
+        "units": len(rows),
+        "removed": sum(len(row.get("removed") or []) for row in rows),
+        "candidates": sum(len(row.get("candidates") or []) for row in rows),
+        "rows": [
+            {
+                "unit_id": row.get("unit_id"),
+                "removed": len(row.get("removed") or []),
+                "candidates": len(row.get("candidates") or []),
+            }
+            for row in rows
+        ],
+    }
 
 
 def collect_facts(store: RunStore, config) -> dict[str, Any]:
@@ -216,6 +274,7 @@ def collect_facts(store: RunStore, config) -> dict[str, Any]:
         "capabilities": capabilities,
         "structure": {"units": units, "totals": totals, "granularity": granularity},
         "media": _media_facts(store),
+        "clean": _clean_facts(store),
         "checks": _checks_facts(store, sniff_facts),
         "repair_signals": repair_signal_facts,
         "suggestions": suggestions,
@@ -353,6 +412,20 @@ def render_facts_md(facts: dict[str, Any]) -> str:
             f"| {u['id']} | {u['region']} | {u['kind']} | {u['title'][:24]} | {u['chars']} | {u['sentences']} |"
         )
 
+    clean = facts.get("clean") or {}
+    if clean.get("present"):
+        lines += ["", "## 清洗台账（structure-clean.json）", ""]
+        lines.append(
+            f"- 涉及 {clean['units']} 个单元；删除 {clean['removed']} 项，候选 {clean['candidates']} 项"
+        )
+        for row in clean["rows"][:12]:
+            lines.append(f"  - {row['unit_id']}：删除 {row['removed']} / 候选 {row['candidates']}")
+        if clean["candidates"]:
+            lines.append(
+                "- 候选是证据不足的保留项（如大字号书名标题），须对照原页复核；"
+                "明细见 structured/raw/structure-clean.json"
+            )
+
     checks = facts["checks"]
     lines += ["", "## 体检", ""]
     if checks.get("drm"):
@@ -367,6 +440,13 @@ def render_facts_md(facts: dict[str, Any]) -> str:
         lines.append(
             f"- 版权残句单元：{len(checks['copyright_residual_units'])}（{', '.join(checks['copyright_residual_units'])}）"
         )
+    if checks.get("paragraph_indent_available") is False:
+        lines.append(
+            "- ⚠ 行框无段首缩进证据：长段落可能由 OCR/文字层合并造成，核对后按 references/repair.md 重排"
+        )
+    longest = checks.get("longest_paragraph_chars") or 0
+    if longest >= 4000:
+        lines.append(f"- ⚠ 最长段落 {longest} 字符：疑似整节落成一段，核对段边界")
     if not any(
         [
             checks.get("drm"),
@@ -374,6 +454,8 @@ def render_facts_md(facts: dict[str, Any]) -> str:
             checks.get("garbled_ratio"),
             checks.get("empty_shell_units"),
             checks.get("copyright_residual_units"),
+            checks.get("paragraph_indent_available") is False,
+            (checks.get("longest_paragraph_chars") or 0) >= 4000,
         ]
     ):
         lines.append("- 无异常")

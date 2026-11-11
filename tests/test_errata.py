@@ -106,3 +106,17 @@ def test_duplicate_key_in_one_batch_is_rejected(tmp_path: Path) -> None:
     report = register_errata(store, [_row(), _row()], apply=True)
     assert any("重复" in e for e in report.errors)
     assert not (store.preprocessing_dir / "errata.jsonl").exists()
+
+
+def test_report_exposes_errata_counts_without_exempting() -> None:
+    """#72-9：errata 进入报告，只作可见证据，不改变放行判定。"""
+    from auto_epublizer.qa import AuditResult, EpubcheckResult, generate_report
+
+    report = generate_report(
+        "book",
+        AuditResult(ok=True),
+        EpubcheckResult(available=True, ran=True, errors=0, warnings=0, returncode=0),
+        errata={"total": 3, "confirmed": 1, "stale": 1},
+    )
+    assert (report.errata_total, report.errata_confirmed, report.errata_stale) == (3, 1, 1)
+    assert report.released is True

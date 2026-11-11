@@ -1,4 +1,4 @@
-<!-- i18n: source=README.zh.md sha256=fe23daf840f98acab72b7fccab4c32e1a6fe4dd96875dbe23776d51834e12b37 -->
+<!-- i18n: source=README.zh.md sha256=41b8023eaff63ace53a3edc39ccb8885996a8e8c84305d7e1cf419fcab6fff99 -->
 > **English** | [中文](README.zh.md)
 
 # auto-epublizer
@@ -92,6 +92,17 @@ You are a book-translation assistant. Follow these steps exactly:
 ```
 
 ---
+
+## Distribution (PyPI decision)
+
+This project is distributed as an **application/CLI**: take the source from GitHub and pin a
+version with `uv sync` or `uv tool install`; it is **not published to PyPI**. Reasons: under the
+single-LLM principle there is no promised stable library API; the release, signing and trusted
+publishing pipeline is not in place; a public package would imply a long-term library contract
+while the project actually evolves through workspace and CLI contracts. When a wheel is needed,
+`uv build` can produce one for internal/private channels, without any public compatibility
+promise. The license remains `AGPL-3.0-only`; the distribution channel does not change the
+license text, and the license governs its own obligations.
 
 ## Quick start
 
@@ -222,3 +233,11 @@ heartbeat or deployment detection; a workspace records `meta.producer` (e.g.
 `run_initialized` event of `events.jsonl`, and the `build` log always carries the tool
 name + license + source URL — so a third party can point back at the source, while the
 tool itself never makes an outbound call for this. (issue #40 §5)
+
+**Distribution form and AGPL §13**: the current artifact is a local CLI. It does not
+listen on a port or offer remote network interaction, so running it does not by itself
+create the "network service" scenario of §13. If a third party modifies the program and
+offers it as a network service, that party is responsible for the corresponding source
+offer under its own distribution form; this project performs no deployment detection and
+makes no judgement about third-party service forms. Any future server-side form will be
+declared separately in release notes.

@@ -1,4 +1,4 @@
-<!-- i18n: source=translation.zh.md sha256=01ffe46010734f820a54233da3f4cf542632c3192fc85161be4b1e887cb97f16 -->
+<!-- i18n: source=translation.zh.md sha256=5f22a1156d486029a23862a1e9ee7e4783d583a9c015ab093c4d0e801dd138b8 -->
 > **English** | [中文](translation.zh.md)
 
 # Translation (chunk translation + sentence alignment + terminology loop)
@@ -130,6 +130,12 @@ suspected tail loss. `translation/notes.json` is scanned too (with `note_id`).
   are allowed.
 - Candidates need human verification; confirmed defects go through `repair apply`/rebuild,
   never bulk edits from scanner output.
+- **Per-candidate disposition** (issue #93): write `preprocessing/hygiene-review.jsonl`
+  with `{schema_version:1, unit, block, code, text_sha256, disposition, reason}`;
+  `disposition` is `accepted|fixed|false_positive` and `reason` is mandatory. Copy
+  `text_sha256` from `hygiene --review`; editing the text makes the verdict `stale` and
+  reopens the candidate. `hygiene --review` reports open/closed/stale read-only and never
+  enters the release gate.
 
 ## Handling special segments (PDF content-extraction artifacts)
 

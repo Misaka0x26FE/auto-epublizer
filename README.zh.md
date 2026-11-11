@@ -73,6 +73,14 @@ ahead/divergent、错误分支/来源均停止，不 reset/stash/clean/覆盖用
 
 ---
 
+## 分发方式（PyPI 决策）
+
+本项目按**应用/CLI**分发：从 GitHub 获取源码，用 `uv sync` 或 `uv tool install` 固定版本；
+**不发布 PyPI 包**。理由：单 LLM 原则下没有承诺稳定的库 API；发布、签名与可信发布流水线尚未建立；
+公开包会制造“可长期依赖的库”预期，而项目实际按工作区与 CLI 契约演进。需要 wheel 时可用
+`uv build` 在内部/私有渠道构建，但这不构成公开兼容承诺。许可证保持 `AGPL-3.0-only`，
+发布渠道不改变许可证文本，具体义务以许可证为准。
+
 ## 快速开始
 
 先执行[首次使用与安全续用](skills/auto-epublizer/references/work-root.zh.md) 的完整 Bash
@@ -191,3 +199,8 @@ PDF 解析难点与方案见 [docs/pdf-parsing.md](docs/pdf-parsing.zh.md)。
 记录 `meta.producer`（如 `auto-epublizer@0.1.0`）并在 `events.jsonl` 的
 `run_initialized` 事件给出同一标识，`build` 日志固定带工具名 + 许可证 + 源码地址——
 第三方可据此指回源码，工具不做任何出网行为。（issue #40 §5）
+
+**发行形态与 AGPL §13**：当前发行物是本地 CLI，不监听端口、不提供网络远程交互，
+因此运行它本身不产生 §13 的“网络服务”场景。若第三方修改本程序并作为网络服务提供，
+该第三方应按其分发形态履行对应源码提供义务；本项目不做部署侦测，也不对第三方的
+服务形态作判断。若未来增加服务端形态，会在发布说明中单独声明。

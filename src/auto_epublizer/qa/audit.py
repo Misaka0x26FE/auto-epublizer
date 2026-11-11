@@ -19,6 +19,7 @@ from auto_common.markdown import inline_code_chunks, markdown_chunks
 
 from ..fingerprint import strip_fingerprint_comments
 from ..media_paths import epub_member_path
+from .footnote_forms import candidate_footnotes_in_html, candidate_numbered_in_html
 
 _XHTML = "application/xhtml+xml"
 _HTTPS = re.compile(r"^(https?|javascript|data):", re.IGNORECASE)
@@ -994,6 +995,39 @@ def audit_epub(
                 continue
             docs[name] = zf.read(name).decode("utf-8")
             ids_by_doc[name] = set(re.findall(r'\bid="([^"]+)"', docs[name]))
+        # 11a. 非语义脚注形态（issue #37）：`注 1.` / `[1]` / 连续编号段没有生成 aside
+        # 时，provenance 的 md_defs==epub_defs==0 与回链循环都会静默通过。已登记注释
+        # 由独立产品门核对，这里不双报。
+        if not notes_registered:
+            aside_total = sum(
+                len(re.findall(r'<aside\b[^>]*epub:type="footnote"', content))
+                for content in docs.values()
+            )
+            candidates: list[str] = []
+            weak: list[str] = []
+            for name, content in docs.items():
+                if name.endswith(("nav.xhtml", "landmarks.xhtml")):
+                    continue
+                strong = candidate_footnotes_in_html(content)
+                candidates.extend(f"{name}（{text[:24]}）" for text in strong)
+                for text in candidate_numbered_in_html(content):
+                    if text not in strong:
+                        weak.append(f"{name}（{text[:24]}）")
+            if candidates:
+                # 强形态即使书里已有别的语义 aside 也仍是未登记注文：混排书不能放行。
+                result.add(
+                    "error",
+                    "E_FOOTNOTES_NOT_SEMANTIC",
+                    f"疑似非语义脚注（未生成 aside；全书已有 {aside_total} 个 aside）："
+                    + "、".join(candidates[:5]),
+                )
+            if weak and not candidates:
+                # 连续编号段可能只是普通有序列表：只提示，绝不当作未语义化脚注阻断。
+                result.add(
+                    "warning",
+                    "W_FOOTNOTES_AMBIGUOUS",
+                    f"{len(weak)} 段连续编号可能是脚注也可能是有序列表：" + "、".join(weak[:3]),
+                )
         for name, content in docs.items():
             ids = ids_by_doc[name]
             for href in re.findall(r'href="#([^"]+)"', content):

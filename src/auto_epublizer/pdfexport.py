@@ -138,6 +138,7 @@ BACKLINK_RE = re.compile(r"<p>\s*<a\b[^>]*epub:type=\"backlink\"[^>]*>.*?</a>\s*
 FNLABEL_RE = re.compile(r"<p>\s*\[([^\]]{1,8})\]\s*</p>\s*<p>", re.S | re.I)
 IMG_RE = re.compile(r'<img[^>]*src="([^"]+)"', re.I)
 TITLE_RE = re.compile(r"<title>(.*?)</title>", re.S | re.I)
+H1_RE = re.compile(r"<h1\b[^>]*>(.*?)</h1>", re.S | re.I)
 SCRIPT_RE = re.compile(r"<script\b[^>]*>.*?</script>", re.S | re.I)
 ON_ATTR_RE = re.compile(r'\son\w+\s*=\s*"[^"]*"', re.I)
 RES_TAG_RE = re.compile(r"<(img|image|link|source|use|iframe|object)\b[^>]*>", re.I)
@@ -222,6 +223,8 @@ table.data th, table.data td { padding: ${table_pad_v}em ${table_pad_h}em; }
 section.chapter { page-break-after: always; }
 section.index { column-count: 2; column-gap: 2em; }
 section.role-part, section.role-titlepage { text-align: center; }
+section.role-part { display: flex; flex-direction: column; justify-content: center;
+    min-height: ${content_height}mm; }
 section.role-part p, section.role-titlepage p { text-indent: 0; }
 section.index h1 { column-span: all; }
 section.cip p { text-indent: 0; }
@@ -255,6 +258,10 @@ class PrintStyle:
     note_pt: float = PRINT.note_pt
     line_height: float = PRINT.line_height
     margins_mm: tuple[float, float, float, float] = PRINT.margins_mm
+    #: 显式字体栈（配置/CLI）；空=环境变量 AEP_PDF_FONT 或拉丁优先默认栈。
+    font_stack: str = ""
+    #: 追加到内置印刷样式之后的显式 CSS（只看变量/细节，不替代版式契约）。
+    print_css: str = ""
 
     def page_size_mm(self) -> tuple[int, int]:
         return SIZES.get(self.size.lower(), SIZES["a5"])
@@ -277,6 +284,7 @@ class PrintStyle:
         low, high = LINE_HEIGHT_RANGE
         if not low <= float(self.line_height) <= high:
             raise ValueError(f"line_height 超出区间 {low:g}–{high:g}：{self.line_height}")
+        _validate_print_css(self.print_css)
 
     def css(self, *, cover: bool = True) -> str:
         width, height = self.page_size_mm()
@@ -288,13 +296,14 @@ class PrintStyle:
         quote_before, quote_after, quote_indent = metrics.quote_margins_em
         note_before, note_after, _note_inner = metrics.note_margins_em
         table_pad_v, table_pad_h = metrics.table_cell_padding_em
-        return Template(CSS_TEMPLATE).substitute(
+        css = Template(CSS_TEMPLATE).substitute(
             page_note=f"{width}×{height} mm（{self.size}）",
             size_css=f"{width}mm {height}mm",
             margins=f"{top}mm {outer}mm {bottom}mm {inner}mm",
             first_page="@page :first { margin: 0; }" if cover else "",
             page_width=width,
             page_height=height,
+            content_height=round(max(1, height - top - bottom), 2),
             cover_height=height - 0.5,  # Chromium 纸张取整余量，防止整页图溢出几分之一毫米
             image_height=round(
                 max(
@@ -326,7 +335,8 @@ class PrintStyle:
             body_pt=self.body_pt,
             note_pt=self.note_pt,
             line_height=self.line_height,
-            font_stack=os.environ.get(
+            font_stack=self.font_stack
+            or os.environ.get(
                 "AEP_PDF_FONT",
                 '"Nimbus Roman", "Liberation Serif", "DejaVu Serif", '
                 '"Noto Serif CJK SC TTF", "Noto Serif CJK SC", serif',
@@ -360,6 +370,24 @@ class PrintStyle:
             table_pad_v=em_number(table_pad_v),
             table_pad_h=em_number(table_pad_h),
         )
+        if self.print_css.strip():
+            css += "\n/* 用户 print.css（显式追加） */\n" + self.print_css.strip() + "\n"
+        return css
+
+
+def _validate_print_css(css: str) -> None:
+    """扩展点边界：不允许闭合 style 标签或远程导入；长度有上限。"""
+    if not css:
+        return
+    if len(css.encode("utf-8")) > 256 * 1024:
+        raise ValueError("print_css 超过 256 KiB；扩展点只放版式细节")
+    lowered = css.casefold()
+    if "</style" in lowered:
+        raise ValueError("print_css 不得包含 </style（会截断样式表）")
+    if "@import" in lowered:
+        raise ValueError("print_css 不得使用 @import（离线可复现）")
+    if re.search(r"url\(\s*['\"]?https?://", css, re.IGNORECASE):
+        raise ValueError("print_css 不得引用远程 URL（离线可复现）")
 
 
 @dataclass(slots=True)
@@ -740,6 +768,17 @@ def build_print_html(
     outline = nav_entries(
         package.root / package.nav_href if package.nav_href else None, owner_href=package.nav_href
     )
+    # 每份 spine 文档的 h1/title：用于判断无 fragment 的 nav 条目是不是 § 级标题。
+    document_titles: dict[str, str] = {}
+    for _item_id, href in package.spine:
+        doc_path = root / href
+        if not doc_path.is_file():
+            continue
+        head = doc_path.read_text(encoding="utf-8", errors="replace")
+        # 无 fragment 的 nav 条目判断用「目标文档 h1」；<title> 常是书名而不是章名。
+        match = H1_RE.search(head) or TITLE_RE.search(head)
+        heading = re.sub(r"<[^>]+>", "", match.group(1)) if match else ""
+        document_titles[quote(href, safe="/")] = unescape(heading)
     for index, (item_id, href) in enumerate(package.spine, start=1):
         doc_path = root / href
         if not doc_path.is_file():
@@ -764,11 +803,19 @@ def build_print_html(
         evidence.section_titles[index] = title
         role_match = re.search(r'data-aep-role="([^"]+)"', html)
         role = unescape(role_match.group(1)).strip() if role_match else ""
+        if role not in {"titlepage", "part"} and _image_only_document(inner):
+            role = "plate"  # 整页图版不出页码/页眉（issue #96）
         evidence.section_roles[index] = role
         if is_toc_document(inner, title=title, declared=href in package.toc_hrefs):
             record = {"document": href, "updates": [], "findings": []}
             if page_map is not None:
-                rewritten = rewrite_toc(inner, outline, page_map, owner_href=href)
+                rewritten = rewrite_toc(
+                    inner,
+                    outline,
+                    page_map,
+                    owner_href=href,
+                    document_titles=document_titles,
+                )
                 inner = rewritten.html
                 record.update(updates=rewritten.updates, findings=rewritten.findings)
                 evidence.findings.extend(rewritten.findings)
@@ -916,6 +963,50 @@ def _anchor_pages(
     return pages, findings
 
 
+def _toc_text_mismatches(
+    doc: pymupdf.Document, evidence: PrintEvidence, pages: dict[str, int]
+) -> list[dict[str, object]]:
+    """成品目录文字↔回填页码对账（#99）：只核对能在目录页找到标签的条目。"""
+    findings: list[dict[str, object]] = []
+    for record in evidence.toc_documents:
+        href = quote(str(record.get("document") or ""), safe="/")
+        page_no = pages.get(href)
+        if not isinstance(page_no, int) or not 1 <= page_no <= doc.page_count:
+            continue
+        text = doc[page_no - 1].get_text()
+        lines = [re.sub(r"\s+", "", line) for line in text.splitlines() if line.strip()]
+        for update in record.get("updates") or []:
+            label = re.sub(r"\s+", "", str(update.get("label") or ""))
+            page = str(update.get("page") or "")
+            if not label or not page:
+                continue
+            # 找到该条目的目录行；不要求整页 compact 文本包含页码（`1` 是 `10`
+            # 的子串会造成假阴性）。页码必须是独立数字 token。
+            index = next(
+                (
+                    i
+                    for i, line in enumerate(lines)
+                    if label[:12] in line or (len(line) >= 4 and line in label)
+                ),
+                None,
+            )
+            if index is None:
+                continue
+            window = lines[index : index + 2]
+            found = any(re.search(rf"(?<!\d){re.escape(page)}(?!\d)", line) for line in window)
+            if not found:
+                findings.append(
+                    {
+                        "level": "error",
+                        "code": "E_PDF_TOC_MISMATCH",
+                        "document": record.get("document"),
+                        "label": update.get("label"),
+                        "expected_page": update.get("page"),
+                    }
+                )
+    return findings
+
+
 def _clear_markers(
     doc: pymupdf.Document,
     sections: int,
@@ -1030,22 +1121,25 @@ def stamp_folios(
     section_titles: dict[int, str] | None = None,
     section_pages: dict[int, int] | None = None,
     section_roles: dict[int, str] | None = None,
+    book_title: str = "",
 ) -> None:
-    """页脚绝对页码 + 正文页眉章名；封面无页眉页脚，章节首页不重复页眉。
+    """页脚绝对页码 + 页眉（偶数页书名 / 奇数页章名）；图版页不出页码。
 
     页码始终按 PDF 绝对页序（``index + 1``），隐藏页眉/页脚不重编号。页眉放在
-    上边距内，长章名按可用宽度截断并加省略号；首页与无章名页不画页眉。
+    上边距内，长题名按可用宽度截断并加省略号；章节首页不重复页眉。书名页、
+    部分页与整页图版（``plate``）不印页码/页眉。
     """
     titles = section_titles or {}
     starts = section_pages or {}
     roles = section_roles or {}
+    book = " ".join(str(book_title or "").split())
     run_path = _running_font_path()
     for index in range(1 if cover else 0, doc.page_count):
         page = doc[index]
         page_no = index + 1
         section = max((n for n, start in starts.items() if start <= page_no), default=None)
-        if section is not None and roles.get(section) in {"titlepage", "part"}:
-            # 书名页/部分页按角色隐藏页眉页脚；绝对页序不变。
+        if section is not None and roles.get(section) in {"titlepage", "part", "plate"}:
+            # 书名页/部分页/整页图版按角色隐藏页眉页脚；绝对页序不变。
             continue
         page.insert_text(
             (page.rect.width / 2 - 6, page.rect.height - 18),
@@ -1057,7 +1151,8 @@ def stamp_folios(
         )
         if section is None or page_no == starts.get(section):
             continue
-        raw_title = titles.get(section, "")
+        # 书籍惯例：偶数页（翻开的左页）放书名，奇数页放章名。
+        raw_title = book if book and page_no % 2 == 0 else titles.get(section, "")
         fontname, font = _running_font(str(raw_title))
         title = _fit_running_title(
             raw_title,
@@ -1124,6 +1219,13 @@ def _publish_pdf(staged: Path, out: Path) -> None:
     finally:
         if temporary is not None:
             temporary.unlink(missing_ok=True)
+
+
+def _image_only_document(inner: str) -> bool:
+    """整页图版：去掉标签后没有可读文字，且确实含图片。"""
+    text = re.sub(r"<[^>]+>", " ", inner)
+    text = unescape(text).strip()
+    return not text and "<img" in inner.casefold()
 
 
 def _xmp_alt(tag: str, value: str) -> str:
@@ -1243,8 +1345,11 @@ def _apply_publication_metadata(
         info["title"] = meta.title
     if meta.authors:
         info["author"] = "; ".join(meta.authors)
-    if meta.description:
-        info["subject"] = meta.description
+    # Info 没有 publisher/date/rights 标准键：无 description 时把出版信息写进
+    # subject，让 pdfinfo 至少能看到；完整字段仍在 XMP（见 _build_xmp）。
+    subject = meta.description or " · ".join(part for part in (meta.publisher, meta.date) if part)
+    if subject:
+        info["subject"] = subject
     if meta.subjects:
         info["keywords"] = "; ".join(meta.subjects)
     moment = datetime.fromisoformat(generated_at.replace("Z", "+00:00"))
@@ -1455,6 +1560,7 @@ def render(
         from .pdfdiagnostics import collect_font_samples, diagnose_pdf
 
         with pymupdf.open(raw) as check:
+            toc_mismatches = _toc_text_mismatches(check, evidence, target_pages)
             diagnostics = diagnose_pdf(
                 check,
                 samples=collect_font_samples(target.read_text(encoding="utf-8")),
@@ -1472,7 +1578,17 @@ def render(
             notes.append(f"排版诊断 {finding['code']}：{finding}")
         for finding in evidence.findings:
             notes.append(f"目录/锚点诊断 {finding['code']}：{finding}")
+        for finding in toc_mismatches:
+            notes.append(f"目录对账诊断 {finding['code']}：{finding}")
+        evidence.findings.extend(toc_mismatches)
+        toc_errors = [
+            finding
+            for finding in evidence.findings
+            if finding.get("level") == "error"
+            and str(finding.get("code") or "").startswith("E_PDF_TOC")
+        ]
         all_findings = diagnostics["findings"] + evidence.findings
+        toc_converged = not toc_errors
         if strict and any(f["level"] == "error" for f in all_findings):
             codes = sorted({f["code"] for f in all_findings if f["level"] == "error"})
             raise ValueError("严格排版检查未通过：" + "、".join(codes))
@@ -1495,6 +1611,7 @@ def render(
                 section_titles=evidence.section_titles,
                 section_pages=section_pages,
                 section_roles=evidence.section_roles,
+                book_title=package.metadata.title,
             )
             written = 0
             if bookmarks:
@@ -1552,7 +1669,8 @@ def render(
             "overflow_pages": diagnostics.get("overflow_pages"),
         },
         "toc": {
-            "converged": True,
+            "converged": toc_converged,
+            "toc_converged": toc_converged,
             "rounds": round_no,
             "documents": evidence.toc_documents,
             "findings": evidence.findings,
@@ -1568,7 +1686,8 @@ def render(
         notes=notes,
         diagnostics=diagnostics,
         toc={
-            "converged": True,
+            "converged": toc_converged,
+            "toc_converged": toc_converged,
             "rounds": round_no,
             "documents": evidence.toc_documents,
             "findings": evidence.findings,

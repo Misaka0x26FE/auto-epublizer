@@ -941,6 +941,26 @@ def render_toc_document(
     return _page(title, body, lang=lang)
 
 
+_TOC_DOT_LEADER = re.compile(
+    r"<p>(?P<label>[^<>\n]{1,200}?)\s*(?:\.{2,}|…{2,}|·{3,})\s*"
+    r"(?P<page>\d{1,4}|[ivxlcdm]+)</p>",
+    re.IGNORECASE,
+)
+
+
+def _toc_dot_rows(body: str) -> str:
+    """源目录的点线行 → 可排版的题名/点线/页码三段（不改文字与页码）。"""
+    return _TOC_DOT_LEADER.sub(
+        lambda m: (
+            '<p class="toc-row"><span class="toc-title">'
+            f"{m.group('label').rstrip()}</span>"
+            '<span class="toc-dots"></span>'
+            f'<span class="toc-page">{m.group("page")}</span></p>'
+        ),
+        body,
+    )
+
+
 def render_document(
     title: str,
     md_text: str,
@@ -966,6 +986,8 @@ def render_document(
         note_items=note_items,
         href_by_note=href_by_note,
     )
+    if role == "toc":
+        body = _toc_dot_rows(body)
     return _page(title, body, lang=lang, role=role)
 
 

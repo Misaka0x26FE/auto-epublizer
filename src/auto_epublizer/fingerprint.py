@@ -263,8 +263,8 @@ def software_section(
     ``detail="brief"`` 只保留项目身份、软件许可声明与出版/版权字段；工具版本、
     修订历史与处理工具明细省略，非空 rights 仍照常输出。
     """
-    if detail not in {"full", "brief"}:
-        raise ValueError("制作信息详略只能是 full 或 brief")
+    if detail not in {"full", "brief", "rights"}:
+        raise ValueError("制作信息详略只能是 full、brief 或 rights")
     zh = lang.lower().startswith("zh")
     title = "制作工具与开源软件" if zh else "Production software and open-source tools"
     disclaimer = (
@@ -273,6 +273,13 @@ def software_section(
         else "These licenses describe software only; they do not grant or change rights to this book, its translation or illustrations."
     )
     project = data["project"]
+    if detail == "rights":
+        return (
+            '<section class="software-provenance">'
+            f"<{heading}>{title}</{heading}>"
+            f"<p>{_link(PROJECT_URL, PROJECT_NAME)} {escape(project['version'])} — {PROJECT_LICENSE}</p>"
+            f"{_publication_block(data, lang, heading=heading)}</section>"
+        )
     if detail == "brief":
         return (
             '<section class="software-provenance">'

@@ -55,6 +55,11 @@ class PDFConfig(BaseModel):
     # PDF 文字层 RTL（从右向左）处理：auto=按文字层自动判定；on/off=强制。
     # RTL 书逐行做方向控制符剥离 + NFKC 归一化 + 逻辑词序还原（见 ingest/rtl.py）。
     rtl: str = "auto"
+    # 印刷 PDF 字体栈（CSS font-family 值）；空=拉丁优先默认栈，环境变量
+    # AEP_PDF_FONT 可覆盖默认但低于本项。
+    font_stack: str = ""
+    # 追加到内置印刷样式的 CSS 文件（相对工作区；仅版式细节，禁 @import/远程 URL）。
+    print_css: str = ""
 
 
 class PandocConfig(BaseModel):
@@ -86,14 +91,15 @@ class OutputConfig(BaseModel):
     toc_page: bool = False
     # 按书样式（E2）：工作区内受限 CSS 相对路径（缩进/段距/行距等排版微调）。
     css: str = ""
-    # 制作信息详略（issue #72）：full=工具版本/修订历史；brief=项目身份+许可+出版字段
+    # 制作信息详略（issue #72）：full=工具版本/修订历史；brief=项目身份+许可+出版字段；
+    # rights=只保留项目身份与出版/权利字段
     software_detail: str = "full"
 
     @field_validator("software_detail")
     @classmethod
     def _software_detail(cls, value: str) -> str:
-        if value not in {"full", "brief"}:
-            raise ValueError("software_detail 只能是 full 或 brief")
+        if value not in {"full", "brief", "rights"}:
+            raise ValueError("software_detail 只能是 full、brief 或 rights")
         return value
 
 
@@ -111,8 +117,6 @@ class CoverConfig(BaseModel):
     palette: str = ""  # 空=按版式默认（quarto: ink / hanze: ochre）
     format: str = ""  # 空=按版式默认（quarto: png / hanze: jpeg q92）；可写 png / jpeg
     size: str = "a5"  # 与 pdf --size 同一组开本
-    dpi: int = Field(300, ge=72, le=1200)
-    imprint: str = "马加丹汉化组"
     dpi: int = Field(300, ge=72, le=1200)
     imprint: str = "马加丹汉化组"
     imprint_font: str = ""  # 行书字体文件；空=自动发现

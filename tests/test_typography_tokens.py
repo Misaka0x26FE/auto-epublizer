@@ -26,7 +26,7 @@ THEME_SHA256 = {
 #: 提取前功能性样式层
 _STYLE_SHA256 = "af7d117ac487bf17f782a0a3f3050a8c371c202935c0c05e7947be28cd094140"
 #: 提取前 PrintStyle() 默认 CSS（A5/10.5pt/1.55）
-PDF_CSS_SHA256 = "c2b0eb2ef46dc7dc1fe245f563ee2ac61afbadde1606dabdff6b85ed0ddafb67"
+PDF_CSS_SHA256 = "86ea11ea02618786640e848d139d032ace7f65080d42d5aac733529ab8fbec7b"
 
 
 def test_functional_style_layer_unchanged() -> None:

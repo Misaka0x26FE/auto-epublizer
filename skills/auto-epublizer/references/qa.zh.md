@@ -48,6 +48,12 @@ auto-epublizer qa [--epub <path>] [--workspace <dir>]
 | DC 元数据缺失（creator/date/publisher/rights） | `W_META_INCOMPLETE`（告警） |
 | 内部锚点无法解析（含脚注 noteref→footnote） | `E_ANCHOR` |
 | 脚注 aside 缺回链或回链不可解析 | `E_FN_BACKLINK` |
+| 未登记 notes.json 且注文写成普通段落（`注 1.` / `[1]` / 连续编号段） | `E_FOOTNOTES_NOT_SEMANTIC`（error，阻断放行） |
+| 连续编号段可能是有序列表而非注文 | `W_FOOTNOTES_AMBIGUOUS`（warning，不阻断） |
+| 已登记生成封面但成品无 cover-image | `E_COVER_RECORDED_MISSING`（error） |
+| 已登记注文的上标记号在译文中不可见 | `footnote_range`（G0 硬门；toc/index 降 advisory） |
+| 印刷目录文字与回填页码不一致 | `E_PDF_TOC_MISMATCH`（PDF strict 失败） |
+| 前置目录与书末目录同时进 spine | `W_TOC_DUPLICATE`（warning） |
 | 主题含具体字体名/字号 / 颜色 | `E_THEME_FONT` / `E_THEME_COLOR` |
 | 封面 properties 与 meta 互证失败 | `E_COVER_META` |
 | img alt 空值或缺失 / 格式兼容性差（.webp/.avif） | `W_IMG_NO_ALT` / `W_IMG_FORMAT`（告警） |

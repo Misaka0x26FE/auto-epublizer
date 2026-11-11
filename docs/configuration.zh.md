@@ -34,6 +34,9 @@ pdf:
   mineru_model: pipeline  # pipeline（默认，确定性、零幻觉）| vlm（高精度，内部为 VLM）
   mineru_language: ch     # MinerU OCR 语言（PaddleOCR 语言码：ch/en/ja/…）
   mineru_batch_pages: 200 # >此页数自动分批（MinerU 单文件 ≤200 页限制；≤0 关闭）
+  font_stack: ""          # 印刷 PDF 字体栈（CSS font-family）；空=拉丁优先默认栈，
+                          # 环境变量 AEP_PDF_FONT 可覆盖默认，本项优先级更高
+  print_css: ""           # 追加的印刷 CSS 文件（相对工作区）；禁 @import/远程 URL，上限 256 KiB
 
 # ── Pandoc 导入（DOCX/HTML/EPUB）────────────────────────────
 pandoc:
@@ -81,7 +84,9 @@ output:
   toc_page: false         # 生成可点击目录页（D2）：toc 单元按单元树渲染，不照抄源目录行；
                           # 页码只读 preprocessing/toc_pages.csv（unit,page），缺省留空
   css: ""                 # 按书样式：工作区内受限 CSS 相对路径（缩进/段距/行距等，禁止字体/字号/颜色/URL）
-  software_detail: full   # 制作信息详略：full | brief（brief 省略工具版本/修订历史）
+  software_detail: full   # 制作信息详略：full | brief | rights
+                          # full=工具版本/修订历史；brief=项目身份+许可+出版字段；
+                          # rights=只保留项目身份与出版/权利字段
 ```
 
 ## 生成式封面

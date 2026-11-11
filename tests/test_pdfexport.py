@@ -677,7 +677,7 @@ def test_generated_toc_rows_right_align_page_numbers(tmp_path: Path) -> None:
         page = next(page for page in doc if "Alpha" in page.get_text())
         words = page.get_text("words")
         label = next(word for word in words if word[4] == "Alpha")
-        number = next(word for word in words if word[4] == "3")
+        number = next(word for word in words if word[4] == "5")
         assert number[0] > label[2]
         assert abs(number[1] - label[1]) < 4
         assert number[2] > page.rect.width * 0.7
@@ -1237,6 +1237,7 @@ def test_titlepage_role_suppresses_header_and_folio(tmp_path: Path) -> None:
 
 def test_font_stack_env_override_is_used(monkeypatch) -> None:
     """E4：AEP_PDF_FONT 可覆盖印刷字体栈；默认仍保留拉丁优先与 CJK 回退。"""
+    monkeypatch.delenv("AEP_PDF_FONT", raising=False)  # CJK 优先环境下默认断言不应漂移
     css = pdfexport.PrintStyle().css()
     assert '"Nimbus Roman"' in css and '"Noto Serif CJK SC TTF"' in css
     monkeypatch.setenv("AEP_PDF_FONT", '"Custom Serif", serif')
@@ -1299,3 +1300,171 @@ def test_cover_headings_are_not_printed_and_optional_colophon_is_added(
         last = doc[-1].get_text()
     assert "封面标题" not in first and "封面图注" not in first
     assert "制作信息与版权" in last and "制作信息正文" in last
+
+
+def test_toc_text_reconciliation_flags_stale_page_number() -> None:
+    """#99：目录文字与回填页码必须对账，不能只比页映射。"""
+    import pymupdf
+
+    from auto_epublizer.pdfexport import PrintEvidence, _toc_text_mismatches
+
+    doc = pymupdf.open()
+    page = doc.new_page()
+    page.insert_text((72, 72), "Chapter 9", fontsize=12)
+    evidence = PrintEvidence()
+    evidence.toc_documents = [
+        {"document": "toc.xhtml", "updates": [{"label": "Chapter", "page": 5}]}
+    ]
+    findings = _toc_text_mismatches(doc, evidence, {"toc.xhtml": 1})
+    assert [f["code"] for f in findings] == ["E_PDF_TOC_MISMATCH"]
+
+    good = pymupdf.open()
+    good.new_page().insert_text((72, 72), "Chapter 5", fontsize=12)
+    assert _toc_text_mismatches(good, evidence, {"toc.xhtml": 1}) == []
+
+
+def test_font_stack_precedence_config_over_env_over_default(monkeypatch) -> None:
+    """#101：配置 > 环境变量 > 默认；不再只能靠 env。"""
+    monkeypatch.delenv("AEP_PDF_FONT", raising=False)
+    monkeypatch.setenv("AEP_PDF_FONT", '"Env Serif", serif')
+    assert '"Env Serif"' in pdfexport.PrintStyle().css()
+    assert '"Config Serif"' in pdfexport.PrintStyle(font_stack='"Config Serif", serif').css()
+
+    cjk_first = '"Noto Serif CJK SC", "Nimbus Roman", serif'
+    assert cjk_first in pdfexport.PrintStyle(font_stack=cjk_first).css()
+
+
+def test_pdf_info_subject_falls_back_to_publisher_and_date() -> None:
+    """#76：Info 无 rights 标准键；无 description 时 subject 至少带出版信息。"""
+    import pymupdf
+
+    from auto_epublizer.pdfexport import PublicationMetadata, _apply_publication_metadata
+
+    doc = pymupdf.open()
+    doc.new_page()
+    meta = PublicationMetadata(
+        title="书",
+        publisher="Brill",
+        date="2023",
+        rights="All rights reserved.",
+    )
+    _apply_publication_metadata(doc, meta, "2026-01-01T00:00:00Z")
+    assert doc.metadata["subject"] == "Brill · 2023"
+    assert doc.metadata["title"] == "书"
+
+
+@pytest.mark.skipif(pdfexport.find_chromium() is None, reason="需要 Chromium/Chrome")
+def test_no_fragment_entry_uses_h1_not_document_title(tmp_path: Path) -> None:
+    """#92：外部 EPUB 的 <title> 常是书名，章级 nav 应按 h1 判定。"""
+    epub = _variant(
+        _toc_epub(tmp_path),
+        {
+            "OEBPS/ch02.xhtml": "<html><head><title>Book Title</title></head>"
+            "<body><h1>Beta</h1><p>BETA_TARGET Some body text.</p></body></html>",
+            "OEBPS/front/contents.xhtml": "<html><head><title>Contents</title></head>"
+            "<body><h1>Contents</h1><p>Beta 999</p></body></html>",
+        },
+    )
+    result = pdfexport.render(epub, tmp_path / "h1.pdf")
+    assert not [
+        finding
+        for finding in result.toc["findings"]
+        if finding.get("code") == "E_PDF_TOC_UNLOCATED"
+    ]
+
+
+def test_toc_reconciliation_does_not_accept_page_as_substring() -> None:
+    """#99：期望页码 1、实际目录行是 10 时必须报错（子串不能算命中）。"""
+    import pymupdf
+
+    from auto_epublizer.pdfexport import PrintEvidence, _toc_text_mismatches
+
+    doc = pymupdf.open()
+    doc.new_page().insert_text((72, 72), "Chapter 10", fontsize=12)
+    evidence = PrintEvidence()
+    evidence.toc_documents = [
+        {"document": "toc.xhtml", "updates": [{"label": "Chapter", "page": 1}]}
+    ]
+    findings = _toc_text_mismatches(doc, evidence, {"toc.xhtml": 1})
+    assert [f["code"] for f in findings] == ["E_PDF_TOC_MISMATCH"]
+
+
+# ── #96 页眉书名 / 图版页页脚 / print.css 扩展点 ────────────────────────
+
+
+def test_stamp_folios_alternates_book_title_and_chapter_name() -> None:
+    doc = pymupdf.open()
+    for _ in range(6):
+        doc.new_page(width=420, height=595)
+    pdfexport.stamp_folios(
+        doc,
+        cover=False,
+        section_titles={1: "Chapter One", 4: "Chapter Two"},
+        section_pages={1: 1, 4: 4},
+        book_title="The Book",
+    )
+
+    def head(page: pymupdf.Page) -> str:
+        return " ".join(word[4] for word in page.get_text("words") if word[1] < 35)
+
+    def folio(page: pymupdf.Page) -> str:
+        return " ".join(word[4] for word in page.get_text("words") if word[1] > 560)
+
+    assert head(doc[0]) == ""  # 章节首页不重复页眉
+    assert head(doc[1]) == "The Book"  # 偶数页放书名
+    assert head(doc[2]) == "Chapter One"  # 奇数页放章名
+    assert head(doc[3]) == ""  # 第二章首页
+    assert head(doc[4]) == "Chapter Two"
+    assert head(doc[5]) == "The Book"
+    assert folio(doc[1]) == "2" and folio(doc[5]) == "6"
+
+
+def test_plate_page_has_no_folio_or_header() -> None:
+    doc = pymupdf.open()
+    for _ in range(3):
+        doc.new_page(width=420, height=595)
+    pdfexport.stamp_folios(
+        doc,
+        cover=False,
+        section_titles={1: "Chapter One", 2: "Plate", 3: "Next"},
+        section_pages={1: 1, 2: 2, 3: 3},
+        section_roles={2: "plate"},
+        book_title="The Book",
+    )
+    assert doc[1].get_text().strip() == ""
+    assert "3" in doc[2].get_text()
+
+
+def test_image_only_document_is_a_plate_but_captioned_figure_is_not() -> None:
+    assert pdfexport._image_only_document('<p><img src="plate.png"/></p>') is True
+    assert pdfexport._image_only_document('<figure><img src="x.png"/></figure>') is True
+    assert (
+        pdfexport._image_only_document(
+            '<figure><img src="x.png"/><figcaption>图 1</figcaption></figure>'
+        )
+        is False
+    )
+
+
+def test_print_css_appends_after_builtin_style() -> None:
+    css = pdfexport.PrintStyle(print_css="p { color: #123456; }").css()
+    assert css.rstrip().endswith("p { color: #123456; }")
+    assert css.index("@page") < css.index("p { color: #123456; }")
+
+
+@pytest.mark.parametrize(
+    "css",
+    [
+        "</style><script>alert(1)</script>",
+        "@import url(https://example.com/x.css);",
+        "p { background: url(https://example.com/x.png); }",
+    ],
+)
+def test_print_css_rejects_style_breakout_and_remote_imports(css: str) -> None:
+    with pytest.raises(ValueError):
+        pdfexport.PrintStyle(print_css=css).validate()
+
+
+def test_print_css_size_limit() -> None:
+    with pytest.raises(ValueError, match="256 KiB"):
+        pdfexport.PrintStyle(print_css="/*" + "x" * (256 * 1024)).validate()

@@ -1,4 +1,4 @@
-<!-- i18n: source=configuration.zh.md sha256=f3dc4f8ee948943d928e4cb966c8b58d79911d68bbb80bc4f374d9e37df40c9d -->
+<!-- i18n: source=configuration.zh.md sha256=ca4fd550d99a6fc1a9adb68e910f1cd7f974185fa9380e8c1c23bb4da500ae68 -->
 > **English** | [中文](configuration.zh.md)
 
 # Configuration reference (target `config.yaml` schema)
@@ -38,6 +38,9 @@ pdf:
   mineru_model: pipeline  # pipeline (default, deterministic, zero hallucination) | vlm (high precision, internally a VLM)
   mineru_language: ch     # MinerU OCR language (PaddleOCR language code: ch/en/ja/…)
   mineru_batch_pages: 200 # automatically batch above this page count (MinerU single-file ≤200 pages limit; ≤0 disables)
+  font_stack: ""          # print PDF font stack (CSS font-family); empty = Latin-first default,
+                          # AEP_PDF_FONT may override the default, this key wins
+  print_css: ""           # extra print CSS file (relative to the workspace); no @import/remote URL, ≤256 KiB
 
 # ── Pandoc import (DOCX/HTML/EPUB) ──────────────────────────
 pandoc:
@@ -87,7 +90,7 @@ output:
   toc_page: false         # generate a clickable TOC page (D2): the toc unit is rendered from the unit tree,
                           # not copied from source TOC lines; page numbers only from preprocessing/toc_pages.csv
   css: ""                 # per-book style: workspace-relative constrained CSS (spacing only; no font/size/color/URL)
-  software_detail: full   # production-info detail: full | brief
+  software_detail: full   # production-info detail: full | brief | rights
 ```
 
 ## Generated cover

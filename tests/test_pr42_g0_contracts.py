@@ -93,3 +93,27 @@ def test_code_heading_cannot_compensate_a_lost_real_heading() -> None:
         translation_md="# 第一章\n\n```markdown\n## literal code\n```\n\n正文。\n",
     )
     assert any(flag.check == "heading" and flag.blocking for flag in flags)
+
+
+def test_roman_chapter_page_without_leaders_is_not_a_note() -> None:
+    """#89：目录单元的 `XII.551` 是罗马章节号+页码；正文的 `Text.551` 仍是注码。"""
+    assert footnote_numbers("Contents XII.551", toc_like=True) == set()
+    assert count_footnote_refs("Contents XII.551", toc_like=True) == 0
+    assert 551 in footnote_numbers("Text.551")
+    # 正文里的省略号/罗马数字序号不能按目录引导线豁免。
+    assert 5 in footnote_numbers("World War II.5")
+    assert 1 in footnote_numbers("He hesitated ...1")
+
+
+def test_toc_kind_downgrades_footnote_gate_to_advisory() -> None:
+    """#89：目录/索引单元的注号差异降 advisory，不再阻断放行。"""
+    rows = [{"seq": 1, "src": "Chapter.7", "tgt": "目录"}]
+    flags = g0_unit_flags(rows, Glossary(), structured_md="Chapter.7", unit_kind="toc")
+    mismatch = [f for f in flags if f.check == "footnote"]
+    assert mismatch and mismatch[0].blocking is False
+
+
+def test_spaced_ellipsis_before_note_is_not_a_toc_leader() -> None:
+    """#89：紧贴单词的三点省略号后是真注码，不是目录引导线。"""
+    assert 1 in footnote_numbers("He hesitated...1")
+    assert count_footnote_refs("He hesitated...1") == 1

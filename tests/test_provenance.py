@@ -887,3 +887,16 @@ def test_probe_renders_reference_links_with_document_env():
     missing, total = _probe_missing(md, doc)
     assert total == 2
     assert missing == []
+
+
+def test_duplicate_toc_units_are_flagged() -> None:
+    """#72-4：前置目录与书末目录同时进 spine 要告警，单个目录不报。"""
+    from auto_epublizer.qa.provenance import duplicate_toc_units
+
+    entries = [
+        {"id": "front-toc", "kind": "toc", "title": "目录"},
+        {"id": "ch01", "kind": "chapter", "title": "第一章"},
+        {"id": "back-contents", "kind": "toc", "title": "Contents"},
+    ]
+    assert duplicate_toc_units(entries) == ["front-toc", "back-contents"]
+    assert duplicate_toc_units(entries[:2]) == []

@@ -103,7 +103,7 @@ def _repo(tmp_path: Path):
     _batch(outbox, "book-v2", version="2.0")
     (outbox / "book-v1" / "epub").mkdir()
     (outbox / "book-v1" / "epub" / "book.epub").write_bytes(b"epub-bytes")
-    (docs / "a.md").write_text("链接：../outbox/book-v1/MANIFEST.md\n", encoding="utf-8")
+    (docs / "a.md").write_text("链接：[清单](../outbox/book-v1/MANIFEST.md)\n", encoding="utf-8")
     (repo / ".gitignore").write_text("outbox/*/epub/\n", encoding="utf-8")
     return repo, outbox, docs
 
@@ -155,7 +155,9 @@ def test_failure_rolls_back_moves_links_and_gitignore(tmp_path: Path, monkeypatc
     from auto_epublizer import archive as archive_mod
 
     repo, outbox, docs = _repo(tmp_path)
-    (docs / "b.md").write_text("另一个链接：../outbox/book-v1/MANIFEST.md\n", encoding="utf-8")
+    (docs / "b.md").write_text(
+        "另一个链接：[清单](../outbox/book-v1/MANIFEST.md)\n", encoding="utf-8"
+    )
     before_ignore = (repo / ".gitignore").read_bytes()
     before_docs = {path.name: path.read_bytes() for path in docs.iterdir()}
     real_write = Path.write_bytes
@@ -394,3 +396,147 @@ def test_archive_side_duplicate_versions_conflict(tmp_path: Path) -> None:
         )
     plan = plan_archive(outbox)
     assert any(item["reason"] == "same_version_different_artifacts" for item in plan["conflicts"])
+
+
+def test_unversioned_requires_explicit_policy(tmp_path: Path) -> None:
+    """#91：缺版本批次默认只列未决；显式 archive 才移动，绝不按目录名猜版本。"""
+    _batch(tmp_path, "no-version", version=None)
+    held = plan_archive(tmp_path)
+    assert held["to_archive"] == []
+    assert held["unresolved"][0]["policy"] == "hold"
+    assert held["unversioned_policy"] == "hold"
+
+    moved = plan_archive(tmp_path, unversioned="archive")
+    assert [item["name"] for item in moved["to_archive"]] == ["no-version"]
+    assert moved["to_archive"][0]["reason"] == "unversioned_policy"
+    assert moved["unresolved"] == []
+
+
+def test_version_map_fills_missing_version_only(tmp_path: Path) -> None:
+    """#91：显式映射补缺版本；不得覆盖已有版本，未知批次报错。"""
+    _batch(tmp_path, "no-version", version=None)
+    _batch(tmp_path, "has-version", version="1.0")
+    plan = plan_archive(tmp_path, version_map={"no-version": "0.9"})
+    assert [item["name"] for item in plan["keep"]] == ["has-version"]
+    assert [item["name"] for item in plan["to_archive"]] == ["no-version"]
+
+    with pytest.raises(ValueError, match="冲突"):
+        plan_archive(tmp_path, version_map={"has-version": "2.0"})
+    with pytest.raises(ValueError, match="不存在"):
+        plan_archive(tmp_path, version_map={"typo": "1.0"})
+
+
+def test_archive_link_self_check_flags_missing_source(tmp_path: Path) -> None:
+    """#91：改写后的链接必须能回到真实源；拼错/源缺失时预检拒绝。"""
+    from auto_epublizer.archive import plan_archive_transaction
+
+    _batch(tmp_path, "old", version="1.0")
+    _batch(tmp_path, "new", version="2.0")
+    (tmp_path / "old" / "book.epub").write_bytes(b"old")
+    (tmp_path / "new" / "book.epub").write_bytes(b"new")
+    docs = tmp_path.parent / f"docs-{tmp_path.name}"
+    docs.mkdir()
+    (docs / "a.md").write_text(f"[旧版](../{tmp_path.name}/old/book.epub)\n", encoding="utf-8")
+
+    ok = plan_archive_transaction(tmp_path, docs_dir=docs)
+    assert ok["broken_links"] == []
+    assert ok["link_edits"] and ok["link_edits"][0]["occurrences"] == 1
+
+    (tmp_path / "old" / "book.epub").unlink()
+    broken = plan_archive_transaction(tmp_path, docs_dir=docs)
+    assert broken["broken_links"]
+
+
+def test_apply_refuses_broken_links_before_moving(tmp_path: Path) -> None:
+    from auto_epublizer.archive import apply_archive_transaction
+
+    _batch(tmp_path, "old", version="1.0")
+    _batch(tmp_path, "new", version="2.0")
+    (tmp_path / "new" / "book.epub").write_bytes(b"new")
+    docs = tmp_path.parent / f"docs2-{tmp_path.name}"
+    docs.mkdir()
+    (docs / "a.md").write_text(f"[旧版](../{tmp_path.name}/old/book.epub)\n", encoding="utf-8")
+    with pytest.raises(ValueError, match="断链"):
+        apply_archive_transaction(tmp_path, docs_dir=docs, apply=True)
+    assert (tmp_path / "old").is_dir()
+
+
+def test_link_self_check_covers_reference_and_html_links(tmp_path: Path) -> None:
+    """#91：引用式定义与 HTML href 也要做断链自检。"""
+    from auto_epublizer.archive import plan_archive_transaction
+
+    _batch(tmp_path, "old", version="1.0")
+    _batch(tmp_path, "new", version="2.0")
+    (tmp_path / "new" / "book.epub").write_bytes(b"new")
+    docs = tmp_path.parent / f"docs3-{tmp_path.name}"
+    docs.mkdir()
+    epub = f"../{tmp_path.name}/old/book.epub"
+    other = f"../{tmp_path.name}/old/other.epub"
+    (docs / "a.md").write_text(
+        f'[旧版][old]\n\n[old]: {epub}\n\n<a href="{other}">旧版</a>\n',
+        encoding="utf-8",
+    )
+    plan = plan_archive_transaction(tmp_path, docs_dir=docs)
+    assert len(plan["broken_links"]) == 2
+    assert {Path(item["expected_source"]).name for item in plan["broken_links"]} == {
+        "book.epub",
+        "other.epub",
+    }
+
+
+def test_link_self_check_normalizes_dot_segments_and_encoding(tmp_path: Path) -> None:
+    """#91：`./` 与 URL 编码路径要归一化；未改写的顶层链接必须预检失败。"""
+    from auto_epublizer.archive import plan_archive_transaction
+
+    _batch(tmp_path, "old", version="1.0")
+    _batch(tmp_path, "new", version="2.0")
+    (tmp_path / "new" / "book.epub").write_bytes(b"new")
+    (tmp_path / "old" / "book one.epub").write_bytes(b"old")
+    docs = tmp_path.parent / f"docs4-{tmp_path.name}"
+    docs.mkdir()
+    encoded = f"../{tmp_path.name}/old/book%20one.epub"
+    dotted = f"../{tmp_path.name}/./old/book.epub"
+    (docs / "a.md").write_text(f"[编码]({encoded})\n\n[点段]({dotted})\n", encoding="utf-8")
+    plan = plan_archive_transaction(tmp_path, docs_dir=docs)
+    reasons = {item.get("reason", "missing_source") for item in plan["broken_links"]}
+    assert "not_rewritten" in reasons
+    assert not any("book%20one" in item["link"] for item in plan["broken_links"])
+
+
+def test_archive_writes_book_index_readme(tmp_path: Path) -> None:
+    """#91：归档后生成 .archive/README.md，列出最新版本与已归档批次。"""
+    from auto_epublizer.archive import apply_archive_transaction
+
+    repo, outbox, _docs = _repo(tmp_path)
+    result = apply_archive_transaction(outbox, apply=True)
+    readme = outbox / ".archive" / "README.md"
+    assert result["archive_readme"] == readme.as_posix()
+    text = readme.read_text(encoding="utf-8")
+    assert "| book | 2.0 | book-v2 | book-v1 |" in text
+
+    before = readme.read_bytes()
+    again = apply_archive_transaction(outbox, apply=True)
+    assert again["status"] == "up_to_date"
+    assert readme.read_bytes() == before
+
+
+def test_link_rewrite_only_touches_targets_not_prose_or_code() -> None:
+    """#91：只改链接目标；同名正文与代码块保持原样，避免“能断链就全替换”。"""
+    from auto_epublizer.archive import _rewrite_markdown_links
+
+    text = (
+        "正文提到 outbox/old/ 目录，不应改写。\n\n"
+        "行内代码 `outbox/old/keep.md` 也不改。\n\n"
+        "```markdown\n[x](outbox/old/code.md)\n```\n\n"
+        "[内联](outbox/old/a.md)\n\n"
+        "[引用]: outbox/old/b.md\n\n"
+        '<a href="outbox/old/c.html">旧版</a>\n'
+    )
+    updated, count = _rewrite_markdown_links(text, outbox_name="outbox", name="old")
+    assert count == 3
+    assert "正文提到 outbox/old/ 目录" in updated
+    assert "`outbox/old/keep.md`" in updated
+    assert "[x](outbox/old/code.md)" in updated
+    assert "[内联](outbox/.archive/old/a.md)" in updated
+    assert "[引用]: outbox/.archive/old/b.md" in updated
+    assert 'href="outbox/.archive/old/c.html"' in updated

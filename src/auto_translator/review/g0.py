@@ -120,6 +120,10 @@ def _is_abbrev_dot(text: str, dot_index: int) -> bool:
     token = m.group(1)
     if _CJK_CHARS_RE.search(token):
         return False
+    # 大写罗马数字（World War II.5）是正文词，不是缩写点；仅限 2+ 字母，
+    # 避免把单字母姓名缩写 J. 的规则放松。
+    if re.fullmatch(r"[IVXLCDM]{2,}", token):
+        return False
     token = token.lower()
     return token in _ABBREV_STEMS or len(token) <= 2
 
@@ -188,16 +192,27 @@ def _is_measure_ref(text: str, end_index: int) -> bool:
     return bool(_MEASURE_AFTER_RE.match(text, end_index))
 
 
-def _is_leader_page(text: str, number_start: int, end: int) -> bool:
-    """长点引导线后的行尾页码；保留三点省略号和显式引用的语义。"""
-    # 四个以上点状字形才作为版式证据，...1 / ……1 仍按原注码口径处理。
+def _is_leader_page(text: str, number_start: int, end: int, *, toc_like: bool = False) -> bool:
+    """长点引导线后的行尾页码；宽松形态只在目录/索引单元启用。
+
+    4+ 点状字形在任何单元都足够像目录引导线（正文罕见）；3 点引导线与
+    罗马章节号（``XII.551``）只用于 toc/index，否则会把正文里的
+    ``He hesitated ...1`` / ``World War II.5`` 误豁免成目录页码。
+    """
     prefix = text[text.rfind("\n", 0, number_start) + 1 : number_start]
-    return bool(
-        re.search(r"[.．·…]{4,}[ \t]*$", prefix) and re.match(r"[ \t]*(?:\r?\n|$)", text[end:])
-    )
+    if not re.match(r"[ \t]*(?:\r?\n|$)", text[end:]):
+        return False
+    tail = r"[ \t]*$" if text[number_start : number_start + 1] == "[" else "$"
+    if re.search(r"[.．·…]{4,}" + tail, prefix):
+        return True
+    if not toc_like:
+        return False
+    if re.search(r"(?<=\s)[.．·…]{3,}" + tail, prefix):
+        return True
+    return bool(re.search(r"\b[IVXLCDM]{1,7}[.．][ \t]*$", prefix))
 
 
-def count_footnote_refs(text: str) -> int:
+def count_footnote_refs(text: str, *, toc_like: bool = False) -> int:
     """统计句末注码（脚注引用）数量（PDF 文字层数字式注码）。
 
     排除三类误报：① 缩写点后的数字（现场报告 #8）——``(стр.66)`` ``на стр.168``
@@ -216,11 +231,24 @@ def count_footnote_refs(text: str) -> int:
         for m in _FOOTNOTE_REF_RE.finditer(text)
         if not _is_abbrev_dot(text, m.start())
         and not _is_measure_ref(text, m.end())
-        and not _is_leader_page(text, m.start(1), m.end())
+        and not _is_leader_page(text, m.start(1), m.end(), toc_like=toc_like)
     )
 
 
-def footnote_numbers(text: str) -> set[int]:
+def _sentence_end_numbers(text: str, *, toc_like: bool = False) -> set[int]:
+    """仅句末式注号（与 ``count_footnote_refs`` 同口径），用于判定上标盲区。"""
+    out: set[int] = set()
+    for m in _FOOTNOTE_REF_RE.finditer(text or ""):
+        if (
+            not _is_abbrev_dot(text, m.start())
+            and not _is_measure_ref(text, m.end())
+            and not _is_leader_page(text, m.start(1), m.end(), toc_like=toc_like)
+        ):
+            out.add(int(m.group(1)))
+    return out
+
+
+def footnote_numbers(text: str, *, toc_like: bool = False) -> set[int]:
     """提取文本里的**注号集合**（句末式 ∪ 上标式 ∪ 括号式），用于缺失核证（issue #34）。
 
     与 :func:`count_footnote_refs` 的区别：本函数只服务于 ``footnote_suspect``
@@ -239,11 +267,11 @@ def footnote_numbers(text: str) -> set[int]:
         if (
             not _is_abbrev_dot(text, m.start())
             and not _is_measure_ref(text, m.end())
-            and not _is_leader_page(text, m.start(1), m.end())
+            and not _is_leader_page(text, m.start(1), m.end(), toc_like=toc_like)
         ):
             out.add(int(m.group(1)))
     for m in _FOOTNOTE_SUPER_RE.finditer(text):
-        if _is_leader_page(text, m.start(2), m.end()):
+        if _is_leader_page(text, m.start(2), m.end(), toc_like=toc_like):
             continue
         punct_pos = m.start(1)
         punct = m.group(1)
@@ -258,7 +286,7 @@ def footnote_numbers(text: str) -> set[int]:
             continue  # 前导零（’000 千分位刻度）不是注号
         out.add(int(token))
     for m in _FOOTNOTE_BRACKET_RE.finditer(text):
-        if _is_leader_page(text, m.start(), m.end()):
+        if _is_leader_page(text, m.start(), m.end(), toc_like=toc_like):
             continue
         token = m.group(1)
         if token.startswith("0"):
@@ -629,6 +657,9 @@ def g0_unit_flags(
     language_exempt: Sequence[tuple[Any, str]] | None = None,
     target_language: str = "zh-CN",
     source_language: str = "auto",
+    registered_note_numbers: set[int] | None = None,
+    registered_note_refs: Mapping[int, str] | None = None,
+    unit_kind: str = "",
 ) -> list[G0Flag]:
     """对一个单元执行全部 G0 检查，返回告警列表。
 
@@ -670,6 +701,8 @@ def g0_unit_flags(
     德文时，命中降为 advisory ``terminology_exempt`` **照样报出**，
     不阻断放行也不从报告里消失。
     """
+    toc_like = unit_kind in {"toc", "index"}
+
     exempt_sources = exempt_sources or {}
     exemption_rows = list(exemptions or [])
     language_exempt = list(language_exempt or [])
@@ -897,6 +930,16 @@ def g0_unit_flags(
                         blocking=False,
                     )
                 )
+            elif unit_kind == "bibliography":
+                # 书目条目常按体例保留原文；只报 advisory，正文散文仍硬错误（#83 P6）。
+                flags.append(
+                    G0Flag(
+                        "bibliography_identical",
+                        "书目条目与源文逐字相同（advisory，需核对是否应保留原文）",
+                        {"seq": seq, "head": (src or "")[:80]},
+                        blocking=False,
+                    )
+                )
             else:
                 flags.append(
                     G0Flag(
@@ -909,8 +952,8 @@ def g0_unit_flags(
         sum_marker_tgt += count_markers(tgt)
         src_marks = count_footnote_marks(src)
         tgt_marks = count_footnote_marks(tgt)
-        src_refs = count_footnote_refs(src)
-        tgt_refs = count_footnote_refs(tgt)
+        src_refs = count_footnote_refs(src, toc_like=toc_like)
+        tgt_refs = count_footnote_refs(tgt, toc_like=toc_like)
         fn["src_refs"] += src_refs
         fn["tgt_refs"] += tgt_refs
         fn["src_defs"] += count_footnote_defs(src)
@@ -920,8 +963,8 @@ def g0_unit_flags(
         sum_fn_src += src_refs + src_marks
         sum_fn_tgt += tgt_refs + tgt_marks
         # 注号集合（issue #34）：advisory 差集判据用，不进守恒门
-        src_row_nums = footnote_numbers(src)
-        tgt_row_nums = footnote_numbers(tgt)
+        src_row_nums = footnote_numbers(src, toc_like=toc_like)
+        tgt_row_nums = footnote_numbers(tgt, toc_like=toc_like)
         fn_numbers_src |= src_row_nums
         fn_numbers_tgt |= tgt_row_nums
         row_numbers.append((seq, src_row_nums, tgt_row_nums))
@@ -946,8 +989,10 @@ def g0_unit_flags(
         flags.append(
             G0Flag(
                 "footnote",
-                "脚注标记数量不守恒",
+                "脚注标记数量不守恒"
+                + ("（目录/索引单元，降为 advisory）" if unit_kind in {"toc", "index"} else ""),
                 {"src": sum_fn_src, "tgt": sum_fn_tgt, **fn},
+                blocking=unit_kind not in {"toc", "index"},
             )
         )
     # issue #34：注号集合差集（源侧有而译文侧没有）——advisory，供 agent 逐条核证。
@@ -973,6 +1018,29 @@ def g0_unit_flags(
                 blocking=False,
             )
         )
+    # issue #34 受限硬门：已登记注文的注号若在源侧只以上标形态出现，句末正则不可见；
+    # 只有「登记注号 ∩ 上标盲区」且译文任何形态都没有时才阻断（无登记时保持 advisory）。
+    if registered_note_numbers and structured_md is not None and translation_md is not None:
+        blind = fn_numbers_src - _sentence_end_numbers(structured_md, toc_like=toc_like)
+        # 语义 noteref（`[^ref-…]`）已经是合法注文载体：只有“数字形态和标记形态
+        # 都找不到”才算丢失，避免把已正确语义化的注文误报为缺失。
+        markers = set(re.findall(r"\[\^([^\]]+)\]", translation_md or ""))
+        lost = sorted(
+            n
+            for n in (blind & set(registered_note_numbers)) - fn_numbers_tgt
+            if not ((registered_note_refs or {}).get(n) in markers or str(n) in markers)
+        )
+        if lost:
+            flags.append(
+                G0Flag(
+                    "footnote_range",
+                    "已登记注文缺失（源侧上标记号在译文中不可见）："
+                    + "/".join(str(n) for n in lost[:12])
+                    + ("（目录/索引单元，降为 advisory）" if unit_kind in {"toc", "index"} else ""),
+                    {"numbers": lost, "registered": len(registered_note_numbers)},
+                    blocking=unit_kind not in {"toc", "index"},
+                )
+            )
     if structured_md is not None and translation_md is not None:
         src_levels = count_heading_levels(structured_md)
         tgt_levels = count_heading_levels(translation_md)

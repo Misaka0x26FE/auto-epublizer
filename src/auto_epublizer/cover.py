@@ -39,6 +39,7 @@ import functools
 import hashlib
 import json
 import os
+import re
 import shutil
 import subprocess
 from collections.abc import Iterable, Sequence
@@ -1086,6 +1087,7 @@ def generate(
     dpi = int(dpi or cfg.cover.dpi)
     fmt = resolve_format(spec.style, fmt, cfg)
     data = render_image(spec, fonts, dpi=dpi, fmt=fmt)
+    rendered = pymupdf.Pixmap(data)
 
     rel = generated_rel(fmt)
     target = store.dir / rel
@@ -1125,6 +1127,8 @@ def generate(
         "palette": spec.palette,
         "size_mm": [round(spec.width * 25.4 / 72, 2), round(spec.height * 25.4 / 72, 2)],
         "dpi": dpi,
+        # 像素口径 = 物理尺寸 × dpi（A5/300dpi → 1748×2480），不是固定 1600×2400 画布。
+        "pixels": [rendered.width, rendered.height],
         "format": fmt,
         "file": rel,
         "pdf": f"{GENERATED_STEM}.pdf" if pdf_bytes else None,
@@ -1162,6 +1166,28 @@ def generate(
     return record
 
 
+_OPF_ITEM = re.compile(r"<item\b[^>]*>", re.I | re.S)
+
+
+def epub_has_cover(epub: str | Path) -> bool:
+    """成品 OPF 是否在 manifest item 的 properties 里声明 cover-image。
+
+    只做文本包含会把注释/无关字符串/``<meta name="cover">`` 当成封面声明；
+    这里要求属性 token 精确出现（供 qa 检查“已登记但成品无封面”）。
+    """
+    import zipfile
+
+    with zipfile.ZipFile(epub) as archive:
+        name = next((n for n in archive.namelist() if n.endswith(".opf")), None)
+        if name is None:
+            return False
+        text = archive.read(name).decode("utf-8", errors="replace")
+    for tag in _OPF_ITEM.findall(text):
+        if re.search(r'properties\s*=\s*["\'][^"\']*\bcover-image\b', tag, re.I):
+            return True
+    return False
+
+
 def sync_for_build(store: RunStore, pub: Any, cfg: Any) -> dict[str, Any] | None:
     """构建期取用生成封面：登记存在且设计未变 → 复用；设计变了 → 重绘（不新建）。
 
@@ -1173,9 +1199,23 @@ def sync_for_build(store: RunStore, pub: Any, cfg: Any) -> dict[str, Any] | None
         return None
     rel = str(record.get("file") or "")
     path = store.dir / rel
+    stored_overrides = record.get("overrides")
     if not path.is_file():
-        store.log_event("cover_generated_missing", file=rel)
-        return None
+        # 重建会清空 structured/：登记还在、文件没了不能静默产出无封面成品。
+        if not cfg.cover.auto_sync:
+            store.log_event("cover_generated_missing", file=rel)
+            return None
+        refreshed = generate(
+            store,
+            pub,
+            cfg,
+            dpi=cfg.cover.dpi,
+            fmt=record.get("format"),
+            overrides=stored_overrides if isinstance(stored_overrides, dict) else None,
+        )
+        rel = refreshed["file"]
+        store.log_event("cover_regenerated_missing", file=rel)
+        return {"epub_path": f"media/{Path(rel).name}", "data": (store.dir / rel).read_bytes()}
     if rel not in (generated_rel("png"), generated_rel("jpeg")):
         # 登记指向别处（agent 用 --out 导出到工作区外）：只认标准位置
         store.log_event("cover_generated_external", file=rel)

@@ -1,3 +1,4 @@
+# 分发决策：不发布 PyPI（见 README「分发方式」）；uv build 仅供内部/私有渠道。
 [project]
 name = "auto-epublizer"
 version = "0.1.0"

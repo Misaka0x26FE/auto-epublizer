@@ -77,6 +77,19 @@ class QaResult:
     notes_review_open: int = 0
     notes_review_stale: int = 0
     notes_review_open_ids: list[str] = field(default_factory=list)
+    # 非语义脚注形态（issue #37）：未登记 notes.json 时 `注 1.`/`[1]` 会以普通段落放行
+    footnotes_not_semantic: int = 0
+    footnotes_partial: int = 0
+    # 源文实印疑误（#72-9）：登记只作可见证据，不自动豁免译文缺陷
+    errata_total: int = 0
+    errata_confirmed: int = 0
+    errata_stale: int = 0
+    # 制作信息详略（#72-5）：rights 级别必须真有权利字段
+    software_detail: str = ""
+    rights_present: bool = False
+    # 译文卫生（#85/#93）：候选只作可见性，不阻断放行
+    hygiene_candidates: int = 0
+    hygiene_cross_page: int = 0
     # B2 报告失效证据链：生成时刻的产物摘要 + 被审计成品路径（status/ledger 据此判过期）
     artifacts_digest: str = ""
     artifacts_epub: str = ""
@@ -123,6 +136,10 @@ def generate_report(
     notes_audit: dict[str, Any] | None = None,
     review_ledger: dict[str, Any] | None = None,
     notes_review: dict[str, Any] | None = None,
+    errata: dict[str, Any] | None = None,
+    software_detail: str = "",
+    rights_present: bool = False,
+    hygiene: dict[str, Any] | None = None,
 ) -> QaResult:
     """聚合 G0–G4 + 溯源审计生成放行报告。
 
@@ -153,6 +170,7 @@ def generate_report(
         "align",
         "marker",
         "footnote",
+        "footnote_range",
         "heading",
         "table",
         "fidelity",
@@ -169,6 +187,12 @@ def generate_report(
         1 for f in flags if f.get("blocking", True) and f.get("check") in _STRUCT_CHECKS
     )
     error_rate = (g2_confirmed / total_sentences) if total_sentences else 0.0
+    footnotes_not_semantic = sum(
+        1 for finding in audit.findings if finding.code == "E_FOOTNOTES_NOT_SEMANTIC"
+    )
+    footnotes_partial = sum(
+        1 for finding in audit.findings if finding.code == "W_FOOTNOTES_PARTIAL"
+    )
 
     # 溯源审计结果映射（postprocessing-spec §5 放行扩展）
     prov = provenance or {}
@@ -341,6 +365,15 @@ def generate_report(
         notes_review_open_ids=list(review_notes.get("open_note_ids") or [])
         if notes_review_applicable
         else [],
+        footnotes_not_semantic=footnotes_not_semantic,
+        footnotes_partial=footnotes_partial,
+        software_detail=software_detail,
+        rights_present=rights_present,
+        hygiene_candidates=int((hygiene or {}).get("candidates") or 0),
+        hygiene_cross_page=int((hygiene or {}).get("cross_page") or 0),
+        errata_total=int((errata or {}).get("total") or 0),
+        errata_confirmed=int((errata or {}).get("confirmed") or 0),
+        errata_stale=int((errata or {}).get("stale") or 0),
         g0_total=len(flags),
         g0_summary=summarize_g0(flags),
         provenance_findings=prov_findings,

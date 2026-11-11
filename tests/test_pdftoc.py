@@ -212,3 +212,128 @@ def test_missing_and_duplicate_anchor_ids_remain_unlocated() -> None:
         "E_PDF_ANCHOR_MISSING",
         "E_PDF_ANCHOR_AMBIGUOUS",
     }
+
+
+def test_nested_generated_toc_rewrites_parent_and_child_rows() -> None:
+    """#73：父 li 含子 ol 时，父行仍按自己的 toc-row 回填，不被整行跳过。"""
+    inner = (
+        '<nav epub:type="toc"><ol>'
+        '<li><div class="toc-row"><a href="ch2.xhtml">Chapter</a></div>'
+        '<ol><li><div class="toc-row"><a href="ch2.xhtml#s1">§1</a>'
+        '<span class="toc-page">999</span></div></li></ol></li>'
+        "</ol></nav>"
+    )
+    entries = [
+        (1, "Chapter", "OEBPS/ch2.xhtml"),
+        (2, "§1", "OEBPS/ch2.xhtml#s1"),
+    ]
+    result = rewrite_toc(
+        inner,
+        entries,
+        {"OEBPS/ch2.xhtml": 5, "OEBPS/ch2.xhtml#s1": 6},
+        owner_href="OEBPS/toc.xhtml",
+        document_titles={"OEBPS/ch2.xhtml": "Chapter"},
+    )
+    assert not result.findings
+    assert "Chapter" in result.html and "> 5<" in result.html
+    assert '<span class="toc-page">6</span>' in result.html
+
+
+def test_no_fragment_subheading_is_not_silently_mapped_to_chapter_start() -> None:
+    """#92：nav 的 § 条目没有 fragment 时，不得静默写章首页。"""
+    entries = [(2, "§1 关税政策", "OEBPS/ch2.xhtml")]
+    result = rewrite_toc(
+        "<p><a href='ch2.xhtml'>§1 关税政策</a> 999</p>",
+        entries,
+        {"OEBPS/ch2.xhtml": 6},
+        owner_href="OEBPS/toc.xhtml",
+        document_titles={"OEBPS/ch2.xhtml": "第二章 总论"},
+    )
+    assert "999" in result.html  # 保留原数字，不改成 6
+    assert any(f["code"] == "E_PDF_TOC_UNLOCATED" for f in result.findings)
+    assert any(f.get("reason") == "no_fragment_for_subheading" for f in result.findings)
+
+
+def test_no_fragment_entry_matching_document_title_uses_chapter_start() -> None:
+    entries = [(1, "第二章 总论", "OEBPS/ch2.xhtml")]
+    result = rewrite_toc(
+        "<p>第二章 总论 999</p>",
+        entries,
+        {"OEBPS/ch2.xhtml": 6},
+        owner_href="OEBPS/toc.xhtml",
+        document_titles={"OEBPS/ch2.xhtml": "第二章 总论"},
+    )
+    assert "第二章 总论 6" in result.html
+    assert not result.findings
+
+
+def test_plain_nested_list_parent_row_is_rewritten_without_swallowing_child() -> None:
+    """#73：纯 <li> 嵌套目录（父行自带页码 + 子 ol）父/子都要回填。"""
+    inner = (
+        '<nav epub:type="toc"><ol>'
+        '<li><a href="ch2.xhtml">Chapter</a> 999'
+        '<ol><li><a href="ch2.xhtml#s1">§1</a> 888</li></ol></li>'
+        "</ol></nav>"
+    )
+    entries = [
+        (1, "Chapter", "OEBPS/ch2.xhtml"),
+        (2, "§1", "OEBPS/ch2.xhtml#s1"),
+    ]
+    result = rewrite_toc(
+        inner,
+        entries,
+        {"OEBPS/ch2.xhtml": 5, "OEBPS/ch2.xhtml#s1": 6},
+        owner_href="OEBPS/toc.xhtml",
+        document_titles={"OEBPS/ch2.xhtml": "Chapter"},
+    )
+    assert not result.findings
+    assert "Chapter</a> 5" in result.html
+    assert "§1</a> 6" in result.html
+    assert len(result.updates) == 2
+
+
+def test_translated_toc_label_matching_nav_title_uses_chapter_start() -> None:
+    """#92 反向：目录标签是 nav 的章级标题、正文 h1 是译文时，不得误报未定位。"""
+    result = rewrite_toc(
+        "<p>Chapter Two 999</p>",
+        [(1, "Chapter Two", "OEBPS/ch2.xhtml")],
+        {"OEBPS/ch2.xhtml": 6},
+        owner_href="OEBPS/toc.xhtml",
+        document_titles={"OEBPS/ch2.xhtml": "第二章 总论"},
+    )
+    assert "Chapter Two 6" in result.html
+    assert not [f for f in result.findings if f["code"] == "E_PDF_TOC_UNLOCATED"]
+
+
+def test_wrapped_nested_list_does_not_leak_child_link_into_parent() -> None:
+    """#73：子列表包在 div 里时，父行仍只绑定自己的链接与页码。"""
+    inner = (
+        '<nav epub:type="toc"><ol><li><div class="toc-row">'
+        '<a href="ch2.xhtml">Chapter</a> 999'
+        '<div><ol><li><a href="ch2.xhtml#s1">§1</a> 888</li></ol></div>'
+        "</div></li></ol></nav>"
+    )
+    entries = [(1, "Chapter", "OEBPS/ch2.xhtml"), (2, "§1", "OEBPS/ch2.xhtml#s1")]
+    result = rewrite_toc(
+        inner,
+        entries,
+        {"OEBPS/ch2.xhtml": 5, "OEBPS/ch2.xhtml#s1": 6},
+        owner_href="OEBPS/toc.xhtml",
+        document_titles={"OEBPS/ch2.xhtml": "Chapter"},
+    )
+    assert "Chapter</a> 5" in result.html
+    assert "§1</a> 6" in result.html
+    assert not [f for f in result.findings if f["code"] == "E_PDF_TOC_UNLOCATED"]
+
+
+def test_no_token_parent_marker_stays_before_child_list() -> None:
+    """无页码父行的未定位标记必须放在子列表之前，不破坏目录层级版式。"""
+    inner = '<nav epub:type="toc"><ol><li><a href="ch2.xhtml">Beta</a><ol><li>child</li></ol></li></ol></nav>'
+    result = rewrite_toc(
+        inner,
+        [(1, "Beta", "OEBPS/ch2.xhtml")],
+        {"OEBPS/ch2.xhtml": 6},
+        owner_href="OEBPS/toc.xhtml",
+        document_titles={"OEBPS/ch2.xhtml": "Different"},
+    )
+    assert result.html.index("aep-pdf-page") < result.html.index("<ol><li>child")

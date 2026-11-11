@@ -661,3 +661,99 @@ def test_count_footnote_refs_counts_cjk_adjacent_markers() -> None:
     # 回归 #22/#31 的量词类仍为 0
     assert count_footnote_refs("会议定于三月召开。3 月十五日之前") == 0
     assert count_footnote_refs("停留至 18 日。 随后返回") == 0
+
+
+def test_registered_superscript_note_missing_is_a_hard_flag() -> None:
+    """#34：已登记注号且源侧只以上标出现时，译文缺失必须阻断（不再只是 advisory）。"""
+    g = Glossary()
+    rows = [{"seq": 1, "src": "Text)14", "tgt": "正文", "note": None}]
+    flags = {
+        f.check: f
+        for f in g0_unit_flags(
+            rows,
+            g,
+            structured_md="Text)14",
+            translation_md="正文",
+            registered_note_numbers={14},
+        )
+    }
+    assert flags["footnote_range"].blocking is True
+    assert flags["footnote_range"].data["numbers"] == [14]
+
+
+def test_registered_range_does_not_flag_absent_or_sentence_end_notes() -> None:
+    g = Glossary()
+    rows = [{"seq": 1, "src": "Text)14", "tgt": "正文", "note": None}]
+    absent = [
+        f
+        for f in g0_unit_flags(
+            rows,
+            g,
+            structured_md="Text)14",
+            translation_md="正文",
+            registered_note_numbers={15},
+        )
+        if f.check == "footnote_range"
+    ]
+    assert absent == []
+
+    sentence_end = [
+        f
+        for f in g0_unit_flags(
+            [{"seq": 1, "src": "Text.14", "tgt": "正文", "note": None}],
+            g,
+            structured_md="Text.14",
+            translation_md="正文",
+            registered_note_numbers={14},
+        )
+        if f.check == "footnote_range"
+    ]
+    assert sentence_end == []  # 句末式丢失已有 footnote 硬门
+
+
+def test_registered_note_present_in_any_form_is_not_flagged() -> None:
+    g = Glossary()
+    for target in ("正文〔14〕", "正文[^ref-000014]"):
+        rows = [{"seq": 1, "src": "Text)14", "tgt": target, "note": None}]
+        flags = [
+            f
+            for f in g0_unit_flags(
+                rows,
+                g,
+                structured_md="Text)14",
+                translation_md=target,
+                registered_note_numbers={14},
+                registered_note_refs={14: "ref-000014"},
+            )
+            if f.check == "footnote_range"
+        ]
+        assert flags == [], target
+
+
+def test_unregistered_superscript_stays_advisory() -> None:
+    g = Glossary()
+    rows = [{"seq": 1, "src": "Text)14", "tgt": "正文", "note": None}]
+    flags = [
+        f
+        for f in g0_unit_flags(rows, g, structured_md="Text)14", translation_md="正文")
+        if f.check == "footnote_range"
+    ]
+    assert flags == []
+
+
+def test_bibliography_identical_entry_is_advisory_but_body_stays_hard() -> None:
+    """#83 P6：书目单元逐字相同降 advisory；正文散文仍阻断。"""
+    rows = [
+        {
+            "seq": 1,
+            "src": "Smith, J. 2000. A Book. Oxford.",
+            "tgt": "Smith, J. 2000. A Book. Oxford.",
+            "note": None,
+        }
+    ]
+    bib = g0_unit_flags(rows, Glossary(), unit_kind="bibliography")
+    flags = [f for f in bib if f.check in {"language", "bibliography_identical"}]
+    assert flags and flags[0].check == "bibliography_identical" and flags[0].blocking is False
+
+    body = g0_unit_flags(rows, Glossary(), unit_kind="chapter")
+    assert any(f.check == "language" and f.blocking for f in body)

@@ -374,3 +374,19 @@ def test_notes_review_not_run_blocks_but_absent_does_not() -> None:
 
     no_notes = _report(notes_review={"applicable": False, "status": "no_notes_registry", "open": 0})
     assert no_notes.released is True and no_notes.released_reason == "ok"
+
+
+def test_footnote_range_blocks_release() -> None:
+    """#34：已登记注文缺失必须进放行硬门，不能只出现在 g0_flags 展示里。"""
+    flags = [
+        {
+            "unit": "ch01",
+            "check": "footnote_range",
+            "message": "已登记注文缺失",
+            "blocking": True,
+            "data": {"numbers": [14]},
+        }
+    ]
+    r = _report(g0_flags=flags)
+    assert r.g0_structure_open == 1
+    assert r.released is False and r.released_reason == "structure_open"

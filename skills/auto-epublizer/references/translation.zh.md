@@ -103,6 +103,11 @@ auto-epublizer align-apply plan.json --workspace <dir> --apply  # 明确写入
 - 负对照：围栏/行内代码不参与；书目/索引/术语表单元跳过；缩写点不报半句；
   冒号引导句的下一块存在时不报丢尾；引号在整单元范围配对，允许跨段引文。
 - 候选要人工核证；确属缺陷走 `repair apply`/重建流程，不能按扫描器输出批量改写。
+- **逐条处置**（issue #93）：写 `preprocessing/hygiene-review.jsonl`，每行
+  `{schema_version:1, unit, block, code, text_sha256, disposition, reason}`；
+  `disposition` 取 `accepted|fixed|false_positive`，`reason` 必填。`text_sha256`
+  取 `hygiene --review` 输出条目的值；文本一变即 `stale` 重开。`hygiene --review`
+  只读汇总 open/closed/stale，不写文件、不进放行硬门。
 
 ## 特殊段处理（PDF 内容提取产物）
 

@@ -28,6 +28,9 @@ pdf:
   mineru_model: pipeline  # pipeline（默认，确定性）| vlm（高精度）
   mineru_language: ch     # MinerU OCR 语言（PaddleOCR 语言码：ch/en/ja/…）
   rtl: auto               # PDF 文字层 RTL 处理：auto（自动判定）| on | off
+  font_stack: ""          # 印刷 PDF 字体栈（CSS font-family）；空=拉丁优先默认
+                          #（AEP_PDF_FONT 可覆盖默认，本项优先）
+  print_css: ""           # 追加的印刷 CSS 文件（相对工作区）；禁 @import/远程 URL，上限 256 KiB
 
 # ── Pandoc 导入（DOCX/HTML/EPUB）────────────────────────────
 pandoc:
@@ -70,4 +73,4 @@ cover:
 output:
   about_page: true        # 未接线（预留）
   theme: standard         # standard | compact | spacious
-  software_detail: full   # full | brief：制作信息详略
+  software_detail: full   # full | brief | rights：制作信息详略

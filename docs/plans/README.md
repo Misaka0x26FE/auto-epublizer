@@ -53,3 +53,4 @@
 | [2026-10-31-generated-cover.md](2026-10-31-generated-cover.md) | 实施中（代码/测试/文档已落地，待提交号） | 生成式封面（Magadan 版式）内置：`cover` 命令 + `cover-generated.json` 登记 + build 写 `cover-image`；源封面优先、不凭空造封面、字体降级明说；配套 skill `references/cover.md` 与 status 封面全景 |
 | [2026-11-10-field-archive-gap-analysis.md](2026-11-10-field-archive-gap-analysis.md) | 已完成（未提交） | 实战归档差距分析 16 项：证据校准、清洗/媒体/表格正确性、注文语言核验、分块暂存、报告摘要、制作信息/doctor、归档资产迁移与独立审查 |
 | [2026-11-10-archive-census.md](2026-11-10-archive-census.md) | 已完成（未提交） | 归档只读普查口径：52 工作区、154,239 报告句 vs 153,458 align 行、16,199 注文 ID 契约与七本高风险书候选分层 |
+| [2026-11-11-open-issues-repair-plan.md](2026-11-11-open-issues-repair-plan.md) | 已完成（未提交） | 39 个 open issue 逐条证据矩阵与关闭建议；第一轮修非语义脚注、书名页残余、align 基线覆盖、PDF 目录/§/收敛、生成封面重建、归档版本策略与链接自检、hygiene 处置、字体栈/元数据、OCR 切段/双栏、errata 可见性等；第二轮基于 translate.tar.gz 真实书完成 #58 索引/TOC/注文证据、#57/#72-1、#91 链接改写收窄、#93 术语/引号边界、#96 页眉/图版/print.css、#100 像素口径、#101 CJK 优先与 #40 PyPI 决策；产物与测试计数见计划 §6（全量 1513 passed / 3 skipped） |

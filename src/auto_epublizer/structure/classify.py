@@ -26,6 +26,11 @@ _REGION_COVER = "cover"
 # 标题关键词 → (region, kind)
 _TITLE_KEYWORDS: list[tuple[tuple[str, ...], str, str]] = [
     (("封面", "cover"), _REGION_COVER, "cover"),
+    (
+        ("半书名页", "简书名页", "half-title", "half title", "half title page"),
+        _REGION_FRONT,
+        "half-title",
+    ),
     (("书名页", "标题页", "titlepage", "title page"), _REGION_FRONT, "titlepage"),
     (("版权", "copyright"), _REGION_FRONT, "copyright"),
     (("献词", "题献", "dedication"), _REGION_FRONT, "dedication"),
@@ -35,7 +40,18 @@ _TITLE_KEYWORDS: list[tuple[tuple[str, ...], str, str]] = [
     (("后记", "跋", "afterword"), _REGION_BACK, "afterword"),
     (("附录", "appendix", "appendix a"), _REGION_BACK, "appendix"),
     (("注释", "尾注", "notes", "endnotes"), _REGION_BACK, "notes"),
-    (("参考文献", "参考书目", "bibliography", "references"), _REGION_BACK, "bibliography"),
+    (
+        (
+            "参考文献",
+            "参考书目",
+            "bibliography",
+            "references",
+            "sources and literature",
+            "sources & literature",
+        ),
+        _REGION_BACK,
+        "bibliography",
+    ),
     (("索引", "index"), _REGION_BACK, "index"),
     (("术语表", "glossary"), _REGION_BACK, "glossary"),
 ]
@@ -44,7 +60,7 @@ _PAGE_NUMBER_RE = re.compile(r"^[\s\-—–·]*\d{1,4}[\s\-—–·]*$")
 _PAGE_LABEL_RE = re.compile(r"^(?:第\s*\d{1,4}\s*页|\d{1,4}\s*页|[pP]\d{1,4})$")
 _BARE_PAGE_RE = re.compile(r"^\d{1,4}$")
 _PAGE_DECORATION = frozenset("-—–·•")
-_PAGE_FURNITURE_KINDS = frozenset({"cover", "titlepage"})
+_PAGE_FURNITURE_KINDS = frozenset({"cover", "titlepage", "half-title"})
 
 
 @dataclass(frozen=True)
@@ -125,6 +141,27 @@ _FRONT_MATTER_MARKERS = (
 )
 
 
+def _norm_title(text: str) -> str:
+    return re.sub(r"[\s\W_]+", "", str(text or "").casefold())
+
+
+def _is_early_short_unit(unit: SourceUnit) -> bool:
+    """非首单元的书名页判据：内容短且位于前几页。
+
+    仅凭“标题等于书名”会把同名正文章节误判成书名页（整章不清理页码/页眉、
+    按标题页排版）；因此要求短内容 + 起始页在前 4 页，或首单元。
+    """
+    text = "\n".join(segment.source for segment in unit.segments)
+    if len(text) > 2000:
+        return False
+    pages = [
+        int(segment.meta.get("source_page"))
+        for segment in unit.segments
+        if isinstance(segment.meta.get("source_page"), int)
+    ]
+    return not pages or max(pages) <= 4
+
+
 def _looks_like_front_matter(unit: SourceUnit) -> bool:
     text = "\n".join(s.source for s in unit.segments)
     if not text or len(text) > 2000:
@@ -144,11 +181,16 @@ def classify_units(doc: SourceDocument) -> list[ClassifiedUnit]:
     aux_counts: dict[tuple[str, str], int] = {}
     for idx, unit in enumerate(doc.units):
         region, kind = _classify_title(unit.title)
+        title_match = bool(
+            _norm_title(doc.title) and _norm_title(unit.title) == _norm_title(doc.title)
+        )
         if (
-            idx == 0
-            and region == _REGION_BODY
+            region == _REGION_BODY
             and unit.meta.get("aggregated")
-            and _looks_like_front_matter(unit)
+            and (
+                _looks_like_front_matter(unit)
+                or (title_match and (idx == 0 or _is_early_short_unit(unit)))
+            )
         ):
             region, kind = _REGION_FRONT, "titlepage"  # 无书签 PDF 的标题/版权页
         if region == _REGION_COVER:
@@ -310,15 +352,32 @@ def _short(text: str, limit: int = 40) -> bool:
 
 
 def _clean_header_footer(
-    segments: list[SourceSegment], origins: list[int], *, min_pages: int = 3
-) -> tuple[list[SourceSegment], list[CleanRemoval]]:
+    segments: list[SourceSegment],
+    origins: list[int],
+    *,
+    min_pages: int = 3,
+    title: str = "",
+) -> tuple[list[SourceSegment], list[CleanRemoval], list[CleanRemoval]]:
     positions: dict[int, list[int]] = {}
     for i, s in enumerate(segments):
         positions.setdefault(s.meta.get("source_page") or 0, []).append(i)
 
+    sizes = sorted(
+        float(s.meta.get("source_font_size") or 0)
+        for s in segments
+        if s.kind != KIND_HEADING and float(s.meta.get("source_font_size") or 0) > 0
+    )
+    median_size = sizes[(len(sizes) - 1) // 2] if sizes else 0.0
+    page_max: dict[int, float] = {}
+    for s in segments:
+        page = s.meta.get("source_page") or 0
+        size = float(s.meta.get("source_font_size") or 0)
+        if size > page_max.get(page, 0.0):
+            page_max[page] = size
+
     pages = sorted(positions)
     if len(pages) < min_pages:
-        return segments, []
+        return segments, [], []
 
     header_candidates: dict[str, int] = {}
     footer_candidates: dict[str, int] = {}
@@ -347,19 +406,40 @@ def _clean_header_footer(
     drop = {t for t, n in header_candidates.items() if n >= threshold}
     drop |= {t for t, n in footer_candidates.items() if n >= threshold}
     if not drop:
-        return segments, []
+        return segments, [], []
 
     out: list[SourceSegment] = []
     removed: list[CleanRemoval] = []
+    candidates: list[CleanRemoval] = []
     for i, s in enumerate(segments):
         text = s.source.strip()
         if i in boundary and s.kind != KIND_HEADING and _short(text) and text in drop:
             role = roles.get(i, "boundary")
             reason = "repeated_header" if role == "header" else "repeated_footer"
+            size = float(s.meta.get("source_font_size") or 0)
+            page = s.meta.get("source_page") or 0
+            # 版面正交判据（issue #97）：书名页标题常是整页最大字号，即使跨页重复
+            # 也不是页眉。字号证据不足（OCR 无行框/全页同字号）时才按文本重复删除。
+            if (
+                page_max.get(page)
+                and size >= page_max[page] * 0.98
+                and median_size
+                and size >= median_size * 1.25
+                and title
+                and (
+                    _norm_title(text) == _norm_title(title)
+                    or (len(_norm_title(text)) >= 5 and _norm_title(text) in _norm_title(title))
+                )
+            ):
+                candidates.append(
+                    CleanRemoval(origins[i], text, reason + "_large_font_kept", _page_of(s))
+                )
+                out.append(s.model_copy(update={"index": len(out)}))
+                continue
             removed.append(CleanRemoval(origins[i], text, reason, _page_of(s)))
             continue
         out.append(s.model_copy(update={"index": len(out)}))
-    return out, removed
+    return out, removed, candidates
 
 
 def clean_header_footer(
@@ -370,8 +450,11 @@ def clean_header_footer(
     同一文本在 >=50% 的页首或页末出现即视为页眉/页脚。**只删除页首/页末的那次出现**：
     同文若也出现在页中，那是正文（书名页书名、章内引文等），不是版式家具；
     标题段（``kind == "heading"``）保留其结构角色，即使与页眉同文。
+    字号显著大于正文中位数且为页内最大时只记为候选，不删除（书名页标题）。
     """
-    out, _removed = _clean_header_footer(segments, list(range(len(segments))), min_pages=min_pages)
+    out, _removed, _candidates = _clean_header_footer(
+        segments, list(range(len(segments))), min_pages=min_pages
+    )
     return out
 
 
@@ -386,10 +469,12 @@ def clean_unit_with_report(
     segments, removed, candidates, origins = _strip_page_numbers(
         unit.segments, list(range(len(unit.segments)))
     )
-    segments, header_removed = _clean_header_footer(segments, origins)
+    segments, header_removed, header_candidates = _clean_header_footer(
+        segments, origins, title=unit.title
+    )
     report = CleanReport(
         removed=tuple(removed + header_removed),
-        candidates=tuple(candidates),
+        candidates=tuple(candidates + header_candidates),
     )
     return unit.model_copy(update={"segments": segments}), report
 

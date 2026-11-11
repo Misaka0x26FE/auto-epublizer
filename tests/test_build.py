@@ -1211,3 +1211,18 @@ def test_unit_role_is_carried_into_xhtml_body() -> None:
     assert 'data-aep-role="titlepage"' in html
     plain = render_document("章", "# 章\n\n正文。\n", lang="zh-CN")
     assert "data-aep-role" not in plain
+
+
+def test_source_toc_dot_leaders_become_printable_rows() -> None:
+    """#96：平排源目录的点线行转成题名/点线/页码三段，文字与页码不改。"""
+    toc = render_document(
+        "目录",
+        "# 目录\n\n第一章 起源 ........ 3\n\n第二章 展开 …… 17\n",
+        lang="zh-CN",
+        role="toc",
+    )
+    assert toc.count('class="toc-row"') == 2
+    assert '<span class="toc-title">第一章 起源</span>' in toc
+    assert '<span class="toc-page">3</span>' in toc
+    assert '<span class="toc-page">17</span>' in toc
+    assert "........" not in toc

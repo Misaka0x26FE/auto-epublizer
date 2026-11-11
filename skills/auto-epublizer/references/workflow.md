@@ -1,4 +1,4 @@
-<!-- i18n: source=workflow.zh.md sha256=64af6533dcdbabe29ccb4f1fd7fdf426fb87c9de675a0b9c0d4f8f979de1efab -->
+<!-- i18n: source=workflow.zh.md sha256=4fb0fd915a47266d7aa29edb3f2d2ee0d270db10e9086097d313ae846d9b6d8a -->
 > **English** | [中文](workflow.zh.md)
 
 # Workflow (stage routing + command overview)
@@ -218,7 +218,7 @@ auto-epublizer notes status [--json] [--workspace <dir>]          # summary / st
 auto-epublizer build [--theme standard|compact|spacious] [-o <out.epub>] [--workspace <dir>]
 
 # derived print PDF (not in the QA digest; the EPUB stays the delivery format; --strict keeps the old file on failure)
-auto-epublizer pdf [--size a5|32k|b5|16k] [--body-pt 10.5] [--note-pt 8.5] [--strict] [--json] [--workspace <dir>]
+auto-epublizer pdf [--size a5|32k|b5|16k] [--body-pt 10.5] [--note-pt 8.5] [--print-css <file>] [--strict] [--json] [--workspace <dir>]
 auto-epublizer pdf-verify --pdf <out.pdf> [--json]     # recompute source EPUB/PDF hashes and the artifact manifest
 
 # read-only evidence (deterministic, zero-token; releases nothing, changes no state)
@@ -226,6 +226,9 @@ auto-epublizer evidence source [--json] [--note-id <id> ...] [--workspace <dir>]
 auto-epublizer evidence partition [--json] [--workspace <dir>]   # per-line source partition: destination/duplicates/block ranges
 auto-epublizer evidence breaks [-o <jsonl>] [--workspace <dir>]
 auto-epublizer evidence page-numbers [--json] [--workspace <dir>]  # TOC/index page policy and duplicate candidates
+auto-epublizer evidence index [--json] [--workspace <dir>]         # per-entry index refs, source locations, orphan pages
+auto-epublizer evidence toc-diff [--epub <path>] [--json] [--workspace <dir>]  # printed TOC vs EPUB nav, item by item
+auto-epublizer evidence notes [--render] [--dpi 150] [--max-crops 200] [--mark-reviewed <id> ...] [--workspace <dir>]
 auto-epublizer evidence report [--json] [--epub <path>] [--workspace <dir>]
 
 # QA (epubcheck zero errors + unpack audit + provenance audit + G5 release decision)
@@ -250,7 +253,7 @@ Not every command supports `--json`; do not append it mechanically to arbitrary 
 
 | Command | Machine-readable interface |
 |---|---|
-| `doctor`, `status` (including `--all`), `notes status`, `knowledge status`, `evidence source/partition/report/page-numbers`, `pdf`, `pdf-verify` | Explicit `--json`; parse stdout as JSON |
+| `doctor`, `status` (including `--all`), `notes status`, `knowledge status`, `evidence source/partition/report/page-numbers/index/toc-diff/notes`, `pdf`, `pdf-verify` | Explicit `--json`; parse stdout as JSON |
 | `qa` | Read workspace `report.json`, then check freshness with `status --json`; exit 0 means execution finished, not released |
 | `build`, `import`, `g0`, `meta` | Follow actual help, reject nonzero exits, then read applicable state through `status --json` / `report.json`; rerun QA after later edits |
 | `ledger` | Markdown; use `-o` for a file and `status --all --json` for progress decisions, not colored summaries |
@@ -323,9 +326,14 @@ Keep one separate workspace per book; `status --all` and `ledger` are the cross-
   never marks the whole batch stale;
 - a batch already present in `.archive/` with the same book/version is reported as
   `already_archived` so it is not packed twice;
+- Batches without a version stay unresolved by default (`--unversioned hold`); only an
+  explicit `--unversioned archive` moves them. `--version-map map.json`
+  (`{batch: version}`) fills missing versions only, never overwrites one; unknown names
+  are an error.
 - By default it only prints keep/move/conflict/unresolved lists; `--apply` moves batches,
   rewrites `outbox/<batch>/` links under `docs/**/*.md`, and adds the
-  `outbox/.archive/*/epub|pdf/` rules to `.gitignore`.
+  `outbox/.archive/*/epub|pdf/` rules to `.gitignore`. Rewritten links are self-checked
+  first: a missing source aborts the move (`broken_links`).
 - A transaction journal is written to `outbox/.archive/.transactions/<id>.json` first; failures
   roll back moves, links and ignore rules. After an interruption,
   `archive <outbox> --recover` restores explicitly. Existing targets are never overwritten, and

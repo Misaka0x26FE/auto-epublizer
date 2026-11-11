@@ -17,6 +17,7 @@ import json
 import os
 import re
 import tempfile
+from collections import Counter
 from collections.abc import Callable
 from pathlib import Path
 
@@ -324,6 +325,107 @@ def aggregate_pdf_chapters(
     return units
 
 
+_TERMINAL_LINE = re.compile(r"[.!?…。！？；;:：][\]\)）】》」』”’\"']*$")
+
+
+def _union_box(boxes: list[list[float]]) -> list[float] | None:
+    if not boxes:
+        return None
+    return [
+        min(box[0] for box in boxes),
+        min(box[1] for box in boxes),
+        max(box[2] for box in boxes),
+        max(box[3] for box in boxes),
+    ]
+
+
+def split_block_paragraphs(block: dict) -> list[dict]:
+    """按行首缩进把一个版面块切成多个段落（issue #86），文本不改。
+
+    判据：上一行以句末/收束标点结束，当前行 x0 比块内最左行缩进
+    ``max(font*0.8, 2)`` 点以上。无行框或证据不足时原样返回单块。
+    """
+    if block.get("type") not in {None, "text"}:
+        return [block]
+    lines = block.get("lines") or []
+    if len(lines) < 2:
+        return [block]
+    boxes = [line.get("bbox") for line in lines if line.get("bbox")]
+    if len(boxes) < 2:
+        return [block]
+    heights = sorted(float(box[3]) - float(box[1]) for box in boxes)
+    size = float(block.get("font_size") or 0) or heights[len(heights) // 2]
+    # 以 x0 众数（正文左基线）而不是 min(x0) 判断缩进：首行居中/悬挂缩进不会把
+    # 后续每一行都误切成新段。
+    left = Counter(round(float(box[0]), 1) for box in boxes).most_common(1)[0][0]
+    threshold = max(size * 0.8, 2.0)
+    groups: list[list[int]] = [[0]]
+    for index in range(1, len(lines)):
+        previous = str(lines[index - 1].get("text") or "").strip()
+        current_box = lines[index].get("bbox")
+        if not current_box:
+            groups.append([index])
+            continue
+        indent = float(current_box[0]) - left
+        previous_size = float(lines[index - 1].get("size") or 0)
+        current_size = float(lines[index].get("size") or 0)
+        font_break = bool(previous_size and current_size and previous_size > current_size * 1.15)
+        if _TERMINAL_LINE.search(previous) and (indent > threshold or font_break):
+            groups.append([index])
+        else:
+            groups[-1].append(index)
+    if len(groups) == 1:
+        return [block]
+    out: list[dict] = []
+    for group in groups:
+        group_boxes = [lines[i]["bbox"] for i in group if lines[i].get("bbox")]
+        sizes = [float(lines[i].get("size") or 0) for i in group]
+        group_size = max(sizes) if any(sizes) else float(block.get("font_size") or 0)
+        item = {
+            **block,
+            "text": "\n".join(str(lines[i].get("text") or "") for i in group).strip(),
+            "bbox": _union_box(group_boxes),
+            "lines": [lines[i] for i in group],
+        }
+        if group_size:
+            item["font_size"] = group_size
+        out.append(item)
+    return [item for item in out if item["text"]]
+
+
+def _assign_columns(blocks: list[dict], page_width: float) -> None:
+    """给文本块标物理栏号（#58）：按 x0 的两簇划分，单栏不标。
+
+    只做页面几何事实，不推断阅读顺序；双栏页里左栏 0、右栏 1。RTL 书也不反转
+    （栏号是版面位置，阅读顺序另由 RTL 处理）。
+    """
+    located = [b for b in blocks if b.get("bbox") and b.get("type") == "text"]
+    if len(located) < 2 or page_width <= 0:
+        return
+    xs = sorted(float(block["bbox"][0]) for block in located)
+    gap = page_width * 0.25
+    split = None
+    for left, right in zip(xs, xs[1:], strict=False):
+        if right - left > gap:
+            split = (left + right) / 2
+            break
+    if split is None:
+        return
+    left = [block for block in located if float(block["bbox"][0]) < split]
+    right = [block for block in located if float(block["bbox"][0]) > split]
+    if not left or not right:
+        return
+    # 真双栏在垂直方向有重叠；居中标题 + 下方正文只是 x0 两簇，不是列。
+    left_top = min(float(block["bbox"][1]) for block in left)
+    left_bottom = max(float(block["bbox"][3]) for block in left)
+    right_top = min(float(block["bbox"][1]) for block in right)
+    right_bottom = max(float(block["bbox"][3]) for block in right)
+    if max(left_top, right_top) >= min(left_bottom, right_bottom):
+        return
+    for block in located:
+        block["column"] = 0 if float(block["bbox"][0]) < split else 1
+
+
 def _page_blocks(page: fitz.Page, *, rtl: bool = False) -> list[dict]:
     """抽取一页的版面块（text），保留 bbox、字体与数学字体标记。
 
@@ -356,7 +458,9 @@ def _page_blocks(page: fitz.Page, *, rtl: bool = False) -> list[dict]:
                 lines.append(text)
                 max_size = max(max_size, line_size)
                 if line.get("bbox"):
-                    line_boxes.append({"text": text, "bbox": list(line["bbox"])})
+                    line_boxes.append(
+                        {"text": text, "bbox": list(line["bbox"]), "size": round(line_size, 4)}
+                    )
         text = "\n".join(lines)
         if not text.strip():
             continue
@@ -371,7 +475,8 @@ def _page_blocks(page: fitz.Page, *, rtl: bool = False) -> list[dict]:
         if math_font is not None:
             entry["math_font"] = math_font
             entry["math_font_chars"] = math_font_chars
-        blocks.append(entry)
+        blocks.extend(split_block_paragraphs(entry))
+    _assign_columns(blocks, float(page.rect.width))
     return blocks
 
 
@@ -523,6 +628,13 @@ def _group_ocr_lines(lines: list[OcrLine], *, scale: float, source: str) -> list
             "type": "text",
             "bbox": [round(v * scale, 4) for v in _union(boxes)],
             "text": "\n".join(line.text for line in group).strip(),
+            "lines": [
+                {
+                    "text": line.text,
+                    "bbox": [round(v * scale, 4) for v in (line.bbox or (0, 0, 0, 0))],
+                }
+                for line in group
+            ],
             "ocr": True,
             "ocr_lines": len(group),
             "ocr_source": source,
@@ -530,7 +642,7 @@ def _group_ocr_lines(lines: list[OcrLine], *, scale: float, source: str) -> list
         if scores:
             block["ocr_confidence"] = round(sum(scores) / len(scores), 4)
         if block["text"]:
-            blocks.append(block)
+            blocks.extend(split_block_paragraphs(block))
         group.clear()
 
     for line in lines:

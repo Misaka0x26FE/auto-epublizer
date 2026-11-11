@@ -1,4 +1,4 @@
-<!-- i18n: source=ingest.zh.md sha256=281baf05cc9562de3b62589a68347bc061b2d856bab36f5aa5059d2c92620329 -->
+<!-- i18n: source=ingest.zh.md sha256=bdba38f36b9d82b9377d0b833c63f43e8f29f51a8afc4b0e2b12a3449d255f0b -->
 > **English** | [中文](ingest.zh.md)
 
 # Ingest (file parsing)

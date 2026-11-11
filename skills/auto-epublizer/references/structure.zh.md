@@ -23,6 +23,7 @@ structured/
 |---|---|---|
 | 封面 / cover | cover | cover |
 | 书名页 / titlepage | frontmatter | titlepage |
+| 半书名页 / half title | frontmatter | half-title |
 | 版权 / copyright | frontmatter | copyright |
 | 献词 / dedication | frontmatter | dedication |
 | 他序 / foreword | frontmatter | foreword |
@@ -30,7 +31,7 @@ structured/
 | 目录 / toc / contents | frontmatter | toc |
 | 后记 / 跋 / afterword | backmatter | afterword |
 | 附录 / appendix | backmatter | appendix |
-| 参考文献 / bibliography | backmatter | bibliography |
+| 参考文献 / bibliography / sources and literature | backmatter | bibliography |
 | 索引 / index | backmatter | index |
 
 未命中关键词 → `body` + `chNN`（顺序编号）。单元 ID 稳定（`ch01`、`front-preface`、`back-index`）。
@@ -42,9 +43,12 @@ structured/
   诗歌编号、表格数字）**保留**并在 `structured/raw/structure-clean.json` 记为候选；
   不得按「长得像页码」静默删除。
 - **页眉页脚剔除**：按 `source_page` 分组，同一短文本在 ≥50% 页首/页末出现即剔除（`min_pages` 保护）；
-  删除项连同页码一起写入 `structure-clean.json`（`removed` / `candidates`）。
-- **清洗与归类一致**：书名页/封面豁免用归类结果（`kind`），不再按标题二次判定；
-  聚合单元按内容判为书名页时同样不剔家具。
+  删除项连同页码一起写入 `structure-clean.json`（`removed` / `candidates`）；
+  `facts.md` 的「清洗台账」显示每单元删除/候选数。
+- **清洗与归类一致**：书名页/封面/半书名页豁免用归类结果（`kind`），不再按标题二次判定；
+  聚合单元（`aggregated`）只要像前置页，或标题与书名相同，即使在非首位也判 `titlepage`。
+- **字号正交证据**：跨页重复的短行若字号 ≥ 页内最大字号且 ≥ 正文中位数 1.25 倍，
+  视为书名标题，只记 `*_large_font_kept` 候选、不删除。
 - **落盘即清洗**：`write_structured` 写入的是清洗后的段，页眉/页码不会进入 `structured/`；
   重建预演用 `preprocess --force --dry-run`（只报告 new/changed/unchanged 与台账，不写盘）。
 - **EPUB 锚点/属性残留**：`read_epub` 在入库时已清除 `[]{#id}` 锚点、`{#id}` 属性、

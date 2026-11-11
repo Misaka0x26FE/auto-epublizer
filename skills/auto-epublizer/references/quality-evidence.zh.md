@@ -26,6 +26,13 @@ unknown、无命中 unmatched、仅页 page_only；`--note-id` 只裁剪输出�
 重复目录候选与源文件摘要；未声明不等于 original，重复目录只报候选，不改源件。
 raw/facts 未提供的信息不从文件名或字体阈值猜测；源注是否齐全仍须逐页人工核证。
 
+`evidence index` 逐条报告索引标签、页码引用/区间、源行框、孤页、raw 缺页、重复标签与
+双栏证据，不改索引。`evidence toc-diff` 把印刷目录（优先译文，退回 structured）与最终
+EPUB nav 逐项对账，列出 matched/仅印刷/仅 nav/歧义/href 缺失。`evidence notes --render`
+只按需渲染选中注文的局部图（默认上限 200，可显式 `--dpi`），同图复用，并在
+`preprocessing/notes-render.json` 记录 `reviewed`；换图重渲染会清零审阅。索引修复不新增
+写入路径：写精确替换计划，走既有 `repair apply` 事务。
+
 `evidence report` 的 product_residue 扫描全包 XHTML/HTML（含语义 aside 和非 spine
 后置文件），排除 code/pre 的字面量；¬/$$ 只列 manual 候选，不自动改写或定性错误。
 

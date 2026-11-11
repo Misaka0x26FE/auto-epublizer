@@ -226,10 +226,13 @@ class RunStore:
             )
         }
 
-    def record_unit_content(self, unit_id: str, *, align_structure: str | None = None) -> None:
+    def record_unit_content(
+        self, unit_id: str, *, align_structure: str | None = None, align_boundary: str | None = None
+    ) -> None:
         """成功导入后登记三层摘要；旧工作区无摘要时不推断历史身份。
 
         ``align_structure``：块边界基线（``review/blocks.py:structure_digest``）；
+        ``align_boundary``：仅块边界的摘要（``boundary_digest``），用于判断并段/拆段；
         仅当块↔句映射无歧义时写入，历史缺基线保持 unknown。
         """
         with self.state_lock():
@@ -240,6 +243,8 @@ class RunStore:
             unit.meta["import_digests"] = self.unit_content_digests(unit)
             if align_structure is not None:
                 unit.meta["align_structure"] = align_structure
+            if align_boundary is not None:
+                unit.meta["align_boundary"] = align_boundary
             atomic_write_json(self.publication_path, pub.model_dump(mode="json"))
 
     def record_output_config(self, *, css: str = "") -> None:

@@ -185,9 +185,46 @@ def _text_slots(node: etree._Element):
             yield child, "tail", child.tail
 
 
+def _own_text_slots(node: etree._Element):
+    """块自身的文字槽：跳过嵌套 ``ol``/``ul`` 子树（父条目不吞子条目）。"""
+    if node.text:
+        yield node, "text", node.text
+    for child in node:
+        if _local(child) in {"ol", "ul", "li"}:
+            if child.tail:
+                yield child, "tail", child.tail
+            continue
+        yield from _own_text_slots(child)
+        if child.tail:
+            yield child, "tail", child.tail
+
+
+def _own_only(block: etree._Element) -> bool:
+    return any(_local(child) in {"ol", "ul"} for child in block.iterdescendants())
+
+
+def _own_nodes(block: etree._Element, *, _root: bool = True):
+    """块自身作用域的节点：任意深度的嵌套列表条目不参与父条目绑定。"""
+    if not _root and _local(block) in {"ol", "ul", "li"}:
+        return
+    if not _own_only(block):
+        yield from block.iter()
+        return
+    yield block
+    for child in block:
+        yield from _own_nodes(child, _root=False)
+
+
+def _block_text(block: etree._Element) -> str:
+    if not _own_only(block):
+        return "".join(block.itertext())
+    return "".join(text for _, _, text in _own_text_slots(block))
+
+
 def _token(block: etree._Element) -> _Token | None:
     before = ""
-    for node, slot, text in _text_slots(block):
+    slots = _own_text_slots(block) if _own_only(block) else _text_slots(block)
+    for node, slot, text in slots:
         match = _PAGE.search(text) or _PAGE_ONLY.fullmatch(text)
         if match:
             return _Token(
@@ -208,6 +245,7 @@ def rewrite_toc(
     pages: dict[str, int],
     *,
     owner_href: str,
+    document_titles: dict[str, str] | None = None,
 ) -> TocRewrite:
     """只改已绑定目录行中的页码；未定位保留源数字并在成品明确标注来源。"""
     result = TocRewrite(inner)
@@ -228,27 +266,73 @@ def rewrite_toc(
         return result
     by_label: dict[str, set[str]] = defaultdict(set)
     targets: set[str] = set()
+    nav_label_by_href: dict[str, str] = {}
     for _, title, href in entries:
         identity = canonical_href(href)
         if identity:
             by_label[_label(title)].add(identity)
             targets.add(identity)
-    blocks = [
-        node
-        for node in root.iter()
-        if _local(node) in {"p", "li"}
-        and not any(_local(child) in {"p", "li"} for child in node.iterdescendants())
-    ]
+            nav_label_by_href.setdefault(identity, title)
+
+    def _classes(node: etree._Element) -> set[str]:
+        return set((node.get("class") or "").split())
+
+    blocks: list[etree._Element] = []
+    for node in root.iter():
+        local = _local(node)
+        if local == "div" and "toc-row" in _classes(node):
+            # 生成目录的单元格：父 li 含子 ol，不能整行当块；行容器才是页码槽。
+            blocks.append(node)
+            continue
+        if local not in {"p", "li"}:
+            continue
+        nested_rows = any(
+            _local(child) == "div" and "toc-row" in _classes(child)
+            for child in node.iterdescendants()
+        )
+        nested_blocks = any(_local(child) in {"p", "li"} for child in node.iterdescendants())
+        if local == "li" and nested_blocks and not nested_rows:
+            # 纯 HTML 目录：父 li 自带页码并含子 ol；行容器不存在，父条目仍是块，
+            # 但只取自身文字，不吞子条目标签。
+            if not _block_text(node).strip():
+                continue
+            blocks.append(node)
+            continue
+        if nested_blocks or nested_rows:
+            continue
+        blocks.append(node)
     pending: list[tuple[etree._Element, _Token | None]] = []
 
     def candidates(group: list[tuple[etree._Element, _Token | None]]) -> set[str]:
         linked: set[str] = set()
         invalid_title_link = False
         for block, _ in group:
-            for node in block.iter():
+            for node in _own_nodes(block):
                 if _local(node) != "a" or not node.get("href"):
                     continue
-                href = canonical_href(node.get("href"), owner_href)
+                raw_href = node.get("href") or ""
+                href = canonical_href(raw_href, owner_href)
+                if href not in targets:
+                    # 生成目录的 href 来自单元/包根，不总是相对目录文件；按 owner
+                    # 的各级祖先目录（含包根）依次解析。只有锚文本与 nav 条目标题
+                    # 一致才接受回退，避免把张冠李戴的相对路径绑到别的章。
+                    anchor_label = _label("".join(node.itertext()))
+                    parts = owner_href.split("/")[:-1]
+                    for depth in range(len(parts) - 1, -1, -1):
+                        base = "/".join(parts[:depth] + ["_aep_base.xhtml"])
+                        for candidate in (
+                            canonical_href(raw_href, base),
+                            canonical_href(raw_href) if depth == 0 else None,
+                        ):
+                            if not candidate or candidate not in targets:
+                                continue
+                            nav_label = nav_label_by_href.get(candidate)
+                            if nav_label and anchor_label != _label(nav_label):
+                                continue
+                            href = candidate
+                            break
+                        if href in targets:
+                            break
                 if href in targets:
                     linked.add(href)
                 elif _label("".join(node.itertext())) in by_label:
@@ -257,26 +341,36 @@ def rewrite_toc(
             return linked
         labels = []
         for index, (block, token) in enumerate(group):
-            labels.append(
-                token.label if token and index == len(group) - 1 else "".join(block.itertext())
-            )
+            labels.append(token.label if token and index == len(group) - 1 else _block_text(block))
         found = set(by_label.get(_label(" ".join(labels)), set()))
         if len(group) == 1:
-            for node in group[0][0].iter():
+            for node in _own_nodes(group[0][0]):
                 if _local(node) == "strong":
                     found.update(by_label.get(_label("".join(node.itertext())), set()))
         return found
 
+    def _append_marker(block: etree._Element, cls: str, text: str) -> None:
+        """页码/未定位标记放在父标签容器内，不能落到子列表之后。"""
+        node = etree.Element("span", {"class": cls})
+        node.text = text
+        first_list = next(
+            (index for index, child in enumerate(block) if _local(child) in {"ol", "ul"}),
+            None,
+        )
+        if first_list is None:
+            block.append(node)
+        else:
+            block.insert(first_list, node)
+
     def unresolved(block: etree._Element, token: _Token | None, reason: str) -> None:
         if not any("aep-pdf-unresolved" in (child.get("class") or "").split() for child in block):
-            node = etree.SubElement(block, "span", {"class": "aep-pdf-unresolved"})
-            node.text = " [原版页码，未定位]"
+            _append_marker(block, "aep-pdf-unresolved", " [原版页码，未定位]")
         result.findings.append(
             {
                 "level": "error",
                 "code": "E_PDF_TOC_UNLOCATED",
                 "document": owner_href,
-                "label": token.label.strip() if token else "".join(block.itertext()),
+                "label": token.label.strip() if token else _block_text(block),
                 "old_page": token.old if token else None,
                 "reason": reason,
             }
@@ -284,22 +378,62 @@ def rewrite_toc(
 
     def apply(group: list[tuple[etree._Element, _Token | None]], href: str) -> None:
         block, token = group[-1]
+        label_text = token.label if token else _block_text(block)
+        # 无 fragment 的 nav 条目若是「§ 级」标题，按章首页回填就是静默错误；
+        # 只有标题与目标文档 h1 相同才允许用章起始页，否则显式未定位。
+        if not urlsplit(href).fragment and document_titles:
+            doc_title = document_titles.get(href)
+            nav_title = nav_label_by_href.get(href)
+            # 行标签等于 nav 自己的标题或目标文档 h1，就是章级条目，取章起始页；
+            # 两者都不等才是 § 级条目，不能静默取章首页。
+            section_like = bool(
+                nav_title
+                and re.match(
+                    r"^\s*(?:§|第\s*[0-9一二三四五六七八九十百]+\s*节|section\b)",
+                    nav_title,
+                    re.I,
+                )
+            )
+            if section_like:
+                unresolved(block, token, "no_fragment_for_subheading")
+                return
+            if (
+                doc_title
+                and (not nav_title or _label(label_text) != _label(nav_title))
+                and _label(label_text) != _label(doc_title)
+            ):
+                # 既不是 nav 的章级标题也不是目标 h1：可能是无 fragment 的 §，
+                # 但无法仅凭文本判定；保留章起始页并记 warning，交人工核对。
+                result.findings.append(
+                    {
+                        "level": "warning",
+                        "code": "W_PDF_TOC_SECTION_UNLOCATED",
+                        "document": owner_href,
+                        "label": label_text.strip(),
+                    }
+                )
         page = pages.get(href)
         if type(page) is not int or page < 1:
             unresolved(block, token, "target_unlocated")
             return
+        # label 必须在改写页码之前取：否则短标题会变成 “Alpha5”，后续对账自证成立。
+        label = " ".join(
+            [
+                *(("".join(node.itertext()) for node, _ in group[:-1])),
+                token.label if token else _block_text(block),
+            ]
+        ).strip()
         if token:
             text = getattr(token.node, token.slot)
             setattr(token.node, token.slot, text[: token.start] + str(page) + text[token.end :])
         else:
-            node = etree.SubElement(block, "span", {"class": "aep-pdf-page"})
-            node.text = " " + str(page)
+            _append_marker(block, "aep-pdf-page", " " + str(page))
         result.updates.append(
             {
                 "href": href,
                 "page": page,
                 "old_page": token.old if token else None,
-                "label": " ".join("".join(node.itertext()) for node, _ in group),
+                "label": label,
             }
         )
 

@@ -191,7 +191,7 @@ auto-epublizer notes status [--json] [--workspace <dir>]          # 摘要 / sta
 auto-epublizer build [--theme standard|compact|spacious] [-o <out.epub>] [--workspace <dir>]
 
 # 派生印刷版 PDF（不入 qa 摘要；EPUB 仍是交付格式；--strict 失败保留旧件）
-auto-epublizer pdf [--size a5|32k|b5|16k] [--body-pt 10.5] [--note-pt 8.5] [--strict] [--json] [--workspace <dir>]
+auto-epublizer pdf [--size a5|32k|b5|16k] [--body-pt 10.5] [--note-pt 8.5] [--print-css <file>] [--strict] [--json] [--workspace <dir>]
 auto-epublizer pdf-verify --pdf <out.pdf> [--json]     # 重算源 EPUB/PDF 哈希与派生清单
 
 # 只读证据（确定性、零 token；不放行、不改状态）
@@ -199,6 +199,9 @@ auto-epublizer evidence source [--json] [--note-id <id> ...] [--workspace <dir>]
 auto-epublizer evidence partition [--json] [--workspace <dir>]   # 源行分区账本：逐行去向/重复对次/跨块区间
 auto-epublizer evidence breaks [-o <jsonl>] [--workspace <dir>]
 auto-epublizer evidence page-numbers [--json] [--workspace <dir>]  # 目录/索引页码策略与重复候选
+auto-epublizer evidence index [--json] [--workspace <dir>]         # 逐条索引页码引用/源页定位/孤页候选
+auto-epublizer evidence toc-diff [--epub <path>] [--json] [--workspace <dir>]  # 印刷目录↔EPUB nav 逐项对账
+auto-epublizer evidence notes [--render] [--dpi 150] [--max-crops 200] [--mark-reviewed <id> ...] [--workspace <dir>]
 auto-epublizer evidence report [--json] [--epub <path>] [--workspace <dir>]
 
 # 质检（epubcheck 零 error + 解包审计 + 溯源审计 + G5 放行判定）
@@ -223,7 +226,7 @@ auto-epublizer ledger [-o <ledger.md>] [--workspace <work-root>]
 
 | 命令 | 机器读取方式 |
 |---|---|
-| `doctor`、`status`（含 `--all`）、`notes status`、`knowledge status`、`evidence source/partition/report/page-numbers`、`pdf`、`pdf-verify` | 显式 `--json`，stdout 解析 JSON |
+| `doctor`、`status`（含 `--all`）、`notes status`、`knowledge status`、`evidence source/partition/report/page-numbers/index/toc-diff/notes`、`pdf`、`pdf-verify` | 显式 `--json`，stdout 解析 JSON |
 | `qa` | 运行后读工作区 `report.json`，再用 `status --json` 确认报告未 stale；退出 0 仅表示执行结束，不代表 released |
 | `build`、`import`、`g0`、`meta` | 按真实帮助调用；检查非零退出码，再通过 `status --json` / `report.json` 读取适用状态；后续修改后重跑 QA |
 | `ledger` | Markdown，需文件时用 `-o`；进度机器决策用 `status --all --json`，不解析彩色摘要 |
@@ -286,8 +289,11 @@ auto-epublizer status --workspace <dir> --json
   整组不动（顶层与 `.archive/` 两个位置都核对）；多书批次只要还有一本书是当前版本就整体
   保留（`held`），不拆目录、不按单本最高版推断整批过时；
 - `.archive/` 已有的同名同版批次识别为 `already_archived`，避免重复打包；
+- 缺版本批次默认只列未决（`--unversioned hold`）；显式 `--unversioned archive` 才按旧批次移动，
+  `--version-map map.json`（`{批次名: 版本}`）只补缺版本、不覆盖已有版本，未知批次直接报错。
 - 默认只输出保留/待移动/冲突/未决清单；`--apply` 才移动、改写 `docs/**/*.md` 中
   `outbox/<批次>/` 链接、补齐 `.gitignore` 的 `outbox/.archive/*/epub|pdf/` 规则。
+- 移动前对改写后的链接做自检：指向的源不存在即拒绝移动（`broken_links`），不会留下断链。
 - 事务先写 `outbox/.archive/.transactions/<id>.json`，失败按日志回滚移动/链接/忽略规则；
   中断后 `archive <outbox> --recover` 显式恢复。目标已存在不覆盖；重跑幂等（`up_to_date`）。
 - `outbox` 路径不存在或不是目录、以及显式 `--docs` 指向不存在的目录时，直接报中文错误并非零退出；

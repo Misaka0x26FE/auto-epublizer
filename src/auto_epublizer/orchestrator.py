@@ -12,6 +12,7 @@ import hashlib
 import json
 import os
 import re
+import warnings
 from pathlib import Path
 from typing import Any
 
@@ -34,6 +35,7 @@ from .qa import (
     run_epubcheck,
 )
 from .qa.artifacts import report_state
+from .qa.footnote_forms import candidate_footnote_paragraphs
 from .qa.provenance import audit_provenance
 from .structure import rebuild_structure, skip_empty_unit, unit_heading, write_structured
 
@@ -538,6 +540,18 @@ def _render_and_pack(
         if prefer_translation and render_input["source"] == "source":
             fallback_ids.append(e["id"])
         md_text = render_input["markdown"]
+        # 非语义脚注形态（issue #37）：构建器会把 `注 1.` 当普通段落，必须留痕；
+        # 成品层由 QA 的 E_FOOTNOTES_NOT_SEMANTIC 阻断，这里只警告不阻断。
+        if note_plan is None:
+            candidates = candidate_footnote_paragraphs(md_text, include_numbered=False)
+            if candidates and not re.search(r"(?m)^\s*\[\^[^\]]+\]:", md_text):
+                store.log_event("footnotes_not_semantic", unit=e["id"], count=len(candidates))
+                warnings.warn(
+                    f"{e['id']}：{len(candidates)} 段疑似脚注（如 "
+                    f"“{candidates[0][:24]}”）未使用 [^label]: 或 notes.json，"
+                    "成品将以普通段落呈现，qa 会阻断放行",
+                    stacklevel=2,
+                )
         # 未配对引用不得静默：正文标记必须都在登记计划内（登记门/导入门之外的构建兜底）
         if note_plan is not None:
             unknown = [m for m in notes_mod.extract_markers(md_text) if m not in unit_refs]
@@ -720,6 +734,15 @@ def repair_apply(store: RunStore, plan: dict[str, Any], *, apply: bool = False) 
     return apply_plan(store, plan, apply=apply)
 
 
+def align_rebaseline(
+    store: RunStore, *, unit_ids: list[str] | None = None, apply: bool = False
+) -> dict[str, Any]:
+    """按当前 md/align 重登记块边界基线；默认只读（#88）。"""
+    from .align_rebuild import rebaseline
+
+    return rebaseline(store, unit_ids=unit_ids, apply=apply)
+
+
 def apply_align_rebuild(
     store: RunStore, plan: dict[str, Any], *, apply: bool = False
 ) -> dict[str, Any]:
@@ -781,7 +804,14 @@ def source_evidence(store: RunStore, *, note_ids: list[str] | None = None) -> di
 
 
 def evidence_notes(
-    store: RunStore, *, note_ids: list[str] | None = None, output: str | None = None
+    store: RunStore,
+    *,
+    note_ids: list[str] | None = None,
+    output: str | None = None,
+    render: bool = False,
+    dpi: int = 150,
+    max_crops: int = 200,
+    mark_reviewed: list[str] | None = None,
 ) -> dict[str, Any]:
     """逐条注文源页证据台账（C1，只读）：定位状态、覆盖计数与输入摘要。
 
@@ -800,6 +830,22 @@ def evidence_notes(
     for note in notes.get("notes") or []:
         key = str(note.get("evidence_status") or "unknown")
         statuses[key] = statuses.get(key, 0) + 1
+    render_ledger = None
+    if render:
+        from .preprocess.note_render import render_note_crops
+
+        render_ledger = render_note_crops(store, note_ids=note_ids, dpi=dpi, max_crops=max_crops)
+    if mark_reviewed:
+        from .preprocess.note_render import mark_reviewed as _mark_reviewed
+
+        _mark_reviewed(store, mark_reviewed)
+    if render or mark_reviewed:
+        from .preprocess.note_render import ledger_path
+
+        try:
+            render_ledger = json.loads(ledger_path(store).read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            render_ledger = None
     payload = {
         "schema_version": "1",
         "rule_version": "notes-evidence-1",
@@ -813,8 +859,30 @@ def evidence_notes(
         "missing_note_ids": notes.get("missing_note_ids") or [],
         "coverage": statuses,
         "notes": notes.get("notes") or [],
+        "render": (
+            {
+                "dpi": render_ledger.get("dpi"),
+                "counts": render_ledger.get("counts"),
+                "limits": render_ledger.get("limits"),
+            }
+            if render_ledger
+            else None
+        ),
         "limits": "坐标来自 raw/page-*.json；无坐标不等于注文不存在，只表示证据未定位",
     }
+    if render_ledger:
+        by_id = {
+            str(row.get("note_id")): row
+            for row in render_ledger.get("notes") or []
+            if isinstance(row, dict) and row.get("note_id")
+        }
+        for note in payload["notes"]:
+            row = by_id.get(str(note.get("note_id")))
+            if row is not None:
+                note["render"] = {
+                    key: row.get(key)
+                    for key in ("status", "image", "sha256", "reviewed", "page", "bbox")
+                }
     payload["input_digest"] = hashlib.sha256(
         json.dumps(payload, ensure_ascii=False, sort_keys=True).encode()
     ).hexdigest()
@@ -829,6 +897,56 @@ def evidence_notes(
         missing=len(payload["missing_note_ids"]),
     )
     return {**payload, "path": str(out_path)}
+
+
+def toc_diff(
+    store: RunStore, *, epub: str | None = None, output: str | None = None
+) -> dict[str, Any]:
+    """源目录 ↔ EPUB nav 逐项 diff（#58d，只读）：匹配/单边/歧义/href 缺失。"""
+    from .preprocess.toc_diff import collect_toc_diff
+    from .quality_evidence import validate_workspace_paths
+
+    validate_workspace_paths(store)
+    data = collect_toc_diff(store, epub=epub)
+    data["input_digest"] = hashlib.sha256(
+        json.dumps(data, ensure_ascii=False, sort_keys=True).encode()
+    ).hexdigest()
+    out_path = Path(output) if output else store.preprocessing_dir / "toc-diff.json"
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = out_path.with_name(out_path.name + ".tmp")
+    tmp.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    os.replace(tmp, out_path)
+    store.log_event(
+        "toc_diff_written",
+        status=data["status"],
+        matched=data["counts"]["matched"],
+        printed_only=data["counts"]["printed_only"],
+        nav_only=data["counts"]["nav_only"],
+    )
+    return {**data, "path": str(out_path)}
+
+
+def index_evidence(store: RunStore, *, output: str | None = None) -> dict[str, Any]:
+    """逐条索引证据（#58/#57，只读）：条目、页码引用、源页定位与孤页候选。"""
+    from .preprocess.index_evidence import collect_index_evidence
+    from .quality_evidence import validate_workspace_paths
+
+    validate_workspace_paths(store)
+    data = collect_index_evidence(store)
+    data["input_digest"] = hashlib.sha256(
+        json.dumps(data, ensure_ascii=False, sort_keys=True).encode()
+    ).hexdigest()
+    out_path = Path(output) if output else store.preprocessing_dir / "index-evidence.json"
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = out_path.with_name(out_path.name + ".tmp")
+    tmp.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    os.replace(tmp, out_path)
+    store.log_event(
+        "index_evidence_written",
+        units=len(data["units"]),
+        entries=sum(unit.get("entry_count", 0) for unit in data["units"]),
+    )
+    return {**data, "path": str(out_path)}
 
 
 def page_number_evidence(store: RunStore) -> dict[str, Any]:
@@ -891,9 +1009,33 @@ def rebuild(
 
     if dry_run:
         return preview_rebuild(store, config=config, progress=progress)
+    # 登记过的封面文件在 structured/ 下；重建不能把它们一起删掉（issue #71）。
+    preserved: list[tuple[str, bytes]] = []
+    for name in ("cover-generated.json", "cover.json"):
+        record = store.preprocessing_dir / name
+        if not record.is_file():
+            continue
+        try:
+            rel = str(json.loads(record.read_text(encoding="utf-8")).get("file") or "")
+        except (OSError, json.JSONDecodeError, AttributeError):
+            continue
+        path = (store.dir / rel).resolve()
+        if rel and path.is_file():
+            if not path.is_relative_to(store.dir.resolve()):
+                store.log_event("rebuild_skip_outside_workspace", file=rel)
+                continue
+            preserved.append((rel, path.read_bytes()))
+    # 注释权威文件也在 structured/：重建不能丢（书有注时否则 import/qa 会失效）。
+    notes_json = store.structured_dir / "notes.json"
+    if notes_json.is_file():
+        preserved.append(("structured/notes.json", notes_json.read_bytes()))
     if store.structured_dir.exists():
         shutil.rmtree(store.structured_dir)
     prepare_structure(store, config=config, progress=progress)
+    for rel, data in preserved:
+        target = store.dir / rel
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(data)
     return preprocess(store, config=config)
 
 
@@ -1162,6 +1304,21 @@ def import_translations(
 
             for d in md_align_drift(translation_md, rows, title=unit.title):
                 errors.append(f"文档一致性：{d}")
+        # 非语义脚注形态（issue #37）：import 期先提示，成品由 E_FOOTNOTES_NOT_SEMANTIC 阻断
+        if translation_md is not None:
+            from .qa.footnote_forms import candidate_footnote_paragraphs
+
+            forms = candidate_footnote_paragraphs(translation_md, include_numbered=False)
+            if forms and not re.search(r"(?m)^\s*\[\^[^\]]+\]:", translation_md):
+                warned.append(
+                    {
+                        "unit": unit.id,
+                        "check": "footnote_form",
+                        "message": f"{len(forms)} 段疑似脚注未语义化（如 {forms[0][:24]}）；"
+                        "qa 将以 E_FOOTNOTES_NOT_SEMANTIC 阻断放行",
+                        "blocking": False,
+                    }
+                )
         # N 阶段翻译导入门：译文原位标记守恒 + 所需译注齐全（源注文已登记时启用）
         if notes_ctx is not None:
             unit_refs = [
@@ -1208,6 +1365,7 @@ def import_translations(
                         required_note_ids=need,
                     ):
                         errors.append(f"译注：{e}")
+        _registered_notes = _registered_note_numbers(store, unit.id)
         for f in g0_unit_flags(
             rows,
             glossary,
@@ -1219,6 +1377,9 @@ def import_translations(
             language_exempt=style_exemptions.get(unit.id, []),
             source_language=pub.meta.language or "auto",
             target_language=pub.meta.target_language or "zh-CN",
+            registered_note_numbers=set(_registered_notes),
+            registered_note_refs=_registered_notes,
+            unit_kind=str(unit.kind or ""),
         ):
             # 源保真：反向失配（blocking=True，src 不在源文中）= 对照表不可信，阻断登记；
             # 前向缺块（blocking=False，可能为合法剔除）与其余硬缺陷类/advisory 收进告警：
@@ -1240,6 +1401,7 @@ def import_translations(
                 "length_review_exempt",
                 "marker",
                 "footnote",
+                "footnote_range",
                 "footnote_suspect",
                 "heading",
                 "fidelity",
@@ -1263,12 +1425,14 @@ def import_translations(
         from auto_translator.review import (
             align_block_spans,
             annotate_correction_notes,
+            boundary_digest,
             structure_digest,
         )
         from auto_translator.translation.align import write_align
 
         spans, structure_issues = align_block_spans(translation_md or "", rows, title=unit.title)
         structure_baseline: str | None = None
+        boundary: str | None = None
         if structure_issues:
             # 块↔句映射有歧义：不写猜测的基线（保持 unknown），交 agent 复核
             warned.append(
@@ -1281,9 +1445,55 @@ def import_translations(
             )
         else:
             structure_baseline = structure_digest(spans)
+            boundary = boundary_digest(spans)
+            old_boundary = str((unit.meta or {}).get("align_boundary") or "")
+            old_structure = str((unit.meta or {}).get("align_structure") or "")
+            legacy_changed = (
+                not old_boundary and bool(old_structure) and old_structure != structure_baseline
+            )
+            if legacy_changed and not force:
+                warned.append(
+                    {
+                        "unit": unit.id,
+                        "check": "align_structure",
+                        "message": f"旧工作区无块边界摘要（md {len(spans)} 块 / align {len(rows)} 行）："
+                        "无法区分文本修订与并段；旧基线保留，核对后用 import --force "
+                        "或 align-rebaseline 重登记",
+                        "blocking": False,
+                    }
+                )
+                structure_baseline = None
+                boundary = None
+            elif old_boundary and boundary != old_boundary:
+                if force:
+                    warned.append(
+                        {
+                            "unit": unit.id,
+                            "check": "align_structure",
+                            "message": f"块边界已变化（md {len(spans)} 块 / align {len(rows)} 行）："
+                            "--force 已重登记新基线",
+                            "blocking": False,
+                        }
+                    )
+                else:
+                    # 不静默覆盖：保留旧基线，QA 的 align_structure_status 会报 changed，
+                    # 核对后用 import --force 显式重登记。
+                    warned.append(
+                        {
+                            "unit": unit.id,
+                            "check": "align_structure",
+                            "message": f"块边界已变化（md {len(spans)} 块 / align {len(rows)} 行）："
+                            "旧基线保留；核对后用 import --force 重登记",
+                            "blocking": False,
+                        }
+                    )
+                    structure_baseline = None
+                    boundary = None
 
         write_align(align_path, annotate_correction_notes(rows))
-        store.record_unit_content(unit.id, align_structure=structure_baseline)
+        store.record_unit_content(
+            unit.id, align_structure=structure_baseline, align_boundary=boundary
+        )
         if was_done and force:
             # 重校验通过：保持原状态（不回退，护住审校/构建结论）
             revalidated.append(unit.id)
@@ -1811,6 +2021,7 @@ def g0_check(
         translation_md = (
             tgt_path.read_text(encoding="utf-8") if tgt_path and tgt_path.is_file() else None
         )
+        _registered_notes = _registered_note_numbers(store, unit.id)
         for f in g0_unit_flags(
             rows,
             Glossary(load_glossary_csv(store.analysis_dir / "glossary.csv")),
@@ -1822,11 +2033,39 @@ def g0_check(
             language_exempt=style_exemptions.get(unit.id, []),
             source_language=pub.meta.language or "auto",
             target_language=pub.meta.target_language or "zh-CN",
+            registered_note_numbers=set(_registered_notes),
+            registered_note_refs=_registered_notes,
+            unit_kind=str(unit.kind or ""),
         ):
             flags.append(_flag_dict(unit.id, f))
         for f in _unit_doc_flags(store, rel_path) if rel_path else []:
             flags.append(_flag_dict(unit.id, f))
     return {"checked_units": checked, "flags": flags}
+
+
+def _registered_note_numbers(store: RunStore, unit_id: str) -> dict[int, str]:
+    """该单元已登记注文的 ``源注号 → ref_id``；未登记返回空，坏文件显式报错。"""
+    from . import notes as notes_mod
+
+    path = notes_mod.source_notes_path(store)
+    if not path.is_file():
+        return {}
+    # 损坏的 notes.json 不能静默降级成“没有登记注文”——否则 footnote_range 硬门
+    # 会凭空消失。让 NotesError(ValueError) 交给 CLI/qa 报中文错误。
+    data = notes_mod.read_notes_json(path)
+    by_id = {
+        str(note.get("note_id")): note
+        for note in (data.get("notes") or [])
+        if isinstance(note, dict) and note.get("note_id")
+    }
+    numbers: dict[int, str] = {}
+    for ref in data.get("references") or []:
+        if not isinstance(ref, dict) or str(ref.get("unit") or "") != unit_id:
+            continue
+        label = str((by_id.get(str(ref.get("note_id"))) or {}).get("source_label") or "").strip()
+        if label.isdigit():
+            numbers[int(label)] = str(ref.get("ref_id") or "")
+    return numbers
 
 
 def _collect_g0_flags(store: RunStore, config: Config | None = None) -> list[dict[str, Any]]:
@@ -1860,6 +2099,7 @@ def _collect_g0_flags(store: RunStore, config: Config | None = None) -> list[dic
         translation_md = (
             tgt_path.read_text(encoding="utf-8") if tgt_path and tgt_path.is_file() else None
         )
+        _registered_notes = _registered_note_numbers(store, unit.id)
         for f in g0_unit_flags(
             rows,
             glossary,
@@ -1871,6 +2111,9 @@ def _collect_g0_flags(store: RunStore, config: Config | None = None) -> list[dic
             language_exempt=style_exemptions.get(unit.id, []),
             source_language=pub.meta.language or "auto",
             target_language=pub.meta.target_language or "zh-CN",
+            registered_note_numbers=set(_registered_notes),
+            registered_note_refs=_registered_notes,
+            unit_kind=str(unit.kind or ""),
         ):
             flags.append(_flag_dict(unit.id, f))
         for f in _unit_doc_flags(store, rel_path) if rel_path else []:
@@ -2136,6 +2379,22 @@ def _write_g0_details(store: RunStore, report: Any, flags: list[dict[str, Any]])
     report.g0_detail_sha256 = hashlib.sha256(payload).hexdigest()
 
 
+def _hygiene_summary(store: RunStore) -> dict[str, Any]:
+    """QA 可见的卫生候选计数（advisory，不阻断；#85/#93）。"""
+    from .hygiene import scan_workspace
+
+    try:
+        data = scan_workspace(store)
+    except (ValueError, OSError) as exc:
+        # 扫描失败不能静默归零：返回错误，由 qa 记为可见 warning（仍不阻断）。
+        return {"candidates": 0, "cross_page": 0, "error": str(exc)}
+    findings = data.get("findings") or []
+    return {
+        "candidates": len(findings),
+        "cross_page": sum(1 for f in findings if f.get("code") == "cross_page_fragment"),
+    }
+
+
 def qa(
     store: RunStore, *, epub_path: str | None = None, config: Config | None = None
 ) -> dict[str, Any]:
@@ -2224,6 +2483,27 @@ def qa(
             if str(entry["id"]) in render_inputs
         },
     )
+    # 已登记生成封面但成品没有 cover-image：重建/同步静默失败必须阻断（#71/#100）
+    from .cover import CoverError, epub_has_cover
+    from .cover import read_record as read_cover_record
+
+    try:
+        cover_record = read_cover_record(store)
+    except CoverError as exc:
+        audit.add("error", "E_COVER_RECORD_MISSING", str(exc))
+        cover_record = None
+    if cover_record is not None:
+        try:
+            cover_ok = epub_has_cover(epub)
+        except (OSError, ValueError) as exc:
+            cover_ok = False
+            audit.add("error", "E_COVER_RECORDED_MISSING", f"成品无法读取封面声明：{exc}")
+        if not cover_ok and not any(f.code == "E_COVER_RECORDED_MISSING" for f in audit.findings):
+            audit.add(
+                "error",
+                "E_COVER_RECORDED_MISSING",
+                "已登记生成封面，但成品 OPF 没有 cover-image（重新 build 或检查封面文件）",
+            )
     review_result = latest_review_payload(store)
     ledger = review_ledger(store)
     g0_flags = _collect_g0_flags(store, config)
@@ -2246,6 +2526,20 @@ def qa(
     repairs = read_repairs(store)
     repairs_unresolved = sum(1 for r in repairs or [] if r.get("status") == "unresolved")
     repairs_stale_unit = sum(1 for r in repairs or [] if r.get("unit_missing"))
+    from .errata import read_errata
+
+    errata_rows, _errata_digest = read_errata(store)
+    errata_stale = sum(
+        1
+        for row in errata_rows
+        if row.get("source_sha256") and row.get("source_sha256") != pub.meta.source_sha256
+    )
+    errata_summary = {
+        "total": len(errata_rows),
+        "confirmed": sum(1 for r in errata_rows if r.get("status") == "confirmed"),
+        "stale": errata_stale,
+    }
+    hygiene_summary = _hygiene_summary(store)
     report = generate_report(
         pub.slug,
         audit,
@@ -2263,8 +2557,31 @@ def qa(
         notes_audit=notes_audit_dict,
         review_ledger=ledger.to_dict(),
         notes_review=summarize_note_review(store),
+        errata=errata_summary,
+        software_detail=(config or Config()).output.software_detail,
+        rights_present=bool(str(pub.meta.rights or "").strip()),
+        hygiene=hygiene_summary,
     )
     _write_g0_details(store, report, g0_flags)
+    if hygiene_summary.get("error"):
+        report.provenance_findings.append(
+            {
+                "level": "warning",
+                "code": "W_HYGIENE_SCAN_FAILED",
+                "message": f"译文卫生扫描失败，候选数未计入：{hygiene_summary['error']}",
+            }
+        )
+    if errata_rows:
+        report.provenance_findings.append(
+            {
+                "level": "warning",
+                "code": "W_ERRATA_RETAINED",
+                "message": f"源文实印疑误登记 {len(errata_rows)} 条（confirmed "
+                f"{errata_summary['confirmed']}，stale {errata_stale}）："
+                + "、".join(f"{r.get('unit')}:{r.get('locator')}" for r in errata_rows[:5])
+                + "（登记只作证据，不自动豁免译文缺陷）",
+            }
+        )
     if repairs_unresolved:
         report.provenance_findings.append(
             {

@@ -14,11 +14,67 @@ import json
 import os
 import re
 import shutil
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
+from urllib.parse import unquote
+
+from auto_common.markdown import inline_code_chunks
 
 ARCHIVE_DIR = ".archive"
+_INLINE_TARGET = re.compile(r"(\]\(\s*<?)([^)\s>]+)(>?)")
+_REF_TARGET = re.compile(r"(?m)^( {0,3}\[[^\]\n]+\]:\s*)(\S+)(.*)$")
+_HTML_TARGET = re.compile(r"(?i)(\b(?:href|src)\s*=\s*[\"'])([^\"']+)([\"'])")
+
+
+def _moved_target(target: str, *, outbox_name: str, name: str) -> str | None:
+    """只改写链接目标中的批次目录段；相对前缀（../、./）原样保留。"""
+    needle = f"{outbox_name}/{name}/"
+    start = target.find(needle)
+    while start != -1:
+        boundary = start == 0 or target[start - 1] in "/\\"
+        if boundary:
+            replacement = f"{outbox_name}/{ARCHIVE_DIR}/{name}/"
+            return target[:start] + replacement + target[start + len(needle) :]
+        start = target.find(needle, start + 1)
+    return None
+
+
+def _rewrite_markdown_links(text: str, *, outbox_name: str, name: str) -> tuple[str, int]:
+    """只改链接目标（内联/引用式/HTML href|src），跳过围栏与行内代码。"""
+    count = 0
+
+    def swap(target: str) -> str:
+        nonlocal count
+        moved = _moved_target(target, outbox_name=outbox_name, name=name)
+        if moved is None:
+            return target
+        count += 1
+        return moved
+
+    def rewrite_segment(segment: str) -> str:
+        segment = _INLINE_TARGET.sub(lambda m: m.group(1) + swap(m.group(2)) + m.group(3), segment)
+        segment = _REF_TARGET.sub(lambda m: m.group(1) + swap(m.group(2)) + m.group(3), segment)
+        return _HTML_TARGET.sub(lambda m: m.group(1) + swap(m.group(2)) + m.group(3), segment)
+
+    out: list[str] = []
+    in_fence = False
+    for line in text.splitlines(keepends=True):
+        stripped = line.lstrip()
+        if stripped.startswith(("```", "~~~")):
+            in_fence = not in_fence
+            out.append(line)
+            continue
+        if in_fence:
+            out.append(line)
+            continue
+        rebuilt = "".join(
+            part if is_code else rewrite_segment(part) for is_code, part in inline_code_chunks(line)
+        )
+        out.append(rebuilt)
+    return "".join(out), count
+
+
 _BOOK_KEYS = ("书名", "作品", "书", "book", "title", "slug")
 _VERSION_KEYS = ("版本", "version")
 _BATCH_KEYS = ("批次", "batch")
@@ -276,12 +332,59 @@ def _open_books(batch: Batch) -> list[BatchBook]:
     return [item for item in batch.books if item.book and item.version_key is not None]
 
 
-def plan_archive(outbox: str | Path) -> dict[str, Any]:
+def _unversioned_only(batch: Batch) -> bool:
+    """只有「缺版本」问题（其余身份/产物均完整）的批次。"""
+    return (
+        bool(batch.books)
+        and not batch.errors
+        and all(
+            item.version is None and set(item.errors) <= {"missing_version"} for item in batch.books
+        )
+    )
+
+
+def _with_version_map(batch: Batch, mapping: dict[str, str]) -> Batch:
+    if batch.name not in mapping:
+        return batch
+    version = str(mapping[batch.name] or "").strip()
+    key = _version_key(version)
+    if key is None:
+        raise ValueError(f"version-map 的版本无法解析：{batch.name} → {version!r}")
+    books: list[BatchBook] = []
+    for item in batch.books:
+        if item.version is not None and item.version != version:
+            raise ValueError(
+                f"version-map 与批次已有版本冲突：{batch.name}（{item.version} vs {version}）"
+            )
+        books.append(
+            replace(
+                item,
+                version=version,
+                version_key=key,
+                errors=tuple(err for err in item.errors if err != "missing_version"),
+            )
+        )
+    return replace(batch, books=tuple(books))
+
+
+def plan_archive(
+    outbox: str | Path,
+    *,
+    unversioned: str = "hold",
+    version_map: dict[str, str] | None = None,
+) -> dict[str, Any]:
     """只读归档预览：按书身份分组，最高版本保留，其余待归档；不写文件。
 
     冲突按**所有版本、两个位置**核对：同书同版多份但清单或产物字节不同即冲突，
     整组（含批次内其他书）不移动；多书批次只有在每本书都有更新交付时才整体归档。
+
+    ``unversioned``：缺版本批次的显式策略。``hold``（默认）只列入未决；
+    ``archive`` 才按“旧批次”移入 `.archive`（不参与版本比较，绝不按目录名猜版本）。
+    ``version_map``：批次名→版本 的显式映射，只补缺版本，不覆盖已有版本。
     """
+    if unversioned not in {"hold", "archive"}:
+        raise ValueError(f"unversioned 只能是 hold 或 archive：{unversioned!r}")
+    mapping = dict(version_map or {})
     root = Path(outbox)
     if not root.is_dir():
         raise ValueError(f"outbox 目录不存在或不是目录：{root}")
@@ -290,15 +393,27 @@ def plan_archive(outbox: str | Path) -> dict[str, Any]:
         raise ValueError(f"归档目录不能是符号链接：{archived_dir}")
     current = [_batch(path) for path in _subdirs(root, skip_archive=True)]
     archived = [_batch(path) for path in _subdirs(archived_dir, skip_archive=False)]
+    known = {batch.name for batch in current}
+    unknown = sorted(set(mapping) - known)
+    if unknown:
+        raise ValueError("version-map 含不存在的批次：" + "、".join(unknown))
+    current = [_with_version_map(batch, mapping) for batch in current]
+    unversioned_batches = [batch for batch in current if _unversioned_only(batch)]
 
     def batch_errors(batch: Batch) -> list[str]:
         return [*batch.errors, *(err for item in batch.books for err in item.errors)]
 
-    unresolved = [
-        {"batch": batch.preview(), "reason": ",".join(batch_errors(batch))}
-        for batch in current + archived
-        if batch_errors(batch)
-    ]
+    unresolved = []
+    for batch in current + archived:
+        errors = batch_errors(batch)
+        if not errors:
+            continue
+        if unversioned == "archive" and batch.name in {b.name for b in unversioned_batches}:
+            continue
+        entry = {"batch": batch.preview(), "reason": ",".join(errors)}
+        if _unversioned_only(batch):
+            entry["policy"] = unversioned
+        unresolved.append(entry)
     valid = [batch for batch in current + archived if not batch_errors(batch)]
 
     positions: dict[tuple[str, tuple[int, ...]], list[tuple[Batch, BatchBook]]] = {}
@@ -412,6 +527,12 @@ def plan_archive(outbox: str | Path) -> dict[str, Any]:
                 )
     move = [entry for entry in move if entry["name"] not in blocked]
     keep = [entry for entry in keep if entry["name"] not in blocked]
+    if unversioned == "archive":
+        move.extend(
+            {**batch.preview(), "reason": "unversioned_policy"}
+            for batch in unversioned_batches
+            if batch.name not in blocked
+        )
 
     return {
         "schema_version": "1",
@@ -426,6 +547,7 @@ def plan_archive(outbox: str | Path) -> dict[str, Any]:
         "conflicts": conflicts,
         "unresolved": unresolved,
         "already_archived": already_archived,
+        "unversioned_policy": unversioned,
         "note": "身份/版本只读 batch.json 或 MANIFEST.md；同版不同清单或产物不猜最新，F1 不写任何文件",
     }
 
@@ -459,11 +581,8 @@ def _link_edits(
         updated = text
         counts: dict[str, int] = {}
         for name in names:
-            needle = f"{outbox_name}/{name}/"
-            replacement = f"{outbox_name}/{ARCHIVE_DIR}/{name}/"
-            found = updated.count(needle)
-            if found and needle not in replacement:
-                updated = updated.replace(needle, replacement)
+            updated, found = _rewrite_markdown_links(updated, outbox_name=outbox_name, name=name)
+            if found:
                 counts[name] = found
         if updated != text:
             edits.append(
@@ -476,6 +595,97 @@ def _link_edits(
             )
             payloads[path.as_posix()] = updated.encode("utf-8")
     return edits, payloads
+
+
+_MD_LINK = re.compile(r"\]\(([^)\s]+)(?:\s+\"[^\"]*\")?\)")
+# 引用式链接定义：`[标签]: ../outbox/batch/book.epub`（含 <> 包裹）
+_MD_REF_DEF = re.compile(r"(?m)^\s*\[[^\]]+\]:\s*<?([^>\s]+)>?")
+# HTML 链接：`href="../outbox/batch/book.epub"`
+_HTML_HREF = re.compile(r"""href=["']([^"']+)["']""")
+
+
+def _link_targets(text: str):
+    """Markdown 内联/引用式与 HTML href 三类链接目标（顺序稳定、去重）。"""
+    seen: set[str] = set()
+    for pattern in (_MD_LINK, _MD_REF_DEF, _HTML_HREF):
+        for match in pattern.finditer(text):
+            target = match.group(1)
+            if target in seen:
+                continue
+            seen.add(target)
+            yield target
+
+
+def _broken_after_archive(
+    docs_dir: Path, outbox: Path, names: list[str], payloads: dict[str, bytes]
+) -> list[dict[str, str]]:
+    """改写后仍指向不存在源的链接（只核对本次归档涉及的批次目录）。
+
+    预览阶段文件还没移动，因此把 ``.archive/<批次>/...`` 还原成 ``<批次>/...``
+    检查源是否存在；这不是断链的完整证明，但能拦住替换路径拼错/批次名错。
+    覆盖内联链接、引用式定义与 HTML ``href``；纯锚点/远程链接不查。
+    """
+    broken: list[dict[str, str]] = []
+    outbox_name = outbox.name
+    seen: set[tuple[str, str]] = set()
+    candidates = sorted(docs_dir.rglob("*.md"))
+    for path in candidates:
+        if path.is_symlink() or not path.is_file():
+            continue
+        payload = payloads.get(path.as_posix())
+        text = (
+            payload.decode("utf-8", errors="replace")
+            if payload is not None
+            else path.read_text(encoding="utf-8", errors="replace")
+        )
+        for target in _link_targets(text):
+            if target.startswith(("http:", "https:", "mailto:", "#", "data:")):
+                continue
+            rel = unquote(target.split("#", 1)[0])
+            if not rel:
+                continue
+            candidate = (path.parent / rel).resolve()
+            rel_posix = candidate.as_posix()
+            key = (path.as_posix(), rel_posix)
+            if key in seen:
+                continue
+            marker = f"/{outbox_name}/{ARCHIVE_DIR}/"
+            if marker in rel_posix:
+                for name in names:
+                    suffix = f"/{ARCHIVE_DIR}/{name}/"
+                    if suffix not in rel_posix:
+                        continue
+                    source_rel = rel_posix.split(suffix, 1)[1]
+                    source = outbox / name / source_rel
+                    if not source.exists():
+                        seen.add(key)
+                        broken.append(
+                            {
+                                "file": path.as_posix(),
+                                "link": target,
+                                "expected_source": source.as_posix(),
+                            }
+                        )
+                    break
+                continue
+            # 仍指向将移动的顶层批次（如 `./` 变体未被精确替换）：移动后必断。
+            top = f"/{outbox_name}/"
+            if top in rel_posix:
+                rest = rel_posix.split(top, 1)[1]
+                name = rest.split("/", 1)[0]
+                if name in names and not rest.startswith(f"{ARCHIVE_DIR}/"):
+                    seen.add(key)
+                    broken.append(
+                        {
+                            "file": path.as_posix(),
+                            "link": target,
+                            "expected_source": (outbox / name / rest.split("/", 1)[1]).as_posix()
+                            if "/" in rest
+                            else (outbox / name).as_posix(),
+                            "reason": "not_rewritten",
+                        }
+                    )
+    return broken
 
 
 def _gitignore_rules(outbox_rel: str) -> list[str]:
@@ -510,12 +720,14 @@ def plan_archive_transaction(
     *,
     docs_dir: str | Path | None = None,
     gitignore: str | Path | None = None,
+    unversioned: str = "hold",
+    version_map: dict[str, str] | None = None,
 ) -> dict[str, Any]:
     """F2 只读事务预览：移动、文档链接、忽略规则与冲突/跳过。"""
     root = Path(outbox)
     if docs_dir is not None and not Path(docs_dir).is_dir():
         raise ValueError(f"docs 目录不存在或不是目录：{Path(docs_dir)}")
-    base = plan_archive(root)
+    base = plan_archive(root, unversioned=unversioned, version_map=version_map)
     docs = _docs_dir(root, docs_dir)
     ignore = _gitignore_path(gitignore, root)
     moves = []
@@ -527,7 +739,9 @@ def plan_archive_transaction(
             skipped.append({**entry, "reason": "archive_target_exists"})
             continue
         moves.append({"name": entry["name"], "source": src.as_posix(), "target": dest.as_posix()})
-    edits, _payloads = _link_edits(docs, root.name, [item["name"] for item in moves])
+    names = [item["name"] for item in moves]
+    edits, payloads = _link_edits(docs, root.name, names)
+    broken = _broken_after_archive(docs, root, names, payloads)
     ignore_plan = _gitignore_plan(ignore, _gitignore_rules(_outbox_rel(root, ignore)))
     return {
         **base,
@@ -538,6 +752,7 @@ def plan_archive_transaction(
         "moves": moves,
         "skipped": skipped,
         "link_edits": edits,
+        "broken_links": broken,
         "writes": False,
     }
 
@@ -557,22 +772,85 @@ def _read(path: Path) -> dict[str, Any]:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
+def _archive_readme(root: Path, plan: dict[str, Any]) -> str:
+    """`outbox/.archive/README.md`：按书列出最新版本/批次与已归档批次。"""
+    records: dict[str, list[tuple[tuple[int, ...], str, str]]] = {}
+    groups: list[dict[str, Any]] = [
+        *(plan.get("keep") or []),
+        *(plan.get("to_archive") or []),
+    ]
+    for entry in plan.get("already_archived") or []:
+        batch = entry.get("batch")
+        if isinstance(batch, dict):
+            groups.append(batch)
+    archive_dir = root / ARCHIVE_DIR
+    if archive_dir.is_dir() and not archive_dir.is_symlink():
+        for path in _subdirs(archive_dir, skip_archive=False):
+            batch = _batch(path)
+            if not batch.errors and not any(item.errors for item in batch.books):
+                groups.append(batch.preview())
+    for group in groups:
+        name = str(group.get("name") or "")
+        for item in group.get("books") or []:
+            book = str(item.get("book") or "").strip()
+            version = str(item.get("version") or "").strip()
+            key = _version_key(version)
+            if not name or not book or key is None:
+                continue
+            records.setdefault(book, []).append((key, version, name))
+    lines = [
+        "# 归档索引",
+        "",
+        "> 由 `auto-epublizer archive --apply` 生成；只列可核验的书名/版本/批次。",
+        "",
+        "| 书 | 最新版本 | 最新批次 | 已归档批次 |",
+        "|---|---|---|---|",
+    ]
+    for book in sorted(records):
+        entries = records[book]
+        latest = max(entries)
+        archived = sorted({name for _key, _version, name in entries if name != latest[2]})
+        lines.append(f"| {book} | {latest[1]} | {latest[2]} | {', '.join(archived) or '—'} |")
+    return "\n".join(lines) + "\n"
+
+
 def apply_archive_transaction(
     outbox: str | Path,
     *,
     docs_dir: str | Path | None = None,
     gitignore: str | Path | None = None,
+    unversioned: str = "hold",
+    version_map: dict[str, str] | None = None,
     apply: bool = False,
 ) -> dict[str, Any]:
     """显式应用归档；先预检，失败按日志回滚，重跑幂等。"""
     root = Path(outbox)
-    plan = plan_archive_transaction(root, docs_dir=docs_dir, gitignore=gitignore)
+    plan = plan_archive_transaction(
+        root,
+        docs_dir=docs_dir,
+        gitignore=gitignore,
+        unversioned=unversioned,
+        version_map=version_map,
+    )
     if not apply:
         return plan
+    if plan["broken_links"]:
+        raise ValueError(
+            "归档会留下断链，已拒绝移动："
+            + "；".join(f"{item['file']} → {item['link']}" for item in plan["broken_links"][:5])
+        )
     if not plan["moves"] and not plan["link_edits"] and not plan["gitignore"]["changed"]:
+        readme_path = root / ARCHIVE_DIR / "README.md"
+        readme = _archive_readme(root, plan)
+        changed = not readme_path.is_file() or readme_path.read_text(encoding="utf-8") != readme
+        if changed:
+            readme_path.parent.mkdir(parents=True, exist_ok=True)
+            readme_path.write_text(readme, encoding="utf-8")
         return {
             "status": "up_to_date",
-            "writes": False,
+            "writes": changed,
+            "archive_readme": readme_path.as_posix(),
+            "archive_readme_changed": changed,
             **{
                 key: plan[key]
                 for key in ("outbox", "keep", "to_archive", "conflicts", "unresolved")
@@ -590,7 +868,7 @@ def apply_archive_transaction(
         path = Path(edit["path"])
         text = path.read_text(encoding="utf-8")
         for name in edit["batches"]:
-            text = text.replace(f"{root.name}/{name}/", f"{root.name}/{ARCHIVE_DIR}/{name}/")
+            text, _ = _rewrite_markdown_links(text, outbox_name=root.name, name=name)
         edit_payloads[edit["path"]] = text.encode("utf-8")
     ignore_plan = _gitignore_plan(Path(plan["gitignore"]["path"]), plan["gitignore"]["rules"])
     journal = {
@@ -629,6 +907,9 @@ def apply_archive_transaction(
             Path(ignore_plan["path"]).write_bytes(ignore_plan["after"])
         journal["status"] = "applied"
         _persist(journal_path, journal)
+        readme_path = root / ARCHIVE_DIR / "README.md"
+        readme_path.parent.mkdir(parents=True, exist_ok=True)
+        readme_path.write_text(_archive_readme(root, plan), encoding="utf-8")
     except Exception as exc:  # noqa: BLE001 - 回滚后按中文错误抛出
         for move in reversed(moved):
             source, target = Path(move["source"]), Path(move["target"])
@@ -646,7 +927,9 @@ def apply_archive_transaction(
         "writes": True,
         "moved": [move["name"] for move in plan["moves"]],
         "link_files": len(plan["link_edits"]),
+        "link_occurrences": sum(item["occurrences"] for item in plan["link_edits"]),
         "gitignore_changed": plan["gitignore"]["changed"],
+        "archive_readme": (root / ARCHIVE_DIR / "README.md").as_posix(),
         "transaction": journal_path.as_posix(),
     }
 

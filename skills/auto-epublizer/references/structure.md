@@ -1,4 +1,4 @@
-<!-- i18n: source=structure.zh.md sha256=c50f2de1a661c06db6b1ad623ea567cc73885b04d004b4abff715840d76b9178 -->
+<!-- i18n: source=structure.zh.md sha256=f556b49c6d1bb5b11447a083d90b8a938e80e20b5aeab65cf72ca05d4c440c33 -->
 > **English** | [中文](structure.zh.md)
 
 # Structure (four-layer structural rebuild + provenance)
@@ -26,6 +26,7 @@ Title keyword → (region, kind), for example:
 |---|---|---|
 | cover | cover | cover |
 | title page | frontmatter | titlepage |
+| half title | frontmatter | half-title |
 | copyright | frontmatter | copyright |
 | dedication | frontmatter | dedication |
 | foreword | frontmatter | foreword |
@@ -33,7 +34,7 @@ Title keyword → (region, kind), for example:
 | toc / contents | frontmatter | toc |
 | afterword / postscript | backmatter | afterword |
 | appendix | backmatter | appendix |
-| bibliography | backmatter | bibliography |
+| bibliography / sources and literature | backmatter | bibliography |
 | index | backmatter | index |
 
 No keyword hit → `body` + `chNN` (sequential numbering). Unit IDs are stable (`ch01`,
@@ -48,10 +49,15 @@ No keyword hit → `body` + `chNN` (sequential numbering). Unit IDs are stable (
   `structured/raw/structure-clean.json`; never delete on shape alone.
 - **Running head/footer removal**: group by `source_page`; a short text that appears at the
   top/bottom of ≥50% of pages is removed (`min_pages` guard). Removals are recorded in the
-  same `structure-clean.json` (`removed` / `candidates`).
-- **Cleaning follows classification**: cover/title-page exemption uses the classified
-  `kind`, not a second title-only decision; aggregated units recognised as title pages keep
-  their furniture.
+  same `structure-clean.json` (`removed` / `candidates`); `facts.md` reports per-unit
+  removed/candidate counts in its cleaning ledger.
+- **Font evidence**: a repeated short line at page top/bottom is kept as a
+  `*_large_font_kept` candidate when its size is the page maximum and ≥1.25× the body
+  median (book-title display type, not a running head).
+- **Cleaning follows classification**: cover/title-page/half-title exemption uses the
+  classified `kind`, not a second title-only decision. Aggregated units count as title
+  pages when they look like front matter or their title equals the book title, even when
+  they are not first.
 - **Written output is cleaned**: `write_structured` writes cleaned segments, so running
   heads/page numbers never reach `structured/`. Preview a rebuild with
   `preprocess --force --dry-run` (reports new/changed/unchanged plus the ledger, writes

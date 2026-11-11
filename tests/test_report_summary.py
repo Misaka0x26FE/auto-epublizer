@@ -59,3 +59,28 @@ def test_details_file_is_sorted_and_digest_bound(tmp_path: Path) -> None:
     empty = _report([])
     _write_g0_details(other, empty, [])
     assert not (other.output_dir / "g0-details.jsonl").exists()
+
+
+def test_report_records_software_detail_and_rights_presence() -> None:
+    """#72-5：rights 详略与权利字段是否存在必须可被机器消费。"""
+    report = generate_report(
+        "book",
+        AuditResult(ok=True),
+        EpubcheckResult(available=True, ran=True, errors=0, warnings=0, returncode=0),
+        software_detail="rights",
+        rights_present=False,
+    )
+    assert report.software_detail == "rights"
+    assert report.rights_present is False
+
+
+def test_report_records_hygiene_candidate_counts() -> None:
+    """#85：卫生候选数进入报告，但仍是 advisory。"""
+    report = generate_report(
+        "book",
+        AuditResult(ok=True),
+        EpubcheckResult(available=True, ran=True, errors=0, warnings=0, returncode=0),
+        hygiene={"candidates": 4, "cross_page": 2},
+    )
+    assert (report.hygiene_candidates, report.hygiene_cross_page) == (4, 2)
+    assert report.released is True

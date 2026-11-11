@@ -1,4 +1,4 @@
-<!-- i18n: source=qa.zh.md sha256=4ada6e102277bf877b78f05def52cf76fed4d7fd3a62531d047b6503024769df -->
+<!-- i18n: source=qa.zh.md sha256=0a191743cd8c3fc48fef1143d45fa4df6d18c07273680df44818b8dd4cec9dbf -->
 > **English** | [中文](qa.zh.md)
 
 # QA (epubcheck + unpack audit)
@@ -48,6 +48,12 @@ Standard EPUB note acceptance is mandatory offline: independently verify current
 | DC metadata missing (creator/date/publisher/rights) | `W_META_INCOMPLETE` (warning) |
 | internal anchor unresolvable (including footnote noteref→footnote) | `E_ANCHOR` |
 | footnote aside missing backlink or backlink unresolvable | `E_FN_BACKLINK` |
+| unregistered notes and note text left as ordinary paragraphs (`注 1.` / `[1]` / consecutive numbered paragraphs) | `E_FOOTNOTES_NOT_SEMANTIC` (error, blocks release) |
+| consecutive numbered paragraphs may be an ordered list, not notes | `W_FOOTNOTES_AMBIGUOUS` (warning, non-blocking) |
+| generated cover registered but the product has no cover-image | `E_COVER_RECORDED_MISSING` (error) |
+| a registered note's superscript marker is invisible in the translation | `footnote_range` (G0 hard gate; advisory for toc/index) |
+| printed TOC text and back-filled page numbers disagree | `E_PDF_TOC_MISMATCH` (fails under PDF strict) |
+| a front TOC and a back TOC are both in the spine | `W_TOC_DUPLICATE` (warning) |
 | theme contains a concrete font name/size / color | `E_THEME_FONT` / `E_THEME_COLOR` |
 | cover properties and meta cross-verification fails | `E_COVER_META` |
 | img alt empty or missing / poor format compatibility (.webp/.avif) | `W_IMG_NO_ALT` / `W_IMG_FORMAT` (warning) |

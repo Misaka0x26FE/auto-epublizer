@@ -569,3 +569,93 @@ def test_import_rejects_removed_literal_reference_from_code(tmp_path: Path) -> N
     assert [item["unit"] for item in rejected["failed"]] == [unit.id]
     assert rejected["reviewed"] == []
     assert store.load_publication().unit(unit.id).status == "aligned"
+
+
+def test_reimport_after_merge_warns_and_keeps_old_baseline(tmp_path: Path) -> None:
+    """#87：并段后重新 import 不得静默覆盖块边界基线。"""
+    store = _workspace(tmp_path)
+    _write_agent_products(store)
+    orch.import_translations(store)
+    unit = store.load_publication().units[0]
+    old_baseline = unit.meta["align_structure"]
+    old_boundary = unit.meta["align_boundary"]
+    assert old_boundary
+
+    target = store.translation_dir / "body" / "ch01.md"
+    target.write_text("# 第一章\n\n第一句话。第二句话。\n", encoding="utf-8")
+    result = orch.import_translations(store)
+    warnings = [w for w in result["warnings"] if w["check"] == "align_structure"]
+    assert warnings and "块边界已变化" in warnings[0]["message"]
+
+    unit = store.load_publication().units[0]
+    assert unit.meta["align_structure"] == old_baseline
+    assert unit.meta["align_boundary"] == old_boundary
+
+    forced = orch.import_translations(store, force=True)
+    assert any(
+        "已重登记新基线" in w["message"]
+        for w in forced["warnings"]
+        if w["check"] == "align_structure"
+    )
+    assert store.load_publication().units[0].meta["align_structure"] != old_baseline
+
+
+def test_align_rebaseline_reconciles_merge_without_touching_rows(tmp_path: Path) -> None:
+    """#88：并段后用显式 rebaseline 重登记块基线，align 行数不变。"""
+    from auto_translator.review import align_structure_status
+    from auto_translator.translation.align import read_align
+
+    store = _workspace(tmp_path)
+    _write_agent_products(store)
+    orch.import_translations(store)
+    target = store.translation_dir / "body" / "ch01.md"
+    target.write_text("# 第一章\n\n第一句话。第二句话。\n", encoding="utf-8")
+    orch.import_translations(store)  # 变化但未 force：旧基线保留
+
+    rows_before = read_align(store.unit_align_path("ch01"))
+    preview = orch.align_rebaseline(store)
+    assert preview["writes"] is False and preview["changed"] == ["ch01"]
+    assert (
+        store.load_publication().units[0].meta["align_boundary"]
+        != preview["units"][0]["align_boundary"]
+    )
+
+    applied = orch.align_rebaseline(store, apply=True)
+    assert applied["writes"] is True
+    unit = store.load_publication().units[0]
+    assert unit.meta["align_structure"] == applied["units"][0]["align_structure"]
+    assert read_align(store.unit_align_path("ch01")) == rows_before
+    status, _message = align_structure_status(
+        target.read_text(encoding="utf-8"),
+        rows_before,
+        unit.meta["align_structure"],
+        title=unit.title,
+    )
+    assert status == "ok"
+
+
+def test_import_collects_footnote_range_as_warning(tmp_path: Path, monkeypatch) -> None:
+    """#34：import 不得丢弃 footnote_range；必须出现在 warnings 里交由 QA 阻断。"""
+    from auto_translator.review import G0Flag
+
+    store = _workspace(tmp_path)
+    _write_agent_products(store)
+
+    def fake_g0(*_args, **_kwargs):
+        return [G0Flag("footnote_range", "已登记注文缺失", {"numbers": [14]})]
+
+    import auto_translator.review as review_mod
+
+    monkeypatch.setattr(review_mod, "g0_unit_flags", fake_g0)
+    result = orch.import_translations(store)
+    assert result["failed"] == []
+    checks = {w["check"] for w in result["warnings"]}
+    assert "footnote_range" in checks
+
+
+def test_registered_note_numbers_surfaces_bad_notes_json(tmp_path: Path) -> None:
+    """#34：坏 notes.json 不能静默降级成“没有登记注文”（硬门凭空消失）。"""
+    store = _workspace(tmp_path)
+    (store.structured_dir / "notes.json").write_text("{bad", encoding="utf-8")
+    with pytest.raises(ValueError):
+        orch._registered_note_numbers(store, "ch01")

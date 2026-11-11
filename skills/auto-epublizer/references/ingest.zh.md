@@ -116,7 +116,10 @@ ingest 会把多出的那层 `media/` 拍平到 `raw/media/`、把引用改写�
 
 ## PDF 按页切片
 
-- 每页独立处理、独立落盘 `page-NNN.json`（`{page_idx, blocks:[{type,bbox,text}], source}`），
+- pymupdf 路径按行框做两件确定性工作（issue #86/#58）：上一行以句末标点收束且当前行
+  x0 比块内最左行缩进 `max(font*0.8, 2)` 点 → 切成新段；页面 x0 成两簇时给块标
+  `column: 0|1`（版面位置，不推断阅读顺序）。证据不足时保持整块，不按字数硬切。
+- 每页独立处理、独立落盘 `page-NNN.json`（`{page_idx, blocks:[{type,bbox,text,lines,column?}], source}`），
   可单独重跑——断点续跑粒度 = 页。
 - 每页文本块保留 `bbox` 与页号，是后续结构聚合与对账的 ground truth。
 - 无文字层的扫描件：`page.get_pixmap(dpi)` 渲染 PNG → OCR → 作为该页文本块（`ocr:true`）。

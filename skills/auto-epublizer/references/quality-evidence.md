@@ -1,4 +1,4 @@
-<!-- i18n: source=quality-evidence.zh.md sha256=17190671b89975374452bef6ca2f2b6d0a37b31af0053a4a665cef47122a7de2 -->
+<!-- i18n: source=quality-evidence.zh.md sha256=0cd7bbd63b1f51d47ab40020096ba0d38aaf7b786523ef0c964fad272afff05c -->
 > **English** | [中文](quality-evidence.zh.md)
 
 # Evidence and safe-repair contract
@@ -35,6 +35,15 @@ candidates, duplicate-TOC candidates and source hashes; undeclared is not assume
 duplicates are candidates only, and source files are untouched.
 Missing raw/facts information is not guessed from filenames or font thresholds; source
 note completeness still requires independent page-by-page review.
+`evidence index` reports per-entry index labels, page refs/ranges, source line boxes,
+orphan page refs, missing raw pages, duplicate labels and two-column evidence; it never
+edits the index. `evidence toc-diff` compares the printed TOC (translation first,
+structured fallback) with the final EPUB nav item by item and reports matched,
+printed-only, nav-only, ambiguous and missing href members. `evidence notes --render`
+optionally renders only the selected note crops (default cap 200, explicit `--dpi`),
+reuses identical images, and records `reviewed` in `preprocessing/notes-render.json`;
+re-rendering a changed image resets review. Index fixes are not a new write path: craft
+an exact replacement plan and use the existing `repair apply` transaction.
 
 The report's product_residue scans every package XHTML/HTML document, including semantic
 asides and non-spine backmatter, excluding code/pre literals. The ¬/$$ patterns only

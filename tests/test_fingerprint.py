@@ -243,7 +243,10 @@ def test_brief_production_info_keeps_rights_and_disclaimer() -> None:
     assert "以下许可仅说明软件" in brief
     assert "pandoc" not in brief and "Revision:" not in brief
     assert "保留所有权利" in fingerprint.software_section(data, "zh-CN")
-    with pytest.raises(ValueError, match="full 或 brief"):
+    rights = fingerprint.software_section(data, "zh-CN", detail="rights")
+    assert "版权与出版信息" in rights and "© 2026 作者。保留所有权利。" in rights
+    assert "以下许可仅说明软件" not in rights and "pandoc" not in rights
+    with pytest.raises(ValueError, match="full、brief 或 rights"):
         fingerprint.software_section(data, "zh-CN", detail="minimal")
 
 

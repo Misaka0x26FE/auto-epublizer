@@ -395,3 +395,72 @@ def test_quarto_background_has_no_white_raster_edge() -> None:
         rgb(x, height - 1) for x in range(0, width, 7)
     ]
     assert not any(min(pixel) > 250 for pixel in edges), "封面上下边缘出现白边"
+
+
+def test_rebuild_preserves_registered_generated_cover(tmp_path: Path) -> None:
+    """#71：preprocess --force 重建清空 structured/ 后，已登记封面不能丢。"""
+    store = _workspace(tmp_path)
+    orch.set_meta(store, title="重构意义世界", creator="作者")
+    orch.generate_cover(store)
+    source = store.dir / cv.GENERATED_REL
+    before = source.read_bytes()
+
+    orch.rebuild(store)
+    assert source.is_file() and source.read_bytes() == before
+    epub = orch.build(store)
+    with zipfile.ZipFile(epub) as zf:
+        assert 'properties="cover-image"' in zf.read("OEBPS/content.opf").decode("utf-8")
+
+
+def test_missing_generated_cover_is_redrawn_on_build(tmp_path: Path) -> None:
+    """#71：登记还在但文件缺失时必须重绘，不能静默产出无封面成品。"""
+    store = _workspace(tmp_path)
+    orch.set_meta(store, title="重构意义世界", creator="作者")
+    orch.generate_cover(store)
+    (store.dir / cv.GENERATED_REL).unlink()
+
+    epub = orch.build(store)
+    assert (store.dir / cv.GENERATED_REL).is_file()
+    with zipfile.ZipFile(epub) as zf:
+        assert 'properties="cover-image"' in zf.read("OEBPS/content.opf").decode("utf-8")
+    assert "cover_regenerated_missing" in (store.dir / "events.jsonl").read_text(encoding="utf-8")
+
+
+def test_epub_has_cover_requires_manifest_properties(tmp_path: Path) -> None:
+    """#100：OPF 里的普通字符串/注释不算 cover-image。"""
+    import zipfile
+
+    from auto_epublizer.cover import epub_has_cover
+
+    def make(path: Path, opf: str) -> Path:
+        with zipfile.ZipFile(path, "w") as zf:
+            zf.writestr("META-INF/container.xml", "<container/>")
+            zf.writestr("OEBPS/content.opf", opf)
+        return path
+
+    decoy = make(
+        tmp_path / "decoy.epub",
+        "<package><manifest><!-- cover-image -->"
+        '<item id="x" href="x.png" media-type="image/png"/></manifest></package>',
+    )
+    assert epub_has_cover(decoy) is False
+
+    real = make(
+        tmp_path / "real.epub",
+        '<package><manifest><item id="c" href="c.png" media-type="image/png" '
+        'properties="nav cover-image"/></manifest></package>',
+    )
+    assert epub_has_cover(real) is True
+
+
+def test_cover_record_reports_physical_pixels_and_translator_credit(tmp_path: Path) -> None:
+    """#100：像素口径 = 物理尺寸 × dpi；译者行进入登记文本，便于 QA 断言。"""
+    store = _workspace(tmp_path)
+    orch.set_meta(store, title="重构意义世界", creator="朱莉娅 · 尤尔丘克", translator="OpenCode")
+    record = orch.generate_cover(store, dpi=300)
+    assert record["dpi"] == 300
+    assert record["size_mm"] == [148.0, 210.0]
+    width, height = record["pixels"]
+    # A5 @300dpi ≈ 1748×2480；渲染器按页宽取整，允许 ±2px，仍不是固定 1600×2400。
+    assert abs(width - 1748) <= 2 and abs(height - 2480) <= 2
+    assert "OpenCode 译" in record["text"]["credits"]

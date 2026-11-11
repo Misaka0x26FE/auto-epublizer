@@ -104,3 +104,16 @@ def structure_digest(spans: Sequence[Mapping[str, Any]]) -> str:
     ]
     canonical = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
     return sha256(canonical.encode("utf-8")).hexdigest()
+
+
+def boundary_digest(spans: Sequence[Mapping[str, Any]]) -> str:
+    """仅块边界（块号/类型/seq 区间）的摘要：译文改写不触发，并段/拆段才触发。
+
+    ``structure_digest`` 含块文本摘要，任何译文修订都会变化；用它判断“块边界是否
+    变化”会把正常改稿误报成结构变化。本摘要只回答结构问题。
+    """
+    payload = [
+        {key: span[key] for key in ("block", "kind", "seq_start", "seq_end")} for span in spans
+    ]
+    canonical = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    return sha256(canonical.encode("utf-8")).hexdigest()

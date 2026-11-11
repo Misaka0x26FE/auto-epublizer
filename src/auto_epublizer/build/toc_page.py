@@ -16,6 +16,7 @@ from typing import Any
 
 from auto_common.workspace import RunStore
 
+from ..structure import unit_heading
 from . import toc_depths
 from .html import plain_label, render_toc_document, slug_file, subheading_anchors
 
@@ -139,9 +140,13 @@ def build_toc_tree(
         if depth > nav_depth:
             continue
         href = f"{slug_file(entry['id'])}.xhtml"
+        md = _md_for(store, entry, prefer_translation=prefer_translation)
+        # 目录页是给读者看的结构视图：有译文时标签必须用译文标题，
+        # 不能退回 publication.json 的源文标题。
+        label = unit_heading(md) or str(entry.get("title") or entry["id"])
         node = {
             "unit": entry["id"],
-            "label": plain_label(str(entry.get("title") or entry["id"])),
+            "label": plain_label(label),
             "href": href,
             "children": [],
         }
@@ -149,9 +154,7 @@ def build_toc_tree(
             stack.pop()
         stack[-1][1].append(node)
         stack.append((depth, node["children"]))
-        anchors = subheading_anchors(
-            _md_for(store, entry, prefer_translation=prefer_translation), entry["id"]
-        )
+        anchors = subheading_anchors(md, entry["id"])
         relative = toc_depths([{"level": anchor["level"]} for anchor in anchors])
         anchor_stack: list[tuple[int, list[dict[str, Any]]]] = [(0, node["children"])]
         for anchor, rel in zip(anchors, relative, strict=False):
@@ -187,7 +190,8 @@ def generated_toc_document(
         store, entries, nav_depth=nav_depth, prefer_translation=prefer_translation
     )
     pages = read_toc_pages(store)
-    title = str(toc_unit.get("title") or "目录")
+    toc_md = _md_for(store, toc_unit, prefer_translation=prefer_translation)
+    title = unit_heading(toc_md) or str(toc_unit.get("title") or "目录")
     tree = [
         *tree,
         *preserved_source_nodes(store, toc_unit, tree, prefer_translation=prefer_translation),

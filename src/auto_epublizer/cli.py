@@ -407,10 +407,70 @@ def evidence_source_cmd(
         _emit_json(json.dumps(data, ensure_ascii=False, indent=2))
     else:
         registered = data["note_evidence"]
+        inventory = data.get("note_inventory") or {}
         console.print(
             f"源证据：{len(data['blocks'])} 块，{len(data['note_candidates'])} 注释候选；"
+            f"源注候选块 {inventory.get('counts', {}).get('note_like_blocks', 0)}，"
+            f"跨页注尾候选 {len(data.get('note_tail_pairs') or [])}；"
             f"已注册注文 {registered.get('selected', 0)}/{registered.get('total', 0)} 条；须人工核证"
         )
+
+
+@evidence_app.command("toc-diff")
+def evidence_toc_diff_cmd(
+    epub: str | None = typer.Option(None, "--epub", help="EPUB 路径（缺省 output/<slug>.epub）"),
+    output: str | None = typer.Option(
+        None, "-o", "--output", help="输出路径（缺省 preprocessing/toc-diff.json）"
+    ),
+    json_output: bool = typer.Option(False, "--json", help="只读目录 diff JSON"),
+    workspace: str | None = typer.Option(None, "--workspace", help="工作区目录"),
+    config: str | None = typer.Option(None, "--config", help="配置文件路径"),
+) -> None:
+    """印刷目录 ↔ EPUB nav 逐项对账（#58d）：只报匹配与单边证据。"""
+    store = _store_from(workspace, load_config(config or _CONFIG_PATH))
+    try:
+        data = orch.toc_diff(store, epub=epub, output=output)
+    except (ValueError, OSError, orch.OrchestrationError) as exc:
+        raise typer.Exit(f"目录 diff 失败：{exc}") from None
+    if json_output:
+        _emit_json(json.dumps({k: v for k, v in data.items() if k != "path"}, ensure_ascii=False))
+        return
+    if data["status"] != "ok":
+        console.print(f"目录 diff 未知：{data['reason']}；只读，不生成目录")
+        raise typer.Exit(1)
+    counts = data["counts"]
+    console.print(
+        f"目录 diff：印刷 {counts['printed']} 条，nav {counts['nav']} 条；"
+        f"匹配 {counts['matched']}，仅印刷 {counts['printed_only']}，"
+        f"仅 nav {counts['nav_only']}，歧义 {counts['ambiguous']}，"
+        f"href 缺失 {counts['href_missing']}；只读，须人工核证"
+    )
+
+
+@evidence_app.command("index")
+def evidence_index_cmd(
+    output: str | None = typer.Option(
+        None, "-o", "--output", help="输出路径（缺省 preprocessing/index-evidence.json）"
+    ),
+    json_output: bool = typer.Option(False, "--json", help="只读索引证据 JSON"),
+    workspace: str | None = typer.Option(None, "--workspace", help="工作区目录"),
+    config: str | None = typer.Option(None, "--config", help="配置文件路径"),
+) -> None:
+    """逐条索引证据（#58/#57）：条目、页码引用、源页定位与孤页候选。"""
+    store = _store_from(workspace, load_config(config or _CONFIG_PATH))
+    try:
+        data = orch.index_evidence(store, output=output)
+    except (ValueError, OSError, orch.OrchestrationError) as exc:
+        raise typer.Exit(f"索引证据导出失败：{exc}") from None
+    if json_output:
+        _emit_json(json.dumps({k: v for k, v in data.items() if k != "path"}, ensure_ascii=False))
+        return
+    entries = sum(unit.get("entry_count", 0) for unit in data["units"])
+    orphans = sum(len(unit.get("orphan_page_refs") or []) for unit in data["units"])
+    console.print(
+        f"索引证据：{len(data['units'])} 个索引单元，{entries} 条；"
+        f"孤页候选 {orphans} 条；来源 {data['source_kind']}；只读，须人工核证"
+    )
 
 
 @evidence_app.command("page-numbers")
@@ -492,13 +552,27 @@ def evidence_notes_cmd(
         None, "-o", "--output", help="输出路径（缺省 preprocessing/notes-evidence.json）"
     ),
     json_output: bool = typer.Option(False, "--json", help="输出只读 JSON（含逐条定位）"),
+    render: bool = typer.Option(False, "--render", help="按需渲染注文局部裁剪图（显式写入）"),
+    dpi: int = typer.Option(150, "--dpi", help="裁剪图分辨率（36–600，默认 150）"),
+    max_crops: int = typer.Option(200, "--max-crops", help="单次最多渲染张数（默认 200）"),
+    mark_reviewed: list[str] | None = typer.Option(
+        None, "--mark-reviewed", help="登记指定 note_id 已审阅，可重复"
+    ),
     workspace: str | None = typer.Option(None, "--workspace", help="工作区目录"),
     config: str | None = typer.Option(None, "--config", help="配置文件路径"),
 ) -> None:
-    """逐条注文源页证据（C1）：定位到页/块/几何框，缺坐标显式记 unknown。"""
+    """逐条注文源页证据（C1）：定位到页/块/几何框；--render 才生成裁剪图。"""
     store = _store_from(workspace, load_config(config or _CONFIG_PATH))
     try:
-        data = orch.evidence_notes(store, note_ids=note_id, output=output)
+        data = orch.evidence_notes(
+            store,
+            note_ids=note_id,
+            output=output,
+            render=render,
+            dpi=dpi,
+            max_crops=max_crops,
+            mark_reviewed=mark_reviewed,
+        )
     except (ValueError, OSError, orch.OrchestrationError) as exc:
         raise typer.Exit(f"注文证据导出失败：{exc}") from None
     if json_output:
@@ -512,6 +586,14 @@ def evidence_notes_cmd(
             f"[green]注文证据已生成：[/green]{data['path']}（{data['selected']}/{data['total']} 条）"
         )
         console.print(f"  定位状态：{coverage}")
+        if data.get("render"):
+            counts = data["render"]["counts"] or {}
+            console.print(
+                f"  裁剪图：rendered={counts.get('rendered', 0)}"
+                f" reused={counts.get('reused', 0)}"
+                f" deferred={counts.get('deferred', 0)}"
+                f" reviewed={counts.get('reviewed', 0)}"
+            )
         if data["missing_note_ids"]:
             console.print(
                 f"  [yellow]请求的 note_id 不存在：[/yellow]{'、'.join(data['missing_note_ids'])}"
@@ -869,6 +951,12 @@ def pdf(
     body_pt: float = typer.Option(10.5, "--body-pt", help="正文字号（pt；五号 = 10.5）"),
     note_pt: float = typer.Option(8.5, "--note-pt", help="注文字号（pt；小五 = 8.5）"),
     line_height: float = typer.Option(1.55, "--line-height", help="行距（倍数）"),
+    font_stack: str | None = typer.Option(
+        None, "--font-stack", help="CSS 字体栈（缺省取 config.pdf.font_stack / AEP_PDF_FONT）"
+    ),
+    print_css: str | None = typer.Option(
+        None, "--print-css", help="追加的印刷 CSS 文件（缺省取 config.pdf.print_css）"
+    ),
     no_bookmarks: bool = typer.Option(False, "--no-bookmarks", help="不写 PDF 书签"),
     strict: bool = typer.Option(
         False, "--strict", help="实测字号偏差超过5%、纸张或版心溢出时失败并保留旧 PDF"
@@ -894,8 +982,24 @@ def pdf(
     target = Path(output) if output else store.output_dir / f"{slug}.pdf"
     if size.lower() not in pdfexport.SIZES:
         _fail(f"未知开本：{size}（可选 {', '.join(pdfexport.SIZES)}）")
+    css_value = print_css if print_css is not None else cfg.pdf.print_css
+    css_text = ""
+    if css_value:
+        css_path = Path(css_value)
+        if not css_path.is_absolute():
+            css_path = store.dir / css_path
+        try:
+            css_text = css_path.read_text(encoding="utf-8")
+        except OSError as exc:
+            _fail(f"print.css 读取失败：{css_path}（{exc}）")
+            return
     style = pdfexport.PrintStyle(
-        size=size, body_pt=body_pt, note_pt=note_pt, line_height=line_height
+        size=size,
+        body_pt=body_pt,
+        note_pt=note_pt,
+        line_height=line_height,
+        font_stack=font_stack if font_stack is not None else cfg.pdf.font_stack,
+        print_css=css_text,
     )
     try:
         result = pdfexport.render(source, target, style, bookmarks=not no_bookmarks, strict=strict)
@@ -1411,6 +1515,7 @@ def align_apply(
 @app.command()
 def hygiene(
     unit: str | None = typer.Option(None, "--unit", help="只扫描指定单元（缺省全部）"),
+    review: bool = typer.Option(False, "--review", help="附上 hygiene-review.jsonl 的处置汇总"),
     workspace: str | None = typer.Option(None, "--workspace", help="工作区目录"),
     config: str | None = typer.Option(None, "--config", help="配置文件路径"),
 ) -> None:
@@ -1418,6 +1523,10 @@ def hygiene(
     try:
         store = _store_from(workspace, load_config(config or _CONFIG_PATH))
         result = orch.hygiene_scan(store, unit_id=unit)
+        if review:
+            from .hygiene_review import summarize
+
+            result["review"] = summarize(store, unit_id=unit)
     except (ValueError, OSError, typer.BadParameter) as e:
         _command_error(e, json_output=True)
     _emit_json(json.dumps(result, ensure_ascii=False, indent=2))
@@ -1434,17 +1543,36 @@ def archive_cmd(
     ),
     apply: bool = typer.Option(False, "--apply", help="实际移动/改写（缺省只读预览）"),
     recover: bool = typer.Option(False, "--recover", help="恢复未完成归档事务"),
+    unversioned: str = typer.Option(
+        "hold",
+        "--unversioned",
+        help="缺版本批次策略：hold（只列未决，默认）| archive（显式移入 .archive）",
+    ),
+    version_map: str | None = typer.Option(
+        None, "--version-map", help="批次名→版本的 JSON 文件（只补缺版本）"
+    ),
     json_output: bool = typer.Option(False, "--json", help="输出 JSON"),
 ) -> None:
     """旧批次归档（F1 预览 / F2 显式事务）：按 MANIFEST 身份/版本分组。"""
     try:
         from . import archive as archive_mod
 
+        mapping = None
+        if version_map:
+            raw = json.loads(Path(version_map).read_text(encoding="utf-8"))
+            if not isinstance(raw, dict):
+                raise ValueError("version-map 顶层必须是对象：{批次名: 版本}")
+            mapping = {str(k): str(v) for k, v in raw.items()}
         if recover:
             data = archive_mod.recover_archive(outbox)
         else:
             data = archive_mod.apply_archive_transaction(
-                outbox, docs_dir=docs, gitignore=gitignore, apply=apply
+                outbox,
+                docs_dir=docs,
+                gitignore=gitignore,
+                unversioned=unversioned,
+                version_map=mapping,
+                apply=apply,
             )
     except (ValueError, OSError) as exc:
         raise typer.Exit(f"归档失败：{exc}") from None
@@ -1454,7 +1582,7 @@ def archive_cmd(
     if data.get("status") in {"applied", "up_to_date", "recovered", "nothing_to_recover"}:
         console.print(
             f"归档：{data.get('status')}；移动 {len(data.get('moved') or [])}，"
-            f"链接文件 {data.get('link_files', 0)}，忽略规则 "
+            f"链接文件 {data.get('link_files', 0)}（修 {data.get('link_occurrences', 0)} 处），忽略规则 "
             f"{'已更新' if data.get('gitignore_changed') else '无变化'}"
         )
         return
@@ -1929,6 +2057,30 @@ def errata_status_cmd(
     )
     if digest:
         console.print(f"  摘要 {digest[:16]}…")
+
+
+@app.command("align-rebaseline")
+def align_rebaseline(
+    unit: list[str] | None = typer.Option(None, "--unit", help="只处理指定单元（可重复）"),
+    workspace: str | None = typer.Option(None, "--workspace", help="工作区目录"),
+    config: str | None = typer.Option(None, "--config", help="配置文件路径"),
+    apply: bool = typer.Option(False, "--apply", help="实际写入（缺省只读预检）"),
+    json_output: bool = typer.Option(False, "--json", help="输出 JSON"),
+) -> None:
+    """按当前 md/align 重登记块边界基线，不改 align 行（#88）。"""
+    try:
+        store = _store_from(workspace, load_config(config or _CONFIG_PATH))
+        result = orch.align_rebaseline(store, unit_ids=unit, apply=apply)
+    except (ValueError, OSError) as exc:
+        _command_error(exc, json_output=json_output)
+    if json_output:
+        _emit_json(json.dumps(result, ensure_ascii=False, indent=2))
+        return
+    state = "已写入" if result["writes"] else "预检（未写盘）"
+    console.print(f"align 基线{state}：{len(result['changed'])} 个单元变化")
+    for item in result["units"][:10]:
+        if item["changed"]:
+            console.print(f"  {item['unit']}：{item['blocks']} 块 / {item['align_rows']} 行")
 
 
 def main() -> None:

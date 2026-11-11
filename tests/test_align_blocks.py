@@ -93,3 +93,23 @@ def test_structure_status_uses_registered_baseline() -> None:
     assert align_structure_status("甲乙。丙丁。", rows, baseline)[0] == "changed"
     assert align_structure_status(split_md, rows, None)[0] == "unknown"
     assert align_structure_status("丙丁。\n\n甲乙。", rows, baseline)[0] == "unknown"
+
+
+def test_boundary_digest_ignores_translation_text_changes() -> None:
+    """#87：只改译文文本（句数/块数不变）不触发块边界变化。"""
+    from auto_translator.review.blocks import boundary_digest
+
+    spans, issues = block_spans("甲乙。\n\n丙丁。", _rows("甲乙。", "丙丁。"))
+    assert issues == []
+    edited = [dict(span, text_sha256="0" * 64) for span in spans]
+    assert boundary_digest(spans) == boundary_digest(edited)
+    assert structure_digest(spans) != structure_digest(edited)
+
+
+def test_boundary_digest_changes_on_merge() -> None:
+    from auto_translator.review.blocks import boundary_digest
+
+    rows = _rows("甲乙。", "丙丁。")
+    assert boundary_digest(block_spans("甲乙。\n\n丙丁。", rows)[0]) != boundary_digest(
+        block_spans("甲乙。丙丁。", rows)[0]
+    )

@@ -430,3 +430,223 @@ def test_preview_rebuild_does_not_write_raw(tmp_path: Path, monkeypatch) -> None
     assert captured["store"] is None
     assert captured["mineru_client"] is None
     assert preview["counts"]["new"] == 1
+
+
+def _seg_font(text: str, page: int, size: float) -> SourceSegment:
+    return SourceSegment(
+        index=0,
+        source=text,
+        kind="text",
+        meta={"source_page": page, "source_font_size": size},
+    )
+
+
+def test_half_title_is_page_furniture_kind() -> None:
+    """#97：半书名页必须识别为 frontmatter/half-title 并整页保留。"""
+    doc = SourceDocument(
+        title="B",
+        units=[_unit("Half Title", [_seg("HALF TITLE", 1), _seg("B", 2)], "chapter")],
+    )
+    entry = classify_units(doc)[0]
+    assert (entry.region, entry.kind) == ("frontmatter", "half-title")
+    cleaned, report = clean_unit_with_report(doc.units[0], kind=entry.kind)
+    assert [s.source for s in cleaned.segments] == ["HALF TITLE", "B"]
+    assert report.removed == ()
+
+
+def test_aggregated_unit_titled_as_book_is_titlepage_even_when_not_first() -> None:
+    """#97：非首单元的书名页（标题=书名）不得被判成正文后删标题。"""
+    doc = SourceDocument(
+        title="Marxism and Medieval Studies",
+        units=[
+            _unit("Chapter", [_seg("Body.", 1)], "chapter"),
+            SourceUnit(
+                id="u2",
+                kind="chapter",
+                title="Marxism and Medieval Studies",
+                segments=[
+                    _seg_font("Marxism and Medieval Studies", 1, 28),
+                    _seg_font("Half title other text.", 1, 12),
+                    _seg_font("Marxism and Medieval Studies", 2, 28),
+                    _seg_font("Preface body text.", 2, 12),
+                    _seg_font("Marxism and Medieval Studies", 3, 28),
+                    _seg_font("Copyright page text here.", 3, 12),
+                ],
+                meta={"aggregated": True},
+            ),
+        ],
+    )
+    entry = classify_units(doc)[1]
+    assert (entry.region, entry.kind) == ("frontmatter", "titlepage")
+    cleaned, report = clean_unit_with_report(doc.units[1], kind=entry.kind)
+    assert len(cleaned.segments) == 6
+    assert report.removed == () and report.candidates == ()
+
+
+def test_repeated_large_font_title_is_kept_as_candidate() -> None:
+    """#97：整页最大字号的书名即使跨页重复也只记候选，不按页眉删除。"""
+    segments = []
+    for page in range(1, 4):
+        segments.append(_seg_font("Marxism and Medieval Studies", page, 28))
+        segments.append(_seg_font(f"Body paragraph {page}.", page, 10))
+    unit = SourceUnit(
+        id="u1", kind="chapter", title="Marxism and Medieval Studies", segments=segments
+    )
+    cleaned, report = clean_unit_with_report(unit)
+    assert [s.source for s in cleaned.segments if "Marxism" in s.source] == [
+        "Marxism and Medieval Studies"
+    ] * 3
+    assert report.removed == ()
+    assert any("large_font" in item.reason for item in report.candidates)
+
+
+def test_same_size_repeated_header_is_still_removed() -> None:
+    segments = []
+    for page in range(1, 4):
+        segments.append(_seg_font("BOOK TITLE", page, 10))
+        segments.append(_seg_font(f"Body paragraph {page}.", page, 10))
+    unit = SourceUnit(id="u1", kind="chapter", title="Chapter", segments=segments)
+    cleaned, report = clean_unit_with_report(unit)
+    assert not any(s.source == "BOOK TITLE" for s in cleaned.segments)
+    assert len(report.removed) == 3
+
+
+def test_facts_report_clean_ledger(tmp_path: Path) -> None:
+    """#97：facts 必须显示清洗删除/候选数，而不是只藏在 raw JSON。"""
+    import json
+
+    from auto_common.config import Config
+    from auto_epublizer.preprocess.facts import collect_facts
+
+    src = tmp_path / "book.md"
+    src.write_text("# 第一章\n\n正文。\n", encoding="utf-8")
+    store = init_workspace(src, workspace_dir=tmp_path / "ws-clean")
+    raw = store.structured_dir / "raw"
+    raw.mkdir(parents=True, exist_ok=True)
+    (raw / "structure-clean.json").write_text(
+        json.dumps(
+            {
+                "schema": 1,
+                "units": [
+                    {
+                        "unit_id": "ch01",
+                        "removed": [{"index": 0, "source": "BOOK", "reason": "repeated_header"}],
+                        "candidates": [],
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    facts = collect_facts(store, Config())
+    assert facts["clean"]["removed"] == 1
+    assert facts["clean"]["units"] == 1
+
+
+def test_sources_and_literature_is_bibliography_but_review_is_not() -> None:
+    """#58e：'Sources and Literature' 归参考文献；'Literature Review' 仍是正文。"""
+    doc = SourceDocument(
+        title="B",
+        units=[
+            _unit("Sources and Literature", [_seg("Smith 2000.")], "chapter"),
+            _unit("Literature Review", [_seg("Body.")], "chapter"),
+        ],
+    )
+    entries = classify_units(doc)
+    assert (entries[0].region, entries[0].kind) == ("backmatter", "bibliography")
+    assert (entries[1].region, entries[1].kind) == ("body", "chapter")
+
+
+def test_half_title_page_forms_win_over_titlepage_keyword() -> None:
+    """#97：'半书名页' / 'Half Title Page' 必须先命中 half-title。"""
+    for title in ("半书名页", "Half Title Page"):
+        doc = SourceDocument(title="B", units=[_unit(title, [_seg("T", 1)], "chapter")])
+        entry = classify_units(doc)[0]
+        assert entry.kind == "half-title", title
+
+
+def test_large_but_unrelated_running_head_is_still_removed() -> None:
+    """#97：12–14pt 的页眉若与书名无关，不因字号大就保留。"""
+    segments = []
+    for page in range(1, 4):
+        segments.append(_seg_font("Running Head", page, 13))
+        segments.append(_seg_font(f"Body paragraph {page}.", page, 10))
+    unit = SourceUnit(id="u1", kind="chapter", title="Real Chapter Title", segments=segments)
+    cleaned, report = clean_unit_with_report(unit)
+    assert not any(s.source == "Running Head" for s in cleaned.segments)
+    assert len(report.removed) == 3
+
+
+def test_rebuild_preserves_source_notes_json(tmp_path: Path) -> None:
+    """#71/#72：preprocess --force 不得删除已核证的 structured/notes.json。"""
+    from auto_epublizer import orchestrator as orch
+
+    src = tmp_path / "book.md"
+    src.write_text("# 第一章\n\n正文。\n", encoding="utf-8")
+    store = init_workspace(src, workspace_dir=tmp_path / "ws-notes-rebuild")
+    payload = '{"schema_version":"1","inventory":"none","notes":[],"references":[]}'
+    (store.structured_dir / "notes.json").write_text(payload, encoding="utf-8")
+    orch.rebuild(store)
+    assert (store.structured_dir / "notes.json").read_text(encoding="utf-8") == payload
+
+
+def test_long_chapter_titled_as_book_is_not_titlepage() -> None:
+    """#97 反向：同名但长、且不在前几页的章节不能判成书名页。"""
+    body = "正文内容。" * 500
+    doc = SourceDocument(
+        title="Essays",
+        units=[
+            _unit("Chapter", [_seg("Body.", 1)], "chapter"),
+            SourceUnit(
+                id="u2",
+                kind="chapter",
+                title="Essays",
+                segments=[_seg(body, 50)],
+                meta={"aggregated": True},
+            ),
+        ],
+    )
+    entry = classify_units(doc)[1]
+    assert (entry.region, entry.kind) == ("body", "chapter")
+
+
+def test_rebuild_does_not_copy_cover_path_outside_workspace(tmp_path: Path) -> None:
+    """#71：cover 记录里的 `../` 路径不能被 rebuild 读出/写回工作区。"""
+    import json
+
+    from auto_epublizer import orchestrator as orch
+
+    src = tmp_path / "book.md"
+    src.write_text("# 第一章\n\n正文。\n", encoding="utf-8")
+    store = orch.init(str(src), workspace_dir=tmp_path / "ws-escape")
+    outside = tmp_path / "outside.png"
+    outside.write_bytes(b"OUTSIDE")
+    (store.preprocessing_dir / "cover-generated.json").write_text(
+        json.dumps({"file": "../../outside.png"}), encoding="utf-8"
+    )
+    orch.rebuild(store)
+    assert outside.read_bytes() == b"OUTSIDE"
+    assert "rebuild_skip_outside_workspace" in (store.dir / "events.jsonl").read_text(
+        encoding="utf-8"
+    )
+
+
+def test_split_book_title_segments_are_kept_as_candidates() -> None:
+    """#97：书名被拆成多段（每段只是完整标题的子串）时也不能当页眉删除。"""
+    segments = []
+    for page in range(1, 4):
+        segments.append(_seg_font("Marxism", page, 28))
+        segments.append(_seg_font("and Medieval Studies", page, 28))
+        for index in range(5):
+            segments.append(_seg_font(f"Body paragraph {page}-{index}.", page, 10))
+    unit = SourceUnit(
+        id="u1",
+        kind="chapter",
+        title="Marxism and Medieval Studies",
+        segments=segments,
+    )
+    cleaned, report = clean_unit_with_report(unit)
+    assert [s.source for s in cleaned.segments].count("Marxism") == 3
+    assert [s.source for s in cleaned.segments].count("and Medieval Studies") == 3
+    assert report.removed == ()
+    assert all("large_font" in item.reason for item in report.candidates)

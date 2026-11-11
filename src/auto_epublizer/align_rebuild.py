@@ -25,11 +25,12 @@ from typing import Any
 from auto_common.workspace import RunStore, atomic_write_json
 from auto_translator.review import (
     align_block_spans,
+    boundary_digest,
     fidelity_flags,
     md_align_drift,
     structure_digest,
 )
-from auto_translator.translation.align import write_align
+from auto_translator.translation.align import read_align, write_align
 
 RULE_VERSION = "align-rebuild-1"
 _CLOSED = {"applied", "rolled_back"}
@@ -38,6 +39,58 @@ _OPEN = {"pending", "rollback_incomplete"}
 
 def _hash(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
+
+
+def rebaseline(
+    store: RunStore, *, unit_ids: list[str] | None = None, apply: bool = False
+) -> dict[str, Any]:
+    """按当前 md/align 重登记块边界基线，**不改 align 行**（#88）。
+
+    默认只读预检；``apply=True`` 才写 publication.json 的 ``align_structure`` /
+    ``align_boundary``。``md_align_drift`` 非空或块映射有歧义时拒绝，避免用错位的
+    对照表给正文背书。reviewed/built 单元回退 ``aligned``（旧审校/成品结论随基线失效）。
+    """
+    pub = store.load_publication()
+    wanted = set(unit_ids or [])
+    units: list[dict[str, Any]] = []
+    for unit in pub.units:
+        if wanted and unit.id not in wanted:
+            continue
+        rel = str((unit.meta or {}).get("rel_path") or "")
+        md_path = store.translation_dir / rel if rel else None
+        align_path = store.unit_align_path(unit.id)
+        if md_path is None or not md_path.is_file() or not align_path.is_file():
+            continue
+        md = md_path.read_text(encoding="utf-8")
+        rows = read_align(align_path)
+        drift = md_align_drift(md, rows, title=unit.title)
+        if drift:
+            raise ValueError(f"md↔align 不一致，拒绝重登记：{unit.id}：{drift[0]}")
+        spans, issues = align_block_spans(md, rows, title=unit.title)
+        if issues:
+            raise ValueError(f"块身份无法确定：{unit.id}：{issues[0]}")
+        new_structure = structure_digest(spans)
+        new_boundary = boundary_digest(spans)
+        old_structure = str((unit.meta or {}).get("align_structure") or "")
+        old_boundary = str((unit.meta or {}).get("align_boundary") or "")
+        changed = new_structure != old_structure or new_boundary != old_boundary
+        units.append(
+            {
+                "unit": unit.id,
+                "changed": changed,
+                "blocks": len(spans),
+                "align_rows": len(rows),
+                "align_structure": new_structure,
+                "align_boundary": new_boundary,
+            }
+        )
+        if apply and changed:
+            if unit.status in ("reviewed", "built"):
+                store.set_unit_status(unit.id, "aligned")
+            store.record_unit_content(
+                unit.id, align_structure=new_structure, align_boundary=new_boundary
+            )
+    return {"writes": apply, "changed": [u["unit"] for u in units if u["changed"]], "units": units}
 
 
 def _journal_dir(store: RunStore) -> Path:
@@ -142,6 +195,7 @@ def _unit_plan(store: RunStore, entry: dict[str, Any]) -> dict[str, Any]:
         "old_sha256": _hash(current_align),
         "new_sha256": _hash(new_bytes),
         "align_structure": new_digest,
+        "align_boundary": boundary_digest(spans),
         "status": status,
     }
 
@@ -309,7 +363,11 @@ def apply_align_rebuild(
                     continue
                 if unit.status in ("reviewed", "built"):
                     store.set_unit_status(unit.id, "aligned")
-                store.record_unit_content(unit.id, align_structure=item["align_structure"])
+                store.record_unit_content(
+                    unit.id,
+                    align_structure=item["align_structure"],
+                    align_boundary=item.get("align_boundary"),
+                )
             journal["status"] = "applied"
             _persist(journal_path, journal)
         except Exception as exc:

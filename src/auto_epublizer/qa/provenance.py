@@ -484,6 +484,28 @@ def _audit_inserts(result: ProvenanceResult, structured_dir: Path) -> None:
             result.add("warning", "W_INSERT_NO_LATEX", f"公式缺 agent 手写 LaTeX：{r.id}")
 
 
+def duplicate_toc_units(entries: list[dict[str, Any]]) -> list[str]:
+    """前置目录与书末目录同时进 spine 的单元 ID（#72-4，只提示不阻断）。"""
+    titles = {
+        "目录",
+        "目次",
+        "目錄",
+        "详细目录",
+        "contents",
+        "tableofcontents",
+        "tabledesmatières",
+        "inhalt",
+        "оглавление",
+    }
+    found = []
+    for entry in entries:
+        kind = str(entry.get("kind") or "").casefold()
+        title = re.sub(r"[\s\W_]+", "", str(entry.get("title") or "").casefold())
+        if kind == "toc" or title in titles:
+            found.append(str(entry.get("id") or ""))
+    return found if len(found) > 1 else []
+
+
 def audit_provenance(
     store: Any,
     entries: list[dict[str, Any]],
@@ -514,6 +536,15 @@ def audit_provenance(
     if media_map is not None:
         for finding in media_map.findings:
             result.add("warning", "W_MEDIA_MAP", finding)
+    duplicate_toc = duplicate_toc_units(entries)
+    if duplicate_toc:
+        result.add(
+            "warning",
+            "W_TOC_DUPLICATE",
+            "前置目录与书末目录同时在 spine："
+            + "、".join(duplicate_toc)
+            + "（核对是否重复；如需保留请说明）",
+        )
 
     # 期望内容集：与 _render_and_pack 的跳过逻辑镜像（译文优先 → 空壳跳过）
     # 同步提取子标题锚点（与 build 同一 md 输入、同一 subheading_anchors 实现）

@@ -13,6 +13,7 @@ from auto_common.workspace import RunStore
 
 from ..notes import extract_candidates, read_notes_json
 from .evidence import collect_breaks
+from .note_inventory import collect_note_inventory
 
 
 def _same_bbox(left: Any, right: Any) -> bool:
@@ -224,6 +225,7 @@ def collect_source_evidence(
         if not isinstance(facts, dict):
             raise ValueError("facts.json 顶层不是对象")
         toc = (facts.get("source") or {}).get("toc")
+    inventory = collect_note_inventory(store)
     result = {
         "schema_version": "1",
         "rule_version": "source-evidence-1",
@@ -235,6 +237,9 @@ def collect_source_evidence(
         "boundaries": collect_breaks(store),
         "note_candidates": candidates,
         "note_evidence": _registered_note_evidence(store, blocks, candidates, note_ids),
+        # 独立于 notes.json 的源注候选清点；跨页注尾只在两端都像注文时配对。
+        "note_inventory": inventory,
+        "note_tail_pairs": inventory["continued_tails"],
         "source_inventory_status": "manual",
     }
     result["input_digest"] = hashlib.sha256(

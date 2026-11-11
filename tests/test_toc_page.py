@@ -171,3 +171,26 @@ def test_preserved_toc_line_keeps_original_spacing_and_year(tmp_path: Path) -> N
     )
     html = _toc_html(_build(store))
     assert "Edited by John Smith 2024" in html
+
+
+def test_generated_toc_uses_translated_headings(tmp_path: Path) -> None:
+    """D2：有译文时目录页标签/标题必须用译文，不用源文标题。"""
+    store = _workspace(tmp_path)
+    pub = store.load_publication()
+    translated_titles = {
+        "Contents": "# 目录\n",
+        "Part One": "# 第一部\n",
+        "Chapter One": "## 第一章\n\n正文。\n",
+        "Chapter Two": "## 第二章\n\n正文。\n",
+    }
+    for unit in pub.units:
+        rel = (unit.meta or {}).get("rel_path")
+        translated = translated_titles.get(unit.title)
+        if not rel or translated is None:
+            continue
+        path = store.translation_dir / rel
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(translated, encoding="utf-8")
+    html = _toc_html(_build(store))
+    assert "目录" in html and "第一部" in html and "第一章" in html and "第二章" in html
+    assert "Chapter One" not in html and "Part One" not in html and "Contents" not in html

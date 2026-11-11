@@ -158,3 +158,92 @@ def test_unlocated_structured_lines_keep_confidence_and_source(tmp_path: Path) -
     assert block["ocr_lines"] == 2
     assert block["ocr_source"].endswith("pages/p001.png")
     assert block["ocr_confidence"] == pytest.approx(0.6)
+
+
+def test_split_block_paragraphs_uses_line_indent_without_changing_text() -> None:
+    """#86：段首缩进把整块切成两段；续行抖动不切。"""
+    from auto_epublizer.ingest.pdf_reader import split_block_paragraphs
+
+    block = {
+        "text": "First sentence.\nfirst continuation.\nSecond paragraph starts.\nsecond continuation.",
+        "bbox": [10, 10, 110, 90],
+        "font_size": 10,
+        "lines": [
+            {"text": "First sentence.", "bbox": [10, 10, 110, 20]},
+            {"text": "first continuation.", "bbox": [10.5, 21, 110, 31]},
+            {"text": "Second paragraph starts.", "bbox": [30, 32, 110, 42]},
+            {"text": "second continuation.", "bbox": [10, 43, 110, 53]},
+        ],
+    }
+    parts = split_block_paragraphs(block)
+    assert [part["text"] for part in parts] == [
+        "First sentence.\nfirst continuation.",
+        "Second paragraph starts.\nsecond continuation.",
+    ]
+    assert parts[0]["bbox"][2] == 110
+
+
+def test_group_ocr_lines_keeps_line_boxes_for_indent_evidence() -> None:
+    """#86：OCR 合并块必须保留行框，后续才能判段首缩进。"""
+    from auto_epublizer.ingest.pdf_reader import _group_ocr_lines
+
+    lines = [
+        OcrLine("first sentence.", (10.0, 20.0, 110.0, 40.0), 0.9),
+        OcrLine("second paragraph.", (30.0, 45.0, 110.0, 65.0), 0.9),
+    ]
+    blocks = _group_ocr_lines(lines, scale=1.0, source="test")
+    # 合并后按段首缩进切成两块；两块都必须保留行框。
+    assert len(blocks) == 2
+    assert all(block["lines"] for block in blocks)
+    assert blocks[1]["text"] == "second paragraph."
+    assert blocks[1]["lines"][0]["bbox"][0] == 30.0
+
+
+def test_assign_columns_marks_two_column_geometry() -> None:
+    """#58：双栏页标 0/1；单栏或证据不足不标。"""
+    from auto_epublizer.ingest.pdf_reader import _assign_columns
+
+    blocks = [
+        {"type": "text", "bbox": [20, 10, 180, 40]},
+        {"type": "text", "bbox": [25, 50, 180, 80]},
+        {"type": "text", "bbox": [320, 10, 480, 40]},
+        {"type": "text", "bbox": [322, 50, 480, 80]},
+    ]
+    _assign_columns(blocks, 500)
+    assert [b.get("column") for b in blocks] == [0, 0, 1, 1]
+
+    single = [{"type": "text", "bbox": [20, 10, 480, 40]}]
+    _assign_columns(single, 500)
+    assert "column" not in single[0]
+
+
+def test_split_block_paragraphs_recomputes_group_font_size() -> None:
+    """#86：拆段后字号按组取最大，不把标题字号带进正文段。"""
+    from auto_epublizer.ingest.pdf_reader import split_block_paragraphs
+
+    block = {
+        "type": "text",
+        "text": "Heading\\nBody one.\\nBody two.",
+        "bbox": [10, 10, 200, 60],
+        "font_size": 20,
+        "lines": [
+            {"text": "Heading.", "bbox": [10, 10, 200, 30], "size": 20},
+            {"text": "Body one.", "bbox": [30, 31, 200, 45], "size": 10},
+            {"text": "Body two.", "bbox": [30, 46, 200, 60], "size": 10},
+        ],
+    }
+    parts = split_block_paragraphs(block)
+    assert [part["font_size"] for part in parts] == [20, 10]
+
+
+def test_assign_columns_ignores_centered_title_above_body() -> None:
+    """居中标题 + 下方正文不构成双栏（垂直无重叠）。"""
+    from auto_epublizer.ingest.pdf_reader import _assign_columns
+
+    blocks = [
+        {"type": "text", "bbox": [180, 10, 320, 30]},  # 居中标题
+        {"type": "text", "bbox": [20, 100, 480, 140]},  # 正文
+        {"type": "text", "bbox": [22, 150, 480, 190]},
+    ]
+    _assign_columns(blocks, 500)
+    assert all("column" not in block for block in blocks)
