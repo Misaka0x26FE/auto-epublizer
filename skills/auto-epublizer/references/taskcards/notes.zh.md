@@ -8,6 +8,8 @@
 书里确实出现注文候选：`preprocessing/note_candidates.jsonl` 有未决条目，或
 `structured/notes.json` 尚未登记 / 已因源文或结构变更而失效。
 
+按任务附带的 `evidence` 定位第一个未决候选。旧数字注码可用 `evidence notes --unit <ID> --json` 查看每次出现和同号注文。缺原页证据时保留未决并记录缺件。
+
 **动作（`notes_verify`）**：逐条回看源件（页底 / 边注 / 对页证据）核证候选，把
 `disposition=note|not_note` 写回 `preprocessing/note_candidates.jsonl`；判定为 note 的写进
 `structured/notes.json`（注文内容 + 源引用位置/证据），并在正文**原引用位置**保留

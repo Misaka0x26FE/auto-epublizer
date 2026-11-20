@@ -25,8 +25,8 @@ THEME_SHA256 = {
 }
 #: 提取前功能性样式层
 _STYLE_SHA256 = "af7d117ac487bf17f782a0a3f3050a8c371c202935c0c05e7947be28cd094140"
-#: 提取前 PrintStyle() 默认 CSS（A5/10.5pt/1.55）
-PDF_CSS_SHA256 = "86ea11ea02618786640e848d139d032ace7f65080d42d5aac733529ab8fbec7b"
+#: 2026-11-20：长表跨页，表尾来源仅显示一次。
+PDF_CSS_SHA256 = "bc5bdf17813f5973c175fa9521425fee5483b38baade6d2a564e15f79c14222e"
 
 
 def test_functional_style_layer_unchanged() -> None:

@@ -1,9 +1,11 @@
-<!-- i18n: source=notes.zh.md sha256=e97fa4d5e02738c20e39a5e22071f4060181c2f1c7834dbba09a4a3fc0a7568d -->
+<!-- i18n: source=notes.zh.md sha256=999bfcdc1bf320fe75e4fe06c5ef8b40bdb09c2cc09a30ce9cedb63ea9d308f3 -->
 > **English** | [中文](notes.zh.md)
 
 # Task card: notes (verify / register)
 
 Stage document: `references/notes.md`.
+
+Use the task's `evidence` field to locate the first unresolved candidate. For legacy numeric markers, use `evidence notes --unit <ID> --json` to see each occurrence and same-label definitions. If the source-page evidence is unavailable, leave the candidate pending and record what is missing.
 
 **Situation (restated from disk)**: `next_tasks[0].kind` is `notes_verify` or
 `notes_register` — the book really does carry note candidates:

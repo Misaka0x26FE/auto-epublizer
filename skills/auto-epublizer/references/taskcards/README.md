@@ -1,4 +1,4 @@
-<!-- i18n: source=README.zh.md sha256=08ddfad50ad89f353b6a6332a373209c870cd1f944bdf408aa1b979efd743f61 -->
+<!-- i18n: source=README.zh.md sha256=f88d2a0f60beca662703c6ab4ecebc681ac7741334c3c152e6f3bc3087b754dc -->
 > **English** | [中文](README.zh.md)
 
 # Task cards (weak-model path)
@@ -14,7 +14,7 @@ work from the machine pointer returned by `status --json`.
 |---|---|
 | `preprocess` | [preprocess.md](preprocess.md) |
 | `write_preprocessing` | [write-preprocessing.md](write-preprocessing.md) |
-| `repair` | [repair.md](repair.md) |
+| `repair` / `source_evidence` | [repair.md](repair.md) |
 | `analyze` | [analyze.md](analyze.md) |
 | `translate` | [translate-unit.md](translate-unit.md) |
 | `import` | [import-unit.md](import-unit.md) |

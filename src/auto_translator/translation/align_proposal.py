@@ -22,11 +22,72 @@
 
 from __future__ import annotations
 
+import re
+from collections import Counter
 from collections.abc import Mapping, Sequence
 from typing import Any
 
+from auto_common.markdown import inline_code_chunks
+
 from ..review.blocks import block_spans
 from ..review.fidelity import content_blocks
+
+_NUMBER = re.compile(r"(?<![0-9A-Za-z])[0-9]{1,4}(?![0-9A-Za-z])")
+_LINK_OR_REF = re.compile(r"https?://\S+|\[[^\]\n]*\](?:\([^\n)]*\))?")
+
+
+def _numeric_anchors(block: str) -> Counter[str]:
+    if block.startswith(("```", "~~~")):
+        return Counter()
+    text = " ".join(part for code, part in inline_code_chunks(block) if not code)
+    return Counter(_NUMBER.findall(_LINK_OR_REF.sub(" ", text)))
+
+
+def _offset_candidates(
+    src_blocks: list[str], tgt_blocks: list[str], mappings: list[dict[str, Any]], *, has_rows: bool
+) -> list[dict[str, Any]]:
+    """用独立数字锚点查连续偏移。低分、并列和拆合块不作证据。"""
+    if len(src_blocks) != len(tgt_blocks):
+        return []
+    sources = [_numeric_anchors(block) for block in src_blocks]
+    runs: list[list[dict[str, Any]]] = []
+    for index, (block, mapping) in enumerate(zip(tgt_blocks, mappings, strict=True)):
+        if has_rows and (mapping["status"] != "exact" or mapping["source_blocks"] != [index + 1]):
+            continue
+        target = _numeric_anchors(block)
+        if len(target) < 2:
+            continue
+        scores = []
+        for other in range(max(0, index - 3), min(len(sources), index + 4)):
+            source = sources[other]
+            shared = target & source
+            score = shared.total() / (target | source).total() if len(shared) >= 2 else 0.0
+            scores.append((score, other, shared))
+        scores.sort(key=lambda item: item[0], reverse=True)
+        score, other, shared = scores[0]
+        if other == index or score < 0.6 or score - scores[1][0] < 0.2:
+            continue
+        evidence = {
+            "target_block": index + 1,
+            "source_block": other + 1,
+            "anchors": sorted(shared.elements()),
+            "score": round(score, 4),
+        }
+        if runs and runs[-1][-1]["target_block"] == index and runs[-1][-1]["source_block"] == other:
+            runs[-1].append(evidence)
+        else:
+            runs.append([evidence])
+    return [
+        {
+            "status": "manual",
+            "target_range": [run[0]["target_block"], run[-1]["target_block"]],
+            "source_range": [run[0]["source_block"], run[-1]["source_block"]],
+            "offset": run[0]["source_block"] - run[0]["target_block"],
+            "evidence": run,
+        }
+        for run in runs
+        if len(run) >= 3
+    ]
 
 
 def _side_spans(
@@ -152,4 +213,7 @@ def propose_alignment(
         "mappings": mappings,
         "uncovered": uncovered,
         "issues": issues,
+        "offset_candidates": _offset_candidates(
+            src_blocks, tgt_blocks, mappings, has_rows=bool(rows)
+        ),
     }

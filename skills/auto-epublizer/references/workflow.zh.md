@@ -40,6 +40,9 @@ checkout、项目 `uv` 环境与无覆盖骨架生成；安装 Skill 不等于�
 不要自行规划整条流程。`done_when` 是完成判据的机器表述（某条 CLI 命令或某个工作区
 文件），因此无需依赖模型自评即可核对。
 
+中途交接时，在工作区记录已登记的单元、已核证的页或段、相关文件及摘要、告警和待补证据。
+接手者先刷新 `status --json`，确认交接记录与当前文件一致，再执行当前任务。出版顺序为先 `build`、再 `qa`，通过后进入交付审计。
+
 遇到**源站/脏源/边界情况**（如 Baka-Tsuki 插图段不渲染、epubcheck 离线装 jar、
 MediaWiki 卷导航垃圾混入 structured），先查 `lessons/` 目录——里面是真实工作沉淀的
 「判据 + 处置 + 验证」，命中即按它处理；未命中再自行排查。
@@ -154,6 +157,8 @@ auto-epublizer doctor [--json] [--ping]
 
 # 预处理（新书：init + 零 token 事实收集 → preprocessing/facts.*；已有工作区：幂等刷新）
 auto-epublizer preprocess <input> [--reference <path...>] [--original <path>] [--progress] [--target zh-CN] [--workspace <dir>]
+# 新书示例：preprocess sample.pdf --workspace ./books → ./books/sample/publication.json
+# 后续使用实际书籍目录，例如 status --workspace ./books/sample --json
 #   --force（省略 input）：从 source/ 原地重建 structured/ 与 facts（误中断恢复；单元状态重置 split）
 #   --original <path>：把未改动的交付原件归档到 references/user/（issue #30 §4.6）
 #   --progress：长任务（PDF 逐页）进度到 stderr（issue #30 §4.4）
@@ -196,12 +201,14 @@ auto-epublizer pdf-verify --pdf <out.pdf> [--json]     # 重算源 EPUB/PDF 哈�
 
 # 只读证据（确定性、零 token；不放行、不改状态）
 auto-epublizer evidence source [--json] [--note-id <id> ...] [--workspace <dir>]
-auto-epublizer evidence partition [--json] [--workspace <dir>]   # 源行分区账本：逐行去向/重复对次/跨块区间
+auto-epublizer evidence partition [--json] [--save-tasks] [--workspace <dir>]   # 源行去向、重复对次、跨块区间、清洗待核候选
 auto-epublizer evidence breaks [-o <jsonl>] [--workspace <dir>]
 auto-epublizer evidence page-numbers [--json] [--workspace <dir>]  # 目录/索引页码策略与重复候选
 auto-epublizer evidence index [--json] [--workspace <dir>]         # 逐条索引页码引用/源页定位/孤页候选
 auto-epublizer evidence toc-diff [--epub <path>] [--json] [--workspace <dir>]  # 印刷目录↔EPUB nav 逐项对账
 auto-epublizer evidence notes [--render] [--dpi 150] [--max-crops 200] [--mark-reviewed <id> ...] [--workspace <dir>]
+auto-epublizer evidence notes --unit ch04 --json [--workspace <dir>]  # 旧数字注码的原位和同号候选
+auto-epublizer evidence table <基准.xhtml> --epub <成品.epub> --member OEBPS/ch01.xhtml [--table 1]
 auto-epublizer evidence report [--json] [--epub <path>] [--workspace <dir>]
 
 # 质检（epubcheck 零 error + 解包审计 + 溯源审计 + G5 放行判定）
@@ -219,6 +226,13 @@ auto-epublizer status --all [--json] [--workspace <work-root>]
 # 跨书台账（markdown）：机器可重算列 + 待填领域/摘要
 auto-epublizer ledger [-o <ledger.md>] [--workspace <work-root>]
 ```
+
+`evidence partition --json` 的 `cleanup_candidates` 提示两类待核文本：疑似页眉之后未匹配的原行，以及同页字号突出的未匹配短块。按 `missing` 中的原始文件摘要、页、块及字符区间回查底本。该候选列表沿用只读取证流程，分区完整性仍由原有逐行字段报告。候选为空也需结合原始证据的可用性和未决行数判读。
+显式加 `--save-tasks` 才会把候选及相邻块保存为 `preprocessing/source-tasks.json`，供 `status --json` 逐项派发。候选绑定原始页摘要、结构层摘要和 catalog 摘要，任一输入变化都会重新提示取证，不得沿用旧判断。核证结果写入 `repairs.jsonl` 时保留 `candidate_id`、单元和工作区相对证据路径。
+
+`evidence notes --unit` 在正文中定位旧数字 `[^N]` 的每次出现，列出上下文可匹配的原页、同号单元与注文。该模式输出只读 JSON，所有绑定候选均须人工核证，裸数字需另查原页。
+
+`evidence table` 接受一份人工对照底本核过的单表 XHTML，其中填入预期的成品文字。命令比较明确指定的 EPUB 成员与表序，输出行列坐标、合并范围、表头和表尾分组及差异。标题可用 `caption` 表达，表外的来源与注释另行核验。
 
 ## 机器接口边界（#50）
 

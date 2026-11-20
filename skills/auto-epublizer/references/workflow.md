@@ -1,4 +1,4 @@
-<!-- i18n: source=workflow.zh.md sha256=4fb0fd915a47266d7aa29edb3f2d2ee0d270db10e9086097d313ae846d9b6d8a -->
+<!-- i18n: source=workflow.zh.md sha256=f797e688c3db7e1960d2cb8593e2323e61f87fbf63d0fcb346ae2c96f246856f -->
 > **English** | [中文](workflow.zh.md)
 
 # Workflow (stage routing + command overview)
@@ -43,6 +43,11 @@ the existing state machine (no second state source). Execute **only the first en
 re-run `status --json` to refresh — do not plan the whole flow yourself. `done_when` is the
 machine form of the completion criterion (a CLI command or a workspace file), so it can be
 checked without trusting a model's self-assessment.
+
+At handoff, record the registered units, pages or passages already checked, paths and digests,
+advisories, and missing evidence. The next operator runs `status --json`, checks the handoff
+against the current files, then follows the current task. Run `build` before `qa`, and start the
+delivery audit after QA approves release.
 
 When you hit a **source-site / dirty-source / edge case** (e.g. Baka-Tsuki illustration
 segments not rendering, installing the epubcheck jar offline, MediaWiki volume-navigation
@@ -180,6 +185,8 @@ auto-epublizer doctor [--json] [--ping]
 
 # preprocessing (new book: init + zero-token fact collection → preprocessing/facts.*; existing workspace: idempotent refresh)
 auto-epublizer preprocess <input> [--reference <path...>] [--original <path>] [--progress] [--target zh-CN] [--workspace <dir>]
+# New book example: preprocess sample.pdf --workspace ./books → ./books/sample/publication.json
+# For later commands, use the book directory: status --workspace ./books/sample --json
 #   --force (input omitted): rebuild structured/ + facts in place from source/ (recovery after an interrupted preprocess; unit status resets to split)
 #   --original <path>: archive the unmodified delivered original into references/user/ (issue #30 §4.6)
 #   --progress: per-page progress to stderr for long tasks (PDF slicing, issue #30 §4.4)
@@ -223,12 +230,14 @@ auto-epublizer pdf-verify --pdf <out.pdf> [--json]     # recompute source EPUB/P
 
 # read-only evidence (deterministic, zero-token; releases nothing, changes no state)
 auto-epublizer evidence source [--json] [--note-id <id> ...] [--workspace <dir>]
-auto-epublizer evidence partition [--json] [--workspace <dir>]   # per-line source partition: destination/duplicates/block ranges
+auto-epublizer evidence partition [--json] [--save-tasks] [--workspace <dir>]   # source-line destinations, duplicates, block ranges and cleanup candidates
 auto-epublizer evidence breaks [-o <jsonl>] [--workspace <dir>]
 auto-epublizer evidence page-numbers [--json] [--workspace <dir>]  # TOC/index page policy and duplicate candidates
 auto-epublizer evidence index [--json] [--workspace <dir>]         # per-entry index refs, source locations, orphan pages
 auto-epublizer evidence toc-diff [--epub <path>] [--json] [--workspace <dir>]  # printed TOC vs EPUB nav, item by item
 auto-epublizer evidence notes [--render] [--dpi 150] [--max-crops 200] [--mark-reviewed <id> ...] [--workspace <dir>]
+auto-epublizer evidence notes --unit ch04 --json [--workspace <dir>]  # legacy numeric reference locations and same-label candidates
+auto-epublizer evidence table <baseline.xhtml> --epub <book.epub> --member OEBPS/ch01.xhtml [--table 1]
 auto-epublizer evidence report [--json] [--epub <path>] [--workspace <dir>]
 
 # QA (epubcheck zero errors + unpack audit + provenance audit + G5 release decision)
@@ -246,6 +255,13 @@ auto-epublizer status --all [--json] [--workspace <work-root>]
 # cross-book ledger (markdown): machine-recomputable columns + blank domain/summary to fill
 auto-epublizer ledger [-o <ledger.md>] [--workspace <work-root>]
 ```
+
+`evidence partition --json` reports two kinds of `cleanup_candidates` for manual review: unmatched source lines after a suspected running head and unmatched short blocks with prominent type on the same page. Check the original using the raw file digest, page, block and character span in `missing`. This list uses the read-only evidence workflow. The existing per-line fields still report partition completeness. Interpret an empty candidate list alongside raw evidence availability and the unresolved line count.
+Use explicit `--save-tasks` to save candidates and nearby blocks to `preprocessing/source-tasks.json` for per-item routing from `status --json`. Each candidate binds raw-page, structured-source and catalog digests. Any input change reopens source evidence instead of reusing the old judgement. When recording the result in `repairs.jsonl`, preserve `candidate_id`, the unit and a workspace-relative evidence path.
+
+`evidence notes --unit` locates each legacy numeric `[^N]` reference in the unit and lists source pages that match its context, units using the same label, and candidate definitions. The mode emits read-only JSON. Verify each candidate binding manually and check bare numbers against the source page separately.
+
+`evidence table` accepts a source-checked XHTML file with one table containing the expected product text. It compares the specified EPUB member and table ordinal and reports coordinates, spans, header and footer groups, and differences. Use `caption` for in-table titles. Check sources and notes outside the table separately.
 
 ## Machine-interface boundaries (#50)
 

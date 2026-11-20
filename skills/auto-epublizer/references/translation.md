@@ -1,4 +1,4 @@
-<!-- i18n: source=translation.zh.md sha256=5f22a1156d486029a23862a1e9ee7e4783d583a9c015ab093c4d0e801dd138b8 -->
+<!-- i18n: source=translation.zh.md sha256=11214379c0439a3d67f063b2fb70ad93c26e562e664d0809bee1d024b31ebceb -->
 > **English** | [中文](translation.zh.md)
 
 # Translation (chunk translation + sentence alignment + terminology loop)
@@ -89,6 +89,10 @@ file: `mappings[]` carries `status` (`exact` / `merge` / `split` / `propose` / `
   similarity; duplication, OCR gaps and heavy rewriting are never auto-accepted.
 - `propose` means no align row covers that target block: candidates only, no rows; sentence
   ownership after splitting is confirmed by the agent before align is written.
+- `offset_candidates` locates consecutive suspected offsets in units with equal source and target
+  block counts. It reports both block ranges and the numeric evidence for manual review. Blocks
+  with missing or tied evidence and known splits or merges supply no offset evidence. The list
+  leaves proposal mappings and release decisions unchanged.
 - A proposal is not an applied result; writing goes through the explicit B4 transaction
   (the `repair apply --apply` family).
 
@@ -300,3 +304,20 @@ auto-epublizer chunk import-tr --source <old/.tr> --apply    # explicit legacy i
   are never guessed.
 - Block-level align is paragraph-level and still validated by import/G0/delivery, but it
   changes the `total_sentences` denominator.
+### Single-draft pilot
+
+Run `chunk export --unit ch01 --explicit` to create templates such as `0001.draft.json`.
+Open the exported JSON under `preprocessing/chunks/ch01/` in the book workspace.
+For example, the piece for `The door opened.` can read `{"end": 16, "target": "门开了。"}`.
+Keep `source_sha256` and each block's `source`. Write the translation once in `pieces[].target`.
+Each `end` is a Unicode character offset within the source block. The range starts at the previous
+`end`, or at zero for the first piece. The template suggests sentence ranges for ordinary single-line
+prose and whole-block ranges elsewhere. After checking the source, adjust contiguous ranges within
+the block and use the optional `note` for split, merge or uncertain readings. Include any necessary
+spaces in the target pieces. Set `"paragraph": true` on a later piece to start a new target paragraph.
+Set `"join_previous": true` on the later of two adjacent prose blocks in a chunk to join their target
+paragraphs while keeping separate alignment rows. Use the manual workflow to blend multiple source
+blocks into a single translated sentence.
+Use `chunk assemble ch01` to preview, add `--apply` to write Markdown and JSONL, then run
+`import --unit ch01`. To revise the draft, edit the template and preview again. Compare the formal
+outputs before explicitly using `--force` to replace them. Keep semantic review and source-page checks.

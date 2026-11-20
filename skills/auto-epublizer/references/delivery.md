@@ -1,4 +1,4 @@
-<!-- i18n: source=delivery.zh.md sha256=874926f4d86d99ea389f77623c505195b79dfc3b760816df4c13fe25fd28dabb -->
+<!-- i18n: source=delivery.zh.md sha256=d50ed4ed9637905dce8cedf2687fd6b8b47fa0dfc7d6ff760ba143a85efeedd9 -->
 > **English** | [中文](delivery.zh.md)
 
 # Delivery (delivery audit: mandatory full validation after qa and before delivery)
@@ -109,6 +109,8 @@ Write `reviews/delivery-<YYYYMMDD-HHMMSS>.md` (once this file exists, qa no long
 ```markdown
 # Delivery audit <YYYYMMDD-HHMMSS>
 
+- artifacts_digest: `<copy artifacts_digest from the current report.json>`
+
 - Audit target: <slug>.epub (qa released, reason=ok); facts refresh time …
 - Tool reconciliation: epub_coverage=…; epub_media_missing=0; epub_footnotes_missing=0; align_md_drift=0
 - Sampled chapters: <list of first/middle/last/high-risk chapters>
@@ -130,6 +132,10 @@ Write `reviews/delivery-<YYYYMMDD-HHMMSS>.md` (once this file exists, qa no long
 Custom audit/index-repair tools must follow the [evidence and safe-repair contract](quality-evidence.md).
 Unexecuted checks remain unknown/manual, never pre-checked. H1 hits, token bags and TOC counts
 cannot stand in for content acceptance.
+
+After all applicable delivery checks pass, add `- delivery_result: pass` on its own line.
+`status --json` uses that line and the current report digest to identify the audit record.
+If the record belongs to an earlier report or QA has withheld release, status still points to verification or repair.
 
 ## 8. Artifact sync and distribution
 

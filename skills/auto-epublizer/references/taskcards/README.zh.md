@@ -13,7 +13,7 @@
 |---|---|
 | `preprocess` | [preprocess.zh.md](preprocess.zh.md) |
 | `write_preprocessing` | [write-preprocessing.zh.md](write-preprocessing.zh.md) |
-| `repair` | [repair.zh.md](repair.zh.md) |
+| `repair` / `source_evidence` | [repair.zh.md](repair.zh.md) |
 | `analyze` | [analyze.zh.md](analyze.zh.md) |
 | `translate` | [translate-unit.zh.md](translate-unit.zh.md) |
 | `import` | [import-unit.zh.md](import-unit.zh.md) |

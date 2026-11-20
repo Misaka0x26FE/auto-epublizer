@@ -231,10 +231,21 @@ def report_state(store: Any) -> dict[str, Any]:
         return {"exists": False, "released": None, "stale": False, "reason": None}
     try:
         report = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
+    except (OSError, ValueError):
+        return {"exists": True, "released": None, "stale": True, "reason": "report_unreadable"}
+    if not isinstance(report, dict):
         return {"exists": True, "released": None, "stale": True, "reason": "report_unreadable"}
     released = report.get("released")
     recorded = str(report.get("artifacts_digest") or "")
+    if recorded and not released:
+        epub = report.get("artifacts_epub") or None
+        if artifacts_digest(store, epub_path=epub) != recorded:
+            return {
+                "exists": True,
+                "released": released,
+                "stale": True,
+                "reason": "artifacts_changed",
+            }
     if not released:
         return {
             "exists": True,
@@ -267,4 +278,19 @@ def report_state(store: Any) -> dict[str, Any]:
         "released": released,
         "stale": False,
         "reason": report.get("released_reason"),
+        "artifacts_digest": recorded,
     }
+
+
+def delivery_record_current(store: Any, digest: str) -> bool:
+    """查找明确验收通过且绑定当前报告产物的交付记录。"""
+    if not digest:
+        return False
+    for path in store.reviews_dir.glob("delivery-*.md"):
+        try:
+            lines = set(path.read_text(encoding="utf-8").splitlines())
+        except (OSError, ValueError):
+            continue
+        if {f"- artifacts_digest: `{digest}`", "- delivery_result: pass"} <= lines:
+            return True
+    return False

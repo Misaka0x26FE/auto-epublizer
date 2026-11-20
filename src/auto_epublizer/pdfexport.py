@@ -243,6 +243,9 @@ h1, h2, h3, h4 { page-break-after: avoid; font-family: inherit; }
 section.colophon { font-size: ${note_pt}pt; line-height: 1.5; }
 section.colophon h1 { font-size: ${h2_pt}pt; }
 figure, table, aside { page-break-inside: avoid; }
+/* 表尾的来源和附注只在数据结束时印一次。 */
+tfoot { display: table-row-group; break-inside: avoid; }
+table:has(> tfoot) > tbody:last-of-type > tr:last-child { break-after: avoid; }
 /* 定位标记：不可见但对 PDF 文本层可检索；映射完成后 redaction 清除 */
 span.aepmark { font-size: 1px; color: #ffffff; }
 span.aepmark.aepanchor { font-size: 0.1px; line-height: 0; }

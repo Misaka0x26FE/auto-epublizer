@@ -545,6 +545,7 @@ def evidence_breaks_cmd(
 
 @evidence_app.command("notes")
 def evidence_notes_cmd(
+    unit: str | None = typer.Option(None, "--unit", help="只读查看指定单元的旧数字注码证据"),
     note_id: list[str] | None = typer.Option(
         None, "--note-id", help="只导出指定 note_id（可重复）；缺省导出全部登记注文"
     ),
@@ -564,6 +565,14 @@ def evidence_notes_cmd(
     """逐条注文源页证据（C1）：定位到页/块/几何框；--render 才生成裁剪图。"""
     store = _store_from(workspace, load_config(config or _CONFIG_PATH))
     try:
+        if unit is not None:
+            if note_id or output or render or mark_reviewed:
+                raise ValueError("--unit 不可与登记注文的导出或裁剪选项合用")
+            from .preprocess.source_evidence import collect_note_anchors
+
+            anchors = collect_note_anchors(store, unit)
+            _emit_json(json.dumps(anchors, ensure_ascii=False, indent=2))
+            return
         data = orch.evidence_notes(
             store,
             note_ids=note_id,
@@ -602,16 +611,39 @@ def evidence_notes_cmd(
         raise typer.Exit(1)
 
 
+@evidence_app.command("table")
+def evidence_table_cmd(
+    expected: Path = typer.Argument(..., help="人工核过的单表 XHTML 基准"),
+    epub: Path = typer.Option(..., "--epub", help="待核成品"),
+    member: str = typer.Option(..., "--member", help="表格所在的 EPUB 成员路径"),
+    number: int = typer.Option(1, "--table", min=1, help="成员内的表格序号"),
+) -> None:
+    """只读逐格核对 EPUB 表格，输出 JSON。"""
+    from xml.etree.ElementTree import ParseError
+    from zipfile import BadZipFile
+
+    from .table_evidence import compare_table
+
+    try:
+        result = compare_table(expected, epub, member, number)
+    except (ValueError, OSError, ParseError, BadZipFile) as exc:
+        raise typer.Exit(f"表格核对失败：{exc}") from None
+    _emit_json(json.dumps(result, ensure_ascii=False, indent=2))
+    if result["status"] == "fail":
+        raise typer.Exit(1)
+
+
 @evidence_app.command("partition")
 def evidence_partition_cmd(
     workspace: str | None = typer.Option(None, "--workspace", help="工作区目录"),
     json_output: bool = typer.Option(False, "--json", help="输出只读分区账本 JSON"),
+    save_tasks: bool = typer.Option(False, "--save-tasks", help="保存供 status 读取的清洗候选"),
     config: str | None = typer.Option(None, "--config", help="配置文件路径"),
 ) -> None:
-    """源行分区账本（#62/#58）：逐行去向、重复对位、跨块区间；只读。"""
+    """源行分区账本（#62/#58）：逐行去向、重复对位、跨块区间；默认只读。"""
     store = _store_from(workspace, load_config(config or _CONFIG_PATH))
     try:
-        data = orch.source_partition(store)
+        data = orch.source_partition(store, save_tasks=save_tasks)
     except (ValueError, OSError, orch.OrchestrationError) as exc:
         raise typer.Exit(f"分区账本读取失败：{exc}") from None
     if json_output:
@@ -624,7 +656,8 @@ def evidence_partition_cmd(
         console.print(
             f"源分区：{data['source_lines']} 行 → 正文 {counts['body']}、注文 {counts['note']}、"
             f"已批准噪声 {counts['noise']}、未决 {counts['unresolved']}；"
-            f"目标端多出 {len(data['destination_extra'])} 行"
+            f"目标端多出 {len(data['destination_extra'])} 行，"
+            f"清洗待核候选 {len(data['cleanup_candidates'])} 条"
         )
     if data["status"] == "ok" and data["counts"]["unresolved"]:
         raise typer.Exit(1)
@@ -1878,6 +1911,7 @@ def knowledge_push_cmd(
 def chunk_export_cmd(
     unit: list[str] | None = typer.Option(None, "--unit", help="只导出指定单元（可重复）"),
     max_chars: int = typer.Option(4000, "--max-chars", help="每块目标字符数（至少 200）"),
+    explicit: bool = typer.Option(False, "--explicit", help="导出带源区间的单份译稿模板"),
     workspace: str | None = typer.Option(None, "--workspace", help="工作区目录"),
     config: str | None = typer.Option(None, "--config", help="配置文件路径"),
 ) -> None:
@@ -1886,7 +1920,7 @@ def chunk_export_cmd(
 
     store = _store_from(workspace, load_config(config or _CONFIG_PATH))
     try:
-        result = export_chunks(store, unit_ids=unit, max_chars=max_chars)
+        result = export_chunks(store, unit_ids=unit, max_chars=max_chars, explicit=explicit)
     except (ValueError, OSError) as exc:
         raise typer.Exit(f"分块导出失败：{exc}") from None
     total = sum(item["chunks"] for item in result["units"])

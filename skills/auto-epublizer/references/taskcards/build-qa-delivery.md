@@ -1,4 +1,4 @@
-<!-- i18n: source=build-qa-delivery.zh.md sha256=4f1a3c4fbbeecb6bea47975fbe8c00443e5169c2e9f2fa83fd1f22a96ab1daf9 -->
+<!-- i18n: source=build-qa-delivery.zh.md sha256=4aa84aa667ea0bfa7024638088d1314b80dbc86a9dc539860ffb779608e8261e -->
 > **English** | [中文](build-qa-delivery.zh.md)
 
 # Task card: build / qa / delivery
@@ -18,6 +18,7 @@ Stage reference: `references/build.md`, `references/qa.md`, `references/delivery
 - `build`: `auto-epublizer build [--theme standard|compact|spacious]` → EPUB in `output/`.
 - `qa`: `auto-epublizer qa` → epubcheck + unpack audit + independent registered-notes gate + `report.json`.
 - `delivery`: follow `references/delivery.md` (independent content/resource/registration/link/backlink reconciliation + sampling + manual checks), write `reviews/delivery-<ts>.md`, and byte-check every distribution copy. A desktop is not required: record "reader not tested" when unavailable; reader GUI checks are conditional compatibility sampling and do not replace offline acceptance or promise popups.
+- Copy `artifacts_digest` from the current `report.json` into the delivery record. After all applicable checks pass, add `- delivery_result: pass` and refresh `status --json`.
 - If delivering a print PDF: `pdf --strict` → `pdf-verify --pdf <out> --json`; record the PDF and source EPUB hashes in the delivery record. PDF/manifest stay outside the EPUB QA digest.
 
 **Done when**: `next_tasks` is empty, mandatory offline acceptance and the delivery record are complete, and distribution copies are byte-verified. An empty machine pointer alone is not delivery evidence.

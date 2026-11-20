@@ -1135,6 +1135,10 @@ def test_nav_anchor_depth_projection(tmp_path: Path) -> None:
     assert "ch02-h1" not in nav and "不出现" not in nav
 
 
+def test_unbalanced_implicit_raw_tag_renders_as_text() -> None:
+    assert markdown_to_xhtml("<A>") == "<p>&lt;A&gt;</p>"
+
+
 def test_raw_html_block_rejects_mixed_markdown() -> None:
     """块内混有普通 markdown 时不得放行未转义文本（白名单口径）。"""
     md = "<div>\nhello world\n</div>"  # 同一块内混排，非纯标签块

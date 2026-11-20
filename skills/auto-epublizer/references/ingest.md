@@ -1,4 +1,4 @@
-<!-- i18n: source=ingest.zh.md sha256=bdba38f36b9d82b9377d0b833c63f43e8f29f51a8afc4b0e2b12a3449d255f0b -->
+<!-- i18n: source=ingest.zh.md sha256=e78e2a960410cba44712f7ef28019bb8fde776572b3aae3e8fa0a5c53df4f85e -->
 > **English** | [中文](ingest.zh.md)
 
 # Ingest (file parsing)
@@ -48,6 +48,8 @@ pymupdf` disables it; `auto` (default) = scanned copy and key present → MinerU
 PDF → pymupdf.
 `pdf.ocr: off` can disable automatic OCR; `pdf.ocr: <other value>` is treated as a forced
 requirement (error when unavailable).
+
+A scanned PDF can produce `facts.md` and structured Markdown containing only page images even without OCR. Before translating, check that each page has readable text. If you can only obtain page images and cannot verify the text, record the affected pages and the missing text layer, OCR, or page transcription in the handoff.
 
 ## The agent page-by-page reading workflow for traditional OCR (second-choice approach)
 

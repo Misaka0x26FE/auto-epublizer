@@ -289,6 +289,8 @@ def test_next_tasks_drive_notes_verify_register_then_translate(tmp_path: Path) -
     orch.notes_candidates(store)
     head = orch.status(store)["next_tasks"][0]
     assert head["kind"] == "notes_verify"
+    assert head["unit"] == head["evidence"]["unit"]
+    assert head["done_when"]["pending"] == 0
     # 处置全部候选 → 下一个任务是 notes register
     path = notes_mod.candidates_path(store)
     rows = [json.loads(ln) for ln in path.read_text(encoding="utf-8").splitlines()]

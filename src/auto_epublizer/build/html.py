@@ -18,6 +18,7 @@ import re
 from dataclasses import dataclass
 from html import escape, unescape
 from typing import Any
+from xml.etree import ElementTree as ET
 
 from markdown_it import MarkdownIt
 from markdown_it.rules_inline import StateInline
@@ -503,7 +504,7 @@ _HTML_TAG_LINE = re.compile(r"^\s*(?:</?[A-Za-z][\w:.-]*(?:\s[^<>]*?)?/?>\s*)+$"
 
 
 def _raw_html_block(block: str) -> str | None:
-    """显式 pandoc raw 围栏直通；无围栏块仅在全部为标签行时直通。
+    """显式 pandoc raw 围栏直通；隐式标签块须构成完整 XHTML 片段。
 
     普通代码围栏由调用方转义，不因恰好包含 HTML 而升级为 raw。
     """
@@ -514,7 +515,15 @@ def _raw_html_block(block: str) -> str | None:
     kept = [_RAW_HTML_INLINE.sub(r"\1", line).strip() for line in lines]
     if not kept or not all(_HTML_TAG_LINE.match(line) for line in kept):
         return None
-    return "\n".join(kept)
+    fragment = "\n".join(kept)
+    # Pandoc 会把带命名空间的完整 SVG 拆成围栏和行内 raw，行内片段依赖外围声明。
+    if all(not _RAW_HTML_INLINE.sub("", line).strip() for line in lines):
+        return fragment
+    try:
+        ET.fromstring(f'<root xmlns:epub="http://www.idpf.org/2007/ops">{fragment}</root>')
+    except ET.ParseError:
+        return None
+    return fragment
 
 
 # 语义标签（epub-template-spec P2）：引用块 / 诗行块 / 列表

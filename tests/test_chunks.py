@@ -38,6 +38,58 @@ def _write_translation(store, unit: str = "ch01") -> None:
 def test_split_blocks_keeps_fenced_code_intact() -> None:
     blocks = split_blocks("# T\n\na\n\n```\nx\n\ny\n```\n\nb\n")
     assert blocks == ["# T", "a", "```\nx\n\ny\n```", "b"]
+    assert split_blocks("# T\nbody\n", separate_headings=True) == ["# T", "body"]
+
+
+def test_bound_draft_compiles_explicit_source_ranges(tmp_path: Path) -> None:
+    store = _store(tmp_path)
+    export_chunks(store, explicit=True)
+    draft = store.preprocessing_dir / "chunks/ch01/0001.draft.json"
+    data = json.loads(draft.read_text())
+    data["rows"][1]["pieces"] = [
+        {"end": 2, "target": "前半，"},
+        {"end": 4, "target": "后半。", "paragraph": True},
+    ]
+    data["rows"][2]["join_previous"] = True
+    for row in data["rows"]:
+        if row["pieces"][0]["target"] == "":
+            row["pieces"][0]["target"] = row["source"]
+    draft.write_text(json.dumps(data), encoding="utf-8")
+    assert not assemble_unit(store, "ch01")["applied"]
+    assert assemble_unit(store, "ch01", apply=True)["applied"]
+    rows = read_align(store.unit_align_path("ch01"))
+    assert [(r["src"], r["tgt"]) for r in rows[:2]] == [("第一", "前半，"), ("段。", "后半。")]
+    rel = store.load_publication().unit("ch01").meta["rel_path"]
+    assert "前半，\n\n后半。第二段。" in (store.translation_dir / rel).read_text()
+    orch.import_translations(store)
+    assert store.load_publication().unit("ch01").status == "aligned"
+    data["rows"][0]["pieces"][0]["target"] = "## 第一章"
+    draft.write_text(json.dumps(data), encoding="utf-8")
+    with pytest.raises(ValueError, match="标题层级"):
+        assemble_unit(store, "ch01")
+    data["rows"][0]["pieces"][0]["target"] = "# 第一章"
+    data["rows"][1]["pieces"][-1]["end"] = 3
+    draft.write_text(json.dumps(data), encoding="utf-8")
+    with pytest.raises(ValueError, match="覆盖"):
+        assemble_unit(store, "ch01")
+
+
+def test_bound_draft_rejects_missing_source_chunk_even_with_valid_remaining_digests(
+    tmp_path: Path,
+) -> None:
+    store = _store(tmp_path)
+    unit = store.load_publication().unit("ch01")
+    path = store.structured_dir / unit.meta["rel_path"]
+    with path.open("a", encoding="utf-8") as handle:
+        handle.write("\n" + "末段正文。" * 60 + "\n")
+    export_chunks(store, explicit=True, max_chars=200)
+    index = store.preprocessing_dir / "chunks/ch01/index.json"
+    data = json.loads(index.read_text())
+    assert len(data["chunks"]) > 1
+    data["chunks"].pop()
+    index.write_text(json.dumps(data), encoding="utf-8")
+    with pytest.raises(ValueError, match="覆盖全部原文"):
+        assemble_unit(store, "ch01")
 
 
 def test_export_and_assemble_preflight(tmp_path: Path) -> None:
@@ -137,6 +189,21 @@ def test_import_tr_preview_apply_and_count_mismatch(tmp_path: Path) -> None:
     (tr / "0002.zh.md").write_text("多余文件", encoding="utf-8")
     with pytest.raises(ValueError, match="不一致"):
         import_tr(store, tmp_path / "tr")
+
+
+def test_import_tr_preserves_explicit_draft(tmp_path: Path) -> None:
+    from auto_epublizer.chunks import import_tr
+
+    store = _store(tmp_path)
+    export_chunks(store, explicit=True)
+    draft = store.preprocessing_dir / "chunks/ch01/0001.draft.json"
+    before = draft.read_bytes()
+    legacy = tmp_path / "tr/ch01"
+    legacy.mkdir(parents=True)
+    (legacy / "0001.zh.md").write_text("旧译文", encoding="utf-8")
+    with pytest.raises(ValueError, match="不能导入"):
+        import_tr(store, legacy.parent, apply=True)
+    assert draft.read_bytes() == before
 
 
 def test_assemble_refuses_to_overwrite_hand_edited_translation(tmp_path: Path) -> None:

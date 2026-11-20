@@ -40,6 +40,8 @@ agent 在 plan.md 记录最终路由与依据（含「是否已询问用户 Mine
 `auto`（默认）= 扫描件且 key 存在 → MinerU，文字层 PDF → pymupdf。
 `pdf.ocr: off` 可关闭自动 OCR；`pdf.ocr: <其他值>` 视为强制要求（不可用时报错）。
 
+扫描件即使没有 OCR，也可能生成 `facts.md` 和仅含页图的结构稿。开始翻译前，检查各页正文是否实际可读。若目前只能取得页图且操作者无法核证正文，在交接记录中写明待补的文字层、OCR 或逐页转录，以及受影响页码。
+
 ## 传统 OCR 的 agent 逐页阅读工作流（次选方案）
 
 传统 OCR（tesseract/ocrmypdf/rapidocr）只保证**字符**识别；换行（段落边界）与插图

@@ -7,7 +7,7 @@ metadata:
   suite: auto-epublizer
   workspace_model: publication.json
 ---
-<!-- i18n: source=SKILL.zh.md sha256=03aaead8668fe7ede080b4687ab650aabd198bb39891011379ab12ecc5ba5131 -->
+<!-- i18n: source=SKILL.zh.md sha256=84142cc00d7b399d82a7224ceebc0fc28790c54508f4eecfe63a27ef95153c19 -->
 > **English** | [中文](SKILL.zh.md)
 
 # auto-epublizer
@@ -85,6 +85,8 @@ work-root rather than accidentally calling a global namesake. Read only the curr
 | Six-gate QC (G0–G5), blocking/advisory handling | `references/review.md` |
 | Pre-delivery full validation (after qa, before delivery; mandatory) | `references/delivery.md` |
 | `evidence report/source --json` read-only evidence; `repair apply/recover` approved repairs and pending recovery | `references/quality-evidence.md` |
+| Source-page cleanup tasks (`evidence partition --save-tasks`), suspected block offsets (`align-propose`), and the single-draft pilot (`chunk export --explicit`) | `references/workflow.md`, `references/translation.md` |
+| Legacy note-reference locations (`evidence notes --unit`) and EPUB table cell comparison (`evidence table`) | `references/workflow.md` |
 | EPUB packaging, code/raw HTML, SVG/media identity, software fingerprint, production credits and nav/NCX entry | `references/build.md` |
 | Books without a source cover: generated covers (`quarto` 界栏 / `hanze-academic` 汉译学术本), `cover-spec.json` design sheet, palettes/trim sizes/formats, font fallback, source cover wins | `references/cover.md` |
 | epubcheck + unpack audit, independent body/note reconciliation, segmentation advisory, report invalidation | `references/qa.md` |

@@ -54,3 +54,5 @@
 | [2026-11-10-field-archive-gap-analysis.md](2026-11-10-field-archive-gap-analysis.md) | 已完成（未提交） | 实战归档差距分析 16 项：证据校准、清洗/媒体/表格正确性、注文语言核验、分块暂存、报告摘要、制作信息/doctor、归档资产迁移与独立审查 |
 | [2026-11-10-archive-census.md](2026-11-10-archive-census.md) | 已完成（未提交） | 归档只读普查口径：52 工作区、154,239 报告句 vs 153,458 align 行、16,199 注文 ID 契约与七本高风险书候选分层 |
 | [2026-11-11-open-issues-repair-plan.md](2026-11-11-open-issues-repair-plan.md) | 已完成（未提交） | 39 个 open issue 逐条证据矩阵与关闭建议；第一轮修非语义脚注、书名页残余、align 基线覆盖、PDF 目录/§/收敛、生成封面重建、归档版本策略与链接自检、hygiene 处置、字体栈/元数据、OCR 切段/双栏、errata 可见性等；第二轮基于 translate.tar.gz 真实书完成 #58 索引/TOC/注文证据、#57/#72-1、#91 链接改写收窄、#93 术语/引号边界、#96 页眉/图版/print.css、#100 像素口径、#101 CJK 优先与 #40 PyPI 决策；产物与测试计数见计划 §6（全量 1513 passed / 3 skipped） |
+| [2026-11-19-academic-editorial-methodology.md](2026-11-19-academic-editorial-methodology.md) | 新版首轮与后续四项已验证 | 见 §10 的源页和块错配诊断、旧注码回查、EPUB 逐格核对、印刷 PDF 续表及清洗候选实测。原规划保留供追溯。 |
+| [2026-11-20-pdf-evidence-and-single-draft.md](2026-11-20-pdf-evidence-and-single-draft.md) | 实施与验收记录 | 原页任务、交付路由、单份译稿的实书回放与核证边界。 |

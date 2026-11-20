@@ -22,11 +22,15 @@ from pathlib import Path, PurePosixPath
 from typing import Any
 
 from auto_common.workspace import RunStore
+from auto_translator.review.g0 import count_heading_levels
+from auto_translator.translation.align import split_sentences
 
 SCHEMA_VERSION = 1
 RULE_VERSION = "chunk-1"
 DEFAULT_MAX_CHARS = 4000
 _FENCE = re.compile(r"^(```|~~~)")
+_STRUCTURAL_PREFIXES = ("#", "```", "~~~", "|", "![", "$$", ">", "[^", "<")
+_ATX_HEADING = re.compile(r"^#{1,6}[ \t]+\S")
 
 
 def chunk_root(store: RunStore) -> Path:
@@ -37,12 +41,18 @@ def _digest(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
-def split_blocks(md: str) -> list[str]:
+def split_blocks(md: str, *, separate_headings: bool = False) -> list[str]:
     """按空行切块，围栏代码块内部不切；保留块内原始文本。"""
     blocks: list[str] = []
     current: list[str] = []
     fenced = False
     for line in md.splitlines():
+        if separate_headings and not fenced and _ATX_HEADING.match(line):
+            if current:
+                blocks.append("\n".join(current))
+                current = []
+            blocks.append(line)
+            continue
         if _FENCE.match(line.strip()):
             fenced = not fenced
         if not fenced and not line.strip():
@@ -81,7 +91,11 @@ def _unit_rel(store: RunStore, unit_id: str) -> str:
 
 
 def export_chunks(
-    store: RunStore, *, unit_ids: list[str] | None = None, max_chars: int = DEFAULT_MAX_CHARS
+    store: RunStore,
+    *,
+    unit_ids: list[str] | None = None,
+    max_chars: int = DEFAULT_MAX_CHARS,
+    explicit: bool = False,
 ) -> dict[str, Any]:
     """导出分块暂存；已有译文分块保留，不覆盖。"""
     if max_chars < 200:
@@ -107,12 +121,16 @@ def export_chunks(
                     f"源文已变更，分块索引拒绝静默改写：{unit_id}（先运行 "
                     f"chunk reset --unit {unit_id} --apply 归档旧分块，再重新导出）"
                 )
-            if prior.get("max_chars") != max_chars or prior.get("rule_version") != RULE_VERSION:
+            if (
+                prior.get("max_chars") != max_chars
+                or prior.get("rule_version") != RULE_VERSION
+                or prior.get("explicit", False) != explicit
+            ):
                 raise ValueError(
                     f"分块参数/规则版本已变化，索引拒绝静默改写：{unit_id}（先运行 "
                     f"chunk reset --unit {unit_id} --apply）"
                 )
-        blocks = split_blocks(md)
+        blocks = split_blocks(md, separate_headings=explicit)
         chunks: list[dict[str, Any]] = []
         kept = 0
         for seq, group in enumerate(_group(blocks, max_chars), start=1):
@@ -124,12 +142,20 @@ def export_chunks(
             else:
                 path.parent.mkdir(parents=True, exist_ok=True)
                 path.write_text(text, encoding="utf-8")
+            translation_file = f"{seq:04d}.draft.json" if explicit else f"{seq:04d}.zh.md"
+            if explicit and not (unit_dir / translation_file).exists():
+                rows = [{"source": block, "pieces": _draft_pieces(block)} for block in group]
+                payload = {"source_sha256": _digest(text), "rows": rows}
+                _atomic_write(
+                    unit_dir / translation_file,
+                    (json.dumps(payload, ensure_ascii=False, indent=2) + "\n").encode("utf-8"),
+                )
             chunks.append(
                 {
                     "seq": seq,
                     "chunk_id": f"{unit_id}-{seq:04d}",
                     "file": name,
-                    "translation_file": f"{seq:04d}.zh.md",
+                    "translation_file": translation_file,
                     "source_sha256": _digest(text),
                     "chars": len(text),
                     "blocks": len(group),
@@ -144,6 +170,8 @@ def export_chunks(
             "max_chars": max_chars,
             "chunks": chunks,
         }
+        if explicit:
+            index["explicit"] = True
         unit_dir.mkdir(parents=True, exist_ok=True)
         tmp = index_path.with_name(index_path.name + ".tmp")
         tmp.write_text(json.dumps(index, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
@@ -198,6 +226,80 @@ def _align_text(rows: list[dict[str, Any]]) -> str:
     return "".join(json.dumps(row, ensure_ascii=False) + "\n" for row in rows)
 
 
+def _draft_pieces(block: str) -> list[dict[str, Any]]:
+    if any(marker in block for marker in ("\n", "`", "[", "<", "$")) or block.lstrip().startswith(
+        _STRUCTURAL_PREFIXES
+    ):
+        return [{"end": len(block), "target": ""}]
+    pieces = []
+    cursor = 0
+    for sentence in split_sentences(block):
+        cursor = block.index(sentence, cursor) + len(sentence)
+        pieces.append({"end": cursor, "target": ""})
+    pieces[-1]["end"] = len(block)
+    return pieces
+
+
+def _read_bound_draft(
+    path: Path, blocks: list[str], source_digest: str
+) -> list[tuple[bool, list[tuple[str, str, str | None, bool]]]]:
+    data = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(data, dict) or data.get("source_sha256") != source_digest:
+        raise ValueError(f"译稿源摘要不一致：{path.name}")
+    rows = data.get("rows")
+    if not isinstance(rows, list) or len(rows) != len(blocks):
+        raise ValueError(f"译稿源块覆盖不完整：{path.name}")
+    result = []
+    for index, (row, block) in enumerate(zip(rows, blocks, strict=True), 1):
+        where = f"{path.name} 第 {index} 块"
+        if not isinstance(row, dict) or row.get("source") != block:
+            raise ValueError(f"译稿源块已调整：{where}")
+        pieces = row.get("pieces")
+        if not isinstance(pieces, list) or not pieces:
+            raise ValueError(f"译稿源区间覆盖不完整：{where}")
+        structural = block.lstrip().startswith(_STRUCTURAL_PREFIXES)
+        if len(pieces) != 1 and structural:
+            raise ValueError(f"结构块须完整翻译：{where}")
+        join_previous = row.get("join_previous", False)
+        if type(join_previous) is not bool or (
+            join_previous
+            and (
+                index == 1
+                or structural
+                or blocks[index - 2].lstrip().startswith(_STRUCTURAL_PREFIXES)
+            )
+        ):
+            raise ValueError(f"只有同一分块内相邻正文可合段：{where}")
+        cursor = 0
+        pairs = []
+        for piece in pieces:
+            end = piece.get("end") if isinstance(piece, dict) else None
+            if type(end) is not int or not cursor < end <= len(block):
+                raise ValueError(f"译稿源区间覆盖有误：{where}")
+            target = piece.get("target")
+            note = piece.get("note")
+            paragraph = piece.get("paragraph", False)
+            if type(paragraph) is not bool or (paragraph and not pairs):
+                raise ValueError(f"段首标记必须位于块内后续区间：{where}")
+            if (
+                not isinstance(target, str)
+                or not target.strip()
+                or (note is not None and not isinstance(note, str))
+            ):
+                raise ValueError(f"译文或说明无效：{where}")
+            if len(split_blocks(target)) != 1:
+                raise ValueError(f"每个源区间须对应一个译文块内的片段：{where}")
+            source = block[cursor:end].strip()
+            if not source:
+                raise ValueError(f"源区间为空：{where}")
+            pairs.append((source, target, note, paragraph))
+            cursor = end
+        if cursor != len(block):
+            raise ValueError(f"译稿源区间覆盖不完整：{where}")
+        result.append((join_previous, pairs))
+    return result
+
+
 def assemble_unit(
     store: RunStore, unit_id: str, *, apply: bool = False, force: bool = False
 ) -> dict[str, Any]:
@@ -226,6 +328,12 @@ def assemble_unit(
         if _digest(text) != chunk.get("source_sha256"):
             raise ValueError(f"分块内容与索引不符：{chunk_path}")
         source_blocks_by_seq[seq] = split_blocks(text)
+    if index.get("explicit"):
+        indexed = [block for group in source_blocks_by_seq.values() for block in group]
+        if len(source_blocks_by_seq) != len(index["chunks"]) or indexed != split_blocks(
+            source_md, separate_headings=True
+        ):
+            raise ValueError(f"分块索引须按顺序覆盖全部原文：{unit_id}")
 
     translated_blocks: list[str] = []
     align_rows: list[dict[str, Any]] = []
@@ -236,6 +344,27 @@ def assemble_unit(
         tpath = unit_dir / str(chunk["translation_file"])
         if not tpath.is_file():
             raise ValueError(f"缺译文分块：{tpath}")
+        if index.get("explicit"):
+            for join_previous, pairs in _read_bound_draft(
+                tpath, source_blocks_by_seq[seq], chunk["source_sha256"]
+            ):
+                translated = "".join(
+                    ("\n\n" if paragraph else "") + target for _, target, _, paragraph in pairs
+                )
+                if join_previous:
+                    translated_blocks[-1] += translated
+                else:
+                    translated_blocks.append(translated)
+                if pairs[0][0].startswith("# "):
+                    heading_seen = True
+                for source, target, note, _ in pairs:
+                    if _ATX_HEADING.match(source):
+                        continue
+                    seq_counter += 1
+                    align_rows.append(
+                        {"seq": seq_counter, "src": source, "tgt": target, "note": note}
+                    )
+            continue
         t_text = tpath.read_text(encoding="utf-8")
         t_blocks = split_blocks(t_text)
         s_blocks = source_blocks_by_seq[seq]
@@ -263,6 +392,8 @@ def assemble_unit(
         raise ValueError(f"译文缺单元标题行（# …）：{unit_id}")
 
     md_text = "\n\n".join(translated_blocks).rstrip() + "\n"
+    if index.get("explicit") and count_heading_levels(source_md) != count_heading_levels(md_text):
+        raise ValueError(f"译稿标题层级与源文不一致：{unit_id}")
     align_path = store.translation_dir / "align" / f"{unit_id}.jsonl"
     tgt_path = store.translation_dir / rel
     preview = {
@@ -408,6 +539,8 @@ def import_tr(store: RunStore, source_root: str | Path, *, apply: bool = False) 
     for unit_dir in sorted(p for p in root.iterdir() if p.is_dir()):
         unit_id = _safe_name(unit_dir.name)
         index = _load_index(store, unit_id)
+        if index.get("explicit"):
+            raise ValueError(f"{unit_id} 使用显式源区间译稿，不能导入旧 .tr 文件")
         files = sorted(unit_dir.glob("*.zh.md"))
         expected = len(index.get("chunks") or [])
         if len(files) != expected:

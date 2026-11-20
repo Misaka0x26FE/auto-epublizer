@@ -72,6 +72,8 @@ CLI 无法探测），据此选 ingest 路由（见 `references/ingest.md`）。
 | 六道关 QC（G0–G5）、blocking/advisory 处理 | `references/review.md` |
 | 交付前全量校验（qa 之后、交付之前，强制） | `references/delivery.zh.md` |
 | `evidence report/source --json` 只读证据；`repair apply/recover` 批准修复及未决恢复 | `references/quality-evidence.zh.md` |
+| 原页清洗待核 `evidence partition --save-tasks`、等量块错配待核 `align-propose`、单份译稿试点 `chunk export --explicit` | `references/workflow.md`、`references/translation.md` |
+| 旧注码原位与同号候选 `evidence notes --unit`、EPUB 表格逐格核对 `evidence table` | `references/workflow.md` |
 | EPUB 封装、代码/raw HTML、SVG/媒体身份、软件指纹、制作页署名与 nav/NCX 入口 | `references/build.md` |
 | 无源封面的书：生成式封面（`quarto` 界栏 / `hanze-academic` 汉译学术本）、`cover-spec.json` 设计稿、色板/开本/格式、字体降级、源封面优先 | `references/cover.md` |
 | epubcheck + 解包审计、正文/注文独立对账、注释分段疑点 advisory、报告失效 | `references/qa.md` |

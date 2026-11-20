@@ -22,19 +22,116 @@ from __future__ import annotations
 import hashlib
 import json
 import re
-from collections import defaultdict, deque
+from collections import Counter, defaultdict, deque
 from pathlib import Path
 from typing import Any
 
 from auto_common.workspace import RunStore
+from auto_common.workspace.store import atomic_write_json, read_json, source_sha256
 
-from .artifacts import read_catalog
+from .artifacts import read_catalog, read_repairs
 
 _HEADING_RE = re.compile(r"^#{1,6}\s+")
 _ANCHOR_RE = re.compile(r"\[\]\{#[^}]*\}")
 _SPAN_ONLY_RE = re.compile(r"^:::\s*(\{[^}]*\})?\s*$")
 _IMAGE_RE = re.compile(r"!\[[^\]]*\]\([^)]*\)")
 _QUOTE_RE = re.compile(r"^>\s?")
+_FOLIO_RE = re.compile(r"(?:[0-9]{1,5}|[ivxlcdm]{1,8})", re.I)
+_TASK_FILE = "source-tasks.json"
+
+
+def _optional_digest(path: Path) -> str | None:
+    return source_sha256(path) if path.is_file() else None
+
+
+def save_cleanup_tasks(store: RunStore, partition: dict[str, Any]) -> None:
+    """保存供 status 读取的精简取证快照。"""
+    units = store.load_publication().units
+    structured = {}
+    for unit in units:
+        rel = (unit.meta or {}).get("rel_path")
+        structured[unit.id] = _optional_digest(store.structured_dir / rel) if rel else None
+    catalog = _optional_digest(store.preprocessing_dir / "catalog.csv")
+    input_digest = hashlib.sha256(json.dumps([structured, catalog], sort_keys=True).encode())
+    by_page: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for entry in partition["entries"]:
+        by_page[entry["raw_file"]].append(entry)
+    rows = []
+    for candidate in partition["cleanup_candidates"]:
+        row = dict(candidate["missing"])
+        row["reason"] = candidate["reason"]
+        identity = input_digest.copy()
+        identity.update(json.dumps(row, sort_keys=True, ensure_ascii=False).encode())
+        row["id"] = identity.hexdigest()
+        page = by_page[row["raw_file"]]
+        index = next(
+            i
+            for i, entry in enumerate(page)
+            if (entry["block"], entry["span"]) == (row["block"], row["span"])
+        )
+        row["context"] = [
+            {key: entry[key] for key in ("block", "text", "destination")}
+            for entry in page[max(0, index - 2) : index + 3]
+        ]
+        rows.append(row)
+    atomic_write_json(
+        store.preprocessing_dir / _TASK_FILE,
+        {
+            "schema": 1,
+            "status": partition["status"],
+            "reason": partition["reason"],
+            "structured": structured,
+            "catalog": catalog,
+            "rows": rows,
+        },
+    )
+
+
+def next_cleanup_task(store: RunStore, structured: dict[str, str | None]) -> dict[str, Any] | None:
+    """只读快照，按原页摘要核对候选及其处置。"""
+    path = store.preprocessing_dir / _TASK_FILE
+    if not path.is_file():
+        return None
+    try:
+        data = read_json(path)
+        if not isinstance(data, dict) or data.get("schema") != 1:
+            raise ValueError
+        rows = data["rows"]
+        if not isinstance(rows, list):
+            raise ValueError
+    except (OSError, ValueError, KeyError):
+        return {"status": "stale", "reason": "source_tasks_unreadable"}
+    if data.get("status") != "ok":
+        return {"status": "unknown", "reason": data.get("reason")}
+    if data.get("structured") != structured or data.get("catalog") != _optional_digest(
+        store.preprocessing_dir / "catalog.csv"
+    ):
+        return {"status": "stale", "reason": "partition_inputs_changed"}
+    handled = {
+        row["candidate_id"]
+        for row in (read_repairs(store) or [])
+        if isinstance(row.get("candidate_id"), str)
+        and row.get("evidence")
+        and not row.get("unit_missing")
+    }
+    digests: dict[str, str] = {}
+    for row in rows:
+        if not isinstance(row, dict):
+            return {"status": "stale", "reason": "source_tasks_unreadable"}
+        name = row.get("raw_file")
+        if not isinstance(name, str) or not re.fullmatch(r"page-\d+\.json", name):
+            return {"status": "stale", "reason": "source_tasks_unreadable"}
+        page = store.structured_dir / "raw" / name
+        try:
+            if name not in digests:
+                digests[name] = source_sha256(page)
+        except OSError:
+            return {"status": "stale", "reason": name}
+        if digests[name] != row.get("raw_digest"):
+            return {"status": "stale", "reason": name}
+        if row.get("id") not in handled:
+            return {"status": "manual", **row}
+    return None
 
 
 def _norm(text: str) -> str:
@@ -73,10 +170,10 @@ def _source_lines(raw: Path) -> tuple[list[dict[str, Any]], dict[str, str], str 
             if not isinstance(block, dict) or block.get("type") != "text":
                 continue
             offset = 0
-            for text in str(block.get("text") or "").splitlines():
+            for text in str(block.get("text") or "").splitlines(keepends=True):
                 stripped = text.strip()
                 start = offset + (len(text) - len(text.lstrip()))
-                offset += len(text) + 1
+                offset += len(text)
                 if not stripped:
                     continue
                 items.append(
@@ -88,6 +185,8 @@ def _source_lines(raw: Path) -> tuple[list[dict[str, Any]], dict[str, str], str 
                         "span": [start, start + len(stripped)],
                         "text": stripped,
                         "norm": _norm(stripped),
+                        "font_size": block.get("font_size"),
+                        "bbox": block.get("bbox"),
                     }
                 )
     return items, digests, None
@@ -132,8 +231,68 @@ def _noise_texts(store: RunStore) -> set[str]:
     }
 
 
+def _cleanup_candidates(
+    entries: list[dict[str, Any]], destinations: list[dict[str, Any]]
+) -> list[dict[str, Any]]:
+    """定位页首清洗附近的待核文本，以及字号突出的未匹配短块。"""
+    by_page: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for row in entries:
+        by_page[row["raw_file"]].append(row)
+    repeated_heads = Counter(_norm(rows[0]["text"]) for rows in by_page.values())
+    destination_texts = {row["norm"] for row in destinations}
+    out = []
+    for rows in by_page.values():
+        head = rows[0]
+        head_removed = head["destination"] == "noise" or (
+            head["destination"] == "unresolved" and repeated_heads[_norm(head["text"])] >= 2
+        )
+        sizes = Counter()
+        block_sizes = Counter(row["block"] for row in rows)
+        for row in rows:
+            size = row["font_size"]
+            if isinstance(size, (int, float)) and size > 0:
+                sizes[round(size, 1)] += len(row["text"])
+        body_size = sizes.most_common(1)[0][0] if sizes else None
+        for index, row in enumerate(rows):
+            if row["destination"] != "unresolved":
+                continue
+            size, text = row["font_size"], row["text"]
+            after_head = index == 1 and head_removed and _norm(text) != _norm(head["text"])
+            if after_head and row["block"] == head["block"] and _FOLIO_RE.fullmatch(text):
+                continue
+            heading = (
+                body_size is not None
+                and isinstance(size, (int, float))
+                and size >= body_size * 1.15
+                and block_sizes[row["block"]] == 1
+                and 4 <= len(text) <= 120
+                and any(char.isalpha() for char in text)
+                and not (index == 0 and head_removed)
+            )
+            if not (after_head or heading):
+                continue
+            # 已接合的原始折行常不再逐行匹配。仅用相邻原行的精确拼接排除候选。
+            if any(
+                _norm("".join(item["text"] for item in rows[start:end])) in destination_texts
+                for start in range(max(0, index - 3), index + 1)
+                for end in range(index + 1, min(len(rows), start + 4) + 1)
+                if end - start > 1
+            ):
+                continue
+            out.append(
+                {
+                    "status": "manual",
+                    "missing": row,
+                    "head": head if after_head else None,
+                    "reason": "after_page_head" if after_head else "prominent_short_block",
+                    "body_font_size": body_size,
+                }
+            )
+    return out
+
+
 def collect_partition(store: RunStore) -> dict[str, Any]:
-    """逐行分区账本（只读）。每行身份可独立复核，重复文本按出现次序对位。"""
+    """逐行分区账本；默认只读，任务快照由调用方显式保存。"""
     source, digests, reason = _source_lines(store.structured_dir / "raw")
     destinations = _destination_lines(store)
     noise = _noise_texts(store)
@@ -146,6 +305,7 @@ def collect_partition(store: RunStore) -> dict[str, Any]:
             "entries": [],
             "destination_extra": [],
             "duplicates": [],
+            "cleanup_candidates": [],
             "counts": {},
             "complete": False,
         }
@@ -177,6 +337,8 @@ def collect_partition(store: RunStore) -> dict[str, Any]:
                 "block": item["block"],
                 "span": item["span"],
                 "text": item["text"],
+                "font_size": item["font_size"],
+                "bbox": item["bbox"],
                 "destination": (
                     destination["kind"]
                     if destination
@@ -270,5 +432,6 @@ def collect_partition(store: RunStore) -> dict[str, Any]:
         "entries": entries,
         "destination_extra": extras,
         "duplicates": duplicates,
+        "cleanup_candidates": _cleanup_candidates(entries, destinations),
         "complete": counts["unresolved"] == 0,
     }

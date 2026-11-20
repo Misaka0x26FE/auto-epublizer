@@ -34,7 +34,7 @@ from .qa import (
     review_ledger,
     run_epubcheck,
 )
-from .qa.artifacts import report_state
+from .qa.artifacts import delivery_record_current, report_state
 from .qa.footnote_forms import candidate_footnote_paragraphs
 from .qa.provenance import audit_provenance
 from .structure import rebuild_structure, skip_empty_unit, unit_heading, write_structured
@@ -958,13 +958,16 @@ def page_number_evidence(store: RunStore) -> dict[str, Any]:
     return collect_page_number_evidence(store)
 
 
-def source_partition(store: RunStore) -> dict[str, Any]:
-    """源分区账本（issue #62/#58，只读）：每一行原文的去向与重复对位。"""
-    from .preprocess.partition import collect_partition
+def source_partition(store: RunStore, *, save_tasks: bool = False) -> dict[str, Any]:
+    """源分区账本（issue #62/#58）：默认只读，可显式保存清洗任务快照。"""
+    from .preprocess.partition import collect_partition, save_cleanup_tasks
     from .quality_evidence import validate_workspace_paths
 
     validate_workspace_paths(store)
-    return collect_partition(store)
+    partition = collect_partition(store)
+    if save_tasks:
+        save_cleanup_tasks(store, partition)
+    return partition
 
 
 def evidence_breaks(store: RunStore, *, output: str | None = None) -> dict[str, Any]:
@@ -2688,13 +2691,18 @@ def _notes_next_task(store: RunStore, pub: Any) -> dict[str, Any] | None:
     if cands:
         pending = [c for c in cands if c.get("disposition") not in notes_mod.CANDIDATE_DISPOSITIONS]
         if pending:
-            return _task(
+            first = pending[0]
+            unit = first.get("unit")
+            command = f"先运行 evidence notes --unit {unit} --json 回看旧注码位置。" if unit else ""
+            task = _task(
                 "notes_verify",
                 f"核证注释候选：{len(pending)} 条未决（回看源件后写 disposition=note|not_note；"
                 "判 note 的须绑定稳定身份：引用型候选写 ref_id、注文型候选写 note_id，"
-                "并把这些注文/引用写入 structured/notes.json）",
-                done_when={"file": "preprocessing/note_candidates.jsonl"},
+                f"并把这些注文/引用写入 structured/notes.json）。{command}",
+                unit=unit,
+                done_when={"file": "preprocessing/note_candidates.jsonl", "pending": 0},
             )
+            return {**task, "evidence": first}
         if not pub.notes:
             return _task(
                 "notes_register",
@@ -2727,6 +2735,7 @@ def _derive_next_tasks(
     *,
     has_preprocessing: bool,
     preprocessing_complete: bool,
+    report_info: dict[str, Any],
 ) -> list[dict[str, Any]]:
     """从现有状态机/产物对账派生「下一任务」机器指针（S1，零 token 纯函数）。
 
@@ -2754,19 +2763,60 @@ def _derive_next_tasks(
                         done_when={"file": f"preprocessing/{name}"},
                     )
                 ]
-    # B. 语义整备：facts 有可疑信号且尚无留痕 → 先整备
-    if not (pre / "repairs.jsonl").is_file():
-        try:
-            facts = read_json(pre / "facts.json")
-            signals = int((facts.get("repair_signals") or {}).get("units") or 0)
-        except (OSError, ValueError, TypeError):
-            signals = 0
-        if signals:
+    from .preprocess.partition import next_cleanup_task
+
+    cleanup = next_cleanup_task(
+        store, {u["id"]: u["content_digests"]["structured"] for u in units_out}
+    )
+    if cleanup is not None:
+        if cleanup["status"] == "manual":
+            return [
+                {
+                    **_task(
+                        "repair",
+                        f"核对 {cleanup['raw_file']} 第 {cleanup['block']} 块及相邻原文，按原页处置清洗疑点。",
+                        done_when={
+                            "file": "preprocessing/repairs.jsonl",
+                            "candidate_id": cleanup["id"],
+                        },
+                    ),
+                    "evidence": cleanup,
+                }
+            ]
+        return [
+            _task(
+                "source_evidence",
+                f"原页证据需刷新（{cleanup['reason']}），补齐原始页后重跑 evidence partition --save-tasks。",
+                done_when={"cmd": "evidence partition", "save_tasks": True},
+            )
+        ]
+    # B. 未开始翻译的单元按其自身信号和留痕派发整备。
+    try:
+        facts = read_json(pre / "facts.json")
+    except (OSError, ValueError):
+        facts = {}
+    waiting = {u["id"] for u in units_out if u["status"] in ("pending", "split", "analyzed")}
+    flagged = [
+        row
+        for row in (facts.get("structure") or {}).get("units", [])
+        if row["id"] in waiting and any((row.get("signals") or {}).values())
+    ]
+    if flagged:
+        handled = {
+            row["unit"] for row in (read_repairs(store) or []) if not row.get("unit_missing")
+        }
+        for row in flagged:
+            unit = row["id"]
+            if unit in handled:
+                continue
+            signals = "、".join(key for key, count in row["signals"].items() if count)
             return [
                 _task(
                     "repair",
-                    f"语义整备：{signals} 个单元有可疑信号，按 references/repair.md 修复并写留痕",
-                    done_when={"file": "preprocessing/repairs.jsonl"},
+                    f"核对 structured/{row['rel_path']} 的信号（{signals}）。按 references/repair.md "
+                    "对照原始页证据，并为该单元记录处理结果或待补证据。",
+                    unit=unit,
+                    done_when={"file": "preprocessing/repairs.jsonl", "unit": unit},
                 )
             ]
     # B2. 注释结构化（N 阶段）：候选未决 / 未登记 / 摘要失效 → 先于分析与翻译
@@ -2800,6 +2850,8 @@ def _derive_next_tasks(
         reason = str(s.get("reason") or "")
         if s["id"] not in _unit_ids:
             if reason == "report_stale":
+                if report_info["reason"] != "artifacts_changed":
+                    return [_task("qa", "报告证据不可核验，重跑 qa（见 report.json）")]
                 return [
                     _task(
                         "build", "报告证据已过期：重建 EPUB（build）", done_when={"cmd": "build"}
@@ -2902,16 +2954,37 @@ def _derive_next_tasks(
     if pub.units and all(s in ("reviewed", "built") for s in status_of.values()):
         if not list(store.output_dir.glob("*.epub")):
             return [_task("build", "封装 EPUB（build）", done_when={"cmd": "build"})]
-        if not store.report_path.is_file():
+        if report_info["released"] is None:
             return [
                 _task("qa", "运行 qa（epubcheck + 解包审计 + 放行报告）", done_when={"cmd": "qa"})
             ]
-        if not list(store.reviews_dir.glob("delivery-*.md")):
+        if report_info["released"] is not True:
+            reason = report_info["reason"] or "unknown"
+            action = {
+                "structure_open": "核对 g0_flags 中的阻断单元，修复后重新登记",
+                "terminology_open": "核对 g0_flags 中未清零的术语",
+                "glossary_conflict_open": "裁决术语冲突并重新校验已译单元",
+                "catalog_open": "核对原页并处理 catalog.csv 的未决项",
+                "notes_open": "核对 notes status 与 EPUB 注释门的诊断",
+                "audit_failed": "核对成品审计错误并修复对应输入",
+                "epubcheck_not_run": "用 doctor 检查 EPUBCheck，再重跑 qa",
+                "epubcheck_errors": "核对 EPUBCheck 的诊断并修复对应输入",
+                "provenance_incomplete": "核对源文、对照表和成品的覆盖证据",
+            }.get(reason, "查看 QA 或审校账本中的证据并处理未决项")
+            return [
+                _task(
+                    "repair",
+                    f"未放行（{reason}），{action}。详见 report.json。",
+                    done_when={"cmd": "qa", "released": True},
+                )
+            ]
+        digest = report_info.get("artifacts_digest", "")
+        if not delivery_record_current(store, digest):
             return [
                 _task(
                     "delivery",
                     "交付审计（按 references/delivery.md 全量校验并写记录）",
-                    done_when={"file": "reviews/delivery-<ts>.md"},
+                    done_when={"file": "reviews/delivery-<ts>.md", "artifacts_digest": digest},
                 )
             ]
     return []
@@ -3226,6 +3299,7 @@ def status(
             stale,
             has_preprocessing=has_preprocessing,
             preprocessing_complete=preprocessing_complete,
+            report_info=report_info,
         ),
     }
     return data

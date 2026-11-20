@@ -97,6 +97,7 @@ mkdir -p /tmp/epub-check && cd /tmp/epub-check && unzip -o <slug>.epub
 # 交付审计 <YYYYMMDD-HHMMSS>
 
 - 审计对象：<slug>.epub（qa released，reason=ok）；facts 刷新时间 …
+- artifacts_digest: `<复制当前 report.json 的 artifacts_digest>`
 - 工具对账：epub_coverage=…；epub_media_missing=0；epub_footnotes_missing=0；align_md_drift=0
 - 抽查章节：<首/中/尾/高风险章清单>
 - [ ] 正文探针 N/N 命中
@@ -115,6 +116,8 @@ mkdir -p /tmp/epub-check && cd /tmp/epub-check && unzip -o <slug>.epub
 ```
 
 所有自写审计/索引修复工具须遵守 [证据与安全修复契约](quality-evidence.zh.md)。
+所有适用的交付检查通过后，补一行 `- delivery_result: pass`。`status --json` 用该行和
+当前报告摘要识别审计记录。仅有历史记录或报告未放行时，任务指针继续提示核验或修复。
 未执行项记 unknown/manual，不预勾选；不得用 H1 命中、词元袋覆盖或目录数量冒充内容验收。
 
 ## 8. 产物同步与分发

@@ -11,6 +11,8 @@
 把审校产物写到 `reviews/review-<ts>/`（含 `result.json`）。然后用
 `auto-epublizer import --unit <unit> --reviewed` 登记通过。
 
+逐句查看源译对应，抽查相邻段落的归属。重点核对否定、数字、专名、引文和诗行。源区间完整或段数相等时仍可能错挂。发现错挂或漏译时，记下影响的源区间、译文位置和原页依据。
+
 **完成判据**：`import --unit <unit> --reviewed` 把该单元推进到 `reviewed`。
 
 **失败处置**：把真实问题写进 `result.json` 并修影子译文；没有登记就不要声称完成。若单元

@@ -128,11 +128,34 @@ def test_next_tasks_review_then_build_qa_delivery(tmp_path: Path) -> None:
 
     store.report_path.write_text("{}", encoding="utf-8")
     head = orch.status(store)["next_tasks"][0]
-    assert head["kind"] == "delivery"
+    assert head["kind"] == "qa"
+
+    store.report_path.write_text("[]", encoding="utf-8")
+    assert orch.status(store)["next_tasks"][0]["kind"] == "qa"
 
     store.reviews_dir.mkdir(parents=True, exist_ok=True)
     (store.reviews_dir / "delivery-2026.md").write_text("ok", encoding="utf-8")
-    assert orch.status(store)["next_tasks"] == []
+    store.report_path.write_text(
+        '{"released": false, "released_reason": "structure_open"}', encoding="utf-8"
+    )
+    head = orch.status(store)["next_tasks"][0]
+    assert head["kind"] == "repair"
+    assert "structure_open" in head["hint"]
+
+    from auto_epublizer.qa.artifacts import artifacts_digest
+
+    store.report_path.write_text(
+        json.dumps(
+            {
+                "released": False,
+                "released_reason": "structure_open",
+                "artifacts_digest": artifacts_digest(store),
+            }
+        ),
+        encoding="utf-8",
+    )
+    (store.output_dir / f"{pub.slug}.epub").write_bytes(b"rebuilt")
+    assert orch.status(store)["next_tasks"][0]["kind"] == "build"
 
 
 def test_next_tasks_repair_before_analysis(tmp_path: Path) -> None:
@@ -143,7 +166,15 @@ def test_next_tasks_repair_before_analysis(tmp_path: Path) -> None:
         (store.preprocessing_dir / name).write_text("x", encoding="utf-8")
     head = orch.status(store)["next_tasks"][0]
     assert head["kind"] == "repair"
-    assert head["done_when"] == {"file": "preprocessing/repairs.jsonl"}
+    assert head["done_when"] == {"file": "preprocessing/repairs.jsonl", "unit": "ch01"}
+    assert head["unit"] == "ch01"
+    (store.preprocessing_dir / "repairs.jsonl").touch()
+    assert orch.status(store)["next_tasks"][0]["unit"] == "ch01"
+    (store.preprocessing_dir / "repairs.jsonl").write_text(
+        '{"unit":"other","kind":"ocr_char","status":"done","summary":"其他单元"}\n',
+        encoding="utf-8",
+    )
+    assert orch.status(store)["next_tasks"][0]["unit"] == "ch01"
 
 
 def test_next_tasks_report_stale_not_routed_as_unit(
@@ -188,6 +219,19 @@ def test_next_tasks_report_stale_not_routed_as_unit(
     report = orch.qa(store, epub_path=str(epub))
     assert report["released"] is True, report.get("released_reason")
     assert report_state(store)["stale"] is False
+    assert orch.status(store)["next_tasks"][0]["kind"] == "delivery"
+    audit = store.reviews_dir / "delivery-20261015.md"
+    audit.write_text("ok", encoding="utf-8")
+    assert orch.status(store)["next_tasks"][0]["kind"] == "delivery"
+    audit.write_text(
+        f"- artifacts_digest: `{'0' * 64}`\n- delivery_result: pass\n", encoding="utf-8"
+    )
+    assert orch.status(store)["next_tasks"][0]["kind"] == "delivery"
+    audit.write_text(
+        f"- artifacts_digest: `{report['artifacts_digest']}`\n- delivery_result: pass\n",
+        encoding="utf-8",
+    )
+    assert orch.status(store)["next_tasks"] == []
     # 使报告过期：新增未决 catalog（摘要输入变化）
     (store.preprocessing_dir / "catalog.csv").write_text(
         "item,kind,status,locator,unit_id,note\nX,figure,unresolved,page 9,,\n",
@@ -201,3 +245,42 @@ def test_next_tasks_report_stale_not_routed_as_unit(
     for t_ in tasks:
         done = t_.get("done_when") or {}
         assert not (done.get("cmd") == "import" and done.get("unit") == "report"), tasks
+
+
+def test_cleanup_task_reopens_when_raw_page_changes(tmp_path: Path) -> None:
+    store = _complete_preprocessing(tmp_path)
+    raw = store.structured_dir / "raw"
+    raw.mkdir(exist_ok=True)
+    page = raw / "page-001.json"
+    page.write_text(
+        json.dumps(
+            {
+                "page_idx": 1,
+                "blocks": [
+                    {"type": "text", "text": "Missing heading", "font_size": 20},
+                    {
+                        "type": "text",
+                        "text": "Longer body text uses the normal font size.",
+                        "font_size": 10,
+                    },
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    orch.source_partition(store, save_tasks=True)
+    head = orch.status(store)["next_tasks"][0]
+    assert head["kind"] == "repair"
+    assert head["evidence"]["block"] == 1
+    assert head["evidence"]["text"] == "Missing heading"
+    candidate = head["evidence"]["id"]
+    unit = store.load_publication().units[0]
+    structured = store.structured_dir / unit.meta["rel_path"]
+    with structured.open("a", encoding="utf-8") as handle:
+        handle.write("\nAnother paragraph.\n")
+    assert orch.status(store)["next_tasks"][0]["kind"] == "source_evidence"
+    orch.source_partition(store, save_tasks=True)
+    assert orch.status(store)["next_tasks"][0]["evidence"]["id"] != candidate
+    page.write_text("{}", encoding="utf-8")
+    assert orch.status(store)["next_tasks"][0]["kind"] == "source_evidence"

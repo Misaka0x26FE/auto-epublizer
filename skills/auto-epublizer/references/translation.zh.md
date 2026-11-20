@@ -72,6 +72,8 @@ translation/
   不会被自动认可。
 - `propose` 表示该译文块没有 align 行覆盖：只列候选，不出行；拆句源归属由 agent 核证后
   再写 align。
+- `offset_candidates` 定位等量源译块的连续可疑偏移。它用邻近块的数字证据给出源译区间，
+  供逐块核证。缺少数字、同分或已识别为拆合的块不提供偏移证据。候选不改变提案与放行判定。
 - 提案不是应用结果；写入必须走 B4 的显式事务（`repair apply --apply` 同族入口）。
 
 ### 显式应用与恢复
@@ -238,3 +240,18 @@ auto-epublizer chunk import-tr --source <old/.tr> --apply    # 显式导入旧 .
 - `assemble` 校验源摘要、块数、标题；正式译文已有新编辑时拒绝覆盖（`--force` 才覆盖）。
 - `.tr` 导入只接受数量与索引一致的目录；不猜测缺失块。
 - 块级 align 是段落级对照，仍受 import/G0/交付审计校验，但会改变 `total_sentences` 口径。
+
+### 单份译稿试点
+
+用 `chunk export --unit ch01 --explicit` 导出 `0001.draft.json` 等模板。
+模板位于书籍工作区的 `preprocessing/chunks/ch01/`。打开 CLI 实际导出的 JSON 文件，逐项填写。
+例如，原文 `The door opened.` 的模板片段可填成 `{"end": 16, "target": "门开了。"}`。
+保留 `source_sha256` 和每块的 `source`，在 `pieces[].target` 中只填一次译文。
+`end` 是当前原文块内的 Unicode 字符结束偏移，起点是上一片段的 `end`，首个起点为 0。
+模板预填普通单行正文的分句范围，其他块默认提供完整范围。核证后可调整同块内的连续区间，
+用可选 `note` 记录拆译、合译或存疑。需要词间空格时，把空格放入对应目标片段。
+同一源块内要另起译段时，可在后续片段写 `"paragraph": true`。同一分块内相邻正文可在后一块写
+`"join_previous": true`，合并译文段落并保留各自的对照行。需把多个源块融成同一句时，走正式手写流程。
+先运行 `chunk assemble ch01` 预检，再加 `--apply` 写出
+Markdown 和 JSONL，最后运行 `import --unit ch01`。改稿时编辑模板，再预检并核对正式产物，
+确需覆盖时显式加 `--force`。保留正式的语义审校与原页覆盖检查。

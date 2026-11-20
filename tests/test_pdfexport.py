@@ -412,6 +412,28 @@ def _wide_table_epub(tmp_path: Path) -> Path:
 
 
 @pytest.mark.skipif(pdfexport.find_chromium() is None, reason="需要 Chromium/Chrome")
+def test_long_print_table_repeats_header_and_keeps_source_on_last_page(tmp_path: Path) -> None:
+    rows = "".join(f"<tr><td>ROW{i:03d}</td><td>{i}</td></tr>" for i in range(100))
+    body = (
+        '<html><head><title>Table</title></head><body><h1 id="s1">Table</h1>'
+        '<table class="data"><thead><tr><th colspan="2">HEADER GROUP</th></tr>'
+        "<tr><th>RECORD NAME</th><th>AMOUNT</th></tr></thead>"
+        f'<tbody>{rows}</tbody><tfoot><tr><td colspan="2">TABLE SOURCE</td></tr></tfoot>'
+        "</table></body></html>"
+    )
+    epub = _variant(_mini_epub(tmp_path), {"OEBPS/text/ch01.xhtml": body})
+    result = pdfexport.render(epub, tmp_path / "long-table.pdf")
+    with pymupdf.open(result.out) as doc:
+        pages = [page.get_text() for page in doc]
+    table_pages = [text for text in pages if re.search(r"ROW\d{3}", text)]
+    assert len(table_pages) >= 2
+    assert all("HEADER GROUP" in text and "RECORD NAME" in text for text in table_pages)
+    assert re.findall(r"ROW\d{3}", "\n".join(pages)) == [f"ROW{i:03d}" for i in range(100)]
+    assert sum(text.count("TABLE SOURCE") for text in pages) == 1
+    assert "TABLE SOURCE" in table_pages[-1]
+
+
+@pytest.mark.skipif(pdfexport.find_chromium() is None, reason="需要 Chromium/Chrome")
 def test_thirteen_column_table_does_not_shrink_the_entire_a5_document(tmp_path: Path) -> None:
     result = pdfexport.render(_wide_table_epub(tmp_path), tmp_path / "wide.pdf", strict=True)
     with pymupdf.open(result.out) as doc:

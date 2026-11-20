@@ -7,13 +7,109 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+from collections import defaultdict
 from typing import Any
 
+from auto_common.markdown import inline_code_chunks, markdown_chunks
 from auto_common.workspace import RunStore
 
 from ..notes import extract_candidates, read_notes_json
 from .evidence import collect_breaks
 from .note_inventory import collect_note_inventory
+
+_REF = re.compile(r"\[\^([0-9]{1,4})\]")
+
+
+def collect_note_anchors(store: RunStore, unit_id: str) -> dict[str, Any]:
+    """查旧数字注码的逐次位置，同号注文只列为候选。"""
+    pub = store.load_publication()
+    texts = {}
+    note_units = {unit.id for unit in pub.units if unit.kind == "notes"}
+    for unit in pub.units:
+        rel = unit.meta.get("rel_path")
+        if rel:
+            path = store.structured_dir / rel
+            if not path.resolve().is_relative_to(store.structured_dir.resolve()):
+                raise ValueError(f"正文证据路径越界：{unit.id}")
+            if path.is_file():
+                texts[unit.id] = path.read_text(encoding="utf-8")
+    if unit_id not in texts:
+        raise ValueError(f"单元没有结构化正文：{unit_id}")
+    definitions = defaultdict(list)
+    ref_units = defaultdict(set)
+    anchors = []
+    for uid, text in texts.items():
+        offset = 0
+        for kind, chunk in markdown_chunks(text):
+            if kind == "text":
+                for line_no, line in enumerate(chunk.splitlines(), offset + 1):
+                    line = "".join(
+                        " " * len(part) if code else part for code, part in inline_code_chunks(line)
+                    )
+                    opening = _REF.match(line.lstrip())
+                    if opening and (
+                        line.lstrip()[opening.end() :].startswith(":") or uid in note_units
+                    ):
+                        definitions[opening[1]].append(
+                            {"unit": uid, "line": line_no, "text": line[:200]}
+                        )
+                        continue
+                    for match in _REF.finditer(line):
+                        label = match[1]
+                        ref_units[label].add(uid)
+                        if uid == unit_id:
+                            anchors.append(
+                                {
+                                    "unit": uid,
+                                    "line": line_no,
+                                    "column": match.start() + 1,
+                                    "label": label,
+                                    "before": line[max(0, match.start() - 45) : match.start()],
+                                    "after": line[match.end() : match.end() + 45],
+                                }
+                            )
+            offset += chunk.count("\n")
+    raw = []
+    for path in sorted((store.structured_dir / "raw").glob("page-*.json")):
+        if not path.resolve().is_relative_to(store.structured_dir.resolve()):
+            raise ValueError(f"raw 页证据越界：{path.name}")
+        payload = path.read_bytes()
+        page = json.loads(payload)
+        digest = hashlib.sha256(payload).hexdigest()
+        for index, block in enumerate(page.get("blocks", []), 1):
+            content = re.sub(r"\s+", "", str(block.get("text", "")))
+            if content:
+                raw.append(
+                    (
+                        content,
+                        {
+                            "raw_file": path.name,
+                            "page": page.get("page_idx"),
+                            "block": index,
+                            "bbox": block.get("bbox"),
+                            "raw_sha256": digest,
+                        },
+                    )
+                )
+    for anchor in anchors:
+        label = anchor["label"]
+        before, after = (re.sub(r"\s+", "", anchor[key]) for key in ("before", "after"))
+        matches = []
+        if len(before) >= 8 and len(after) >= 8:
+            signatures = (before[-16:] + label + after[:16], before[-16:] + after[:16])
+            matches = [loc for content, loc in raw if any(s in content for s in signatures)]
+        anchor.update(
+            status="manual",
+            raw_matches=matches,
+            same_label_units=sorted(ref_units[label]),
+            definitions=definitions[label],
+        )
+    return {
+        "unit": unit_id,
+        "writes": False,
+        "source_sha256": pub.meta.source_sha256,
+        "anchors": anchors,
+    }
 
 
 def _same_bbox(left: Any, right: Any) -> bool:
@@ -161,6 +257,7 @@ def collect_source_evidence(
     """保留真实可得坐标/字体/栏号及全部匹配；缺失精度明确 null。"""
     raw = store.structured_dir / "raw"
     blocks: list[dict[str, Any]] = []
+    page_routes: list[dict[str, Any]] = []
     hashes: dict[str, str] = {}
     for path in sorted(raw.glob("page-*.json")):
         if not path.resolve().is_relative_to(raw.resolve()):
@@ -170,10 +267,11 @@ def collect_source_evidence(
         page = json.loads(payload)
         if not isinstance(page, dict) or not isinstance(page.get("blocks"), list):
             raise ValueError(f"raw 页缺 blocks 数组：{path.name}")
+        page_blocks = []
         for index, block in enumerate(page["blocks"], start=1):
             if not isinstance(block, dict):
                 raise ValueError(f"raw 页块不是对象：{path.name}:{index}")
-            blocks.append(
+            page_blocks.append(
                 {
                     "raw_file": path.name,
                     "page": page.get("page_idx"),
@@ -183,8 +281,34 @@ def collect_source_evidence(
                     "bbox": block.get("bbox"),
                     "font_size": block.get("font_size"),
                     "column": block.get("column"),
+                    "ocr": block.get("ocr"),
+                    "ocr_source": block.get("ocr_source"),
                 }
             )
+        blocks.extend(page_blocks)
+        text_blocks = [block for block in page_blocks if block["type"] == "text"]
+        columns = sorted({block["column"] for block in text_blocks if type(block["column"]) is int})
+        missing_boxes = [block["block"] for block in text_blocks if not block["bbox"]]
+        actions = []
+        if len(columns) > 1:
+            actions.append("compare_column_order")
+        ocr_blocks = [
+            block["block"] for block in text_blocks if block["ocr"] or block["ocr_source"]
+        ]
+        if missing_boxes or ocr_blocks or page.get("ocr") or not text_blocks:
+            actions.append("inspect_original_page")
+        page_routes.append(
+            {
+                "raw_file": path.name,
+                "page": page.get("page_idx"),
+                "ocr": page.get("ocr"),
+                "ocr_source": page.get("ocr_source"),
+                "ocr_blocks": ocr_blocks,
+                "columns": columns,
+                "text_blocks_without_bbox": missing_boxes,
+                "actions": actions,
+            }
+        )
     pub = store.load_publication()
     md_by_unit: dict[str, str] = {}
     roles = []
@@ -232,6 +356,7 @@ def collect_source_evidence(
         "source_sha256": pub.meta.source_sha256,
         "raw_hashes": hashes,
         "blocks": blocks,
+        "page_routes": page_routes,
         "source_toc": toc,
         "unit_roles": roles,
         "boundaries": collect_breaks(store),

@@ -42,6 +42,7 @@ def test_source_report_preserves_real_columns_and_all_ambiguous_locations(tmp_pa
     assert result.exit_code == 0, result.output
     data = json.loads(result.stdout)
     assert [b["column"] for b in data["blocks"]] == [0, 1]
+    assert data["page_routes"][0]["actions"] == ["compare_column_order"]
     assert data["blocks"][0]["bbox"] == [10, 20, 90, 40]
     matches = data["note_candidates"][0]["raw_matches"]
     assert len(matches) == 2
@@ -186,6 +187,7 @@ def test_missing_precision_and_source_toc_remain_explicit(tmp_path: Path) -> Non
     assert data["source_toc"] == toc
     assert data["blocks"][0]["page"] is None
     assert all(data["blocks"][0][key] is None for key in ("bbox", "font_size", "column"))
+    assert data["page_routes"][0]["actions"] == ["inspect_original_page"]
     assert data["boundaries"][0]["candidate"] is False
 
 
@@ -222,6 +224,25 @@ def _raw_page(raw, page: int, lines: list[str]) -> None:
     )
 
 
+def test_note_anchor_review_keeps_occurrences_and_raw_context_separate(tmp_path: Path) -> None:
+    store, raw = _ws(tmp_path)
+    uid = store.load_publication().units[0].id
+    _write_structured(
+        store,
+        "# Chapter\n\nFirst sentence.[^1] The next sentence.\n\nOther sentence.[^1] Another sentence.\n\n[^1]: Note one.\n",
+    )
+    _raw_page(raw, 1, ["First sentence.1 The next sentence."])
+    _raw_page(raw, 2, ["Other sentence.1 Another sentence."])
+    result = CliRunner().invoke(
+        app, ["evidence", "notes", "--unit", uid, "--json", "--workspace", str(store.dir)]
+    )
+    assert result.exit_code == 0, result.output
+    rows = json.loads(result.stdout)["anchors"]
+    assert [row["raw_matches"][0]["page"] for row in rows] == [1, 2]
+    assert all(row["status"] == "manual" and row["definitions"][0]["unit"] == uid for row in rows)
+    assert not (store.preprocessing_dir / "notes-evidence.json").exists()
+
+
 def test_partition_reports_a_lost_line_per_occurrence(tmp_path: Path) -> None:
     store, raw = _ws(tmp_path)
     _write_structured(store, "# Chapter\n\nKept line.\n")
@@ -245,6 +266,35 @@ def test_partition_matches_duplicate_lines_in_order(tmp_path: Path) -> None:
     assert data["counts"]["body"] == 1 and data["counts"]["unresolved"] == 1
     (duplicate,) = data["duplicates"]
     assert duplicate["occurrences"] == 2 and len(duplicate["destinations"]) == 1
+
+
+def test_partition_locates_missing_content_after_repeated_page_head(tmp_path: Path) -> None:
+    store, raw = _ws(tmp_path)
+    _write_structured(store, "# Chapter\n\nBody continues here.\n\n## Kept section\n")
+    _raw_page(raw, 1, ["Running head", "Lost section"])
+    _raw_page(raw, 2, ["Running head", "Body continues", "here."])
+    _raw_page(raw, 3, ["Running head", "Kept section"])
+    (store.preprocessing_dir / "catalog.csv").write_text(
+        "item,kind,status,locator,unit_id,note\n"
+        "Running head,physical,excluded,pages 1–3,,印刷页眉\n",
+        encoding="utf-8",
+    )
+    (candidate,) = orch.source_partition(store)["cleanup_candidates"]
+    assert candidate["missing"]["page"] == 1
+    assert candidate["missing"]["span"] == [13, 25]
+    assert candidate["missing"]["text"] == "Lost section"
+    assert candidate["head"]["text"] == "Running head"
+    assert candidate["status"] == "manual"
+
+
+def test_partition_suppresses_folio_inside_same_unmatched_header_block(tmp_path: Path) -> None:
+    store, raw = _ws(tmp_path)
+    _write_structured(store, "# Chapter\n\nContent.\n")
+    for page, folio in [(1, "ix"), (2, "10")]:
+        _raw_page(raw, page, ["Running head", folio])
+    result = orch.source_partition(store)
+    assert result["cleanup_candidates"] == []
+    assert result["counts"]["unresolved"] == 4
 
 
 def test_partition_distinguishes_equal_size_replacement(tmp_path: Path) -> None:
